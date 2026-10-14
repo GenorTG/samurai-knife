@@ -53,13 +53,18 @@ export function salaryText(employmentTypes: unknown): string {
   for (const t of employmentTypes) {
     if (!isObj(t)) continue;
     if (t.currencySource !== undefined && t.currencySource !== "original") continue;
-    const from = amount(t.from);
-    const to = amount(t.to);
-    const range = from && to && from !== to ? `${from}-${to}` : from || to;
+    const span = (a: string, b: string) => (a && b && a !== b ? `${a}-${b}` : a || b);
+    const range = span(amount(t.from), amount(t.to));
+    const unit = (str(t.unit) || "month").toLowerCase();
+    const currency = str(t.currency).toUpperCase();
+    // For hour/day/year offers the board's `from`/`to` are monthly equivalents and `fromPerUnit`/`toPerUnit` the posted rate.
+    const perUnit = span(amount(t.fromPerUnit), amount(t.toPerUnit));
+    const hasRate = unit !== "month" && perUnit !== "" && perUnit !== range;
     const rawKind = str(t.label) || str(t.type);
     const kind = rawKind === "any" ? "any contract" : rawKind;
     const net = typeof t.gross === "boolean" ? (t.gross ? " (gross)" : " (net)") : "";
-    if (range) parts.push(`${range} ${str(t.currency).toUpperCase()}/${(str(t.unit) || "month").toLowerCase()} ${kind}${net}`.replace(/\s+/g, " ").trim());
+    const head = hasRate ? `${range} ${currency}/month (${perUnit} ${currency}/${unit})` : `${range} ${currency}/${unit}`;
+    if (range) parts.push(`${head} ${kind}${net}`.replace(/\s+/g, " ").trim());
     else if (kind) parts.push(`${kind}: salary not disclosed`);
   }
   return [...new Set(parts)].join("; ").slice(0, 300);

@@ -260,6 +260,10 @@ test("justjoin.it: salary label falls back to type; an empty / missing offer is 
   assert.equal(salaryText([{ type: "permanent", currency: "PLN", unit: "month", from: null, to: null }]), "permanent: salary not disclosed");
   assert.equal(salaryText([{ type: "any", currency: "PLN", unit: "Month", from: null, to: null }]), "any contract: salary not disclosed");
   assert.equal(salaryText([{ type: "b2b", currency: "PLN", unit: "Day", from: 900, to: 1000, gross: false }]), "900-1000 PLN/day b2b (net)");
+  // justjoin.it: for hour/year offers from/to are monthly equivalents, fromPerUnit/toPerUnit the posted rate
+  assert.equal(salaryText([{ type: "b2b", currency: "PLN", unit: "Hour", from: 20160, to: 30240, fromPerUnit: 120, toPerUnit: 180, gross: false, currencySource: "original" }]), "20160-30240 PLN/month (120-180 PLN/hour) b2b (net)");
+  assert.equal(salaryText([{ type: "permanent", currency: "PLN", unit: "Year", from: 15667, to: 23500, fromPerUnit: 188000, toPerUnit: 282000, gross: true, currencySource: "original" }]), "15667-23500 PLN/month (188000-282000 PLN/year) permanent (gross)");
+  assert.equal(salaryText([{ type: "b2b", currency: "PLN", unit: "Month", from: 20000, to: 30000, fromPerUnit: 20000, toPerUnit: 30000, gross: false }]), "20000-30000 PLN/month b2b (net)");
   assert.throws(() => parseJustjoinOffer("{}", "u"), FetchError);
   assert.throws(() => parseJustjoinOffer("not json", "u"), FetchError);
 });
