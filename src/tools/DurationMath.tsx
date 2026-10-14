@@ -1,0 +1,11 @@
+"use client";
+import { useMemo, useState } from "react";
+import { Field, Notice, Panel, Stat, StatGrid, TextInput } from "@/components/ui";
+function parseDuration(text: string): number | null { const match = text.trim().match(/^(-)?(\d+):([0-5]?\d):([0-5]?\d)(?:\.(\d{1,3}))?$/); if (!match) return null; const ms = Number((match[5] ?? "").padEnd(3, "0") || 0); return (match[1] ? -1 : 1) * (Number(match[2]) * 3600000 + Number(match[3]) * 60000 + Number(match[4]) * 1000 + ms); }
+function format(ms: number): string { const sign = ms < 0 ? "-" : ""; let value = Math.abs(ms); const hours = Math.floor(value / 3600000); value %= 3600000; const minutes = Math.floor(value / 60000); value %= 60000; const seconds = Math.floor(value / 1000); const millis = value % 1000; return `${sign}${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}${millis ? `.${String(millis).padStart(3, "0")}` : ""}`; }
+export default function DurationMath() {
+  const [a, setA] = useState("01:45:30"), [b, setB] = useState("00:35:15"), [op, setOp] = useState<"+" | "-">("+");
+  const result = useMemo(() => { const left = parseDuration(a), right = parseDuration(b); return { left, right, total: left === null || right === null ? null : left + (op === "+" ? right : -right) }; }, [a, b, op]);
+  return <Panel title="Duration arithmetic"><div className="space-y-3"><p className="text-sm text-muted">Enter signed H:MM:SS durations; hours may exceed 24.</p><div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr]"><Field label="First duration"><TextInput value={a} onChange={(e) => setA(e.target.value)} placeholder="H:MM:SS" /></Field><Field label="Operation"><select className="sk-input px-3 py-2" value={op} onChange={(e) => setOp(e.target.value as "+" | "-")}><option>+</option><option>-</option></select></Field><Field label="Second duration"><TextInput value={b} onChange={(e) => setB(e.target.value)} placeholder="H:MM:SS" /></Field></div>
+    {result.total === null ? <Notice tone="error">Use H:MM:SS with minute and second values from 00 to 59.</Notice> : <><Stat label="Result" value={format(result.total)} /><StatGrid><Stat label="Seconds" value={(result.total / 1000).toFixed(3)} /><Stat label="Minutes" value={(result.total / 60000).toFixed(4)} /><Stat label="Hours" value={(result.total / 3600000).toFixed(5)} /></StatGrid></>}</div></Panel>;
+}

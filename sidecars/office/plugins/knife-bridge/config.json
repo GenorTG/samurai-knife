@@ -1,0 +1,24 @@
+{
+  "name": "Samurai Knife bridge",
+  "guid": "asc.{6AF2FF69-9582-4CD7-A71D-9C3A6940B8F5}",
+  "version": "1.0.0",
+  "minVersion": "8.0.0",
+  "variations": [
+    {
+      "description": "Lets the Samurai Knife assistant read and edit the open document (only inside the Samurai Knife office tool).",
+      "url": "index.html",
+      "icons": [],
+      "isViewer": true,
+      "EditorsSupport": ["word", "cell", "slide"],
+      "isSystem": true,
+      "isVisual": false,
+      "isModal": false,
+      "isInsideMode": false,
+      "initDataType": "none",
+      "initData": "",
+      "isUpdateOleOnResize": false,
+      "buttons": [],
+      "events": []
+    }
+  ]
+}

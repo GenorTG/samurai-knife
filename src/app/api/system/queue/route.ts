@@ -1,0 +1,13 @@
+import { authenticate, json } from "@/lib/accounts/http";
+import { jobStore } from "@/lib/jobs";
+import { pythonQueue } from "@/lib/work-queue";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** GET /api/system/queue -> per-lane work-queue stats (queued/running/completed/failed/cancelled, wait/run p50/p95) and async-job store totals. */
+export async function GET(request: Request): Promise<Response> {
+  const auth = authenticate(request, false);
+  if ("response" in auth) return auth.response;
+  return json({ ok: true, lanes: pythonQueue().stats(), jobs: jobStore().stats() });
+}

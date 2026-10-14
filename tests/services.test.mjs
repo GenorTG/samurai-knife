@@ -1,0 +1,313 @@
+// Sidecar services (src/lib/services) and the office library glue (src/lib/office): compose rendering, secrets, state,
+// lock, pull progress, URLs, HS256 JWT, document templates/text, the document store and the save callback.
+// Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/services.test.mjs
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { parse } from "yaml";
+
+const dataDir = mkdtempSync(join(tmpdir(), "knife-services-"));
+process.env.KNIFE_DATA_DIR = dataDir;
+process.env.KNIFE_HOST = "100.64.0.7";
+process.env.KNIFE_PORT = "3210";
+delete process.env.KNIFE_SIDECAR_APP_URL;
+test.after(() => rmSync(dataDir, { recursive: true, force: true }));
+
+const { findSidecar, composeProject } = await import("../src/lib/services/definitions.ts");
+const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError } = await import("../src/lib/services/compose.ts");
+const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
+const state = await import("../src/lib/services/state.ts");
+const urls = await import("../src/lib/services/urls.ts");
+const { parsePs } = await import("../src/lib/services/manager.ts");
+const { signJwt, verifyJwt, JwtError, bearerToken } = await import("../src/lib/jwt-hs256.ts");
+const { buildDocument, OFFICE_FORMATS } = await import("../src/lib/office/templates.ts");
+const { readZip, writeZip } = await import("../src/lib/office/zip.ts");
+const { extractText } = await import("../src/lib/office/text.ts");
+const store = await import("../src/lib/office/store.ts");
+const editor = await import("../src/lib/office/editor.ts");
+const { handleCallback } = await import("../src/lib/office/callback.ts");
+
+const office = findSidecar("office");
+
+/* ------------------------------------------------------------------------------------------- compose */
+
+test("compose: one service, published on the given address only, labelled, secrets via env_file", () => {
+  const doc = parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211 }));
+  assert.equal(doc.name, "samurai-knife-office");
+  assert.equal(composeProject("office"), "samurai-knife-office");
+  const svc = doc.services.documentserver;
+  assert.equal(svc.image, "ghcr.io/euro-office/documentserver:v9.3.5");
+  assert.deepEqual(svc.ports, ["100.64.0.7:3211:80"]);
+  assert.deepEqual(svc.env_file, ["secrets.env"]);
+  assert.equal(svc.environment.JWT_ENABLED, "true");
+  assert.equal(svc.environment.JWT_SECRET, undefined, "the secret never lands in compose.yaml");
+  assert.equal(svc.restart, "no");
+  assert.equal(svc.labels["dev.samurai-knife.service"], "office");
+  assert.deepEqual(svc.extra_hosts, ["host.docker.internal:host-gateway"]);
+  assert.deepEqual(Object.keys(doc.volumes).sort(), ["data", "private"]);
+  assert.ok(svc.volumes.every((v) => !v.startsWith("/")), "named volumes, no bind mounts");
+});
+
+test("compose: refuses wildcard/empty bind addresses and bad ports; brackets IPv6", () => {
+  for (const host of ["0.0.0.0", "::", "[::]", "", "*", "0"]) {
+    assert.throws(() => renderCompose(office, { bindHost: host, hostPort: 3211 }), ComposeError, host);
+  }
+  assert.throws(() => renderCompose(office, { bindHost: "127.0.0.1", hostPort: 0 }), ComposeError);
+  assert.equal(portMapping("fd7a:115c::1", 3211, 80), "[fd7a:115c::1]:3211:80");
+  assert.equal(portMapping("127.0.0.1", 3211, 80), "127.0.0.1:3211:80");
+});
+
+test("secrets file round trip; unsafe keys/values are refused", () => {
+  const text = renderSecrets({ JWT_SECRET: "ab12", OTHER_KEY: "x-y_z" });
+  assert.deepEqual(parseSecrets(text), { JWT_SECRET: "ab12", OTHER_KEY: "x-y_z" });
+  assert.throws(() => renderSecrets({ JWT_SECRET: "a b" }), ComposeError);
+  assert.throws(() => renderSecrets({ "bad key": "x" }), ComposeError);
+  assert.throws(() => renderSecrets({ JWT_SECRET: "a\nINJECT=1" }), ComposeError);
+});
+
+/* ------------------------------------------------------------------------------------------- state */
+
+test("state: secrets generated once (600), state round trip, removal keeps secrets unless purged", () => {
+  const first = state.ensureSecrets(office);
+  assert.match(first.JWT_SECRET, /^[0-9a-f]{64}$/);
+  assert.deepEqual(state.ensureSecrets(office), first, "a second install reuses the secret");
+  const file = join(state.serviceDir("office"), "secrets.env");
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(state.readSecret("office", "JWT_SECRET"), first.JWT_SECRET);
+  const now = new Date().toISOString();
+  state.writeState({ id: "office", image: office.image, bindHost: "100.64.0.7", hostPort: 3211, idleStopMinutes: 30, installedAt: now, updatedAt: now });
+  assert.equal(state.readState("office").hostPort, 3211);
+  assert.equal(state.patchState("office", { idleStopMinutes: 5 }).idleStopMinutes, 5);
+  state.removeState("office", false);
+  assert.equal(state.readState("office"), null);
+  assert.equal(state.readSecret("office", "JWT_SECRET"), first.JWT_SECRET);
+  state.removeState("office", true);
+  assert.equal(state.readSecret("office", "JWT_SECRET"), null);
+  assert.throws(() => state.serviceDir("../etc"), /invalid service id/);
+});
+
+test("op lock: exclusive, released, stale (dead pid) lock is cleared", () => {
+  assert.ok(state.acquireLock("office", "install"));
+  assert.equal(state.acquireLock("office", "start"), null, "second op refused while held");
+  assert.equal(state.readLock("office").op, "install");
+  state.releaseLock("office");
+  writeFileSync(join(state.serviceDir("office"), "op.lock"), JSON.stringify({ pid: 2 ** 22 + 12345, op: "install", startedAt: "x" }));
+  assert.equal(state.readLock("office"), null, "dead pid = stale");
+  assert.ok(state.acquireLock("office", "start"));
+  state.releaseLock("office");
+});
+
+/* ------------------------------------------------------------------------------------------- progress / ps */
+
+test("pull progress folds compose JSON events into one percentage", () => {
+  const t = new PullTracker();
+  const ev = (o) => JSON.stringify(o);
+  assert.equal(t.feed("not json"), false);
+  t.feed(ev({ id: "documentserver", text: "Pulling" }));
+  t.feed(ev({ id: "l1", parent_id: "documentserver", text: "Pulling fs layer" }));
+  t.feed(ev({ id: "l2", parent_id: "documentserver", text: "Already exists" }));
+  t.feed(ev({ id: "l1", parent_id: "documentserver", text: "Downloading", current: 500, total: 1000 }));
+  let s = t.snapshot();
+  assert.equal(s.phase, "downloading");
+  assert.equal(s.totalBytes, 1000);
+  assert.equal(s.percent, 40);
+  t.feed(ev({ id: "l1", parent_id: "documentserver", text: "Extracting", current: 1000, total: 1000 }));
+  s = t.snapshot();
+  assert.equal(s.phase, "extracting");
+  assert.equal(s.percent, 99, "capped below 100 until done");
+  t.feed(ev({ id: "l1", parent_id: "documentserver", text: "Pull complete" }));
+  t.feed(ev({ id: "documentserver", text: "Pulled" }));
+  s = t.snapshot();
+  assert.deepEqual([s.phase, s.percent, s.layers, s.layersDone], ["done", 100, 2, 2]);
+});
+
+test("compose ps output: JSON lines and the older array form", () => {
+  const row = { Name: "samurai-knife-office-documentserver-1", Service: "documentserver", State: "running", Health: "" };
+  assert.deepEqual(parsePs(`${JSON.stringify(row)}\n`), [row]);
+  assert.deepEqual(parsePs(JSON.stringify([row])), [row]);
+  assert.deepEqual(parsePs(""), []);
+});
+
+/* ------------------------------------------------------------------------------------------- urls */
+
+test("app URL: derived from KNIFE_HOST, loopback gets a warning, env and state override", () => {
+  assert.deepEqual(urls.appUrl(null), { url: "http://100.64.0.7:3210", source: "derived" });
+  process.env.KNIFE_HOST = "127.0.0.1";
+  const loop = urls.appUrl(null);
+  assert.equal(loop.url, "http://host.docker.internal:3210");
+  assert.match(loop.warning, /cannot reach/);
+  process.env.KNIFE_SIDECAR_APP_URL = "http://10.0.0.5:3210/";
+  assert.deepEqual(urls.appUrl(null), { url: "http://10.0.0.5:3210", source: "env" });
+  assert.equal(urls.appUrl({ appUrl: "http://x:1" }).source, "state");
+  delete process.env.KNIFE_SIDECAR_APP_URL;
+  process.env.KNIFE_HOST = "100.64.0.7";
+  assert.equal(urls.publicUrl({ bindHost: "100.64.0.7", hostPort: 3211 }), "http://100.64.0.7:3211");
+  assert.equal(urls.publicUrl({ bindHost: "::1", hostPort: 3211 }), "http://[::1]:3211");
+  assert.equal(urls.validateHttpUrl("ftp://x"), "must be http(s)");
+  assert.equal(urls.validateHttpUrl("http://u:p@x"), "must not contain credentials");
+  assert.equal(urls.validateHttpUrl("http://x:3210"), null);
+});
+
+test("pickPort skips claimed ports and returns a free one near the app port", async () => {
+  const port = await urls.pickPort("127.0.0.1", 41000, new Set([41001]));
+  assert.ok(port > 41001 && port <= 41200, String(port));
+  assert.equal(await urls.portFree("127.0.0.1", port), true);
+});
+
+/* ------------------------------------------------------------------------------------------- jwt */
+
+test("HS256 JWT: round trip, tamper, wrong secret, alg none, expiry", () => {
+  const token = signJwt({ a: 1 }, "s".repeat(32));
+  assert.equal(verifyJwt(token, "s".repeat(32)).a, 1);
+  const [h, p, sig] = token.split(".");
+  const forged = `${h}.${Buffer.from(JSON.stringify({ a: 2 })).toString("base64url")}.${sig}`;
+  assert.throws(() => verifyJwt(forged, "s".repeat(32)), JwtError);
+  assert.throws(() => verifyJwt(token, "t".repeat(32)), /bad signature/);
+  const none = `${Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")}.${p}.`;
+  assert.throws(() => verifyJwt(none, "s".repeat(32)), /algorithm/);
+  const old = signJwt({ a: 1, iat: 1, exp: 100 }, "k");
+  assert.throws(() => verifyJwt(old, "k"), /expired/);
+  assert.equal(bearerToken("Bearer abc.def.ghi"), "abc.def.ghi");
+  assert.equal(bearerToken("Basic x"), null);
+});
+
+/* ------------------------------------------------------------------------------------------- templates / text */
+
+test("every blank format is a valid ZIP whose text extracts to empty-ish", () => {
+  for (const format of OFFICE_FORMATS) {
+    const bytes = buildDocument(format);
+    assert.ok(store.isZipContainer(bytes), format);
+    const zip = readZip(bytes);
+    assert.ok(zip.names().length >= 3, format);
+    assert.equal(typeof extractText(format, bytes), "string");
+  }
+  const odt = readZip(buildDocument("odt"));
+  assert.equal(odt.names()[0], "mimetype", "ODF: mimetype first");
+  assert.equal(odt.text("mimetype"), "application/vnd.oasis.opendocument.text");
+});
+
+test("content round trip: paragraphs, rows (numbers numeric), slides; XML is escaped", () => {
+  const paragraphs = ["Hello <world> & \"friends\"", "", "Zażółć gęślą jaźń"];
+  assert.equal(extractText("docx", buildDocument("docx", { paragraphs })), paragraphs.join("\n"));
+  assert.equal(extractText("odt", buildDocument("odt", { paragraphs })), paragraphs.join("\n"));
+  const rows = [["name", "qty"], ["apple", "3"], ["", "4.5"]];
+  const xlsx = buildDocument("xlsx", { rows });
+  assert.match(readZip(xlsx).text("xl/worksheets/sheet1.xml"), /<c r="B2"><v>3<\/v><\/c>/);
+  assert.equal(extractText("xlsx", xlsx), "# Sheet: Sheet1\nname\tqty\napple\t3\n\t4.5");
+  assert.equal(extractText("ods", buildDocument("ods", { rows })), "# Sheet: Sheet1\nname\tqty\napple\t3\n\t4.5");
+  const slides = [{ title: "Plan", bullets: ["one", "two"] }, { title: "End" }];
+  assert.equal(extractText("pptx", buildDocument("pptx", { slides })), "# Slide 1\nPlan\none\ntwo\n\n# Slide 2\nEnd");
+  assert.equal(extractText("odp", buildDocument("odp", { slides })), "# Slide 1\nPlan\none\ntwo\n\n# Slide 2\nEnd");
+});
+
+test("zip reader: stored + deflated entries, bomb cap", () => {
+  const zip = writeZip([{ name: "a.txt", data: "x".repeat(10000) }, { name: "b.txt", data: "stored", store: true }]);
+  const r = readZip(zip);
+  assert.equal(r.text("a.txt").length, 10000);
+  assert.equal(r.text("b.txt"), "stored");
+  assert.equal(r.read("missing"), null);
+  assert.throws(() => readZip(zip, 100).read("a.txt"), /limit/);
+  assert.throws(() => readZip(Buffer.from("not a zip at all, definitely not")), /not a ZIP/);
+});
+
+/* ------------------------------------------------------------------------------------------- store */
+
+test("document store: create, list, save versions, key rotation, rename, delete; files private", () => {
+  const doc = store.createDoc("genor", { name: "Report", format: "docx", bytes: buildDocument("docx"), source: "blank" });
+  assert.equal(doc.name, "Report.docx");
+  assert.equal(doc.version, 1);
+  assert.equal(statSync(store.docFile("genor", doc)).mode & 0o777, 0o600);
+  assert.deepEqual(store.listDocs("genor").map((d) => d.id), [doc.id]);
+  const forced = store.saveVersion("genor", doc.id, buildDocument("docx", { paragraphs: ["v2"] }), { rotateKey: false });
+  assert.equal(forced.version, 2);
+  assert.equal(forced.key, doc.key, "force-save keeps the session key");
+  const final = store.saveVersion("genor", doc.id, buildDocument("docx", { paragraphs: ["v3"] }), { rotateKey: true });
+  assert.notEqual(final.key, doc.key);
+  assert.equal(extractText("docx", store.readDocBytes("genor", final)), "v3");
+  assert.equal(store.rotateKey("genor", doc.id, "stale-key").key, final.key, "rotate only from the expected key");
+  const renamed = store.renameDoc("genor", doc.id, "../../etc/passwd");
+  assert.ok(!renamed.name.includes("/") && renamed.name.endsWith(".docx") && !renamed.name.startsWith("."), renamed.name);
+  assert.throws(() => store.createDoc("genor", { name: "x", format: "docx", bytes: Buffer.from("plain text"), source: "upload" }), /not an office file/);
+  assert.throws(() => store.getDoc("genor", "../../x"), /unknown document/);
+  assert.throws(() => store.getDoc("other", doc.id), /unknown document/, "other accounts do not see it");
+  assert.equal(store.deleteDoc("genor", doc.id), true);
+  assert.deepEqual(store.listDocs("genor"), []);
+  assert.deepEqual(store.splitName("A.B.XLSX"), { base: "A.B", format: "xlsx" });
+  assert.equal(store.splitName("a.doc"), null);
+});
+
+/* ------------------------------------------------------------------------------------------- editor + callback */
+
+function installFakeOffice() {
+  state.ensureSecrets(office);
+  const now = new Date().toISOString();
+  state.writeState({ id: "office", image: office.image, bindHost: "100.64.0.7", hostPort: 3211, idleStopMinutes: 30, installedAt: now, updatedAt: now });
+  return state.readSecret("office", "JWT_SECRET");
+}
+
+test("editor config is signed server-side; capability tokens are purpose-bound", () => {
+  const secret = installFakeOffice();
+  const doc = store.createDoc("genor", { name: "Sheet", format: "xlsx", bytes: buildDocument("xlsx"), source: "blank" });
+  const { apiUrl, config } = editor.editorConfig({ id: "genor", displayName: "Genor" }, doc, { mode: "edit" });
+  assert.equal(apiUrl, "http://100.64.0.7:3211/web-apps/apps/api/documents/api.js");
+  assert.equal(config.documentType, "cell");
+  assert.equal(config.document.key, doc.key);
+  const claims = verifyJwt(config.token, secret);
+  assert.equal(claims.document.url, config.document.url);
+  assert.equal(claims.editorConfig.callbackUrl, config.editorConfig.callbackUrl);
+  assert.ok(config.document.url.startsWith("http://100.64.0.7:3210/api/office/ds/file?t="));
+  const fileToken = decodeURIComponent(new URL(config.document.url).searchParams.get("t"));
+  assert.deepEqual(editor.readCapability(fileToken, "file"), { acc: "genor", doc: doc.id, use: "file" });
+  assert.throws(() => editor.readCapability(fileToken, "callback"), /wrong capability/);
+  assert.throws(() => editor.readCapability(signJwt({ acc: "genor", doc: doc.id, use: "file" }, "other-secret"), "file"), /bad signature/);
+  const request = new Request("http://x/", { headers: { authorization: `Bearer ${signJwt({ payload: { status: 2, key: "k" } }, secret)}` } });
+  assert.deepEqual(editor.readServerToken(request), { status: 2, key: "k" });
+  assert.equal(editor.readServerToken(new Request("http://x/"), signJwt({ status: 6 }, secret)).status, 6);
+  assert.throws(() => editor.readServerToken(new Request("http://x/")), /missing Document Server token/);
+  store.deleteDoc("genor", doc.id);
+});
+
+test("callback: 1 editing, 6 force-save keeps key, 2 saves + rotates, 4 rotates, foreign URL refused, stale key -> copy", async () => {
+  installFakeOffice();
+  const doc = store.createDoc("genor", { name: "Notes", format: "docx", bytes: buildDocument("docx"), source: "blank" });
+  const served = new Map();
+  const realFetch = globalThis.fetch;
+  const fetched = [];
+  globalThis.fetch = async (url) => {
+    fetched.push(String(url));
+    const body = served.get(new URL(url).pathname);
+    return body ? new Response(body) : new Response("nope", { status: 404 });
+  };
+  try {
+    assert.deepEqual(await handleCallback("genor", doc.id, { key: doc.key, status: 1, users: ["genor"] }), { error: 0, action: "editing" });
+    served.set("/cache/files/v2/output.docx", buildDocument("docx", { paragraphs: ["forced"] }));
+    let out = await handleCallback("genor", doc.id, { key: doc.key, status: 6, url: "http://100.64.0.7:3211/cache/files/v2/output.docx", users: ["genor"] });
+    assert.equal(out.action, "force-saved");
+    assert.equal(out.doc.key, doc.key);
+    assert.equal(fetched.at(-1), "http://100.64.0.7:3211/cache/files/v2/output.docx");
+    served.set("/cache/files/v3/output.docx", buildDocument("docx", { paragraphs: ["final"] }));
+    out = await handleCallback("genor", doc.id, { key: doc.key, status: 2, url: "http://100.64.0.7:3211/cache/files/v3/output.docx" });
+    assert.equal(out.action, "saved");
+    assert.notEqual(out.doc.key, doc.key);
+    assert.equal(out.doc.version, 3);
+    assert.equal(extractText("docx", store.readDocBytes("genor", out.doc)), "final");
+    const evil = await handleCallback("genor", doc.id, { key: out.doc.key, status: 2, url: "http://169.254.169.254/latest/meta-data" });
+    assert.equal(evil.error, 1);
+    assert.match(evil.message, /not the office sidecar/);
+    const closed = await handleCallback("genor", doc.id, { key: out.doc.key, status: 4 });
+    assert.equal(closed.action, "closed");
+    assert.notEqual(closed.doc.key, out.doc.key);
+    served.set("/cache/files/v4/output.docx", buildDocument("docx", { paragraphs: ["late"] }));
+    const conflict = await handleCallback("genor", doc.id, { key: "old.key", status: 2, url: "http://100.64.0.7:3211/cache/files/v4/output.docx" });
+    assert.equal(conflict.action, "conflict-copy");
+    assert.equal(extractText("docx", store.readDocBytes("genor", store.getDoc("genor", doc.id))), "final", "original untouched");
+    assert.match(conflict.doc.name, /\(edited copy\)\.docx$/);
+    const noUrl = await handleCallback("genor", doc.id, { key: closed.doc.key, status: 2 });
+    assert.equal(noUrl.error, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.ok(readFileSync(join(dataDir, "docs", "genor", doc.id, "meta.json"), "utf8").includes('"version": 3'));
+});

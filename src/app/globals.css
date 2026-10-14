@@ -1,0 +1,441 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Design tokens
+   --------------------------------------------------------------------------
+   Raw palette lives in --c-* variables, swapped per theme. `@theme inline`
+   exposes them as Tailwind utilities (bg-surface, text-muted, border-line…),
+   so every existing class follows the active theme without per-tool work.
+   Theme = [data-theme] on <html> (set before paint by the inline script in
+   layout.tsx); dark is the default, light is the opt-in toggle.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* Dark-first palette, matching smart-samurai.pl (:root HSL tokens):
+     background 230 25% 5%, card 230 25% 8%, muted 230 20% 14%,
+     border 230 20% 18%, foreground 210 40% 98%, muted-fg 215 20% 65%,
+     accent 187 100% 50% (cyan) on a dark accent-foreground. */
+  --c-bg: hsl(230 25% 5%);
+  --c-surface: hsl(230 25% 8%);
+  --c-raised: hsl(230 20% 14%);
+  --c-field: hsl(230 25% 6%);
+  --c-line: hsl(230 20% 18%);
+  --c-line-strong: hsl(230 18% 27%);
+  --c-ink: hsl(210 40% 98%);
+  --c-muted: hsl(215 20% 65%);
+  --c-faint: hsl(215 16% 57%);
+
+  /* Cyan primary: fills, rings, focus. Soft variant is the text-safe tint. */
+  --c-accent: hsl(187 100% 50%);
+  --c-accent-soft: hsl(187 100% 64%);
+  --c-accent-fg: hsl(230 25% 5%);
+
+  /* Semantic. */
+  --c-good: hsl(152 70% 55%);
+  --c-warn: hsl(40 95% 60%);
+  --c-danger: hsl(0 85% 66%);
+
+  /* The assistant's own colour, distinct from cyan: the hot pink of the
+     site's wordmark gradient (pink > orange > yellow). */
+  --c-ai: hsl(330 95% 68%);
+
+  --shadow-color: hsl(230 40% 2% / 0.6);
+  --glow: hsl(187 100% 50% / 0.09);
+  --glow-ai: hsl(330 95% 65% / 0.07);
+  --glass: hsl(230 25% 8% / 0.72);
+  --scrim: hsl(0 0% 0% / 0.55);
+  --ring-glow: hsl(187 100% 50% / 0.35);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --c-bg: hsl(220 25% 96.5%);
+  --c-surface: hsl(0 0% 100%);
+  --c-raised: hsl(220 20% 94%);
+  --c-field: hsl(220 25% 98.5%);
+  --c-line: hsl(220 18% 88%);
+  --c-line-strong: hsl(220 14% 76%);
+  --c-ink: hsl(230 30% 10%);
+  --c-muted: hsl(225 15% 36%);
+  --c-faint: hsl(225 12% 42%);
+
+  --c-accent: hsl(190 100% 27%);
+  --c-accent-soft: hsl(190 100% 22%);
+  --c-accent-fg: hsl(0 0% 100%);
+
+  --c-good: hsl(152 70% 28%);
+  --c-warn: hsl(32 90% 30%);
+  --c-danger: hsl(0 72% 42%);
+  --c-ai: hsl(330 80% 40%);
+
+  --shadow-color: hsl(230 30% 20% / 0.14);
+  --glow: hsl(187 100% 40% / 0.08);
+  --glow-ai: hsl(330 95% 65% / 0.05);
+  /* Near-opaque so page text never bleeds through dialogs; light scrim stays soft. */
+  --glass: hsl(0 0% 100% / 0.96);
+  --scrim: hsl(0 0% 0% / 0.3);
+  --ring-glow: hsl(190 100% 35% / 0.28);
+}
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-raised: var(--c-raised);
+  --color-field: var(--c-field);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-good: var(--c-good);
+  --color-warn: var(--c-warn);
+  --color-danger: var(--c-danger);
+  --color-ai: var(--c-ai);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", "Cascadia Code",
+    "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --radius-tool: 14px;
+  --radius-field: 10px;
+
+  --shadow-xs: 0 1px 1px var(--shadow-color);
+  --shadow-card: 0 1px 2px var(--shadow-color), 0 4px 14px -6px var(--shadow-color);
+  --shadow-pop: 0 2px 4px var(--shadow-color), 0 18px 44px -12px var(--shadow-color);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: var(--c-bg);
+  background-image:
+    radial-gradient(46rem 24rem at 12% -6rem, var(--glow-ai), transparent 70%),
+    radial-gradient(60rem 26rem at 88% -8rem, var(--glow), transparent 70%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Tools print numbers; keep columns of digits aligned everywhere. */
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono,
+code,
+kbd,
+pre,
+samp {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--c-accent) 35%, transparent);
+  color: var(--c-ink);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+button:not(:disabled),
+a[href],
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+label[for],
+label:has(input[type="checkbox"]:not(:disabled)),
+label:has(input[type="radio"]:not(:disabled)),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--c-accent);
+}
+
+/* One focus ring everywhere: 2px accent, offset so it never touches borders.
+   In @layer base so utilities (outline-none) and .sk-* rules can override it. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--c-line-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+/* ==========================================================================
+   Shared primitives (see components/ui.tsx)
+   --------------------------------------------------------------------------
+   All .sk-* rules live in @layer components: unlayered CSS beats every
+   Tailwind utility (e.g. .sk-kbd's display beat `hidden`), layered CSS does not.
+   ========================================================================== */
+
+@layer components {
+  .sk-input {
+    background: var(--c-field);
+    border: 1px solid var(--c-line-strong);
+    border-radius: var(--radius-field);
+    color: var(--c-ink);
+    box-shadow: inset 0 1px 1px var(--shadow-color);
+    transition:
+      border-color 140ms var(--ease-out),
+      box-shadow 140ms var(--ease-out);
+  }
+
+  .sk-input:hover {
+    border-color: color-mix(in oklab, var(--c-line-strong) 70%, var(--c-ink));
+  }
+
+  .sk-input:focus,
+  .sk-input:focus-visible {
+    border-color: var(--c-accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-accent) 25%, transparent);
+    outline: none;
+  }
+
+  .sk-input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .sk-input::placeholder {
+    color: var(--c-faint);
+  }
+
+  select.sk-input {
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--c-faint) 50%),
+      linear-gradient(135deg, var(--c-faint) 50%, transparent 50%);
+    background-position:
+      calc(100% - 17px) 55%,
+      calc(100% - 12px) 55%;
+    background-size:
+      5px 5px,
+      5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  .sk-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--c-faint);
+  }
+
+  /* Keyboard hint chip. */
+  .sk-kbd {
+    display: inline-block;
+    min-width: 1.4rem;
+    padding: 1px 6px;
+    border: 1px solid var(--c-line-strong);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: var(--c-raised);
+    color: var(--c-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: center;
+  }
+}
+
+/* Deliberately NOT layered: this room for the custom chevron must beat Tailwind
+   padding utilities (the Select primitive carries `px-3`, which would otherwise
+   put the chevron on top of the text). */
+select.sk-input {
+  padding-right: 2rem;
+}
+
+/* Subtle entrances. Nothing animates for reduced-motion users. */
+@keyframes sk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sk-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@layer components {
+  .sk-tabpanel {
+    animation: sk-rise 220ms var(--ease-out);
+  }
+
+  .sk-pop {
+    animation: sk-pop 200ms var(--ease-out);
+    transform-origin: bottom right;
+  }
+
+  .sk-rise {
+    animation: sk-rise 260ms var(--ease-out) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* A suite tab marked `wide` (data-wide) widens the whole tool shell, e.g. the
+   PDF page editor. Same widths the shell used for it before it became a tab. */
+@layer components {
+  .sk-tool-main:has([data-wide="true"]) {
+    padding-inline: 0.5rem;
+  }
+  @media (min-width: 640px) {
+    .sk-tool-main:has([data-wide="true"]) {
+      padding-inline: 0.75rem;
+    }
+  }
+
+  .sk-tablist {
+    scrollbar-width: none;
+  }
+  .sk-tablist::-webkit-scrollbar {
+    display: none;
+  }
+  /* Fade the edge(s) that still have tabs behind them, so a clipped tab reads as scrollable. */
+  .sk-tablist[data-fade="end"] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  }
+  .sk-tablist[data-fade="start"] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent);
+  }
+  .sk-tablist[data-fade="both"] {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+  }
+
+  /* Dim layer behind dialogs and the sidebar drawer. */
+  .sk-scrim {
+    background: var(--scrim);
+  }
+
+  /* Frosted card, as on the site's launch dialog. */
+  .sk-glass {
+    background: var(--glass);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  }
+
+  /* Primary action: solid cyan with the site's double outline glow. */
+  .sk-btn-primary {
+    box-shadow:
+      0 0 0 2px var(--c-bg),
+      0 0 0 3px var(--c-accent),
+      0 6px 22px -6px var(--ring-glow);
+  }
+  .sk-btn-primary:disabled {
+    box-shadow: none;
+  }
+
+  /* Wordmark gradient from the site: pink > orange > yellow. */
+  .sk-wordmark {
+    background: linear-gradient(90deg, hsl(330 95% 66%), hsl(24 100% 62%) 60%, hsl(45 100% 62%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* The bright stops vanish on the light page (yellow ~1.4:1); these stay >= 3:1 on --c-bg. */
+  :root[data-theme="light"] .sk-wordmark {
+    background-image: linear-gradient(90deg, hsl(330 80% 40%), hsl(20 90% 38%) 60%, hsl(38 90% 34%));
+  }
+}
+
+@keyframes sk-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@layer components {
+  .sk-slide {
+    animation: sk-slide 180ms var(--ease-out);
+  }
+}
+
+/* Anchor jumps and focus never hide under the sticky top bar. */
+html {
+  scroll-padding-top: 4.5rem;
+}
+
+/* Room for the docked assistant: set on <html> by the widget, 0 when floating. */
+@layer components {
+  .sk-dock-pad {
+    padding-right: min(var(--sk-dock, 0px), 50vw);
+    transition: padding-right 180ms var(--ease-out);
+  }
+}

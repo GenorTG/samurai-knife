@@ -1,0 +1,7 @@
+"use client";
+import { useMemo, useState } from "react";
+import { Field, Panel, Stat, TextInput } from "@/components/ui";
+const ZONES=["UTC","Europe/Warsaw","Europe/London","America/New_York","America/Los_Angeles","Asia/Tokyo","Asia/Singapore","Australia/Sydney"];
+export default function MeetingTimezones(){const [date,setDate]=useState("2026-10-05"),[time,setTime]=useState("09:00");const instant=useMemo(()=>new Date(`${date}T${time}:00Z`),[date,time]);
+ return <Panel title="Time-zone meeting planner"><div className="space-y-3"><div className="grid gap-3 sm:grid-cols-2"><Field label="Meeting date (UTC)"><TextInput type="date" value={date} onChange={(e)=>setDate(e.target.value)} /></Field><Field label="Meeting time (UTC)"><TextInput type="time" value={time} onChange={(e)=>setTime(e.target.value)} /></Field></div><Stat label="Shared instant" value={Number.isNaN(instant.getTime())?"Invalid":"UTC · "+instant.toISOString()} /><div className="grid gap-2 sm:grid-cols-2">{ZONES.map((zone)=><div key={zone} className="rounded-lg border border-line p-3"><div className="text-xs text-faint">{zone}</div><div className="mt-1 font-mono text-sm">{Number.isNaN(instant.getTime())?"—":new Intl.DateTimeFormat("en-GB",{timeZone:zone,year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",timeZoneName:"short"}).format(instant)}</div></div>)}</div><p className="text-xs text-faint">Enter one UTC instant; each city is converted using IANA timezone data, including seasonal offsets.</p></div></Panel>;
+}

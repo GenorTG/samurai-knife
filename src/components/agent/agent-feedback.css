@@ -1,0 +1,171 @@
+/* Live cues for AI actions. Driven by data attributes set in lib/agent-client/feedback.ts. */
+
+[data-agent-highlight] {
+  outline: 2px solid var(--color-ai, #6fb7ff) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-ai, #6fb7ff) 28%, transparent);
+  animation: agent-ring 1.6s ease-out both;
+}
+
+[data-agent-flash] {
+  animation: agent-flash 1.2s ease-out both;
+}
+
+/* The control the assistant is waiting on: pulses until the user uses it. */
+[data-agent-await] {
+  outline: 2px solid var(--color-warn, #f5b740) !important;
+  outline-offset: 3px;
+  animation: agent-await 1.3s ease-in-out infinite;
+}
+
+@keyframes agent-await {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn, #f5b740) 18%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--color-warn, #f5b740) 34%, transparent);
+  }
+}
+
+@keyframes agent-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ai, #6fb7ff) 60%, transparent);
+  }
+  30% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-ai, #6fb7ff) 30%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-ai, #6fb7ff) 18%, transparent);
+  }
+}
+
+@keyframes agent-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--color-ai, #6fb7ff) 38%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--color-ai, #6fb7ff) 80%, transparent);
+    outline-offset: 2px;
+  }
+  100% {
+    background-color: transparent;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+[data-agent-feedback] [data-agent-progress] {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-ai, #6fb7ff) 20%, transparent);
+}
+
+[data-agent-feedback] [data-agent-progress]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--color-ai, #6fb7ff);
+  animation: agent-progress 1s ease-in-out infinite;
+}
+
+@keyframes agent-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+[data-agent-feedback] [data-agent-toast] {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 60;
+  transform: translateX(-50%);
+  max-width: min(92vw, 28rem);
+  padding: 0.4rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-ai, #6fb7ff) 55%, transparent);
+  border-radius: 999px;
+  background: #0f1720;
+  color: #dff0ff;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.5);
+  pointer-events: none;
+  animation: agent-toast-in 0.18s ease-out both;
+}
+
+[data-agent-feedback] [data-agent-here] {
+  position: fixed;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-ai, #6fb7ff);
+  color: #04121f;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.5);
+  animation: agent-toast-in 0.18s ease-out both;
+}
+
+@keyframes agent-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--agent-tx, 0), -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(var(--agent-tx, 0), 0);
+  }
+}
+
+[data-agent-feedback] [data-agent-toast] {
+  --agent-tx: -50%;
+}
+
+[data-agent-widget] [data-agent-draft]::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-ai, #6fb7ff);
+  animation: agent-caret 0.9s steps(2) infinite;
+}
+
+@keyframes agent-caret {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-agent-highlight],
+  [data-agent-await],
+  [data-agent-flash],
+  [data-agent-feedback] [data-agent-progress]::after,
+  [data-agent-feedback] [data-agent-toast],
+  [data-agent-feedback] [data-agent-here],
+  [data-agent-widget] [data-agent-draft]::after {
+    animation: none !important;
+  }
+  [data-agent-flash] {
+    background-color: color-mix(in srgb, var(--color-ai, #6fb7ff) 28%, transparent);
+  }
+  [data-agent-feedback] [data-agent-progress]::after {
+    width: 100%;
+  }
+}

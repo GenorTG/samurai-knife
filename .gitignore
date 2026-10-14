@@ -1,0 +1,80 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+/public/ocr/
+/public/sql/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+/.tmp/
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# python venv lives outside the repo (../samurai-knife-py/venv) — nothing to ignore here
+__pycache__/
+*.pyc
+
+# ruff / pytest / coverage caches
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# test runs: outputs, reports, screenshots, traces, scratch data dirs (suites write into .tmp/; these catch strays)
+/test-results/
+/playwright-report/
+/tests/**/out/
+/tests/**/artifacts/
+/tests/**/*.log
+/tests/**/*-report.md
+*.trace.zip
+
+# local data: accounts, CV, documents and databases live in $KNIFE_DATA_DIR (outside the repo); never commit a copy
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.duckdb
+accounts.json
+*.local.json
+*.local.md
+
+# private documents and exports dropped into the checkout by hand
+*.docx
+*.xlsx
+*.pptx
+*.odt
+*.ods
+/*.pdf
+/*.zip
+
+# internal working notes for coding agents (kept on this machine only)
+/AGENTS.md
+/CLAUDE.md
+/HANDOFF.md
+/docs/QA-*.md
+/tests/coverage/BRIEF.md

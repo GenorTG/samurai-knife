@@ -1,0 +1,92 @@
+import { describeCall } from "@/components/agent/summarize";
+import { findTool, resolveAlias } from "@/lib/registry";
+import { describeActionTarget, fieldWouldBeCleared, fieldWouldBeOverwritten, fileInputHoldsUserFiles, pageHasUserWork } from "./dom-bridge";
+import type { TrustMode } from "./interaction";
+import { activeLiveBridge } from "@/lib/office/live-bridge";
+import { assessLiveCall, isLiveTool } from "./office-live-tools";
+
+/**
+ * Decides whether a tool call needs the user's OK under the active trust mode.
+ * Only calls that act on the page are considered; reads, waits, wait_for_user and the
+ * server-side knife_* computations never prompt in any mode.
+ */
+
+export interface Assessment {
+  ask: boolean;
+  /** Throws away the user's work; shown as a warning and never covered by "allow this run". */
+  destructive: boolean;
+  title: string;
+  detail: string;
+}
+
+type Args = Record<string, unknown>;
+const NO: Assessment = { ask: false, destructive: false, title: "", detail: "" };
+
+const str = (args: Args, key: string): string => (typeof args[key] === "string" ? (args[key] as string) : "");
+
+function openTarget(args: Args) {
+  const raw = str(args, "slug").trim().replace(/^\/?tools\//, "");
+  const alias = resolveAlias(raw);
+  const tool = findTool(alias?.slug ?? raw);
+  const tab = str(args, "tab").trim() || alias?.tab || "";
+  return { raw, tool, tab };
+}
+
+export function assessCall(name: string, args: Args, rawArgs: string, mode: TrustMode): Assessment {
+  if (mode === "free") return NO;
+  const detail = describeCall(name, rawArgs);
+  // Edits inside the open office document: acting calls; delete / replace-all / overwriting cells are destructive.
+  if (isLiveTool(name)) return assessLiveCall(name, args, mode, detail, activeLiveBridge()?.docName ?? "");
+
+  switch (name) {
+    case "open_tool": {
+      const { raw, tool, tab } = openTarget(args);
+      const target = tool ? `/tools/${tool.slug}` : null;
+      const currentTab = new URLSearchParams(window.location.search).get("tab") ?? "";
+      const leaving = target !== window.location.pathname || (tab !== "" && tab !== currentTab);
+      if (!leaving) return NO; // already there: nothing to approve
+      const where = tool?.name ?? (raw || "a tool");
+      if (pageHasUserWork()) {
+        return { ask: true, destructive: true, title: `Leave this page for ${where}?`, detail: "Text or files you entered here will be lost." };
+      }
+      return mode === "destructive" ? NO : { ask: true, destructive: false, title: `Open ${where}?`, detail };
+    }
+    case "fill_field": {
+      const id = str(args, "id");
+      const clearing = fieldWouldBeCleared(id, typeof args.value === "string" ? args.value : "x");
+      if (clearing) return { ask: true, destructive: true, title: "Clear this field?", detail };
+      if (fieldWouldBeOverwritten(id, typeof args.value === "string" ? args.value : "")) {
+        return { ask: true, destructive: true, title: "Replace your text?", detail: "This field holds text you entered; the new value overwrites it." };
+      }
+      return mode === "strict" ? { ask: true, destructive: false, title: "Fill a field?", detail } : NO;
+    }
+    case "upload_file":
+      // Attaching replaces the input's file list outright, so a file the user picked themselves would be dropped.
+      if (fileInputHoldsUserFiles(str(args, "id"))) {
+        return { ask: true, destructive: true, title: "Replace your file?", detail: "This file input holds a file you chose; attaching another one replaces it." };
+      }
+      return mode === "destructive" ? NO : { ask: true, destructive: false, title: "Attach a file?", detail };
+    case "click": {
+      const target = describeActionTarget(str(args, "id"));
+      if (!target) return NO; // stale id: the tool itself will report it
+      if (target.destructive) return { ask: true, destructive: true, title: `Click “${target.label}”?`, detail: "This looks like it deletes, clears or resets something." };
+      // Switching suite tabs unmounts the tool (its input is lost) and sample/restore buttons replace what was typed.
+      if (target.kind === "tab" && !target.active && pageHasUserWork()) {
+        return { ask: true, destructive: true, title: `Switch to “${target.label}”?`, detail: "Text or files you entered here will be lost." };
+      }
+      // A same-tab link to another page or suite tab unmounts the tool just like open_tool does.
+      if (target.navigates && pageHasUserWork()) {
+        return { ask: true, destructive: true, title: `Leave this page via “${target.label || "a link"}”?`, detail: "Text or files you entered here will be lost." };
+      }
+      if (target.overwrites && pageHasUserWork()) {
+        return { ask: true, destructive: true, title: `Click “${target.label}”?`, detail: "This replaces the text you entered here." };
+      }
+      if (mode === "destructive") return NO;
+      const runs = target.kind === "button" || target.kind === "link";
+      if (mode === "strict" || runs) return { ask: true, destructive: false, title: `Click “${target.label || "a control"}”?`, detail };
+      return NO; // tabs / toggles in Standard only change the view
+    }
+    default:
+      return NO;
+  }
+}
