@@ -11,9 +11,18 @@ export interface SidecarVolume {
   target: string;
 }
 
+/**
+ * How the app decides the service is ready. `http`: GET `path` answers 200 (and `body` matches). `postgres`: a Postgres
+ * SSLRequest on the published port gets the server's one-byte answer ("S"/"N"); a plain TCP connect is not enough
+ * because docker's port proxy accepts connections before the container listens.
+ */
+export type SidecarHealth = { kind: "http"; path: string; body?: RegExp } | { kind: "postgres" };
+
 export interface SidecarDefinition {
   id: string;
   name: string;
+  /** Short noun for buttons ("Install <shortName>"). */
+  shortName: string;
   description: string;
   /** Pinned image reference; `update` re-pulls it and recreates the container when the digest changed. */
   image: string;
@@ -21,10 +30,12 @@ export interface SidecarDefinition {
   serviceName: string;
   /** Port the container listens on; published on KNIFE_HOST:<chosen port>. */
   containerPort: number;
-  /** GET path that answers 200 once the service is ready. */
-  healthPath: string;
-  /** Body check on the health response ("true" for the Document Server). */
-  healthBody?: RegExp;
+  health: SidecarHealth;
+  /**
+   * The container calls back into the app (document downloads, save callbacks): after a start the manager checks from
+   * inside the container that the app URL answers. False for services the app only calls (a database).
+   */
+  callsBack: boolean;
   /** Generated once at install (random hex), written to secrets.env (mode 600), passed with env_file. */
   secrets: { name: string; bytes: number }[];
   /** Plain environment for the container. */
@@ -60,6 +71,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
   {
     id: "office",
     name: "Office editor (Euro-Office Document Server)",
+    shortName: "office editor",
     description:
       "Edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in the browser. Euro-Office is the AGPL fork of the ONLYOFFICE Document Server; it runs as one container on this machine and reads/writes documents only through this app.",
     // `latest` and `v9.3.5` share the same digest on 2026-10-13 (ghcr.io registry API). The docs show `:9.3.1` without the
@@ -67,8 +79,8 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     image: "ghcr.io/euro-office/documentserver:v9.3.5",
     serviceName: "documentserver",
     containerPort: 80,
-    healthPath: "/healthcheck",
-    healthBody: /^\s*true\s*$/,
+    health: { kind: "http", path: "/healthcheck", body: /^\s*true\s*$/ },
+    callsBack: true,
     secrets: [{ name: "JWT_SECRET", bytes: 32 }],
     env: {
       JWT_ENABLED: "true",
@@ -97,6 +109,37 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     // The assistant's live-editing plugin (docs/SIDECARS.md "Live editing plugin"): the Document Server lists every folder
     // with a config.json under sdkjs-plugins in its /plugins.json, and the editor loads them.
     assets: { source: "sidecars/office/plugins", target: "/var/www/euro-office/documentserver/sdkjs-plugins", label: "editor plugins" },
+  },
+  {
+    id: "learn-db",
+    name: "Course database (PostgreSQL + PostGIS)",
+    shortName: "course database",
+    description:
+      "A private PostgreSQL 16 server with PostGIS 3.4 for the Database course. The app fills it with a small generated practice dataset and runs your lesson queries as a low-privilege learner role inside a transaction that is always rolled back, so nothing you run is kept.",
+    // Official PostGIS image (Debian, PostgreSQL 16 + PostGIS 3.4), pinned by tag.
+    image: "postgis/postgis:16-3.4",
+    serviceName: "postgres",
+    containerPort: 5432,
+    health: { kind: "postgres" },
+    callsBack: false,
+    // POSTGRES_PASSWORD is the superuser (seeding only); LEARNER_PASSWORD is set on the learner role by the seed. Both
+    // stay server-side (src/lib/learn/sql/db.ts).
+    secrets: [
+      { name: "POSTGRES_PASSWORD", bytes: 24 },
+      { name: "LEARNER_PASSWORD", bytes: 24 },
+    ],
+    env: {
+      POSTGRES_USER: "postgres",
+      POSTGRES_DB: "learn",
+    },
+    volumes: [{ name: "pgdata", target: "/var/lib/postgresql/data" }],
+    startTimeoutSec: 120,
+    requirements: { ramGb: 0.5, diskGb: 1 },
+    license: "PostgreSQL License + GPL-2.0 (PostGIS)",
+    homepage: "https://hub.docker.com/r/postgis/postgis",
+    usedBy: ["db-course"],
+    idleStopMinutes: 30,
+    memLimit: "1g",
   },
 ];
 

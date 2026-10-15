@@ -1,5 +1,6 @@
 import { composeProject, findSidecar, SIDECARS, type SidecarDefinition } from "./definitions";
 import { createHash } from "node:crypto";
+import { connect } from "node:net";
 import { renderCompose } from "./compose";
 import { syncAssets } from "./assets";
 import { PullTracker, type PullProgress } from "./pull-progress";
@@ -134,11 +135,37 @@ async function containerInfo(kind: RuntimeKind, def: SidecarDefinition): Promise
   };
 }
 
+/** Postgres wire check: an SSLRequest is answered with one byte ("S" or "N") by a server that accepts connections. */
+function probePostgres(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port });
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs, () => done(false));
+    socket.once("error", () => done(false));
+    socket.once("close", () => done(false));
+    socket.once("data", (chunk: Buffer) => done(chunk.length >= 1 && (chunk[0] === 0x53 || chunk[0] === 0x4e)));
+    // Int32 length 8, Int32 SSLRequest code 80877103.
+    socket.once("connect", () => socket.write(Buffer.from([0, 0, 0, 8, 0x04, 0xd2, 0x16, 0x2f])));
+  });
+}
+
+export function healthTarget(def: SidecarDefinition, state: SidecarState): string {
+  return def.health.kind === "http" ? `GET ${internalUrl(state)}${def.health.path}` : `Postgres on ${state.bindHost}:${state.hostPort}`;
+}
+
 export async function probeHealth(def: SidecarDefinition, state: SidecarState, timeoutMs = 3000): Promise<boolean> {
+  const health = def.health;
+  if (health.kind === "postgres") return probePostgres(state.bindHost, state.hostPort, timeoutMs);
   try {
-    const response = await fetch(`${internalUrl(state)}${def.healthPath}`, { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
+    const response = await fetch(`${internalUrl(state)}${health.path}`, { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
     if (!response.ok) return false;
-    return def.healthBody ? def.healthBody.test(await response.text()) : true;
+    return health.body ? health.body.test(await response.text()) : true;
   } catch {
     return false;
   }
@@ -157,11 +184,11 @@ async function waitHealthy(kind: RuntimeKind, def: SidecarDefinition, state: Sid
         const logs = await compose(kind, def.id, ["logs", "--tail", "30", def.serviceName], { timeoutMs: 20_000 });
         throw new SidecarError(`the container exited while starting: ${(logs.stdout + logs.stderr).trim().split("\n").slice(-8).join("\n")}`, 502);
       }
-      reporter.phase(`Waiting for ${def.name} to answer ${def.healthPath} (${Math.round((Date.now() - started) / 1000)} s)`);
+      reporter.phase(`Waiting for ${def.name} to answer (${healthTarget(def, state)}, ${Math.round((Date.now() - started) / 1000)} s)`);
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new SidecarError(`not healthy after ${def.startTimeoutSec} s (GET ${internalUrl(state)}${def.healthPath})`, 504);
+  throw new SidecarError(`not healthy after ${def.startTimeoutSec} s (${healthTarget(def, state)})`, 504);
 }
 
 /** Can the container call back into this app? (Non-fatal: reported as a warning.) */
@@ -269,7 +296,7 @@ async function upAndWait(kind: RuntimeKind, def: SidecarDefinition, state: Sidec
     ...(prepared ? { preparedContainer: prepared } : {}),
     composeHash: composeHashOf(def, state),
   }) ?? state;
-  const warning = await checkAppReachable(kind, def, appUrl(next));
+  const warning = def.callsBack ? await checkAppReachable(kind, def, appUrl(next)) : null;
   if (warning) reporter.log(`WARNING: ${warning}`);
   return next;
 }
@@ -450,6 +477,9 @@ export async function configure(id: string, options: ConfigureOptions): Promise<
 export interface SidecarStatus {
   id: string;
   name: string;
+  shortName: string;
+  /** The container calls back into the app (so the app URL matters). */
+  callsBack: boolean;
   description: string;
   image: string;
   license: string;
@@ -501,7 +531,7 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
     if (options.memory && container.name && container.state === "running") memory = await containerMemory(runtime.kind, container.name);
   }
   const app = appUrl(state);
-  if (app.warning) warnings.push(app.warning);
+  if (app.warning && def.callsBack) warnings.push(app.warning);
   if (state && container.state === "running" && state.composeHash !== composeHashOf(def, state)) {
     warnings.push("The running container was created with older settings (for example without the assistant's editor plugin); it is recreated at the next start when no document is open, or restart it now.");
   }
@@ -509,6 +539,8 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
   return {
     id,
     name: def.name,
+    shortName: def.shortName,
+    callsBack: def.callsBack,
     description: def.description,
     image: def.image,
     license: def.license,

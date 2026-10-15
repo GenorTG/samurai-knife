@@ -50,6 +50,53 @@ test("compose: one service, published on the given address only, labelled, secre
   assert.ok(svc.volumes.every((v) => !v.startsWith("/")), "named volumes, no bind mounts");
 });
 
+test("compose: the course database (learn-db) is published on the given address only, data in a named volume", async () => {
+  const learn = findSidecar("learn-db");
+  assert.equal(learn.health.kind, "postgres");
+  assert.equal(learn.callsBack, false, "the database never calls the app back");
+  const doc = parse(renderCompose(learn, { bindHost: "100.64.0.7", hostPort: 3212 }));
+  assert.equal(doc.name, "samurai-knife-learn-db");
+  const svc = doc.services.postgres;
+  assert.match(svc.image, /^postgis\/postgis:16-3\.4$/, "pinned tag");
+  assert.deepEqual(svc.ports, ["100.64.0.7:3212:5432"]);
+  assert.deepEqual(svc.env_file, ["secrets.env"]);
+  assert.equal(svc.environment.POSTGRES_PASSWORD, undefined, "passwords only in secrets.env");
+  assert.equal(svc.environment.POSTGRES_DB, "learn");
+  assert.deepEqual(svc.volumes, ["pgdata:/var/lib/postgresql/data"]);
+  assert.equal(svc.mem_limit, "1g");
+  const secrets = state.ensureSecrets(learn);
+  assert.match(secrets.POSTGRES_PASSWORD, /^[0-9a-f]{48}$/);
+  assert.match(secrets.LEARNER_PASSWORD, /^[0-9a-f]{48}$/);
+  assert.notEqual(secrets.POSTGRES_PASSWORD, secrets.LEARNER_PASSWORD);
+  // The office definition keeps its HTTP health check.
+  assert.deepEqual({ kind: office.health.kind, path: office.health.path }, { kind: "http", path: "/healthcheck" });
+});
+
+test("postgres health probe: answers to an SSLRequest count, a silent or closing port does not", async () => {
+  const { probeHealth } = await import("../src/lib/services/manager.ts");
+  const net = await import("node:net");
+  const learn = findSidecar("learn-db");
+  const serve = (handler) => new Promise((resolve) => {
+    const server = net.createServer(handler);
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+  const probe = (server) => probeHealth(learn, { bindHost: "127.0.0.1", hostPort: server.address().port }, 500);
+  const pg = await serve((socket) => socket.once("data", (chunk) => {
+    assert.deepEqual([...chunk], [0, 0, 0, 8, 0x04, 0xd2, 0x16, 0x2f], "SSLRequest bytes");
+    socket.end("N");
+  }));
+  const closing = await serve((socket) => socket.destroy()); // what docker's port proxy does before the container listens
+  const silent = await serve(() => {});
+  try {
+    assert.equal(await probe(pg), true);
+    assert.equal(await probe(closing), false);
+    assert.equal(await probe(silent), false);
+  } finally {
+    for (const server of [pg, closing, silent]) server.close();
+  }
+  assert.equal(await probeHealth(learn, { bindHost: "127.0.0.1", hostPort: 1 }, 500), false, "nothing listening");
+});
+
 test("compose: refuses wildcard/empty bind addresses and bad ports; brackets IPv6", () => {
   for (const host of ["0.0.0.0", "::", "[::]", "", "*", "0"]) {
     assert.throws(() => renderCompose(office, { bindHost: host, hostPort: 3211 }), ComposeError, host);

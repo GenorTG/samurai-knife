@@ -103,9 +103,11 @@ function Settings({ sidecar, service }: { sidecar: Sidecar; service: ServiceView
         <Field label="Stop when idle (minutes)" hint="0 = never stop on its own.">
           <NumberField value={idle} onValueChange={setIdle} min={0} max={1440} integer />
         </Field>
-        <Field label="App URL (container → app)" hint={`Empty = ${service.appUrl.source === "state" ? "derived" : service.appUrl.url}.`}>
-          <TextInput value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder={service.appUrl.url} />
-        </Field>
+        {service.callsBack ? (
+          <Field label="App URL (container → app)" hint={`Empty = ${service.appUrl.source === "state" ? "derived" : service.appUrl.url}.`}>
+            <TextInput value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder={service.appUrl.url} />
+          </Field>
+        ) : null}
         <Field label="Public URL (browser → service)" hint="Empty = the bind address and port.">
           <TextInput value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder={`http://${state.bindHost}:${state.hostPort}`} />
         </Field>
@@ -157,7 +159,7 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
         <div className="flex flex-wrap gap-2">
           {!service.installed ? (
             <Button variant="primary" disabled={running || !service.runtime.ok} onClick={() => void sidecar.act({ action: "install" })}>
-              Install {service.id === "office" ? "office editor" : service.id}
+              Install {service.shortName}
             </Button>
           ) : (
             <>
@@ -183,7 +185,7 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
             rows={[
               ["Image", state.image],
               ["Address", service.publicUrl ?? "—"],
-              ["App URL", `${service.appUrl.url} (${service.appUrl.source})`],
+              ...(service.callsBack ? [["App URL", `${service.appUrl.url} (${service.appUrl.source})`] as [string, string]] : []),
               ["Container", `${service.container.state}${service.container.status ? `, ${service.container.status}` : ""}`],
               ["Idle stop", state.idleStopMinutes ? `after ${state.idleStopMinutes} min without use` : "never"],
               ["Last start", state.lastStartMs ? `${(state.lastStartMs / 1000).toFixed(1)} s to healthy` : "—"],
