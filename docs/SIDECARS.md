@@ -1,7 +1,7 @@
 # Sidecars — optional docker services
 
-Some tools need a real server program that cannot run in the browser or the Python lane (the first one: an office
-document editor). Those programs run as **sidecars**: docker compose services the app installs, starts, stops, updates and
+Some tools need a real server program that cannot run in the browser or the Python lane (an office document editor, the
+Database course's PostgreSQL). Those programs run as **sidecars**: docker compose services the app installs, starts, stops, updates and
 removes itself, from the web UI (launcher category **Sidecars** → *Sidecar services*) or the CLI. Nothing is installed until
 the owner presses Install.
 
@@ -9,7 +9,7 @@ the owner presses Install.
 
 | Where | What |
 | --- | --- |
-| `src/lib/services/definitions.ts` | `SIDECARS`: id, pinned image, container port, health path, generated secrets, env, named volumes, start timeout, idle stop default, `usedBy` slugs. Metadata only. |
+| `src/lib/services/definitions.ts` | `SIDECARS`: id, pinned image, container port, health check (`health`), whether the container calls the app back (`callsBack`), generated secrets, env, named volumes, start timeout, idle stop default, `usedBy` slugs. Metadata only. |
 | `src/lib/services/compose.ts` | Pure `renderCompose(def, {bindHost, hostPort})` → compose.yaml. Port published on **one** address (KNIFE_HOST); wildcard refused. Secrets via `env_file: secrets.env`, never inline. `restart: "no"` (the app owns the lifecycle). Labels `dev.samurai-knife.*`. |
 | `src/lib/services/state.ts` | `$KNIFE_DATA_DIR/services/<id>/`: `state.json`, `compose.yaml`, `secrets.env` (600), `op.lock`. |
 | `src/lib/services/runtime.ts` | `docker compose` first, then `podman compose`; exact install/permission hint when missing; **never sudo**. |
@@ -28,8 +28,9 @@ touches anything else on the host.
 
 - **Install** (`POST /api/services/<id> {action:"install"}` → 202 `{op}`): runtime check → pick a free port near KNIFE_PORT
   on KNIFE_HOST (stored; reused on reinstall) → generate secrets once → write compose → `compose --progress json pull` (the
-  JSON events are folded into one percentage and byte count) → `up -d` → wait for the health URL → check from **inside** the
-  container that the app is reachable (`GET /api/services/ping`); a failure there is a warning in the op log and status.
+  JSON events are folded into one percentage and byte count) → `up -d` → wait for the health check → when `callsBack`, check from
+  **inside** the container that the app is reachable (`GET /api/services/ping`); a failure there is a warning in the op log
+  and status.
 - **Prepare**: an optional per-definition command run with `compose exec` once per new container id, after the first
   health pass and before the op reports done (office: the font cache).
 - **Start/Stop/Update**: `up -d` + health wait / `compose stop` / pull + recreate (reports whether the image changed).
@@ -42,6 +43,17 @@ touches anything else on the host.
   60 s while a document is open), callbacks, starts.
 - **Locking**: one op per service at a time, across the server and the CLI (`op.lock` with pid; a dead pid is stale).
 - Ops are in memory: a server restart forgets the op record (the container keeps running; status is read live).
+
+## Health checks
+
+`health` in the definition, probed by the app on `bindHost:hostPort` (`probeHealth` in manager.ts):
+
+- `{ kind: "http", path, body? }`: `GET <path>` answers 200 (and the body matches). Office: `/healthcheck` = `true`.
+- `{ kind: "postgres" }`: the app sends a Postgres SSLRequest (8 bytes) and waits for the server's one-byte answer
+  (`S`/`N`). A plain TCP connect is not enough: docker's port proxy accepts the connection before the container listens
+  (and during `initdb` Postgres listens on its unix socket only). No client library, no credentials.
+
+`callsBack: false` (a database) skips the container -> app reachability check and its app-URL warnings.
 
 ## Addresses (the part that bites)
 
@@ -92,6 +104,16 @@ Two URLs per sidecar, both shown and editable in its Settings:
   session now; the new version arrives through the callback (status 6) a second or two later. Answers `saving`,
   `unchanged` (error 4: nothing sent since the last save; right after an edit it just means the editor has not sent it
   yet, so callers retry for a few seconds) or `not_open` (error 1).
+
+## Course database (`learn-db`, slug `db-course`)
+
+- **Image**: `postgis/postgis:16-3.4` (PostgreSQL 16 + PostGIS 3.4, Debian), port 5432 published on KNIFE_HOST only,
+  volume `pgdata` (`/var/lib/postgresql/data`), `mem_limit: 1g`, `POSTGRES_DB=learn`. Secrets: `POSTGRES_PASSWORD`
+  (superuser, used by the app to seed) and `LEARNER_PASSWORD` (set on the low-privilege `knife_learner` role by the seed).
+  Health `postgres`, `callsBack: false`. Measured: install with a cached image -> healthy + seeded in ~10 s; stopped ->
+  ready ~3 s; RAM ~100 MiB after the seed and a lesson sweep.
+- The app is the only client: browsers never talk to Postgres. The seed, the learner sandbox and the privileges are in
+  [docs/LEARN.md](LEARN.md).
 
 ## Live editing plugin (assistant ↔ open document)
 
@@ -166,7 +188,8 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
 
 ## Adding a sidecar
 
-1. Add a `SIDECARS` entry (pin the image by tag; check the registry, not a blog post).
+1. Add a `SIDECARS` entry (pin the image by tag; check the registry, not a blog post). Pick `health` (`http` or
+   `postgres`; add a kind to `probeHealth` for another protocol) and `callsBack`.
 2. Build the tool; put `sidecar: "<id>"` on its registry entry and show `SidecarCard compact` until it is installed.
 3. Anything the container calls back into must authenticate without the Origin guard: give it a signed token, document the
    exception here and in docs/ARCHITECTURE.md.
@@ -185,6 +208,8 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   the mock provider (snapshot, read, insert, save, trust modes on delete/replace/insert, tools gone without an editor);
   a changed plugin served without a restart; an old container (no mount) recreated by `ensure`. ~6 min with a cached
   image; screenshots in `.tmp/office-live-e2e/`.
+- Real docker: `python3 tests/learn_db_e2e.py` — the course database installed from the course page, seeded, every
+  lesson checked, sandbox probes, lazy start, purge (docs/LEARN.md). ~1.5 min with a cached image.
 - Real docker: `python3 tests/office_e2e.py` — scratch worktree server on the Tailscale address (own data dir, port and
   compose project), install via the API, Playwright typing into a docx, Ctrl+S save (status 6), close save (status 2),
   every blank format opens, knife_doc tools, stop → lazy start, idle stop, CLI status, purge. `--keep` leaves it running,

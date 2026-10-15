@@ -2,7 +2,7 @@
 
 **A self-hosted, browser-first toolbox with an AI assistant that can actually use it.**
 
-One launcher, 40 hand-made tools (30 suites with 106 tabs, plus 10 standalone), a chat assistant that drives the live
+One launcher, 41 hand-made tools (31 suites with 107 tabs, plus 10 standalone), a chat assistant that drives the live
 page, and an MCP endpoint so outside agents (Claude Code, Cursor, OpenClaw…) can use the same tools and steer the
 screen you have open. No telemetry, no registration, no cloud: it runs on your own machine, and most tools never send a
 byte off the page.
@@ -29,6 +29,10 @@ byte off the page.
 with an ATS check, an application tracker, and a showcase builder that drafts project entries from GitHub repos.
 Prints to PDF or exports DOCX.
 
+**Database course** (Learn, optional sidecar): learn SQL and PostGIS by doing. 46 short lessons, from `SELECT` to
+window functions, `EXPLAIN` and catchment analysis, each checked against a real PostgreSQL + PostGIS database the app
+runs for you, with progressive hints and interview drills. See [docs/LEARN.md](docs/LEARN.md).
+
 **Office documents** (optional sidecar): create and edit Word, Excel and PowerPoint files in a self-hosted editor that
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
@@ -42,8 +46,8 @@ the document you have open, live.
 - **Guardrails, not vibes.** Trust modes (All / Most / Risky / None) gate acting calls, destructive actions on your input
   are confirmed one by one, and the agent never fabricates your files: it opens the tool and waits for you. Tool outputs
   chain between tools by reference (`f1`, `f2`…), never as base64 pasted through the model.
-- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 62 deterministic tools: CV studio, SQL/NoSQL,
-  office documents and text utilities. Two MCP-only tools let an outside agent see which pages you have open and bring your
+- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 65 deterministic tools: CV studio, SQL/NoSQL,
+  office documents, a course tutor and text utilities. Two MCP-only tools let an outside agent see which pages you have open and bring your
   visible tab to its result, with a short note on screen. Open pages refresh by themselves when an agent changes data,
   with Undo. See [docs/MCP.md](docs/MCP.md).
 
@@ -59,7 +63,7 @@ the document you have open, live.
   checks Host, and every mutating route also checks Origin and accepts JSON bodies only, so cross-site "simple" requests
   never get through. The job-offer fetcher blocks private, loopback, link-local and CGNAT targets, including after
   redirects. Provider keys never reach the browser.
-- **Tested like a product.** 37 unit test files and 50 Playwright end-to-end suites: every tool and tab on desktop and at
+- **Tested like a product.** 38 unit test files and 51 Playwright end-to-end suites: every tool and tab on desktop and at
   390 px, hydration across locales and time zones, the assistant against a scripted mock provider, real
   Docker sidecars, and an MCP-only suite that drives the UI bridge without touching the page.
 
@@ -81,7 +85,7 @@ flowchart LR
 
 ## Quick start
 
-Requirements: Node.js 24, Python 3.12 (only for PDF/SQL server tools), and Docker (only for the office sidecar).
+Requirements: Node.js 24, Python 3.12 (only for PDF/SQL server tools), and Docker (only for the office and course-database sidecars).
 
 ```bash
 git clone https://github.com/GenorTG/samurai-knife.git && cd samurai-knife
@@ -143,6 +147,7 @@ it in `src/tools/registry-client.tsx`. Nothing else is wired by hand.
 - [docs/MCP.md](docs/MCP.md): using the app from outside agents
 - [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV studio contract
 - [docs/SIDECARS.md](docs/SIDECARS.md): Docker sidecars and the live office plugin
+- [docs/LEARN.md](docs/LEARN.md): the Database course (lessons, seed, learner sandbox)
 - [docs/SUITES.md](docs/SUITES.md): how 100 small tools became 30 suites
 - [docs/TESTING.md](docs/TESTING.md): every suite and how to run it
 

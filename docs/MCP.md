@@ -5,7 +5,7 @@ The app has two agent surfaces that share one tool set:
 1. **Built-in assistant** (the chat widget): uses the account's own provider/key, drives the page directly (open_tool,
    fill_field, click…) plus the `knife_*` tools.
 2. **MCP** (`POST /api/mcp`, Streamable HTTP, stateless): any MCP client (OpenClaw, Claude Code, Cursor…) gets the same
-   deterministic `knife_*` tools (CV studio, SQL/NoSQL, office documents, base tools) plus two MCP-only UI tools. The
+   deterministic `knife_*` tools (CV studio, SQL/NoSQL, office documents, the Database course tutor, base tools) plus two MCP-only UI tools. The
    client brings its own model; the app needs no key for this.
 
 Both can be used at the same time; edits are atomic per call and every CV save is undoable.
