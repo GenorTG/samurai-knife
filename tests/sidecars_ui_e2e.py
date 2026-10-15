@@ -57,7 +57,8 @@ def main() -> int:
                 page.screenshot(path=str(shots / "office-not-installed.png"), full_page=True)
 
             page.goto(f"{url}/tools/sidecars")
-            card = page.locator(".sk-sidecar-card")
+            # The Sidecar services page lists every sidecar (office, learn-db): this suite drives the office card.
+            card = page.locator(".sk-sidecar-card").filter(has_text="Office editor (Euro-Office Document Server)")
             card.wait_for(timeout=60_000)
             expect(card.get_by_text("Not installed", exact=True)).to_be_visible(timeout=30_000)
             card.get_by_role("button", name="Install office editor").click()
