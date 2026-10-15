@@ -7,6 +7,7 @@ const PATHS: Record<ToolCategory, string> = {
   data: "M4 6c0-1.1 3.6-2 8-2s8 .9 8 2-3.6 2-8 2-8-.9-8-2zM4 6v6c0 1.1 3.6 2 8 2s8-.9 8-2V6M4 12v6c0 1.1 3.6 2 8 2s8-.9 8-2v-6",
   text: "M5 6h14M5 11h14M5 16h9",
   dev: "M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14",
+  learn: "M3 9l9-4 9 4-9 4zM7 11v4.5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V11M21 9v5",
   sidecars: "M4 7h11v10H4zM15 10h3l2 2v5h-5M7 17v2M12 17v2M17.5 17v2M7 10h5",
 };
 
@@ -17,6 +18,7 @@ const HUES: Record<ToolCategory, number> = {
   data: 155,
   text: 80,
   dev: 290,
+  learn: 330,
   sidecars: 240,
 };
 

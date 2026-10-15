@@ -13,6 +13,7 @@ GROUP = "docs"
 SKIPS: dict[tuple[str, str | None], str] = {
     ("office", None): "editing happens in a cross-origin iframe served by a docker sidecar the coverage server does not install; library + knife_doc_* tools are covered by tests/office_e2e.py",
     ("sidecars", None): "installs and starts docker containers on the host (real side effects, ~5 GB pull); covered by tests/office_e2e.py",
+    ("db-course", "sql"): "needs the learn-db docker sidecar (PostgreSQL + PostGIS) the coverage server does not install; the page flow, every lesson and the tutor tools are covered by tests/learn_db_e2e.py",
 }
 
 _TEXT = "Samurai Knife 侍"

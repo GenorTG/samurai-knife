@@ -9,7 +9,7 @@
 /** client = browser only; server = this app's server; remote = a model endpoint; sidecar = an optional docker service. */
 export type ToolKind = "client" | "server" | "remote" | "sidecar";
 
-export type ToolCategory = "images" | "documents" | "data" | "text" | "dev" | "sidecars";
+export type ToolCategory = "images" | "documents" | "data" | "text" | "dev" | "learn" | "sidecars";
 
 export const TOOL_FAMILIES = [
   { id: "image-editing", label: "Image editing" },
@@ -43,6 +43,7 @@ export const TOOL_FAMILIES = [
   { id: "image-inspection", label: "Image inspection" },
   { id: "office-documents", label: "Office documents" },
   { id: "sidecar-services", label: "Sidecar services" },
+  { id: "courses", label: "Courses" },
 ] as const;
 
 export type ToolFamily = (typeof TOOL_FAMILIES)[number]["id"];
@@ -91,6 +92,7 @@ export const CATEGORIES: { id: ToolCategory; label: string }[] = [
   { id: "data", label: "Data" },
   { id: "text", label: "Text" },
   { id: "dev", label: "Dev" },
+  { id: "learn", label: "Learn" },
   { id: "sidecars", label: "Sidecars" },
 ];
 
@@ -1346,6 +1348,20 @@ export const TOOLS: ToolMeta[] = [
     kind: "sidecar",
     sidecar: "office",
     keywords: ["docx", "xlsx", "pptx", "odt", "ods", "odp", "word", "excel", "powerpoint", "document", "spreadsheet", "presentation", "slides", "office", "editor", "onlyoffice", "euro-office", "libreoffice", "dokument", "arkusz", "prezentacja", "edytor"],
+  },
+  {
+    slug: "db-course",
+    name: "Database course",
+    tagline: "Learn SQL and PostGIS step by step: short lessons, real queries on a real PostgreSQL database, instant checks and hints.",
+    category: "learn",
+    family: "courses",
+    kind: "sidecar",
+    sidecar: "learn-db",
+    // One tab per course; later courses (Redis, MongoDB…) become more tabs (docs/LEARN.md).
+    tabs: [
+      { id: "sql", label: "SQL & PostGIS", component: "learn-sql", wide: true },
+    ],
+    keywords: ["sql", "postgres", "postgresql", "postgis", "course", "learn", "lesson", "tutorial", "exercise", "interview", "select", "join", "group by", "window function", "index", "explain", "st_dwithin", "gis", "spatial", "kurs", "nauka"],
   },
   {
     slug: "sidecars",

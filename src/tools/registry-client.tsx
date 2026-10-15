@@ -136,6 +136,8 @@ const CvApplications = dynamic(() => import("@/tools/cv/ApplicationsTab"), { loa
 // The editor loads the sidecar's DocsAPI script into the page: browser-only.
 const OfficeTool = dynamic(() => import("@/tools/sidecars/OfficeTool"), { ssr: false, loading: ToolLoading });
 const SidecarsTool = dynamic(() => import("@/tools/sidecars/SidecarsTool"), { loading: ToolLoading });
+// Client-only like the office page: everything it shows depends on the course database's live state.
+const SqlCourse = dynamic(() => import("@/tools/learn/SqlCourse"), { ssr: false, loading: ToolLoading });
 
 /**
  * slug -> component. Keys must match `src/lib/registry.ts`; the compiler
@@ -258,6 +260,7 @@ const COMPONENTS: Record<string, ComponentType> = {
   cron: CronExplorer,
   office: OfficeTool,
   sidecars: SidecarsTool,
+  "learn-sql": SqlCourse,
 };
 
 function MissingTool({ slug }: { slug: string }) {
