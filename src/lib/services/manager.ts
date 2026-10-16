@@ -1,7 +1,7 @@
 import { composeProject, findSidecar, SIDECARS, type SidecarDefinition } from "./definitions";
 import { createHash } from "node:crypto";
 import { connect } from "node:net";
-import { renderCompose } from "./compose";
+import { onlyofficeFilterEnv, renderCompose } from "./compose";
 import { syncAssets } from "./assets";
 import { PullTracker, type PullProgress } from "./pull-progress";
 import { detectRuntime, run, type RunResult, type RuntimeInfo, type RuntimeKind } from "./runtime";
@@ -21,6 +21,7 @@ import {
 } from "./state";
 import { appHost, appPort, appUrl, internalUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
 import { writePrivateFile } from "@/lib/accounts/store";
+import { ipLiteralOf, isIpAddress } from "@/lib/net/address-policy";
 
 /**
  * Sidecar lifecycle shared by the HTTP API (src/app/api/services) and the CLI (scripts/services.ts): install, start,
@@ -214,8 +215,31 @@ async function withLock<T>(id: string, op: OpKind, fn: () => Promise<T>): Promis
   }
 }
 
+/** Address a definition's port is published on: KNIFE_HOST, or loopback for app-only services (`publish: "loopback"`). */
+export function bindHostFor(def: SidecarDefinition): string {
+  return def.publish === "loopback" ? "127.0.0.1" : appHost();
+}
+
+/**
+ * The request filter's allow list: the IP of the app URL (the only private address the container may fetch) plus
+ * KNIFE_SIDECAR_ALLOW_IPS. A host NAME in the app URL is not resolved here (the filter matches resolved addresses, and a
+ * name the container resolves differently would open a hole or break callbacks): the status warns instead.
+ */
+export function filterAllowIps(state: SidecarState): string[] {
+  const out: string[] = [];
+  try {
+    const literal = ipLiteralOf(new URL(appUrl(state).url).hostname);
+    if (literal) out.push(literal);
+  } catch {
+    // an invalid app URL is reported by checkUrls / the reachability check
+  }
+  for (const entry of (process.env.KNIFE_SIDECAR_ALLOW_IPS ?? "").split(/[\s,]+/)) if (entry && isIpAddress(entry)) out.push(entry);
+  return out;
+}
+
 function composeText(def: SidecarDefinition, state: SidecarState): string {
-  return renderCompose(def, { bindHost: state.bindHost, hostPort: state.hostPort, image: state.image });
+  const extraEnv = def.requestFilter === "onlyoffice" ? onlyofficeFilterEnv(filterAllowIps(state)) : undefined;
+  return renderCompose(def, { bindHost: state.bindHost, hostPort: state.hostPort, image: state.image, extraEnv });
 }
 
 export function composeHashOf(def: SidecarDefinition, state: SidecarState): string {
@@ -224,6 +248,8 @@ export function composeHashOf(def: SidecarDefinition, state: SidecarState): stri
 
 /** compose.yaml + the definition's assets (the editor plugin): written before every `up`. */
 function writeCompose(def: SidecarDefinition, state: SidecarState, reporter?: OpReporter): void {
+  // A secret added to the definition later (SECURE_LINK_SECRET) is generated for existing installs too.
+  ensureSecrets(def);
   writePrivateFile(composeFile(def.id), composeText(def, state));
   const assets = syncAssets(def);
   if (assets?.changed) reporter?.log(`${def.assets?.label ?? "assets"} updated: ${assets.folders.join(", ")}`);
@@ -334,7 +360,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
     reporter.phase("Checking the container runtime");
     const kind = await requireRuntime(true);
     const previous = readState(id);
-    const bindHost = appHost();
+    const bindHost = bindHostFor(def);
     let hostPort = options.port ?? previous?.hostPort;
     if (hostPort === undefined) {
       hostPort = await pickPort(bindHost, appPort(), claimedPorts(id));
@@ -374,11 +400,19 @@ function requireState(id: string): SidecarState {
   return state;
 }
 
+/** An install from before `publish: "loopback"` keeps its old bind address until the next start/update moves it. */
+function movedToBindHost(def: SidecarDefinition, state: SidecarState, reporter?: OpReporter): SidecarState {
+  const wanted = bindHostFor(def);
+  if (def.publish !== "loopback" || state.bindHost === wanted) return state;
+  reporter?.log(`publishing on ${wanted} instead of ${state.bindHost} (only this app connects)`);
+  return writeState({ ...state, bindHost: wanted });
+}
+
 export function start(id: string, reporter: OpReporter): Promise<SidecarState> {
   const def = definition(id);
   return withLock(id, "start", async () => {
     const kind = await requireRuntime();
-    const state = requireState(id);
+    const state = movedToBindHost(def, requireState(id), reporter);
     writeCompose(def, state, reporter);
     const ready = await upAndWait(kind, def, state, reporter);
     reporter.phase("Running", 100);
@@ -427,7 +461,7 @@ export function update(id: string, reporter: OpReporter): Promise<SidecarState &
   const def = definition(id);
   return withLock(id, "update", async () => {
     const kind = await requireRuntime(true);
-    const previous = requireState(id);
+    const previous = movedToBindHost(def, requireState(id), reporter);
     const before = await imageId(kind, previous.image);
     const state = writeState({ ...previous, image: def.image });
     writeCompose(def, state, reporter);
@@ -532,6 +566,9 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
   }
   const app = appUrl(state);
   if (app.warning && def.callsBack) warnings.push(app.warning);
+  if (state && def.requestFilter && filterAllowIps(state).length === 0) {
+    warnings.push(`The app URL (${app.url}) names a host, not an IP address, so the editor's request filter has no address to allow: documents load only if that name resolves to a public address. Set the app URL to an IP address (or add it to KNIFE_SIDECAR_ALLOW_IPS).`);
+  }
   if (state && container.state === "running" && state.composeHash !== composeHashOf(def, state)) {
     warnings.push("The running container was created with older settings (for example without the assistant's editor plugin); it is recreated at the next start when no document is open, or restart it now.");
   }
