@@ -22,7 +22,7 @@ export interface ToolGroup {
 export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: "sql", prefixes: ["knife_sql_"], pagePattern: /^\/tools\/sql-lab(\/|$)/, summary: "SQL: compile a JSON query spec for 14 dialects, transpile between dialects, validate, format, DDL to schema, check SQL against a schema" },
   { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: read/edit the bilingual (PL/EN) master CV profile, undo, audit wording and translations, save job offers, match them against the profile, create per-job CV versions with per-offer rewording and an ATS check, track applications, add projects from GitHub links" },
-  { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list the user's docx/xlsx/pptx/odt/ods/odp library, read a document as text, create a new document with content" },
+  { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list library + folders, read as text (or a version), create, make folders, move, list/restore versions" },
   // Tutor tools, preloaded on the course page only (MCP clients get them anyway).
   { id: "learn", prefixes: ["knife_learn_"], pagePattern: /^\/tools\/db-course(\/|$)/, summary: "Database course tutor: lessons, the learner's last query/error, SQL in the course sandbox", loadable: false },
   { id: "nosql", prefixes: ["knife_mongo_", "knife_chroma_", "knife_redis_"], pagePattern: /^\/tools\/nosql-lab(\/|$)/, summary: "NoSQL and vector: MongoDB, Chroma and Redis operation specs to client code, validation and explanation" },

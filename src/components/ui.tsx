@@ -13,7 +13,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
-import { cx, copyText } from "@/lib/format";
+import { cx, copyText, formatBytes } from "@/lib/format";
 import { commitDraftValue, liveDraftValue, type NumberDraftSpec } from "@/lib/number-draft";
 
 /* ---------------------------------------------------------------- buttons */
@@ -500,6 +500,36 @@ export function Meter({ value, label, tone }: { value: number; label: string; to
   return (
     <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 w-full overflow-hidden rounded-full bg-raised">
       <div className={cx("h-full rounded-full transition-[width] duration-300", fill)} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/**
+ * Storage used against a quota ("12.3 MB of 1.0 GB used"), a bar that turns warn at 80 % and danger at 95 %. `quotaBytes`
+ * null = unlimited (no bar). The text is the meter's accessible label, so automation reads the same numbers people see.
+ */
+export function StorageMeter({ usedBytes, quotaBytes, label = "Storage", compact = false }: { usedBytes: number; quotaBytes: number | null; label?: string; compact?: boolean }) {
+  const text = quotaBytes === null ? `${formatBytes(usedBytes)} used · unlimited` : `${formatBytes(usedBytes)} of ${formatBytes(quotaBytes)} used`;
+  const pct = quotaBytes === null ? 0 : quotaBytes === 0 ? 100 : Math.min(100, (usedBytes / quotaBytes) * 100);
+  const fill = pct >= 95 ? "bg-danger" : pct >= 80 ? "bg-warn" : "bg-accent";
+  return (
+    <div className={cx("min-w-0", compact ? "w-60 max-w-full" : "w-full")} data-agent-region="storage-meter">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-faint">{label}</span>
+        <span className={cx("font-mono", pct >= 95 ? "text-danger" : "text-muted")}>{text}</span>
+      </div>
+      {quotaBytes !== null ? (
+        <div
+          role="meter"
+          aria-label={`${label}: ${text}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(pct)}
+          className="mt-1 h-2 w-full overflow-hidden rounded-full bg-raised"
+        >
+          <div className={cx("h-full rounded-full transition-[width] duration-300", fill)} style={{ width: `${Math.max(pct, usedBytes > 0 ? 1 : 0)}%` }} />
+        </div>
+      ) : null}
     </div>
   );
 }

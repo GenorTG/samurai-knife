@@ -2,7 +2,7 @@ import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { editorConfig } from "@/lib/office/editor";
 import { appOriginFor } from "@/lib/office/live-protocol";
 import { officeError } from "@/lib/office/http";
-import { getDoc } from "@/lib/office/store";
+import { getLiveDoc } from "@/lib/office/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const appOrigin = appOriginFor(claimed, request.headers.get("host"));
   if (claimed && !appOrigin) return jsonError("origin must be this page's origin (scheme://host:port of the request)", 400);
   try {
-    return json(editorConfig(auth.account, getDoc(auth.account.id, id), { mode, appOrigin }));
+    return json(editorConfig(auth.account, getLiveDoc(auth.account.id, id), { mode, appOrigin }));
   } catch (error) {
     return officeError(error);
   }

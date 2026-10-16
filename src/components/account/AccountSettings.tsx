@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Badge, Button, Field, KeyValues, Notice, Panel, TextInput } from "@/components/ui";
+import { Badge, Button, Field, KeyValues, Notice, Panel, StorageMeter, TextInput } from "@/components/ui";
+import { formatBytes } from "@/lib/format";
+import type { StorageUsage } from "@/lib/storage/quota";
 import type { PublicAccount } from "@/lib/accounts/store";
 import { clearAccountStorage } from "@/lib/client-account";
 import { call, fetchMe, hardNavigate } from "./api";
@@ -96,6 +98,46 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
           </Button>
         </div>
       </form>
+    </Panel>
+  );
+}
+
+const AREAS: [keyof StorageUsage["areas"], string][] = [
+  ["docs", "Office documents (with versions and trash)"],
+  ["cv", "CV studio (profile, snapshots, photo)"],
+  ["conversations", "Assistant conversations"],
+  ["jobs", "Running and finished jobs (temporary)"],
+  ["learn", "Course progress"],
+  ["usage", "Usage counters"],
+];
+
+/** Used / quota for this account (GET /api/account/storage) and what takes the space. */
+function Storage() {
+  const [usage, setUsage] = useState<StorageUsage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    void call<StorageUsage>("GET", "/api/account/storage").then((reply) => {
+      if (reply.ok) setUsage(reply.body);
+      else setError(reply.message);
+    });
+  }, []);
+  return (
+    <Panel title="Storage">
+      {usage ? (
+        <div className="space-y-3">
+          <StorageMeter usedBytes={usage.usedBytes} quotaBytes={usage.quotaBytes} label="Your storage" />
+          {usage.quotaBytes === null ? <p className="text-xs text-faint">No storage limit on this account.</p> : null}
+          <KeyValues rows={AREAS.filter(([key]) => usage.areas[key] > 0).map(([key, label]) => [label, formatBytes(usage.areas[key])])} />
+          <p className="text-sm text-muted">
+            To free space, empty the trash or prune old versions in{" "}
+            <Link className="text-accent-soft underline underline-offset-2" href="/tools/office">Office documents</Link>.
+          </p>
+        </div>
+      ) : error ? (
+        <Notice tone="error">{error}</Notice>
+      ) : (
+        <p role="status" className="text-sm text-muted">Measuring your storage…</p>
+      )}
     </Panel>
   );
 }
@@ -316,6 +358,7 @@ export function AccountSettings() {
           ) : null}
         </div>
       </Panel>
+      <Storage />
       {publicMode ? <ChangePassword /> : null}
       {publicMode ? <ChangeEmail account={account} onChanged={load} /> : null}
       <Sessions username={account.id} />

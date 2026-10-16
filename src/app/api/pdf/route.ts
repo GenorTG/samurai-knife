@@ -19,6 +19,8 @@ import {
 } from "@/lib/pdf-run";
 import { disposeDir, PY_BIN, runPythonScript, startPythonScript, type PythonRunResult } from "@/lib/python";
 import { queueFullOrNull } from "@/lib/queue-http";
+import { assertCanStore } from "@/lib/storage/quota";
+import { quotaErrorResponse } from "@/lib/storage/http";
 import { pythonQueue } from "@/lib/work-queue";
 
 /**
@@ -91,6 +93,14 @@ export async function POST(request: Request) {
 
     if (asyncMode) {
       const stagedDirs = staged;
+      // An async job keeps its inputs and result on disk until it is collected: that counts toward the account's quota.
+      try {
+        assertCanStore(owner, stagedDirs.bytes);
+      } catch (error) {
+        const full = quotaErrorResponse(error);
+        if (full) return full;
+        throw error;
+      }
       const handle = startPythonScript<Record<string, unknown>>("pdf_tool.py", script, options);
       let jobId: string;
       try {

@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
-import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
+import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
 
 /**
  * Server-only: the CV photo, one JPEG per account at `$KNIFE_DATA_DIR/cv/<account id>.photo.jpg` (mode 600).
@@ -9,7 +9,6 @@ import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
  * real JPEG of bounded size.
  */
 
-const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 export const MAX_PHOTO_BYTES = 1_500_000;
 
 export class CvPhotoError extends Error {}
@@ -21,10 +20,14 @@ export interface CvPhotoMeta {
 }
 
 function photoPath(accountId: string): string {
-  if (!SAFE_ID.test(accountId)) throw new CvPhotoError("invalid account id");
-  const base = join(ensureDataDir(), "cv");
-  mkdirSync(base, { recursive: true, mode: 0o700 });
-  return join(base, `${accountId}.photo.jpg`);
+  try {
+    const { cv } = accountScope(accountId);
+    ensurePrivateDir(cv.dir);
+    return cv.photo;
+  } catch (error) {
+    if (error instanceof StorageScopeError) throw new CvPhotoError("invalid account id");
+    throw error;
+  }
 }
 
 export function isJpeg(bytes: Uint8Array): boolean {
@@ -59,8 +62,9 @@ export function photoFile(accountId: string): string | null {
   return existsSync(file) ? file : null;
 }
 
+/** Counts toward the storage quota (QuotaExceededError when it would not fit). */
 export function savePhoto(accountId: string, bytes: Uint8Array): CvPhotoMeta {
-  writePrivateFile(photoPath(accountId), bytes);
+  writeAccountFile(accountId, photoPath(accountId), bytes);
   const meta = photoMeta(accountId);
   if (!meta) throw new CvPhotoError("photo: could not be stored.");
   return meta;
@@ -70,6 +74,6 @@ export function savePhoto(accountId: string, bytes: Uint8Array): CvPhotoMeta {
 export function deletePhoto(accountId: string): boolean {
   const file = photoPath(accountId);
   if (!existsSync(file)) return false;
-  unlinkSync(file);
+  removeAccountPath(accountId, file);
   return true;
 }

@@ -2,6 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { CvJobError, fetchAndSaveJob } from "@/lib/cv/jobs/service";
 import { CvStoreError } from "@/lib/cv/store";
+import { quotaErrorResponse } from "@/lib/storage/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof CvJobError) return jsonError(error.message, error.status);
     if (error instanceof CvStoreError) return jsonError(error.message, 500);
+    const full = quotaErrorResponse(error);
+    if (full) return full;
     throw error;
   }
 }

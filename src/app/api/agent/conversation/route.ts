@@ -9,6 +9,7 @@ import {
   type ConversationContent,
 } from "@/lib/agent-client/conversation-store";
 import { getAccount } from "@/lib/accounts/store";
+import { quotaErrorResponse } from "@/lib/storage/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,8 +53,8 @@ export async function PUT(request: Request): Promise<Response> {
   try {
     saveConversationContent(auth.account.id, current.id, content.data as ConversationContent);
     return json({ ok: true });
-  } catch {
-    return jsonError("conversation_store_unavailable", 500);
+  } catch (error) {
+    return quotaErrorResponse(error) ?? jsonError("conversation_store_unavailable", 500);
   }
 }
 

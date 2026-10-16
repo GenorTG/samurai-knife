@@ -40,6 +40,14 @@ Every `defineTool` declares `scope` (no default, so a new tool must choose):
 second time. The matching routes (`/api/cv/showcase/*`) are admin-only too, and the CV studio shows non-admins that an
 administrator has to run the GitHub showcase.
 
+## Office documents (`knife_doc_*`, group `docs`)
+`knife_doc_list {folderId?, query?}` (folders with paths + documents), `knife_doc_read {id, version?}` (plain text; an
+earlier kept version too), `knife_doc_create {format, name, folderId?, paragraphs|rows|slides}`,
+`knife_doc_folder_create {name, parentId?}`, `knife_doc_move {id, folderId|null}`, `knife_doc_versions {id}`,
+`knife_doc_restore_version {id, version}` (the old content becomes a NEW version; nothing is lost). Nothing deletes:
+trash and permanent deletion stay with the user in the file browser. Every tool acts on the calling account only (another
+account's ids answer "unknown document/folder"), and writes fail with the storage-quota message when the account is full.
+
 ## Live view of the user's screen
 - Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast
   with Undo; nothing extra is needed after a `knife_cv_*` call.

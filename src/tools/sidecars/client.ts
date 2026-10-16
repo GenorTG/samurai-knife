@@ -1,6 +1,8 @@
 import type { SidecarStatus } from "@/lib/services/manager";
 import type { OpView } from "@/lib/services/ops";
-import type { DocMeta } from "@/lib/office/store";
+import type { DocMeta, DocVersion } from "@/lib/office/store";
+import type { Folder } from "@/lib/office/folders";
+import type { StorageUsage } from "@/lib/storage/quota";
 import type { OfficeFormat } from "@/lib/office/templates";
 
 /**
@@ -15,7 +17,12 @@ export type ServiceView = SidecarStatus & { op: OpView | null; canManage?: boole
 export function isAdminRequired(error: unknown): boolean {
   return error instanceof ApiError && error.code === "admin_required";
 }
-export type { DocMeta, OfficeFormat, OpView };
+export type { DocMeta, DocVersion, Folder, OfficeFormat, OpView, StorageUsage };
+
+/** The API's answer when the account's storage quota is full (src/lib/storage/quota.ts). */
+export function isQuotaFull(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "storage_quota_exceeded";
+}
 
 // No TypeScript parameter properties: the assistant's doc_live tools import this file and the unit tests load it through
 // Node's type stripping, which rejects them.
@@ -110,16 +117,75 @@ export function getOp(opId: string): Promise<OpView> {
 
 /* --------------------------------------------------------------------------------------------- office */
 
+export interface OfficeLibrary {
+  docs: DocMeta[];
+  folders: Folder[];
+  trash: { docs: DocMeta[]; folders: Folder[] };
+  storage: StorageUsage;
+  bytes: { files: number; versions: number; trash: number };
+  limits: { maxDocBytes: number; versionsKept: number; trashDays: number };
+}
+
+export function getLibrary(): Promise<OfficeLibrary> {
+  return request<OfficeLibrary>("GET", "/api/office/docs");
+}
+
 export function listDocs(): Promise<DocMeta[]> {
-  return request<{ docs: DocMeta[] }>("GET", "/api/office/docs").then((r) => r.docs);
+  return getLibrary().then((r) => r.docs);
 }
 
-export function createDoc(format: OfficeFormat, name: string): Promise<DocMeta> {
-  return request<{ doc: DocMeta }>("POST", "/api/office/docs", { action: "create", format, name }).then((r) => r.doc);
+export function createDoc(format: OfficeFormat, name: string, folderId: string | null = null): Promise<DocMeta> {
+  return request<{ doc: DocMeta }>("POST", "/api/office/docs", { action: "create", format, name, folderId }).then((r) => r.doc);
 }
 
-export function uploadDoc(name: string, data: string): Promise<DocMeta> {
-  return request<{ doc: DocMeta }>("POST", "/api/office/docs", { action: "upload", name, data }).then((r) => r.doc);
+export function uploadDoc(name: string, data: string, folderId: string | null = null): Promise<DocMeta> {
+  return request<{ doc: DocMeta }>("POST", "/api/office/docs", { action: "upload", name, data, folderId }).then((r) => r.doc);
+}
+
+export type DocAction =
+  | { action: "move"; folderId: string | null }
+  | { action: "duplicate"; folderId?: string | null }
+  | { action: "trash" }
+  | { action: "restore" }
+  | { action: "restore_version"; version: number }
+  | { action: "prune_versions"; keep: number };
+
+export function docAction(id: string, body: DocAction): Promise<{ doc: DocMeta; removed?: number; freedBytes?: number }> {
+  return request("POST", `/api/office/docs/${q(id)}`, body);
+}
+
+export function getDocDetails(id: string): Promise<{ doc: DocMeta; versions: DocVersion[]; diskBytes: number }> {
+  return request("GET", `/api/office/docs/${q(id)}`);
+}
+
+export function deleteDocForever(id: string): Promise<boolean> {
+  return request<{ removed: boolean }>("DELETE", `/api/office/docs/${q(id)}?permanent=1`).then((r) => r.removed);
+}
+
+export function versionPreview(id: string, version: number): Promise<{ version: DocVersion; text: string; truncated: boolean }> {
+  return request("GET", `/api/office/docs/${q(id)}/versions/${version}`);
+}
+
+export function versionDownloadUrl(id: string, version: number): string {
+  return `/api/office/docs/${q(id)}/versions/${version}?download=1`;
+}
+
+export function createFolder(name: string, parentId: string | null): Promise<Folder> {
+  return request<{ folder: Folder }>("POST", "/api/office/folders", { name, parentId }).then((r) => r.folder);
+}
+
+export type FolderAction = { action: "rename"; name: string } | { action: "move"; parentId: string | null } | { action: "trash" } | { action: "restore" };
+
+export function folderAction(id: string, body: FolderAction): Promise<{ folder: Folder; docs?: number }> {
+  return request("POST", `/api/office/folders/${q(id)}`, body);
+}
+
+export function deleteFolderForever(id: string): Promise<{ docs: number; freedBytes: number }> {
+  return request("DELETE", `/api/office/folders/${q(id)}`);
+}
+
+export function emptyTrash(): Promise<{ docs: number; folders: number; freedBytes: number }> {
+  return request("POST", "/api/office/trash", { action: "empty" });
 }
 
 export function renameDoc(id: string, name: string): Promise<DocMeta> {
