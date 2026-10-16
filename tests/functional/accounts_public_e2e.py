@@ -204,10 +204,10 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ---------------------------------------------------------------------------------------------- 0. setup
     status, body, _ = api.call("GET", "/api/account", ip="198.51.100.1")
     check("anonymous GET /api/account -> 401, public mode, no account list (no default-account fallback)",
-          status == 401 and isinstance(body, dict) and body.get("mode") == "public" and body.get("accounts") == [], (status, body))
+          status == 401 and isinstance(body, dict) and body.get("mode") == "public" and "accounts" not in body, (status, body))
     status, _, _ = api.call("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, ip="198.51.100.1",
                             headers={"Accept": "application/json, text/event-stream"})
-    check("MCP without a session -> 401 (no default account in public mode)", status == 401, status)
+    check("MCP without an MCP key -> 401 (no default account in public mode)", status == 401, status)
     status, body, _ = api.login("genor", "", "198.51.100.1")
     check("the passwordless default account cannot log in", status == 401, (status, body))
     r = cli(data, "set-password", "genor", stdin=ADMIN_PW + "\n")

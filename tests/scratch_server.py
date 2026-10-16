@@ -36,6 +36,18 @@ def _git(*args: str) -> str:
 
 
 def free_port(host: str = "127.0.0.1") -> int:
+    """Any free port; with KNIFE_SCRATCH_PORTS=<from>-<to> the first free one in that range (shared hosts reserve a band)."""
+    band = os.environ.get("KNIFE_SCRATCH_PORTS", "").strip()
+    if band:
+        first, _, last = band.partition("-")
+        for port in range(int(first), int(last or first) + 1):
+            with socket.socket() as sock:
+                try:
+                    sock.bind((host, port))
+                except OSError:
+                    continue
+                return port
+        raise RuntimeError(f"no free port in KNIFE_SCRATCH_PORTS={band}")
     with socket.socket() as sock:
         sock.bind((host, 0))
         return sock.getsockname()[1]
@@ -70,7 +82,7 @@ class ScratchServer:
         if self._proc is not None:
             return self.restart(env)
         if self._tmp is None:
-            self._tmp = tempfile.TemporaryDirectory(prefix="samurai-knife-scratch-")
+            self._tmp = tempfile.TemporaryDirectory(prefix=os.environ.get("KNIFE_SCRATCH_TMP_PREFIX", "samurai-knife-scratch-"))
         scratch = Path(self._tmp.name)
         if not self.in_place and self._worktree is None:
             ref = _git("stash", "create") or "HEAD"
