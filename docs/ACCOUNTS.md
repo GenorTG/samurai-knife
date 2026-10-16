@@ -130,7 +130,8 @@ counts the bytes on disk (36 bytes more per file).
 - Upgrade: files written before sealing still read as plaintext and are sealed by their next write; files that are rarely
   rewritten (kept document versions, CV snapshots) stay plaintext until `npm run storage -- seal` (`--dry-run` first)
   seals them in place, keeping their mtimes. Run it with the server stopped and after a backup. Sealed files cannot be
-  read by a build from before sealing: roll back only to a backup taken before the upgrade.
+  read by a build from before sealing: before rolling back, stop the server and run `npm run storage -- unseal`
+  (`--dry-run` first), which opens every sealed file in place again.
 - Not sealed: async job scratch dirs in the OS temp dir (0700, removed with the job), `.eml` files of the outbox
   transport, `mail-errors.log`.
 

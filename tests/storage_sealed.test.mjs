@@ -144,3 +144,15 @@ test("sealAccountStorage seals an account's plaintext files in place, keeps mtim
   assert.equal(readFileSync(outside, "utf8"), MARKER, "the symlink target was not touched");
   assert.deepEqual(sealAccountStorage("dave"), { sealed: 0, alreadySealed: 2, files: [] }, "idempotent");
 });
+
+test("unsealAccountStorage opens every sealed file in place (rollback), keeping mtimes", async () => {
+  const { unsealAccountStorage } = await import("../src/lib/storage/migrate.ts");
+  const path = join(dataDir, "conversations", "dave", "legacy.json");
+  const before = statSync(path).mtimeMs;
+  assert.equal(unsealAccountStorage("dave", { dryRun: true }).sealed, 2);
+  assert.ok(sealed.isSealedBytes(readFileSync(path)), "a dry run writes nothing");
+  assert.equal(unsealAccountStorage("dave").sealed, 2);
+  assert.equal(JSON.parse(readFileSync(path, "utf8")).marker, MARKER, "plaintext again");
+  assert.equal(statSync(path).mtimeMs, before);
+  assert.equal(unsealAccountStorage("dave").sealed, 0, "idempotent");
+});

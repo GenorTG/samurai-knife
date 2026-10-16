@@ -2,7 +2,7 @@ import { lstatSync, readdirSync, readFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { writePrivateFile } from "@/lib/accounts/store";
 import { invalidateUsage, cvPaths } from "./quota";
-import { isSealedBytes, sealAccountBytes } from "./sealed";
+import { isSealedBytes, openAccountBytes, sealAccountBytes } from "./sealed";
 import { accountScope } from "./scope";
 
 export interface SealReport {
@@ -43,6 +43,27 @@ export function sealAccountStorage(accountId: string, options: { dryRun?: boolea
     if (options.dryRun) continue;
     const { atime, mtime } = lstatSync(path);
     writePrivateFile(path, sealAccountBytes(accountId, bytes));
+    utimesSync(path, atime, mtime);
+  }
+  if (!options.dryRun) invalidateUsage(accountId);
+  return report;
+}
+
+/**
+ * The reverse, for a rollback to a build from before sealing: opens every sealed file of the account in place (same
+ * rules: server stopped, mtimes kept, symlinks skipped). `sealed` counts the files opened.
+ */
+export function unsealAccountStorage(accountId: string, options: { dryRun?: boolean } = {}): SealReport {
+  const scope = accountScope(accountId);
+  const report: SealReport = { sealed: 0, alreadySealed: 0, files: [] };
+  for (const path of [...scope.locations(), ...cvPaths(accountId)].flatMap(filesOf)) {
+    const bytes = readFileSync(path);
+    if (!isSealedBytes(bytes)) continue;
+    report.sealed += 1;
+    report.files.push(path);
+    if (options.dryRun) continue;
+    const { atime, mtime } = lstatSync(path);
+    writePrivateFile(path, openAccountBytes(accountId, bytes));
     utimesSync(path, atime, mtime);
   }
   if (!options.dryRun) invalidateUsage(accountId);
