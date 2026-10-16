@@ -1,6 +1,7 @@
 // Preloaded into the Next server by scripts/serve.mjs (NODE_OPTIONS --import). Stamps the TCP peer address of every request
 // into `x-knife-peer`, replacing anything the client sent, so src/lib/accounts/network.ts can tell whether forwarded headers
-// came from a trusted reverse proxy (route handlers never see the socket). No dependencies, no other effect.
+// came from a trusted reverse proxy (route handlers never see the socket). No dependencies. With
+// KNIFE_SECURITY_HEADERS_INSTALL=1 (serve.mjs, public mode) it also installs scripts/security-headers.mjs.
 import http from "node:http";
 import https from "node:https";
 
@@ -20,3 +21,5 @@ for (const Server of [http.Server, https.Server]) {
   patched.knifePeer = true;
   Server.prototype.emit = patched;
 }
+
+if (process.env.KNIFE_SECURITY_HEADERS_INSTALL === "1") await import("./security-headers.mjs");
