@@ -89,4 +89,8 @@ export const LIMITS = {
   forgotEmail: (email: string): Limit => ({ key: `forgot:email:${email}`, max: 3, windowMs: 15 * MINUTE }),
   /** Change email / password / delete with a wrong password: per account. */
   sensitive: (id: string): Limit => ({ key: `sensitive:${id}`, max: 10, windowMs: 15 * MINUTE }),
+  /** MCP requests with a wrong or revoked key: per client address (a key is 256 random bits; this stops log spam). */
+  mcpAuthIp: (ip: string): Limit => ({ key: `mcp-auth:ip:${ip}`, max: 30, windowMs: 15 * MINUTE }),
+  /** Creating MCP keys: per account. */
+  mcpKeyCreate: (id: string): Limit => ({ key: `mcp-key:create:${id}`, max: 20, windowMs: HOUR }),
 };

@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { isAdmin, requireAdmin } from "@/lib/accounts/authz";
-import { serviceViewFor } from "@/lib/services/view";
+import { opViewFor, serviceViewFor } from "@/lib/services/view";
 import { findSidecar } from "@/lib/services/definitions";
 import { syncAssets } from "@/lib/services/assets";
 import { configure, ensureReaper, needsRecreate, probeHealth, SidecarError, status, touch } from "@/lib/services/manager";
@@ -90,7 +90,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         const state = readState(id);
         if (!state) return jsonError("not_installed", 409);
         const running = runningOp(id);
-        if (running) return json({ ready: false, op: running }, 202);
+        if (running) return json({ ready: false, op: opViewFor(auth.account, running) }, 202);
         if (await probeHealth(def, state, 1500)) {
           // Running: refresh the mounted assets (a changed editor plugin is served at once under its new folder name);
           // a container from an older compose file (no plugin mount yet) is recreated once, before any document opens.

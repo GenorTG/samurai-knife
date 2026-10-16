@@ -33,8 +33,10 @@ export function guard(request: Request, mutating: boolean): NextResponse | null 
   return null;
 }
 
+/** Private mode lists the accounts that can sign in (the login picker); public mode never names an account. */
 export function loginRequired(): NextResponse {
-  return jsonError("login_required", 401, { accounts: loginChoices(isPublicMode()), mode: authMode() });
+  if (isPublicMode()) return jsonError("login_required", 401, { mode: authMode() });
+  return jsonError("login_required", 401, { accounts: loginChoices(false), mode: authMode() });
 }
 
 /** Routes that exist only in public mode answer exactly like a missing route in private mode. */
