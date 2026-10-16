@@ -41,7 +41,7 @@ function parseKey(path: string): Buffer {
 /** The master key; created (0600) only when `create` is set and no key exists yet. A malformed key is never replaced. */
 function masterKey(create: boolean): Buffer {
   const path = storageKeyPath();
-  if (cachedKey?.path === path && existsSync(path)) return cachedKey.key;
+  if (cachedKey?.path === path) return cachedKey.key;
   let key: Buffer;
   if (existsSync(path)) key = parseKey(path);
   else if (create) {
