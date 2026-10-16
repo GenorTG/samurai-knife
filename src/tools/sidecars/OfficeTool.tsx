@@ -161,8 +161,8 @@ function RenameForm({ initial, label, onSave }: { initial: string; label: string
         if (value.trim()) void onSave(value.trim());
       }}
     >
-      <Field label={label} className="min-w-56 flex-1">
-        <TextInput autoFocus value={value} onChange={(e) => setValue(e.target.value)} maxLength={120} />
+      <Field label="Rename to" className="min-w-56 flex-1">
+        <TextInput autoFocus aria-label={label} value={value} onChange={(e) => setValue(e.target.value)} maxLength={120} />
       </Field>
       <Button type="submit" size="sm" variant="primary" disabled={!value.trim() || value.trim() === initial}>Rename</Button>
     </form>
@@ -173,10 +173,9 @@ function MoveForm({ folders, current, exclude, label, onMove }: { folders: Folde
   const [target, setTarget] = useState(current ?? "");
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <label className="text-xs text-faint">
-        <span className="mb-1 block">Move to</span>
+      <Field label="Move to">
         <FolderSelect folders={folders} value={target} onChange={setTarget} exclude={exclude} label={label} />
-      </label>
+      </Field>
       <Button size="sm" disabled={(target || null) === current} onClick={() => void onMove(target || null)}>Move</Button>
     </div>
   );

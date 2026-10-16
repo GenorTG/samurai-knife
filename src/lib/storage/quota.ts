@@ -11,7 +11,7 @@ import { accountScope, parentDir } from "./scope";
  * registered users, `null` = unlimited); administrators are always unlimited (private mode: every account). Usage = every
  * byte under the account's data locations (`accountScope(id).locations()` + its CV files) plus the scratch bytes of its live
  * async jobs. It is computed by one walk and cached in memory; every write through `writeAccountFile` / removal through
- * `removeAccountPath` adjusts the cache by the exact delta, and the cache is re-walked after `RECOUNT_MS` to pick up
+ * `removeAccountPath` adjusts the cache by the exact delta, and the cache is re-walked after `recountMs()` to pick up
  * changes made outside the server (CLI, hand edits).
  *
  * Writes of user content check BEFORE writing (`enforce`, the default) and throw `QuotaExceededError` (HTTP 507 with a
@@ -20,7 +20,11 @@ import { accountScope, parentDir } from "./scope";
  * Deleting is never refused.
  */
 
-const RECOUNT_MS = 10 * 60_000;
+/** KNIFE_STORAGE_RECOUNT_SEC (default 600): how long a counted total is trusted before the disk is walked again. */
+function recountMs(): number {
+  const parsed = Number.parseFloat(process.env.KNIFE_STORAGE_RECOUNT_SEC ?? "");
+  return (Number.isFinite(parsed) && parsed >= 0 ? parsed : 600) * 1000;
+}
 const CACHE_KEY = Symbol.for("samurai-knife.storage-usage.v1");
 
 export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "jobs";
@@ -108,7 +112,7 @@ function walk(accountId: string): Cached {
 function cached(accountId: string): Cached {
   const map = cache();
   let entry = map.get(accountId);
-  if (!entry || Date.now() - entry.at > RECOUNT_MS) {
+  if (!entry || Date.now() - entry.at > recountMs()) {
     entry = walk(accountId);
     map.set(accountId, entry);
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, NumberField, OutputBlock } from "@/components/ui";
+import { Badge, Button, Field, NumberField, OutputBlock } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
 import { docAction, errorText, getDocDetails, versionDownloadUrl, versionPreview, type DocMeta, type DocVersion } from "./client";
 
@@ -113,10 +113,9 @@ export function VersionsPanel({ doc, onChanged, onNotice }: { doc: DocMeta; onCh
       ) : null}
       {versions && versions.length > 0 ? (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-xs text-faint">
-            <span className="mb-1 block">Keep the newest</span>
+          <Field label="Keep the newest">
             <NumberField aria-label="Versions to keep" integer min={0} max={25} value={keep} onValueChange={setKeep} className="w-20" />
-          </label>
+          </Field>
           {confirmPrune ? (
             <>
               <Button size="sm" variant="danger" disabled={busy !== null} onClick={() => {
