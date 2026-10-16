@@ -400,3 +400,26 @@ test("provider keys: plaintext migrated on first read, sealed on disk (0600 key)
   }
   assert.ok(existsSync(dataDir));
 });
+
+// ---- python lane ----------------------------------------------------------------------------
+
+test("python lane: minimal child env (no server secrets), HOME = scratch, per-lane resource limits", async () => {
+  process.env.KNIFE_SMTP_PASS = "smtp-secret";
+  process.env.OPENCLAW_GATEWAY_TOKEN = "gw-secret";
+  try {
+    const python = await import("../src/lib/python.ts");
+    const env = python.childEnv("/tmp/knife-scratch-x", python.laneLimits("heavy", 180_000));
+    assert.equal(env.HOME, "/tmp/knife-scratch-x");
+    assert.ok(env.PATH);
+    for (const leaked of ["KNIFE_SMTP_PASS", "OPENCLAW_GATEWAY_TOKEN", "KNIFE_DATA_DIR", "KNIFE_SSRF_DENY_CIDRS"]) assert.equal(env[leaked], undefined, leaked);
+    assert.equal(env.KNIFE_RLIMIT_AS_MB, "3072");
+    assert.equal(env.KNIFE_RLIMIT_CPU_SEC, "365");
+    assert.equal(python.laneLimits("light", 30_000).KNIFE_RLIMIT_AS_MB, "1024");
+    process.env.KNIFE_PY_MEM_MB_LIGHT = "0";
+    assert.equal(python.laneLimits("light", 30_000).KNIFE_RLIMIT_AS_MB, "0", "0 = no limit");
+  } finally {
+    delete process.env.KNIFE_SMTP_PASS;
+    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    delete process.env.KNIFE_PY_MEM_MB_LIGHT;
+  }
+});
