@@ -10,7 +10,7 @@ the owner presses Install.
 | Where | What |
 | --- | --- |
 | `src/lib/services/definitions.ts` | `SIDECARS`: id, pinned image, container port, health check (`health`), whether the container calls the app back (`callsBack`), generated secrets, env, named volumes, start timeout, idle stop default, `usedBy` slugs. Metadata only. |
-| `src/lib/services/compose.ts` | Pure `renderCompose(def, {bindHost, hostPort})` → compose.yaml. Port published on **one** address (KNIFE_HOST); wildcard refused. Secrets via `env_file: secrets.env`, never inline. `restart: "no"` (the app owns the lifecycle). Labels `dev.samurai-knife.*`. |
+| `src/lib/services/compose.ts` | Pure `renderCompose(def, {bindHost, hostPort, extraEnv})` → compose.yaml. Port published on **one** address (KNIFE_HOST, or 127.0.0.1 for `publish: "loopback"`); wildcard refused; `mem_limit`/`cpus` from the definition. Secrets via `env_file: secrets.env`, never inline. `restart: "no"` (the app owns the lifecycle). Labels `dev.samurai-knife.*`. |
 | `src/lib/services/state.ts` | `$KNIFE_DATA_DIR/services/<id>/`: `state.json`, `compose.yaml`, `secrets.env` (600), `op.lock`. |
 | `src/lib/services/runtime.ts` | `docker compose` first, then `podman compose`; exact install/permission hint when missing; **never sudo**. |
 | `src/lib/services/manager.ts` | install / start / stop / remove / update / configure / status, health wait, app-reachability check, idle reaper, open-session registry. |
@@ -27,7 +27,8 @@ touches anything else on the host.
 ## Lifecycle
 
 - **Install** (`POST /api/services/<id> {action:"install"}` → 202 `{op}`): runtime check → pick a free port near KNIFE_PORT
-  on KNIFE_HOST (stored; reused on reinstall) → generate secrets once → write compose → `compose --progress json pull` (the
+  on KNIFE_HOST, or on 127.0.0.1 for app-only services (`publish: "loopback"`; stored; reused on reinstall) → generate
+  secrets once (a secret added to a definition later is generated on the next compose write, for existing installs too) → write compose → `compose --progress json pull` (the
   JSON events are folded into one percentage and byte count) → `up -d` → wait for the health check → when `callsBack`, check from
   **inside** the container that the app is reachable (`GET /api/services/ping`); a failure there is a warning in the op log
   and status.
@@ -78,8 +79,10 @@ Two URLs per sidecar, both shown and editable in its Settings:
 - **Image**: `ghcr.io/euro-office/documentserver:v9.3.5` — Euro-Office Document Server, the AGPL-3.0 fork of the ONLYOFFICE
   Document Server (https://github.com/Euro-Office/DocumentServer, docs https://euro-office.github.io/documentation/). On
   2026-10-13 `latest` and `v9.3.5` had the same digest in the ghcr.io registry. The docs show `:9.3.1`; the published
-  release tags carry a `v`. Env: `JWT_ENABLED=true`, `JWT_SECRET` (generated, 64 hex), `ALLOW_PRIVATE_IP_ADDRESS=true`
-  (the app is on a private address), example/admin panel/WOPI off, `GENERATE_FONTS=false`. The font cache lives in the
+  release tags carry a `v`. Env: `JWT_ENABLED=true`, `JWT_SECRET` (generated, 64 hex), `SECURE_LINK_SECRET` (generated,
+  48 hex: signs the `/cache/files/...` links; without it the image makes one per data volume),
+  `ALLOW_PRIVATE_IP_ADDRESS=false`, `ALLOW_META_IP_ADDRESS=false` and a `NODE_CONFIG` override of the request filter
+  (see "Request filter"), example/admin panel/WOPI off, `GENERATE_FONTS=false`; `mem_limit: 3g`, `cpus: 2`. The font cache lives in the
   container filesystem (not a volume) and the editor never finishes loading without it, although `/healthcheck` answers
   `true`; so the definition's `prepare` step runs `documentserver-generate-allfonts.sh` once per new container (recorded as
   `preparedContainer` in state.json). Measured: new container 53 s to ready, stopped -> ready 11.7 s (was 45 s when every
@@ -112,10 +115,33 @@ Two URLs per sidecar, both shown and editable in its Settings:
   `unchanged` (error 4: nothing sent since the last save; right after an edit it just means the editor has not sent it
   yet, so callers retry for a few seconds) or `not_open` (error 1).
 
+## Request filter (office)
+
+The Document Server downloads URLs itself. Two kinds, verified against the 9.3.5 image:
+
+- URLs inside the JWT-signed editor config and command requests (the document download from `/api/office/ds/file`, the
+  save callback) are trusted by the server and are **not** filtered. A signed ConvertService request fetched even a
+  loopback URL with the filter on.
+- URLs a user brings into an editing session (Insert → Image → From URL, compare/merge sources; reproduced with
+  `editor.AddImageUrl([url])` in the editor frame) go through `request-filtering-agent`.
+
+So the definition keeps the filter on: `ALLOW_PRIVATE_IP_ADDRESS=false`, `ALLOW_META_IP_ADDRESS=false`, and the manager
+renders the filter config explicitly as `NODE_CONFIG` (`onlyofficeFilterEnv` in compose.ts; node-config applies it after
+the image's local.json, supervisord passes the container env to docservice and converter) with `allowIPAddressList` =
+`KNIFE_SIDECAR_ALLOW_IPS` only (empty by default). Measured with the office e2e: open, Ctrl+S, close save, every format
+and the lazy start pass with an empty list, while an image URL to the app's own IP or to the docker gateway is never
+fetched (with the app's IP listed, that fetch went through: the list is per IP, every port). A changed allow list changes
+the compose hash, so the next idle `ensure` recreates the container.
+
+What compose cannot do: filter the container's egress by destination. The request filter covers the user-URL paths the
+Document Server knows about; for defence in depth on a public host, put the sidecar's network behind `DOCKER-USER`
+iptables rules (allow DNS and the internet, drop the host, the LAN, Tailscale and other docker networks) (docs/DEPLOY.md).
+
 ## Course database (`learn-db`, slug `db-course`)
 
-- **Image**: `postgis/postgis:16-3.4` (PostgreSQL 16 + PostGIS 3.4, Debian), port 5432 published on KNIFE_HOST only,
-  volume `pgdata` (`/var/lib/postgresql/data`), `mem_limit: 1g`, `POSTGRES_DB=learn`. Secrets: `POSTGRES_PASSWORD`
+- **Image**: `postgis/postgis:16-3.4` (PostgreSQL 16 + PostGIS 3.4, Debian), port 5432 published on **127.0.0.1** only
+  (`publish: "loopback"`: the app is the only client; an install from before moves there at its next start/update), volume
+  `pgdata` (`/var/lib/postgresql/data`), `mem_limit: 1g`, `cpus: 1`, `POSTGRES_DB=learn`. Secrets: `POSTGRES_PASSWORD`
   (superuser, used by the app to seed) and `LEARNER_PASSWORD` (set on the low-privilege `knife_learner` role by the seed).
   Health `postgres`, `callsBack: false`. Measured: install with a cached image -> healthy + seeded in ~10 s; stopped ->
   ready ~3 s; RAM ~100 MiB after the seed and a lesson sweep.
@@ -205,7 +231,7 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
 ## Tests
 
 - Unit: `tests/services.test.mjs` (compose, secrets, state/lock, pull progress, ps parsing, URLs, JWT, templates/text, store,
-  editor config, callback incl. SSRF and stale keys).
+  editor config, callback incl. SSRF and stale keys, office hardening: filter env, allow list, caps; learn-db on loopback).
 - Unit: `tests/office_live.test.mjs` (protocol + argument checks, the browser bridge against a fake plugin frame, the
   real `bridge.js` in a sandbox with a fake editor `Api`, trust verdicts, tool visibility, asset sync + mount, editor
   config options).

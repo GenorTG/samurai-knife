@@ -16,11 +16,11 @@ const pidFile = join(scratch, "pids");
 writeFileSync(
   fakePython,
   `#!/bin/bash
-# argv: <script> <request.json> <response.json>; MODE comes from the request body's "mode"
-mode=$(sed -n 's/.*"mode":"\\([a-z]*\\)".*/\\1/p' "$2")
+# argv: run_limited.py <script> <request.json> <response.json>; MODE comes from the request body's "mode"
+mode=$(sed -n 's/.*"mode":"\\([a-z]*\\)".*/\\1/p' "$3")
 case "$mode" in
-  ok) printf '{"ok":true,"data":{"x":1}}' > "$3" ;;
-  fail) printf '{"ok":false,"error":"handled failure"}' > "$3"; exit 2 ;;
+  ok) printf '{"ok":true,"data":{"x":1}}' > "$4" ;;
+  fail) printf '{"ok":false,"error":"handled failure"}' > "$4"; exit 2 ;;
   silent) exit 0 ;;
   hang) sleep 300 & echo "$$ $!" >> "${pidFile}"; wait ;;
 esac

@@ -11,20 +11,32 @@ export const PDF_MAX_FILES = 40;
 export const PDF_TIMEOUT_MS = 180_000;
 export const PDF_OCR_MAX_FILE_BYTES = 50 * 1024 * 1024;
 
-export interface PdfInput {
-  action: string;
-  params: Record<string, unknown>;
-  uploads: File[];
+/** An upload as the form reader needs it: the streamed file on disk (`multipart-upload.ts`) or a `File` in tests. */
+export interface PdfUpload {
+  name: string;
+  size: number;
 }
 
-export type PdfFormResult = { ok: true; input: PdfInput } | { ok: false; status: number; error: string };
+export interface PdfInput<U extends PdfUpload = PdfUpload> {
+  action: string;
+  params: Record<string, unknown>;
+  uploads: U[];
+}
 
-export function readPdfForm(form: FormData): PdfFormResult {
-  const action = String(form.get("action") ?? "").trim();
+/** The parsed form: text fields by name and the `file` parts. */
+export interface PdfFormSource<U extends PdfUpload> {
+  field(name: string): string | null;
+  files: U[];
+}
+
+export type PdfFormResult<U extends PdfUpload = PdfUpload> = { ok: true; input: PdfInput<U> } | { ok: false; status: number; error: string };
+
+export function readPdfForm<U extends PdfUpload>(form: PdfFormSource<U>): PdfFormResult<U> {
+  const action = String(form.field("action") ?? "").trim();
   if (!action) return { ok: false, status: 400, error: "Missing action." };
 
   let params: Record<string, unknown> = {};
-  const rawParams = form.get("params");
+  const rawParams = form.field("params");
   if (typeof rawParams === "string" && rawParams.trim()) {
     try {
       const value: unknown = JSON.parse(rawParams);
@@ -37,7 +49,7 @@ export function readPdfForm(form: FormData): PdfFormResult {
     }
   }
 
-  const uploads = form.getAll("file").filter((entry): entry is File => entry instanceof File);
+  const uploads = form.files;
   if (uploads.length === 0) return { ok: false, status: 400, error: "No PDF attached." };
   if (action === "ocr") {
     if (uploads.length !== 1) return { ok: false, status: 400, error: "OCR needs exactly one PDF." };
@@ -73,25 +85,15 @@ export interface StagedPdf {
   bytes: number;
 }
 
-/** Write the uploads to a scratch dir (the python script reads paths) and allocate the output dir. */
-export async function stagePdfInputs(uploads: File[]): Promise<StagedPdf> {
-  const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "knife-pdf-"));
+/** The scratch dir the upload is streamed into (`knife-pdf-*`, 0700); the python script reads paths inside it. */
+export function makeUploadDir(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), "knife-pdf-"));
+}
+
+/** Uploads already on disk in `workDir` (streamed there) + a fresh output dir. */
+export async function stagePdfInputs(workDir: string, uploads: { path: string; size: number }[]): Promise<StagedPdf> {
   const outDir = await makeScratchDir("knife-pdf-out-");
-  const paths: string[] = [];
-  let bytes = 0;
-  try {
-    for (const [index, file] of uploads.entries()) {
-      const safe = path.basename(file.name).replace(/[^\w.\-()+]/g, "_") || "input.pdf";
-      const target = path.join(workDir, `${index + 1}-${safe}`);
-      await fs.writeFile(target, Buffer.from(await file.arrayBuffer()));
-      bytes += file.size;
-      paths.push(target);
-    }
-  } catch (error) {
-    await Promise.all([workDir, outDir].map((dir) => fs.rm(dir, { recursive: true, force: true }).catch(() => {})));
-    throw error;
-  }
-  return { workDir, outDir, paths, bytes };
+  return { workDir, outDir, paths: uploads.map((file) => file.path), bytes: uploads.reduce((sum, file) => sum + file.size, 0) };
 }
 
 export function pdfScriptRequest(input: PdfInput, staged: StagedPdf): { action: string; files: string[]; out_dir: string; params: Record<string, unknown> } {

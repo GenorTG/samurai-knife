@@ -3,7 +3,6 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { childEnv, PYTHON_ENV_KEYS } from "./child-env";
 import { isJobCancelled, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
 
 /**
@@ -66,6 +65,52 @@ export interface PythonRunResult<T> {
 
 const KILL_GRACE_MS = 1_500;
 
+/** Starts every script with its resource limits (server/py/scripts/run_limited.py). */
+const LIMITED_RUNNER = "run_limited.py";
+
+function envInt(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/**
+ * Resource limits per lane, applied inside the child by run_limited.py and inherited by what it starts (ocrmypdf,
+ * tesseract). Address space: KNIFE_PY_MEM_MB_LIGHT (1024) / KNIFE_PY_MEM_MB_HEAVY (3072); CPU seconds: twice the run
+ * timeout (threads add up); largest file one write may produce: KNIFE_PY_FSIZE_MB (2048). 0 = no limit.
+ */
+export function laneLimits(lane: PyLane, timeoutMs: number): Record<string, string> {
+  const memory = lane === "heavy" ? envInt("KNIFE_PY_MEM_MB_HEAVY", 3072) : envInt("KNIFE_PY_MEM_MB_LIGHT", 1024);
+  return {
+    KNIFE_RLIMIT_AS_MB: String(memory),
+    KNIFE_RLIMIT_CPU_SEC: String(Math.ceil((timeoutMs / 1000) * 2) + 5),
+    KNIFE_RLIMIT_FSIZE_MB: String(envInt("KNIFE_PY_FSIZE_MB", 2048)),
+  };
+}
+
+/** Variables a script may see from the server's environment: tool locations only, never credentials or app config. */
+const PASSED_ENV = ["PATH", "TESSDATA_PREFIX", "OMP_THREAD_LIMIT", "LD_LIBRARY_PATH", "SSL_CERT_FILE"];
+
+/**
+ * The child's whole environment. Not `{...process.env}`: the server's env carries SMTP and session settings, provider
+ * and gateway tokens; a parser exploit in a PDF library must find nothing worth stealing. HOME is the per-run scratch dir.
+ */
+export function childEnv(scratch: string, limits: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV };
+  for (const name of PASSED_ENV) if (process.env[name]) env[name] = process.env[name];
+  env.PATH ??= "/usr/local/bin:/usr/bin:/bin";
+  return {
+    ...env,
+    HOME: scratch,
+    TMPDIR: os.tmpdir(),
+    LANG: "C.UTF-8",
+    LC_ALL: "C.UTF-8",
+    PYTHONDONTWRITEBYTECODE: "1",
+    PYTHONIOENCODING: "utf-8",
+    PYTHONNOUSERSITE: "1",
+    ...limits,
+  };
+}
+
 interface ChildOutcome {
   stderr: string;
   /** Output cap exceeded. */
@@ -77,12 +122,11 @@ interface ChildOutcome {
  * Run the interpreter in its own process group (`detached`) so an abort/timeout can take down the whole tree, not
  * just the direct child. Resolves only once the child has exited: the caller may delete the scratch dir afterwards.
  */
-function runChild(args: string[], maxBytes: number, signal: AbortSignal): Promise<ChildOutcome> {
+function runChild(args: string[], env: NodeJS.ProcessEnv, maxBytes: number, signal: AbortSignal): Promise<ChildOutcome> {
   return new Promise((resolve) => {
-    const child = spawn(PY_BIN, args, {
+    const child = spawn(PY_BIN, [path.join(PY_SCRIPTS_DIR, LIMITED_RUNNER), ...args], {
       cwd: PY_SCRIPTS_DIR,
-      // Never the server's own environment (keys, SMTP credentials): see child-env.ts.
-      env: childEnv(PYTHON_ENV_KEYS, { PYTHONDONTWRITEBYTECODE: "1" }),
+      env,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
@@ -133,7 +177,7 @@ function runChild(args: string[], maxBytes: number, signal: AbortSignal): Promis
   });
 }
 
-async function execute<T>(scriptName: string, request: unknown, maxBytes: number, signal: AbortSignal): Promise<PythonRunResult<T>> {
+async function execute<T>(scriptName: string, request: unknown, maxBytes: number, limits: Record<string, string>, signal: AbortSignal): Promise<PythonRunResult<T>> {
   const script = path.join(PY_SCRIPTS_DIR, scriptName);
   const started = Date.now();
   const logs: string[] = [];
@@ -145,7 +189,7 @@ async function execute<T>(scriptName: string, request: unknown, maxBytes: number
     await fs.writeFile(inPath, JSON.stringify(request), "utf8");
     if (signal.aborted) throw signal.reason;
 
-    const run = await runChild([script, inPath, outPath], maxBytes, signal);
+    const run = await runChild([script, inPath, outPath], childEnv(dir, limits), maxBytes, signal);
     if (signal.aborted) throw signal.reason;
     if (run.stderr.trim()) logs.push(...run.stderr.trim().split("\n"));
     if (run.spawnError) throw run.spawnError;
@@ -178,7 +222,8 @@ export function startPythonScript<T = unknown>(
   request: unknown,
   { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
-  return pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, jobSignal), {
+  const limits = laneLimits(lane, timeoutMs);
+  return pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal), {
     signal,
     timeoutMs,
     label: label ?? scriptName,

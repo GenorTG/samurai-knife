@@ -2,7 +2,7 @@ import {
   hostHeaderValidationResponse,
   originValidationResponse,
 } from "@modelcontextprotocol/server";
-import { allowedHosts, jsonError } from "@/lib/accounts/http";
+import { allowedHosts, jsonError, withCappedBody } from "@/lib/accounts/http";
 import { toolContextFor } from "@/lib/accounts/authz";
 import { accountForMcpKey, mcpCredentials } from "@/lib/accounts/mcp-keys";
 import { isPublicMode } from "@/lib/accounts/mode";
@@ -12,6 +12,8 @@ import { getDefaultAccount, type Account } from "@/lib/accounts/store";
 import { knifeMcpHandler } from "@/lib/mcp/server";
 
 const CHALLENGE = 'Basic realm="Samurai Knife MCP", charset="UTF-8"';
+/** JSON-RPC calls are small; the largest tool inputs (a CV import, a document) stay well under this. */
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 function unauthorized(error: string): Response {
   const response = jsonError(error, 401, { hint: "Send your username and an MCP key from the account page: Authorization: Basic base64(username:key), or Authorization: Bearer <key> with X-Knife-User: <username>." });
@@ -51,7 +53,9 @@ async function handle(request: Request): Promise<Response> {
   if (rejected) return rejected;
   const caller = resolveCaller(request);
   if ("response" in caller) return caller.response;
-  return knifeMcpHandler(toolContextFor(caller.account)).fetch(request);
+  const capped = await withCappedBody(request, MAX_BODY_BYTES);
+  if ("response" in capped) return capped.response;
+  return knifeMcpHandler(toolContextFor(caller.account)).fetch(capped.request);
 }
 
 export const runtime = "nodejs";

@@ -93,4 +93,8 @@ export const LIMITS = {
   mcpAuthIp: (ip: string): Limit => ({ key: `mcp-auth:ip:${ip}`, max: 30, windowMs: 15 * MINUTE }),
   /** Creating MCP keys: per account. */
   mcpKeyCreate: (id: string): Limit => ({ key: `mcp-key:create:${id}`, max: 20, windowMs: HOUR }),
+  /** Outbound requests a non-admin steers in public mode (`src/lib/net/outbound.ts`): model rounds, provider Test, pages. */
+  outboundProvider: (id: string): Limit => ({ key: `outbound:provider:${id}`, max: 300, windowMs: 10 * MINUTE }),
+  outboundProviderTest: (id: string): Limit => ({ key: `outbound:provider-test:${id}`, max: 20, windowMs: 10 * MINUTE }),
+  outboundPage: (id: string): Limit => ({ key: `outbound:page:${id}`, max: 30, windowMs: 10 * MINUTE }),
 };

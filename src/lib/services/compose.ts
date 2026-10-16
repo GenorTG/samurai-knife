@@ -21,6 +21,18 @@ export interface ComposeChoices {
   hostPort: number;
   /** Image actually installed (normally the definition's pin). */
   image?: string;
+  /** Environment computed from the install (e.g. the request-filter allow list); added after the definition's env. */
+  extraEnv?: Record<string, string>;
+}
+
+/**
+ * The ONLYOFFICE/Euro-Office request filter (`services.CoAuthoring.request-filtering-agent`) as a NODE_CONFIG override:
+ * node-config applies it after the image's local.json, and supervisord passes the container env to docservice and
+ * converter. `allowIPAddressList` is matched against the resolved address exactly.
+ */
+export function onlyofficeFilterEnv(allowIps: readonly string[]): Record<string, string> {
+  const filter = { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: [...new Set(allowIps)] };
+  return { NODE_CONFIG: JSON.stringify({ services: { CoAuthoring: { "request-filtering-agent": filter } } }) };
 }
 
 export function isWildcardHost(host: string): boolean {
@@ -46,7 +58,7 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
     restart: "no",
     ports: [portMapping(choices.bindHost, choices.hostPort, def.containerPort)],
     env_file: [SECRETS_FILE],
-    environment: { ...def.env },
+    environment: { ...def.env, ...(choices.extraEnv ?? {}) },
     // Lets the container reach the host as host.docker.internal (an alternative app URL, see docs/SIDECARS.md).
     extra_hosts: ["host.docker.internal:host-gateway"],
     volumes: [
@@ -59,6 +71,7 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
     },
   };
   if (def.memLimit) service.mem_limit = def.memLimit;
+  if (def.cpus) service.cpus = def.cpus;
   const doc = {
     name: composeProject(def.id),
     services: { [def.serviceName]: service },

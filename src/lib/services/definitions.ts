@@ -53,6 +53,20 @@ export interface SidecarDefinition {
   idleStopMinutes: number;
   /** Optional container memory cap (compose `mem_limit`, e.g. "4g"). */
   memLimit?: string;
+  /** Optional CPU cap (compose `cpus`, e.g. "2"). */
+  cpus?: string;
+  /**
+   * Where the port is published. `app-host` (default): KNIFE_HOST, for sidecars the browser loads (the editor).
+   * `loopback`: 127.0.0.1 only, for sidecars only this app talks to (a database): never reachable from the LAN/tailnet.
+   */
+  publish?: "app-host" | "loopback";
+  /**
+   * The container fetches URLs a user types (the Document Server's "insert image from URL", compare/merge sources)
+   * behind a request filter: the manager renders its config explicitly (private and metadata addresses refused, allow
+   * list = KNIFE_SIDECAR_ALLOW_IPS only). Signed URLs (document download, save callback) are trusted by the server and
+   * are not filtered.
+   */
+  requestFilter?: "onlyoffice";
   /**
    * One-time preparation inside each NEW container (after it is healthy, before the op reports done); recorded per
    * container id, so stop/start skips it and only a recreated container (install, update, port change) runs it again.
@@ -81,12 +95,15 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     containerPort: 80,
     health: { kind: "http", path: "/healthcheck", body: /^\s*true\s*$/ },
     callsBack: true,
-    secrets: [{ name: "JWT_SECRET", bytes: 32 }],
+    // SECURE_LINK_SECRET signs the cache links (/cache/files/<key>/...); without it the image generates one per data volume.
+    secrets: [{ name: "JWT_SECRET", bytes: 32 }, { name: "SECURE_LINK_SECRET", bytes: 24 }],
     env: {
       JWT_ENABLED: "true",
       JWT_HEADER: "Authorization",
-      // The app is reached on a private address (Tailscale CGNAT / LAN); the default request filter refuses those.
-      ALLOW_PRIVATE_IP_ADDRESS: "true",
+      // The request filter stays on: no private, loopback or metadata address for any URL a user makes the editor fetch
+      // (an image "from URL", a compared document). The signed document/callback URLs to the app are trusted, not filtered.
+      ALLOW_PRIVATE_IP_ADDRESS: "false",
+      ALLOW_META_IP_ADDRESS: "false",
       EXAMPLE_ENABLED: "false",
       ADMINPANEL_ENABLED: "false",
       WOPI_ENABLED: "false",
@@ -104,6 +121,10 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     homepage: "https://github.com/Euro-Office/DocumentServer",
     usedBy: ["office"],
     idleStopMinutes: 30,
+    // Measured 1.1-1.5 GiB in use; conversions of big files peak higher.
+    memLimit: "3g",
+    cpus: "2",
+    requestFilter: "onlyoffice",
     // Without it a new container answers /healthcheck but the editor never finishes loading (no AllFonts.js).
     prepare: { command: ["documentserver-generate-allfonts.sh"], label: "Generating the font cache (once per new container)", timeoutSec: 300 },
     // The assistant's live-editing plugin (docs/SIDECARS.md "Live editing plugin"): the Document Server lists every folder
@@ -140,6 +161,9 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     usedBy: ["db-course"],
     idleStopMinutes: 30,
     memLimit: "1g",
+    cpus: "1",
+    // Only this app connects (the browser never does): Postgres is published on loopback, not on KNIFE_HOST.
+    publish: "loopback",
   },
 ];
 

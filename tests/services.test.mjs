@@ -16,11 +16,11 @@ delete process.env.KNIFE_SIDECAR_APP_URL;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const { findSidecar, composeProject } = await import("../src/lib/services/definitions.ts");
-const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError } = await import("../src/lib/services/compose.ts");
+const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError, onlyofficeFilterEnv } = await import("../src/lib/services/compose.ts");
 const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
 const state = await import("../src/lib/services/state.ts");
 const urls = await import("../src/lib/services/urls.ts");
-const { parsePs } = await import("../src/lib/services/manager.ts");
+const { parsePs, bindHostFor, filterAllowIps, composeHashOf } = await import("../src/lib/services/manager.ts");
 const { signJwt, verifyJwt, JwtError, bearerToken } = await import("../src/lib/jwt-hs256.ts");
 const { buildDocument, OFFICE_FORMATS } = await import("../src/lib/office/templates.ts");
 const { readZip, writeZip } = await import("../src/lib/office/zip.ts");
@@ -32,6 +32,34 @@ const { handleCallback } = await import("../src/lib/office/callback.ts");
 const office = findSidecar("office");
 
 /* ------------------------------------------------------------------------------------------- compose */
+
+test("office hardening: request filter on with exactly the app's IP allowed, secure-link secret, memory and CPU caps", () => {
+  const svc = parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211, extraEnv: { NODE_CONFIG: "{}" } })).services.documentserver;
+  assert.equal(svc.environment.ALLOW_PRIVATE_IP_ADDRESS, "false");
+  assert.equal(svc.environment.ALLOW_META_IP_ADDRESS, "false");
+  assert.equal(svc.environment.NODE_CONFIG, "{}", "extra env lands after the definition's");
+  assert.equal(svc.mem_limit, "3g");
+  assert.equal(svc.cpus, "2");
+  assert.ok(office.secrets.some((secret) => secret.name === "SECURE_LINK_SECRET"));
+  const base = { id: "office", image: office.image, bindHost: "100.64.0.7", hostPort: 3211, idleStopMinutes: 30, installedAt: "x", updatedAt: "x" };
+  assert.deepEqual(filterAllowIps(), [], "the app's own address is not opened to user URLs");
+  process.env.KNIFE_SIDECAR_ALLOW_IPS = "172.17.0.1, junk";
+  try {
+    assert.deepEqual(filterAllowIps(), ["172.17.0.1"]);
+    assert.notEqual(composeHashOf(office, base), (delete process.env.KNIFE_SIDECAR_ALLOW_IPS, composeHashOf(office, base)), "a changed allow list recreates the container");
+  } finally {
+    delete process.env.KNIFE_SIDECAR_ALLOW_IPS;
+  }
+  const filter = JSON.parse(parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211, extraEnv: onlyofficeFilterEnv(["100.64.0.7", "100.64.0.7"]) })).services.documentserver.environment.NODE_CONFIG);
+  assert.deepEqual(filter.services.CoAuthoring["request-filtering-agent"], { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: ["100.64.0.7"] });
+});
+
+test("learn-db is published on loopback only (the app is its only client) and CPU-capped", () => {
+  const learn = findSidecar("learn-db");
+  assert.equal(bindHostFor(learn), "127.0.0.1");
+  assert.equal(bindHostFor(office), "100.64.0.7");
+  assert.equal(parse(renderCompose(learn, { bindHost: bindHostFor(learn), hostPort: 3212 })).services.postgres.cpus, "1");
+});
 
 test("compose: one service, published on the given address only, labelled, secrets via env_file", () => {
   const doc = parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211 }));

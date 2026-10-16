@@ -1,153 +1,71 @@
-// SERVER ONLY. Uses node:dns / node:http(s); never import this from client components or from pure `src/lib/cv` code.
-import { lookup as dnsLookup } from "node:dns";
-import http from "node:http";
-import https from "node:https";
-import { blockedAddressReason, blockedHostnameReason, ipLiteralOf } from "./ssrf";
+// SERVER ONLY. Uses node:dns / node:http(s) through `@/lib/net/safe-fetch`; never import this from client components or
+// from pure `src/lib/cv` code.
+import {
+  checkUrl as checkOutboundUrl,
+  denyList,
+  nodeTransport,
+  OutboundError,
+  resolveAllowed,
+  type OutboundPolicy,
+  type ResolvedAddress,
+  type Resolver,
+  type Transport,
+  type TransportResponse,
+} from "@/lib/net/safe-fetch";
 import { decodeEntities, findFirst, parseHtml, readableText, tidyText } from "./html";
 import { justjoinApiUrl, justjoinSlug, parseJustjoinOffer } from "./justjoin";
 import { nofluffApiUrl, nofluffSlug, parseNofluffOffer } from "./nofluffjobs";
 import { classifyInput, FetchError, parseJsonDocument, parsePage, parsePlainDocument, pastedPosting, PASTE_HINT, type FetchedPosting } from "./posting";
 
 export { FetchError, type FetchedPosting } from "./posting";
+export type { ResolvedAddress, TransportRequest, TransportResponse } from "@/lib/net/safe-fetch";
 
 /**
- * Fetch ONE job posting. Guarded against SSRF: http(s) only; the host is resolved first and every address must be
- * public unicast (no loopback, private, link-local/metadata, CGNAT incl. Tailscale 100.64/10, ULA, unspecified,
- * multicast, IPv4-mapped IPv6); the connection is pinned to the validated address (no second DNS lookup, so no
- * rebinding); every redirect hop is re-validated from scratch (max 5); one 15 s deadline covers DNS + all hops;
- * the body is capped at 2 MB; only html / json / plain-text content types are read.
+ * Fetch ONE job posting. Guarded against SSRF by the shared outbound policy (`src/lib/net/`): http(s) only; the host is
+ * resolved first and every address must be public unicast (no loopback, private, link-local/metadata, CGNAT incl.
+ * Tailscale 100.64/10, ULA, unspecified, multicast, IPv4-mapped IPv6, nor the server's own addresses and
+ * KNIFE_SSRF_DENY_CIDRS); the connection is pinned to the validated address (no second DNS lookup, so no rebinding);
+ * every redirect hop is re-validated from scratch (max 5); one 15 s deadline covers DNS + all hops; the body is capped
+ * at 2 MB; only html / json / plain-text content types are read. Never relaxed for admins.
  */
 
 export const MAX_REDIRECTS = 5;
 export const TIMEOUT_MS = 15_000;
 export const MAX_BYTES = 2_000_000;
-const ALLOWED_PORTS = new Set(["", "80", "443", "8080", "8443"]);
+const PAGE_POLICY: OutboundPolicy = { allowPrivate: false, ports: new Set(["", "80", "443", "8080", "8443"]), httpsOnly: false };
 const USER_AGENT = "Mozilla/5.0 (compatible; samurai-knife-cv/1.0; reads one job posting at the owner's request)";
-
-export interface ResolvedAddress {
-  address: string;
-  family: 4 | 6;
-}
-
-export interface TransportRequest {
-  url: URL;
-  /** The preferred validated address; the transport must connect to an address from `addresses` and never resolve the host again. */
-  ip: ResolvedAddress;
-  /** Every validated address of the host (IPv4 first), for fallback when one family is unreachable. */
-  addresses: ResolvedAddress[];
-  headers: Record<string, string>;
-  signal: AbortSignal;
-}
-
-export interface TransportResponse {
-  status: number;
-  /** Lower-cased header names. */
-  headers: Record<string, string | undefined>;
-  body: AsyncIterable<Uint8Array>;
-  close(): void;
-}
 
 export interface FetchDeps {
   /** All addresses of a host name (default: `dns.lookup(all)`). */
-  resolve?: (hostname: string) => Promise<ResolvedAddress[]>;
+  resolve?: Resolver;
   /** One HTTP exchange without redirect following (default: node http/https pinned to `ip`). */
-  transport?: (request: TransportRequest) => Promise<TransportResponse>;
+  transport?: Transport;
   timeoutMs?: number;
   maxBytes?: number;
 }
 
-// --- default dependencies -------------------------------------------------------------------
-
-function systemResolve(hostname: string): Promise<ResolvedAddress[]> {
-  return new Promise((resolve, reject) => {
-    dnsLookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
-      if (error) reject(error);
-      else resolve(addresses.map((a) => ({ address: a.address, family: a.family === 6 ? 6 : 4 })));
-    });
-  });
-}
-
-/**
- * One exchange pinned to a validated address. We connect to the IP literal and keep the real host name only for the
- * Host header and TLS (SNI + certificate check via `servername`). A custom `lookup` option is NOT used: on Node 26 a
- * failed connect through it surfaces as uncaught exceptions that take the whole server down.
- */
-function attempt(request: TransportRequest, target: ResolvedAddress): Promise<TransportResponse> {
-  return new Promise((resolve, reject) => {
-    const secure = request.url.protocol === "https:";
-    const client = secure ? https : http;
-    const req = client.request(
-      {
-        host: target.address,
-        port: request.url.port || (secure ? 443 : 80),
-        path: `${request.url.pathname}${request.url.search}`,
-        method: "GET",
-        headers: { ...request.headers, Host: request.url.host },
-        ...(secure ? { servername: request.url.hostname.replace(/^\[|\]$/g, "") } : {}),
-        signal: request.signal,
-        agent: false,
-      },
-      (res) => {
-        const headers: Record<string, string | undefined> = {};
-        for (const [name, value] of Object.entries(res.headers)) headers[name] = Array.isArray(value) ? value.join(", ") : value;
-        resolve({ status: res.statusCode ?? 0, headers, body: res, close: () => res.destroy() });
-      },
-    );
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-async function nodeTransport(request: TransportRequest): Promise<TransportResponse> {
-  let failure: unknown = new Error("no address to connect to");
-  for (const target of request.addresses) {
-    try {
-      return await attempt(request, target);
-    } catch (error) {
-      failure = error;
-      if (request.signal.aborted) break;
-    }
-  }
-  throw failure;
-}
-
 // --- guard ----------------------------------------------------------------------------------
 
-function refuse(url: URL, why: string): FetchError {
-  return new FetchError(`refusing to fetch ${url.protocol}//${url.host}: ${why}. ${PASTE_HINT}`);
+function asFetchError(error: unknown): unknown {
+  return error instanceof OutboundError ? new FetchError(`${error.message}. ${PASTE_HINT}`) : error;
 }
 
 /** Static checks on a URL before any DNS or network: scheme, credentials, port, local names. */
 export function checkUrl(url: URL): void {
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new FetchError(`refusing '${url.protocol}': only http(s) URLs are fetched. ${PASTE_HINT}`);
-  if (url.username || url.password) throw refuse(url, "URLs with embedded credentials are not allowed");
-  const local = blockedHostnameReason(url.hostname);
-  if (local) throw refuse(url, `${local} is not a public address`);
-  const literal = ipLiteralOf(url.hostname);
-  const reason = literal ? blockedAddressReason(literal) : null;
-  if (reason) throw refuse(url, `${literal} (${reason}) is not a public address`);
-  if (!ALLOWED_PORTS.has(url.port)) throw refuse(url, `port ${url.port} is not allowed (80, 443, 8080, 8443 only)`);
+  try {
+    checkOutboundUrl(url, PAGE_POLICY);
+  } catch (error) {
+    throw asFetchError(error);
+  }
 }
 
 /** Resolve the host and require EVERY address to be public; returns them (IPv4 first) as the only addresses the connection may use. */
-export async function resolvePublic(url: URL, resolve: NonNullable<FetchDeps["resolve"]>): Promise<ResolvedAddress[]> {
-  const literal = ipLiteralOf(url.hostname);
-  let addresses: ResolvedAddress[];
-  if (literal) {
-    addresses = [{ address: literal, family: literal.includes(":") ? 6 : 4 }];
-  } else {
-    try {
-      addresses = await resolve(url.hostname);
-    } catch (error) {
-      throw new FetchError(`could not resolve ${url.hostname}: ${error instanceof Error ? error.message : String(error)}. ${PASTE_HINT}`);
-    }
+export async function resolvePublic(url: URL, resolve?: Resolver): Promise<ResolvedAddress[]> {
+  try {
+    return await resolveAllowed(url, PAGE_POLICY, resolve, denyList());
+  } catch (error) {
+    throw asFetchError(error);
   }
-  if (!addresses.length) throw new FetchError(`${url.hostname} did not resolve to any address. ${PASTE_HINT}`);
-  for (const { address } of addresses) {
-    const reason = blockedAddressReason(address);
-    if (reason) throw refuse(url, `${url.hostname} resolves to ${address} (${reason}), which is not a public address`);
-  }
-  return [...addresses.filter((a) => a.family === 4), ...addresses.filter((a) => a.family === 6)];
 }
 
 // --- download -------------------------------------------------------------------------------
@@ -224,7 +142,7 @@ interface Downloaded {
 }
 
 async function download(start: URL, deps: FetchDeps, signal: AbortSignal): Promise<Downloaded> {
-  const resolve = deps.resolve ?? systemResolve;
+  const resolve = deps.resolve;
   const transport = deps.transport ?? nodeTransport;
   const maxBytes = deps.maxBytes ?? MAX_BYTES;
   const timedOut = (): FetchError => new FetchError(`fetching ${start.host} timed out after ${(deps.timeoutMs ?? TIMEOUT_MS) / 1000} s. ${PASTE_HINT}`);

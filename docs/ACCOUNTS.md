@@ -24,6 +24,7 @@ start with an unknown value. Before switching a live install to public, give the
 KNIFE_AUTH_MODE=public npm run accounts -- set-password <id>     # 10+ characters in public mode
 npm run accounts -- set-email <id> owner@example.com            # marked verified: you vouch for it
 npm run accounts -- set-role <id> admin                         # v1 accounts are admins already
+npm run accounts -- set-network <id> private                    # its provider may reach local models (LAN/loopback)
 ```
 
 ## Store (`$KNIFE_DATA_DIR/accounts.json`, format v2)
@@ -31,8 +32,18 @@ npm run accounts -- set-role <id> admin                         # v1 accounts ar
 One JSON file (0600, atomic temp+rename). Per account: `id` (= username, `ACCOUNT_ID_PATTERN`), `displayName`,
 `passwordHash` (scrypt, format shared with the CLI), `provider`, `createdAt`, `email` (unique, lowercased),
 `emailVerifiedAt`, `role` (`admin`|`user`), `status` (`pending`|`active`|`disabled`), `storageQuotaBytes` (1 GiB for
-registered users, `null` = unlimited; enforcement is a later phase), `lastLoginAt`, and the pending link tokens
-`verifyToken` / `resetToken` / `emailChange` (`{hash, expiresAt}`, SHA-256 of the raw token only).
+registered users, `null` = unlimited; enforcement is a later phase), `lastLoginAt`, `privateNetwork` (see "Outbound
+requests"; default false), and the pending link tokens `verifyToken` / `resetToken` / `emailChange` (`{hash, expiresAt}`,
+SHA-256 of the raw token only).
+
+- Provider secrets at rest: `provider.apiKey` and every `provider.extraHeaders` value are stored sealed,
+  `enc:v1:<iv>:<tag>:<ciphertext>` (AES-256-GCM, base64url) with the key in `$KNIFE_DATA_DIR/provider-keys.key` (64 hex
+  chars, 0600, created by the first write that seals something). The additional data is `<id>:apiKey` /
+  `<id>:header:<lower-cased name>`, so a value copied into another account or field does not open. `store.ts` opens them on
+  read (everything above the store sees plaintext) and seals on write; a file with plaintext secrets (older installs,
+  hand edits) is resealed by the first read. The CLI reads and writes the same format. A sealed file without the key file
+  is an error, never an empty key. This protects a copy of `accounts.json` alone (a backup, one misdirected file read),
+  not someone who can read the whole data directory. Back up `provider-keys.key` with `accounts.json`.
 
 - Migration: a v1 file (no `version`) is read with the v2 defaults (every account an active admin, no email) and written
   as `version: 2` by the next change. The CLI does the same, so either side may write first.
@@ -82,6 +93,8 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/account` | `POST /api/account/delete {password}` | Removes the account and all its data (below); refused for the only active admin. Mails a notice. |
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 
+| `/account/admin` (both modes) | `POST /api/admin/users/<id> {action:"network", privateNetwork}` | Admins only; `true` is refused for a non-admin (409). |
+
 Answers that never depend on whether a username or address exists: register, resend, forgot (and the email change). What
 differs goes to the mailbox of the address concerned.
 
@@ -124,6 +137,38 @@ office) and that an administrator has to run the GitHub showcase (CV studio). A 
 - Child processes (Python lane, `gh`/`git`, docker compose) get an allow-listed environment (`src/lib/child-env.ts`),
   never the server's own variables.
 
+## Outbound requests (`src/lib/net/`)
+
+The provider base URL is the user's own choice, so every provider request (Test, chat, streamed chat, OpenClaw Responses)
+and every page fetch (job posting, company website) goes through `safeFetch`: the host is resolved once, every address
+must pass the policy, the connection is pinned to a checked address (no DNS rebinding), redirects are errors for
+providers (re-checked per hop, max 5, for pages), and the time and size caps hold.
+
+| | private mode | public mode, user | public mode, admin | admin with `privateNetwork` |
+| --- | --- | --- | --- | --- |
+| Provider addresses | any | public only | public only | any (loopback, LAN, Tailscale: the owner's local models) |
+| Provider scheme | http(s) | https only | http(s) | http(s) |
+| Extra headers | server-managed names refused | + strict list (below) | server-managed names refused | same |
+| Upstream error text shown | raw | provider-shaped JSON error message only | raw | raw |
+| Outbound budget | none | yes (below) | none | none |
+| Job/company pages | public only (always) | public only | public only | public only |
+
+"Public" = not loopback, private (10/8, 172.16/12, 192.168/16), CGNAT incl. Tailscale (100.64/10), link-local/metadata,
+ULA (fc00::/7, incl. Tailscale's fd7a:115c:a1e0::/48), IPv4-mapped/compatible/NAT64/6to4/Teredo forms, multicast,
+documentation ranges, and not in the deny list: `KNIFE_SSRF_DENY_CIDRS` (this server's public IPv4, the LAN's delegated
+IPv6 prefix) plus the machine's own interface addresses and the /64 of each global IPv6 one. Names like `localhost`,
+`*.local`, `*.internal`, `*.lan`, `*.home.arpa` are refused before DNS. The base URL is checked when it is saved
+(`PUT /api/account/provider` answers 400 `{code: "address_not_allowed"}` with the reason) and again on every request.
+
+Strict extra headers (non-admins in public mode): hop-by-hop and framing (`Connection`, `Keep-Alive`, `TE`, `Trailer`,
+`Transfer-Encoding`, `Upgrade`, `Expect`, `Via`), proxy and client-address headers (`Forwarded`, `X-Forwarded-*`,
+`X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-*`, `X-Rewrite-*`, `Proxy-*`), method
+overrides, `Origin`, `Referer`, `Set-Cookie`, `Sec-*`, `X-Envoy-*`, `X-Amzn-*` and the OpenClaw gateway's `X-OpenClaw-*`.
+Always refused: `Authorization` (the stored key is the only one), `Host`, `Cookie`, `Content-Type`, `Content-Length`.
+
+Admin opt-out: `npm run accounts -- set-network <id> private|public` or `POST /api/admin/users/<id> {action: "network",
+privateNetwork}`. It only takes effect while the account is an admin.
+
 ## Mail (`src/lib/mail/`)
 
 nodemailer. `KNIFE_MAIL_TRANSPORT=smtp` (default in public mode): `KNIFE_SMTP_HOST`, `KNIFE_SMTP_PORT` (587),
@@ -142,6 +187,9 @@ Templates (`templates.ts`): English, plain text + minimal HTML, every value esca
 | resend | 10/h per address, 3/15 min per email |
 | forgot | 10/h per address, 3/15 min per email |
 | password/email change, delete (wrong password) | 10/15 min per account |
+| provider rounds (`/api/agent/chat`), public mode, non-admins | 300/10 min per account |
+| provider Test, public mode, non-admins | 20/10 min per account |
+| job posting / company page fetches, public mode, non-admins | 30/10 min per account |
 
 Refusals are 429 with `retryAfterSeconds` and `Retry-After`. Unknown addresses count the same as known ones.
 
@@ -152,12 +200,16 @@ The Host/Origin guard allows loopback, `KNIFE_HOST`, the host of `KNIFE_PUBLIC_U
 
 ## Tests
 
-`tests/accounts_store.test.mjs` (unit: migration, lock, unique emails, proxy rules, rate limits, flows, purge) and
+`tests/accounts_store.test.mjs` (unit: migration, lock, unique emails, proxy rules, rate limits, flows, purge),
+`tests/safe_net.test.mjs` (unit: key sealing and migration, CLI interop, outbound policy, SSRF matrix, header rules,
+budget, body limits), `tests/functional/safe_net_e2e.py` (public-mode SSRF refusals, admin opt-out, budget, body
+limits, sealed keys, security headers) and
 `tests/functional/accounts_public_e2e.py` (self-contained public-mode scratch server, outbox mail, every flow in the UI and
 the API, roles on sidecar ops with a state-file-only sidecar, admin disable, deletion of every data location, then a
 private-mode restart). Private mode is covered by `tests/accounts_api_e2e.py` and the widget suites.
 
-## Later phases (not done here)
+## Deployment
 
-Per-feature data isolation audit, storage quota enforcement, SSRF guards for user-supplied URLs, office file browser,
-deployment (reverse proxy, mail server).
+Production build and public-mode deployment requirements are documented in [DEPLOY.md](DEPLOY.md). Remaining release
+work is operational: configure the production environment, HTTPS/reverse proxy and mail delivery before exposing the
+service.
