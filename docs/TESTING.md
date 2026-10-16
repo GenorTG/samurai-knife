@@ -13,6 +13,7 @@ Pass an existing scratch URL as the first argument to reuse a server. The defaul
 | Suite | Server | Run |
 | --- | --- | --- |
 | `tests/accounts_api_e2e.py` | `KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3231 npm run dev` | `KNIFE_DATA_DIR=<same> python3 tests/accounts_api_e2e.py http://127.0.0.1:3231 http://127.0.0.1:3299` |
+| `tests/functional/accounts_public_e2e.py` | none (self-contained: scratch server with `KNIFE_AUTH_MODE=public`, outbox mail, trusted loopback proxy) | `python3 tests/functional/accounts_public_e2e.py [--shots DIR]` — public-mode accounts (docs/ACCOUNTS.md): register in the UI -> no login before verifying -> verify link from the `.eml` -> login by email -> login rotation -> change password revokes the other session -> forgot/reset (old link dead, every session ends) -> resend -> identical answers for unknown/taken addresses and names (collision mail to the owner) -> login/forgot/resend/register rate limits -> non-admin 403 on every sidecar op and "An administrator has to start …" on the course and sidecars pages (state-file-only sidecar, no container) -> admin disables a user in the UI and its sessions die -> account deletion removes every data location and nothing else; then a private-mode restart (public routes/pages 404, default account still implicit) |
 | `tests/agent_widget_e2e.py` | `KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3232 npm run dev` | `python3 tests/agent_widget_e2e.py http://127.0.0.1:3232 http://127.0.0.1:3299` |
 | `tests/agent_{trust_modes,interaction,chain}_e2e.py`, `tests/shell_agent_e2e.py` | `KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=<own> npm run dev` | `python3 tests/<suite>.py <app-url> <mock-url>` — trust modes (incl. Risky default, bypasses), wait/approval cards, tool-output chaining (QR → compressor with from_file), shell ↔ assistant (incl. the 390px compact chip + step strip, Stop, approval state) |
 | `tests/agent_chain_real_e2e.py` | scratch server, own data dir | `python3 tests/agent_chain_real_e2e.py <app-url>` — real model: chaining + Risky bypass probes (key read by `tests/real_provider.py`) |
@@ -66,6 +67,7 @@ $R tests/csv_tools.test.mjs      # CSV convert keys (duplicate/extra/blank heade
 $R tests/yaml_json.test.mjs      # YAML/JSON: big integers stay exact (+ warning), .inf/.nan warn, parity with JSON.parse
 $R tests/sql_instant_format.test.mjs   # instant formatter: formatted SQL returns the same rows as the original in SQLite (node:sqlite), -- comments never swallow code
 $R tests/cv_store.test.mjs       # damaged cv/<id>.json is a CvStoreError, undo snapshots never share a name, ids with path characters refused
+$R tests/accounts_store.test.mjs  # accounts v1->v2 migration, lock, unique emails, trusted-proxy rules, rate limits, public flows, data purge
 $R tests/nosql.test.mjs tests/work-queue.test.mjs tests/workers.test.mjs tests/sql_runtime.test.mjs tests/wait_condition.test.mjs tests/tool_groups.test.mjs tests/agent_runtime_store.test.mjs tests/cv_*.test.mjs tests/random-uuid.test.mjs tests/sql_engine.test.mjs tests/accounts_cli.test.mjs
 ```
 

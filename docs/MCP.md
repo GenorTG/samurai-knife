@@ -13,7 +13,9 @@ Both can be used at the same time; edits are atomic per call and every CV save i
 ## Connecting
 - URL: `http://<KNIFE_HOST>:<KNIFE_PORT>/api/mcp`, transport `streamable-http`.
 - Auth: the Tailscale bind is the boundary (no token); the route checks Host (and Origin when a browser sends one).
-  Account-scoped tools act on the **default account**.
+  Account-scoped tools act on the **default account**. In public mode (`KNIFE_AUTH_MODE=public`, docs/ACCOUNTS.md) there
+  is no default account: the request needs a session cookie and the tools act on that account; without one the answer is
+  401 (per-account MCP credentials are a later phase).
 - OpenClaw: `openclaw mcp add samurai-knife --url http://<KNIFE_HOST>:3210/api/mcp --transport streamable-http`, then
   `openclaw mcp doctor samurai-knife --probe`.
 
