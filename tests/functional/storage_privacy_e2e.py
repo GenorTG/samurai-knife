@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Per-account storage privacy end to end (KNIFE_AUTH_MODE=public), two users and an admin on one scratch server:
 
-- tool drafts follow the account, not the browser: alice types into a tool, the draft is saved to her account, restored
-  after a reload and in a fresh browser context (another machine) in Chromium and Firefox; bob opening the same tool sees
-  none of it, and GET /api/workspace never answers another account's drafts;
+- tool drafts follow the account, not the browser: alice types into a tool, the draft is saved to her account; a revisit
+  starts from the tool's defaults and offers "Restore saved draft" (after a reload and in a fresh browser context = another
+  machine, Chromium and Firefox); Discard forgets it; bob opening the same tool sees no offer and none of her text, and
+  /api/workspace never reads or deletes another account's drafts;
 - server-backed tools are not wrapped (no draft line on the CV studio), signed-out pages work without drafts;
 - at rest: after real flows (CV offer + photo, office document, course progress, drafts) every per-account file under the
   data dir is sealed (src/lib/storage/sealed.ts magic header) and no file anywhere in the data dir carries the plaintext;
@@ -79,7 +80,12 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
     expect(page_a.get_by_text("Draft saved to your account")).to_be_visible(timeout=10_000)
     page_a.reload(wait_until="networkidle")
     textarea(page_a).wait_for(timeout=15_000)
-    check(f"[{engine}] alice's draft is restored after a reload", textarea(page_a).input_value() == text, textarea(page_a).input_value()[:120])
+    offer = page_a.get_by_role("group", name="Saved draft")
+    expect(offer).to_be_visible(timeout=10_000)
+    check(f"[{engine}] a revisit starts from the tool's defaults and offers the saved draft",
+          textarea(page_a).input_value() != text and offer.get_by_role("button", name="Restore saved draft").count() == 1, textarea(page_a).input_value()[:80])
+    offer.get_by_role("button", name="Restore saved draft").click()
+    check(f"[{engine}] Restore saved draft brings alice's text back after a reload", textarea(page_a).input_value() == text, textarea(page_a).input_value()[:120])
     words = page_a.locator("main table tbody tr").filter(has_text="words")
     check(f"[{engine}] the restored draft drives the tool (its word table counts it)",
           words.count() == 1 and words.first.locator("td").nth(1).inner_text().strip() == "2", page_a.locator("main table").inner_text()[:200])
@@ -89,16 +95,32 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
     ui_login(page_a2, "alice", "alice password 1")
     page_a2.wait_for_url(base + "/", timeout=15_000)
     open_tool(page_a2)
+    page_a2.get_by_role("group", name="Saved draft").get_by_role("button", name="Restore saved draft").click(timeout=10_000)
     expect(textarea(page_a2)).to_have_value(text, timeout=10_000)
     check(f"[{engine}] alice's draft follows her to a fresh browser (another machine)", textarea(page_a2).input_value() == text)
+    page_a2.get_by_role("button", name="Discard").count()  # offer gone after restoring
+    check(f"[{engine}] the offer closes after restoring", page_a2.get_by_role("group", name="Saved draft").count() == 0)
+    # Discard: the draft is forgotten on the server, the next visit offers nothing.
+    page_a2.reload(wait_until="networkidle")
+    textarea(page_a2).wait_for(timeout=15_000)
+    page_a2.get_by_role("group", name="Saved draft").get_by_role("button", name="Discard").click(timeout=10_000)
+    page_a2.wait_for_timeout(800)
+    page_a2.reload(wait_until="networkidle")
+    textarea(page_a2).wait_for(timeout=15_000)
+    page_a2.wait_for_timeout(1_500)
+    check(f"[{engine}] after Discard the next visit offers nothing", page_a2.get_by_role("group", name="Saved draft").count() == 0)
+    # Typing instead of restoring makes the new text the draft.
+    textarea(page_a2).fill(text)
+    expect(page_a2.get_by_text("Draft saved to your account")).to_be_visible(timeout=10_000)
     ctx_a2.close()
 
     ctx_b, page_b = new_context(browser, base, ip_b)
     ui_login(page_b, "bob", "bob password 1")
     page_b.wait_for_url(base + "/", timeout=15_000)
     open_tool(page_b)
-    page_b.wait_for_timeout(800)
-    check(f"[{engine}] bob opening the same tool sees none of alice's draft", MARKER not in textarea(page_b).input_value(), textarea(page_b).input_value()[:120])
+    page_b.wait_for_timeout(1_500)
+    check(f"[{engine}] bob opening the same tool sees none of alice's draft and gets no offer",
+          MARKER not in textarea(page_b).input_value() and page_b.get_by_role("group", name="Saved draft").count() == 0, textarea(page_b).input_value()[:120])
     go(page_b, "/tools/cv-studio")
     page_b.wait_for_function("!/Loading/.test(document.querySelector('main [role=status]')?.textContent ?? '')", timeout=30_000)
     check(f"[{engine}] CV studio is not wrapped by drafts (server data wins)", page_b.locator("[data-workspace-tool]").count() == 0)
@@ -145,6 +167,10 @@ def run(server: ScratchServer, key_file: Path) -> None:
     check("GET ?tool= for a tool without a draft -> {}", status == 200 and body == {}, (status, body))
     status, body, _ = api.call("GET", "/api/workspace?tool=..%2Fx", cookie=alice)
     check("GET ?tool= with a malformed id -> 400", status == 400, status)
+    status, body, _ = api.call("DELETE", "/api/workspace?tool=json", cookie=bob)
+    check("bob's DELETE of a tool draft touches only his own drafts", status == 200 and body.get("removed") is False, (status, body))
+    status, body, _ = api.call("GET", "/api/workspace?tool=json", cookie=alice)
+    check("alice's draft survives bob's DELETE", status == 200 and "json" in body, (status, body))
     status, body, _ = api.call("GET", "/api/workspace", ip="203.0.113.77")
     check("drafts without a session -> 401", status == 401, status)
     status, body, _ = api.call("PATCH", "/api/workspace", {"tool": "../x", "fields": {}}, cookie=alice)

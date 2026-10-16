@@ -41,3 +41,11 @@ export function saveWorkspaceTool(accountId: string, tool: string, fields: Recor
   const previous = readWorkspaceState(accountId);
   saveWorkspaceState(accountId, { ...previous, [tool]: fields });
 }
+
+/** False when the tool had no draft. */
+export function deleteWorkspaceTool(accountId: string, tool: string): boolean {
+  const previous = readWorkspaceState(accountId);
+  if (!(tool in previous)) return false;
+  saveWorkspaceState(accountId, Object.fromEntries(Object.entries(previous).filter(([name]) => name !== tool)));
+  return true;
+}

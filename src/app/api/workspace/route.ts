@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
-import { readWorkspaceState, saveWorkspaceTool, saveWorkspaceState } from "@/lib/workspace-state/store";
+import { deleteWorkspaceTool, readWorkspaceState, saveWorkspaceTool, saveWorkspaceState } from "@/lib/workspace-state/store";
 import { QuotaExceededError } from "@/lib/storage/quota";
 
 export const runtime = "nodejs";
@@ -63,6 +63,19 @@ export async function PATCH(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof QuotaExceededError) return jsonError(error.message, 507, error.details());
     if (error instanceof Error && error.message.includes("exceeds 2 MiB")) return jsonError("workspace_too_large", 413);
+    return jsonError("workspace_unavailable", 500);
+  }
+}
+
+/** DELETE /api/workspace?tool=<id> -> forgets that tool's draft ("Discard"). */
+export async function DELETE(request: Request): Promise<Response> {
+  const auth = authenticate(request, true);
+  if ("response" in auth) return auth.response;
+  const tool = new URL(request.url).searchParams.get("tool");
+  if (!tool || !/^[a-z0-9-]{1,80}$/.test(tool)) return jsonError("invalid_workspace_state", 400);
+  try {
+    return json({ ok: true, removed: deleteWorkspaceTool(auth.account.id, tool) });
+  } catch {
     return jsonError("workspace_unavailable", 500);
   }
 }

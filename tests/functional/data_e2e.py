@@ -56,6 +56,13 @@ def go(slug, tab=None, width=1280):
     url = f"{BASE}/tools/{slug}" + (f"?tab={tab}" if tab else "")
     page.goto(url, wait_until="domcontentloaded")
     page.wait_for_selector("textarea, input, button", timeout=20000)
+    # The server-rendered controls exist before React hydrates them; text filled in before that is reset by the first
+    # render (controlled inputs). Wait until a control in <main> carries React props.
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('main textarea, main input, main select, main button'))"
+        ".some(el => Object.keys(el).some(k => k.startsWith('__reactProps$')))",
+        timeout=30000,
+    )
     page.wait_for_timeout(250)
 
 
