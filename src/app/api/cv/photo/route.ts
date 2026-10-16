@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
+import { quotaErrorResponse } from "@/lib/storage/http";
 import { CvPhotoError, decodeJpegDataUrl, deletePhoto, MAX_PHOTO_BYTES, photoMeta, readPhoto, savePhoto } from "@/lib/cv/photo-store";
 
 export const runtime = "nodejs";
@@ -9,6 +10,8 @@ const bodySchema = z.object({ dataUrl: z.string().max(Math.ceil((MAX_PHOTO_BYTES
 
 function photoError(error: unknown): Response {
   if (error instanceof CvPhotoError) return jsonError(error.message, 422);
+  const full = quotaErrorResponse(error);
+  if (full) return full;
   throw error;
 }
 

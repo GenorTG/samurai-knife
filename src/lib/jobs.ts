@@ -81,6 +81,13 @@ class JobStore {
     return sum;
   }
 
+  /** Scratch bytes of one account's live jobs (counted by its storage quota, src/lib/storage/quota.ts). */
+  ownerBytes(owner: string): number {
+    let sum = 0;
+    for (const job of this.jobs.values()) if (job.owner === owner) sum += job.inputBytes + job.resultBytes;
+    return sum;
+  }
+
   add<T>(init: {
     owner: string;
     kind: string;

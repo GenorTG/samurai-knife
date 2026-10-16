@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { EMPTY_BUCKET, addUsage, type Usage, type UsageBucket, type UsageSummary } from "@/lib/usage";
-import { dataDir, ensureDataDir, writePrivateFile } from "./store";
+import { writeAccountFile } from "@/lib/storage/quota";
+import { accountScope, isValidAccountId, parentDir } from "@/lib/storage/scope";
+import { dataDir } from "./store";
 
 /**
  * Per-account token ledger: `$KNIFE_DATA_DIR/usage/<account id>.json`, daily buckets plus per-model totals, 90 days kept.
@@ -16,13 +17,11 @@ interface LedgerFile {
 }
 
 const KEEP_DAYS = 90;
-const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
-
 function ledgerPath(accountId: string): string | null {
-  if (!SAFE_ID.test(accountId)) return null;
-  const dir = join(ensureDataDir(), "usage");
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, `${accountId}.json`);
+  if (!isValidAccountId(accountId)) return null;
+  const file = accountScope(accountId).usageFile;
+  parentDir(file);
+  return file;
 }
 
 function today(now = new Date()): string {
@@ -65,7 +64,7 @@ export function recordRound(accountId: string, round: RoundRecord, now = new Dat
     file.models[model] = merge(file.models[model], round.usage, round.ms, round.failed);
     const keep = Object.keys(file.days).sort().slice(-KEEP_DAYS);
     file.days = Object.fromEntries(keep.map((d) => [d, file.days[d]]));
-    writePrivateFile(path, JSON.stringify(file));
+    writeAccountFile(accountId, path, JSON.stringify(file), { enforce: false });
   } catch {
     /* telemetry must never break a chat round */
   }

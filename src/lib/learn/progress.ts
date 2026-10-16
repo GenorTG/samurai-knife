@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { ACCOUNT_ID_PATTERN, ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
+import { existsSync, readFileSync } from "node:fs";
+import { writeAccountFile } from "@/lib/storage/quota";
+import { accountScope, isValidAccountId, parentDir } from "@/lib/storage/scope";
 
 /**
  * Course progress per account: `$KNIFE_DATA_DIR/learn/<account>.json` (file 600, dir 700), never in the repo.
@@ -41,10 +41,10 @@ type ProgressFile = z.infer<typeof fileSchema>;
 export class ProgressError extends Error {}
 
 function progressPath(accountId: string): string {
-  if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new ProgressError(`invalid account id ${accountId}`);
-  const dir = join(ensureDataDir(), "learn");
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, `${accountId}.json`);
+  if (!isValidAccountId(accountId)) throw new ProgressError(`invalid account id ${accountId}`);
+  const file = accountScope(accountId).learnFile;
+  parentDir(file);
+  return file;
 }
 
 function readFile(accountId: string): ProgressFile {
@@ -58,7 +58,8 @@ function readFile(accountId: string): ProgressFile {
 }
 
 function writeFile(accountId: string, data: ProgressFile): void {
-  writePrivateFile(progressPath(accountId), `${JSON.stringify(data, null, 2)}\n`);
+  // Bookkeeping (small, bounded per lesson): counted by the quota but never refused.
+  writeAccountFile(accountId, progressPath(accountId), `${JSON.stringify(data, null, 2)}\n`, { enforce: false });
 }
 
 export function readProgress(accountId: string, courseId: string): CourseProgress {

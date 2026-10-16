@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import * as z from "zod/v4";
-import { dataDir, writePrivateFile } from "@/lib/accounts/store";
+import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
+import { accountScope, ensurePrivateDir } from "@/lib/storage/scope";
 import type { TranscriptMessage } from "./types";
 
 const toolCallSchema = z.object({
@@ -66,10 +66,28 @@ export function openClawUser(accountId: string, providerId: string, sessionId: s
   return `samurai-knife:${accountId}:${providerId}:${sessionId}`;
 }
 
+/**
+ * One file per provider (baseUrl + model) under `conversations/<account>/` (path from `accountScope`). Retention: a new
+ * provider file evicts all but the KEEP_CONVERSATIONS most recently written ones, so switching models cannot grow the
+ * directory without bound.
+ */
+export const KEEP_CONVERSATIONS = 5;
+const PROVIDER_ID = /^[a-f0-9]{32}$/;
+
 function conversationPath(accountId: string, providerId: string): string {
-  const dir = join(dataDir(), "conversations", accountId);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, `${providerId}.json`);
+  if (!PROVIDER_ID.test(providerId)) throw new Error("invalid conversation id");
+  const scope = accountScope(accountId);
+  ensurePrivateDir(scope.conversations);
+  return scope.join("conversations", `${providerId}.json`);
+}
+
+function pruneConversations(accountId: string, keep: string): void {
+  const dir = accountScope(accountId).conversations;
+  const files = readdirSync(dir)
+    .filter((name) => name.endsWith(".json") && name !== `${keep}.json`)
+    .map((name) => ({ name, at: statSync(accountScope(accountId).join("conversations", name)).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+  for (const old of files.slice(KEEP_CONVERSATIONS - 1)) removeAccountPath(accountId, accountScope(accountId).join("conversations", old.name));
 }
 
 export function readConversation(accountId: string, providerId: string): DurableConversation {
@@ -77,6 +95,7 @@ export function readConversation(accountId: string, providerId: string): Durable
   if (!existsSync(path)) {
     const initial = emptyConversation();
     writeConversation(accountId, providerId, initial);
+    pruneConversations(accountId, providerId);
     return initial;
   }
   let raw: unknown;
@@ -90,19 +109,23 @@ export function readConversation(accountId: string, providerId: string): Durable
   return parsed.data as DurableConversation;
 }
 
-export function writeConversation(accountId: string, providerId: string, value: DurableConversation): void {
+/**
+ * `enforce` = the write carries the user's transcript (a PUT) and is refused with QuotaExceededError when it would not
+ * fit; the server's own continuation bookkeeping (a few ids) is never refused mid-round.
+ */
+export function writeConversation(accountId: string, providerId: string, value: DurableConversation, options: { enforce?: boolean } = {}): void {
   const parsed = conversationSchema.parse(value as unknown);
-  writePrivateFile(conversationPath(accountId, providerId), `${JSON.stringify(parsed)}\n`);
+  writeAccountFile(accountId, conversationPath(accountId, providerId), `${JSON.stringify(parsed)}\n`, { enforce: options.enforce ?? false });
 }
 
 /**
  * Read-modify-write. Synchronous on purpose: Node runs it without interleaving, so a transcript PUT
  * and a continuation commit from a concurrent chat round can never overwrite each other's fields.
  */
-function updateConversation<T>(accountId: string, providerId: string, mutate: (value: DurableConversation) => T): T {
+function updateConversation<T>(accountId: string, providerId: string, mutate: (value: DurableConversation) => T, options: { enforce?: boolean } = {}): T {
   const value = readConversation(accountId, providerId);
   const result = mutate(value);
-  writeConversation(accountId, providerId, value);
+  writeConversation(accountId, providerId, value, options);
   return result;
 }
 
@@ -115,7 +138,7 @@ export function saveConversationContent(accountId: string, providerId: string, c
   updateConversation(accountId, providerId, (value) => {
     value.messages = content.messages;
     value.actions = content.actions;
-  });
+  }, { enforce: true });
 }
 
 /* ------------------------------------------------------------------ OpenClaw continuation state machine
