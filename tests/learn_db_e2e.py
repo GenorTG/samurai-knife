@@ -161,7 +161,7 @@ def main() -> int:
     shots = Path(args.shots)
     shots.mkdir(parents=True, exist_ok=True)
 
-    prefix = f"sk-e2e-{os.getpid()}"
+    prefix = os.environ.get("KNIFE_E2E_SIDECAR_PREFIX") or f"sk-e2e-{os.getpid()}"
     project = f"{prefix}-{SERVICE}"
     lessons = lessons_from_source()
     server = ScratchServer(host=args.host)
@@ -218,7 +218,7 @@ def main() -> int:
             names = docker_lines("ps", "-a", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Names}}")
             check("exactly one container in the e2e compose project", len(names) == 1, str(names))
             ports = subprocess.run(["docker", "port", names[0]], capture_output=True, text=True).stdout.strip() if names else ""
-            check("port bound to the scratch host only, not 0.0.0.0", args.host in ports and "0.0.0.0" not in ports, ports)
+            check("port bound to loopback only (the app is the only client), not 0.0.0.0 or the scratch host", "127.0.0.1:" in ports and "0.0.0.0" not in ports and args.host not in ports, ports)
             state_dir = Path(server.data_dir) / "services" / SERVICE
             secrets_mode = oct((state_dir / "secrets.env").stat().st_mode & 0o777)
             check("secrets.env is private (600) and not in compose.yaml", secrets_mode == "0o600" and "PASSWORD=" not in (state_dir / "compose.yaml").read_text(), secrets_mode)
