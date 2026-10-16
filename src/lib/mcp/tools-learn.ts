@@ -4,6 +4,7 @@ import { findCourse, findLesson } from "@/lib/learn/courses";
 import { readProgress } from "@/lib/learn/progress";
 import { readyConnection } from "@/lib/learn/sql/api";
 import { LearnDbError, runLearnerSql } from "@/lib/learn/sql/db";
+import { withLearnerSlot } from "@/lib/learn/sql/slots";
 import { SQL_COURSE } from "@/lib/learn/sql/lessons";
 
 /**
@@ -82,12 +83,14 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
     description:
       "Run SQL in the Database course sandbox (PostgreSQL 16 + PostGIS, schemas shop and geo, low-privilege role, everything rolled back, 5 s limit, first 50 rows). For trying a hint or explaining a result; it does not count as the learner's attempt.",
     schema: z.object({ sql: z.string().min(1).max(20_000) }).strict(),
-    async run({ sql }) {
+    async run({ sql }, ctx) {
       try {
-        const run = await runLearnerSql(await readyConnection(), sql, { rowCap: 50 });
+        const info = await readyConnection();
+        const run = await withLearnerSlot(ctx?.accountId ?? "", () => runLearnerSql(info, sql, { rowCap: 50 }));
         return { error: run.error, notices: run.notices, durationMs: run.durationMs, results: run.results };
       } catch (error) {
-        if (error instanceof LearnDbError) throw new Error(`${error.message} (open /tools/db-course to start it)`);
+        if (error instanceof LearnDbError && error.status === 409) throw new Error(`${error.message} (open /tools/db-course to start it)`);
+        if (error instanceof LearnDbError) throw new Error(error.message);
         throw error;
       }
     },
