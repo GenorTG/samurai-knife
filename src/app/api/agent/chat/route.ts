@@ -25,7 +25,8 @@ export const maxDuration = 180;
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_MESSAGES = 200;
-const MAX_TOOLS = 64;
+// Every knife_* tool (69 with the office folder/version tools) plus the page tools must fit; the body cap bounds the size.
+const MAX_TOOLS = 128;
 
 const contentPart = z.record(z.string(), z.unknown());
 const content = z.union([z.string(), z.array(contentPart).max(64)]);
