@@ -1,5 +1,6 @@
 import { jsonError } from "@/lib/accounts/http";
 import { JwtError } from "@/lib/jwt-hs256";
+import { quotaErrorResponse } from "@/lib/storage/http";
 import { OfficeUnavailableError } from "./editor";
 import { DocError } from "./store";
 import { ZipError } from "./zip";
@@ -7,6 +8,8 @@ import { ZipError } from "./zip";
 /** Shared error mapping for the browser-facing office routes. */
 export function officeError(error: unknown): Response {
   if (error instanceof DocError) return jsonError(error.message, error.status);
+  const full = quotaErrorResponse(error);
+  if (full) return full;
   if (error instanceof OfficeUnavailableError) return jsonError(error.message, 409, { code: "sidecar_not_installed" });
   if (error instanceof ZipError) return jsonError(`not a readable office file: ${error.message}`, 422);
   if (error instanceof JwtError) return jsonError(error.message, 403);

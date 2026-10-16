@@ -3,7 +3,8 @@ import { markSession } from "@/lib/services/manager";
 import { readState } from "@/lib/services/state";
 import { internalUrl, publicUrl } from "@/lib/services/urls";
 import { OFFICE_SERVICE } from "./editor";
-import { createDoc, getDoc, isOfficeFormat, MAX_DOC_BYTES, rotateKey, saveVersion, type DocMeta } from "./store";
+import { QuotaExceededError } from "@/lib/storage/quota";
+import { createDoc, getDoc, isOfficeFormat, MAX_DOC_BYTES, noteSaveError, rotateKey, saveVersion, type DocMeta } from "./store";
 
 /**
  * Document Server save callback ("track"), statuses as documented by the DocsAPI:
@@ -84,14 +85,18 @@ export async function handleCallback(accountId: string, docId: string, body: Cal
     const format = isOfficeFormat(reported) ? reported : meta.format;
     if (key && key !== meta.key) {
       // The document changed under the session (replaced meanwhile): keep both instead of overwriting either.
-      const copy = createDoc(accountId, { name: `${meta.name.replace(/\.[A-Za-z0-9]+$/, "")} (edited copy)`, format, bytes, source: "upload" });
+      const copy = createDoc(accountId, { name: `${meta.name.replace(/\.[A-Za-z0-9]+$/, "")} (edited copy)`, format, bytes, source: "upload", versionSource: "editor", folderId: meta.folderId });
       if (status === 2) markSession(OFFICE_SERVICE, key, false);
       return { error: 0, action: "conflict-copy", doc: copy };
     }
-    const doc = saveVersion(accountId, docId, bytes, { rotateKey: status === 2, savedBy: savedBy(body.users), format });
+    // Every editor save is a version; over the quota, this document's oldest versions make room first (store.ts).
+    const doc = saveVersion(accountId, docId, bytes, { rotateKey: status === 2, savedBy: savedBy(body.users), format, source: "editor", makeRoom: true });
     if (status === 2) markSession(OFFICE_SERVICE, key, false);
     return { error: 0, action: status === 2 ? "saved" : "force-saved", doc };
   } catch (error) {
-    return { error: 1, action: "failed", message: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    // Answering an error makes the editor warn the user and keep the changes in its session; the page shows why.
+    if (error instanceof QuotaExceededError) noteSaveError(accountId, docId, message);
+    return { error: 1, action: "failed", message };
   }
 }

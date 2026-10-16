@@ -172,6 +172,17 @@ export function assertCanStore(accountId: string, addBytes: number): void {
   if (usedBytes + addBytes > quota) throw new QuotaExceededError(usedBytes, quota, addBytes);
 }
 
+/** assertCanStore as a boolean. */
+export function canStore(accountId: string, addBytes: number): boolean {
+  try {
+    assertCanStore(accountId, addBytes);
+    return true;
+  } catch (error) {
+    if (error instanceof QuotaExceededError) return false;
+    throw error;
+  }
+}
+
 function sizeOf(path: string): number {
   try {
     return statSync(path).size;
