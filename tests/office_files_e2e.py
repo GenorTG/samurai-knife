@@ -56,6 +56,8 @@ class Api:
     def __init__(self, base: str, cookie: str | None = None) -> None:
         self.base = base
         self.cookie = cookie
+        self.mcp_key: str | None = None
+        self.username: str | None = None
 
     def call(self, method: str, path: str, body: object | None = None, headers: dict[str, str] | None = None, timeout: float = 120) -> tuple[int, object]:
         data = None if body is None else json.dumps(body).encode()
@@ -97,8 +99,10 @@ class Api:
         raise TimeoutError(f"op {op['kind']} still running")
 
     def mcp(self, name: str, args: dict) -> dict:
-        _, body = self.call("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}},
-                            headers={"Accept": "application/json, text/event-stream"})
+        headers = {"Accept": "application/json, text/event-stream"}
+        if self.mcp_key:
+            headers.update({"Authorization": f"Bearer {self.mcp_key}", "X-Knife-User": self.username or ""})
+        _, body = self.call("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}}, headers=headers)
         return body if isinstance(body, dict) else {}
 
 
@@ -525,6 +529,12 @@ def main() -> int:
         bob_cookie = anon.login("bob", PW["bob"])
         carol_cookie = anon.login("carol", "carol password 3")
         alice, bob, carol = Api(url, alice_cookie), Api(url, bob_cookie), Api(url, carol_cookie)
+        for username, account in (("alice", alice), ("bob", bob)):
+            account.username = username
+            status, body = account.call("POST", "/api/account/mcp-keys", {"action": "create", "name": "office e2e"})
+            check(f"{username} gets an MCP key", status == 201 and isinstance(body, dict) and bool(body.get("key")), body)
+            if status == 201 and isinstance(body, dict):
+                account.mcp_key = body["key"]
 
         isolation(url, alice, bob)
         with sync_playwright() as pw:
