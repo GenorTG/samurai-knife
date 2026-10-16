@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-// Manage Samurai Knife accounts (no self-registration exists; this is the only way to add one).
-// Shares accounts.json with src/lib/accounts/store.ts. Self-contained, no dependencies.
+// Manage Samurai Knife accounts. Private mode: the only way to add one. Public mode (KNIFE_AUTH_MODE=public): people
+// register themselves; this sets up the owner (password + email + role admin) and fixes accounts by hand.
+// Shares accounts.json (format v2, lock file accounts.json.lock) with src/lib/accounts/store.ts. No dependencies.
 //
 //   npm run accounts -- list
-//   npm run accounts -- add <id> --name "Display Name" [--password-prompt]
+//   npm run accounts -- add <id> --name "Display Name" [--password-prompt] [--email a@b.c] [--role admin|user]
 //   npm run accounts -- set-password <id>
+//   npm run accounts -- set-email <id> <address>        (marked as verified: you vouch for it)
+//   npm run accounts -- set-role <id> admin|user
+//   npm run accounts -- set-status <id> active|disabled
 //   npm run accounts -- remove <id>
 //   npm run accounts -- set-default <id>
 //   npm run accounts -- set-provider <id> --base-url URL --model NAME
@@ -16,7 +20,7 @@
 // Preset openclaw-gateway: the local OpenClaw gateway's OpenAI-compatible endpoint. Its `model` is an AGENT target and
 // every request is a full agent run, so the main agent (exec/elevated tools) is refused unless --allow-main.
 import { randomBytes, scryptSync } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -26,39 +30,95 @@ const MAIN_AGENT_TARGETS = new Set(["openclaw", "openclaw/default", "openclaw/ma
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const dir = process.env.KNIFE_DATA_DIR?.trim() || join(homedir(), ".local", "share", "samurai-knife");
 const file = join(dir, "accounts.json");
+const lockFile = `${file}.lock`;
+const STORE_VERSION = 2;
+const EMAIL = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 
 function fail(message) {
   console.error(`error: ${message}`);
   process.exit(1);
 }
 
+// Same lock as the server (src/lib/accounts/store.ts): O_EXCL file, stale after 10 s. The CLI prompts (passwords, keys)
+// between reading and writing, so it never holds the lock that long: the write is a compare-and-swap instead. Under the
+// lock it re-reads the file and refuses to write when the server changed it since this command read it.
+let loadedText = null;
+function lock() {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + 5000;
+  const sleeper = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      closeSync(openSync(lockFile, "wx", 0o600));
+      holding = true;
+      return;
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      try { if (Date.now() - statSync(lockFile).mtimeMs > 10_000) rmSync(lockFile, { force: true }); } catch { /* gone */ }
+      if (Date.now() > deadline) fail(`${lockFile} is held by another process (the server mid-write?); try again`);
+      Atomics.wait(sleeper, 0, 0, 20);
+    }
+  }
+}
+let holding = false;
+function unlock() {
+  if (!holding) return;
+  holding = false;
+  rmSync(lockFile, { force: true });
+}
+// fail() exits mid-write: release only a lock this process took.
+process.on("exit", unlock);
+
+// v1 accounts (no version) get the v2 fields: an account made by the owner is an active admin.
+function withV2Fields(account) {
+  return {
+    email: null, emailVerifiedAt: null, role: "admin", status: "active", storageQuotaBytes: null, lastLoginAt: null,
+    ...account,
+  };
+}
+
 function writeStore(store) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { chmodSync(dir, 0o700); } catch { /* not ours */ }
-  const temp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  chmodSync(temp, 0o600);
-  renameSync(temp, file);
+  const emails = store.accounts.map((a) => a.email).filter(Boolean);
+  if (new Set(emails).size !== emails.length) fail("two accounts would share an email address");
+  const text = `${JSON.stringify({ ...store, version: STORE_VERSION, accounts: store.accounts.map(withV2Fields) }, null, 2)}\n`;
+  lock();
+  try {
+    const current = existsSync(file) ? readFileSync(file, "utf8") : null;
+    if (current !== loadedText) fail(`${file} changed while this command ran (the server wrote it); run the command again`);
+    const temp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+    writeFileSync(temp, text, { mode: 0o600 });
+    chmodSync(temp, 0o600);
+    renameSync(temp, file);
+    loadedText = text;
+  } finally {
+    unlock();
+  }
 }
 
 function readStore() {
   if (!existsSync(file)) {
     const initial = {
+      version: STORE_VERSION,
       defaultAccountId: "genor",
-      accounts: [{ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString() }],
+      accounts: [withV2Fields({ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString() })],
     };
     writeStore(initial);
     return initial;
   }
   let store;
   try {
-    store = JSON.parse(readFileSync(file, "utf8"));
+    loadedText = readFileSync(file, "utf8");
+    store = JSON.parse(loadedText);
   } catch (error) {
     fail(`${file} is not valid JSON: ${error.message}`);
   }
-  if (!store || !Array.isArray(store.accounts) || !store.accounts.some((a) => a.id === store.defaultAccountId)) {
+  if (!store || !Array.isArray(store.accounts) || (store.accounts.length > 0 && !store.accounts.some((a) => a.id === store.defaultAccountId))) {
     fail(`${file} has an unexpected shape`);
   }
+  if (typeof store.version === "number" && store.version > STORE_VERSION) fail(`${file} is format v${store.version}; this CLI knows v${STORE_VERSION}`);
+  store.accounts = store.accounts.map(withV2Fields);
   return store;
 }
 
@@ -69,7 +129,7 @@ function hashPassword(password) {
   return `scrypt$${N}$${r}$${p}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 
-const KNOWN_FLAGS = ["name", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main"];
+const KNOWN_FLAGS = ["name", "email", "role", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main"];
 const BOOLEAN_FLAGS = ["password-prompt", "key-stdin", "key-prompt", "clear-headers", "allow-main"];
 
 function parseArgs(argv) {
@@ -130,12 +190,21 @@ async function promptHidden(label) {
 
 async function newPassword() {
   const first = await promptHidden("New password: ");
-  if (first.length < 8) fail("password must be at least 8 characters");
+  // Public mode needs 10 (the same rule as registration); private mode keeps the old floor of 8.
+  const min = (process.env.KNIFE_AUTH_MODE ?? "").trim().toLowerCase() === "public" ? 10 : 8;
+  if (first.length < min) fail(`password must be at least ${min} characters`);
   if (process.stdin.isTTY) {
     const second = await promptHidden("Repeat password: ");
     if (second !== first) fail("passwords do not match");
   }
   return hashPassword(first);
+}
+
+function verifiedEmail(store, id, raw) {
+  const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!EMAIL.test(email) || email.length > 254) fail("a valid email address is required");
+  if (store.accounts.some((a) => a.id !== id && a.email === email)) fail(`${email} already belongs to another account`);
+  return { email, emailVerifiedAt: new Date().toISOString() };
 }
 
 function requireAccount(store, id) {
@@ -164,7 +233,13 @@ const commands = {
       const provider = a.provider
         ? `${a.provider.baseUrl} model=${a.provider.model} key=${keyHint(a.provider.apiKey)}`
         : "no provider";
-      const marks = [a.id === store.defaultAccountId ? "default" : null, a.passwordHash ? "password" : "no password"].filter(Boolean);
+      const marks = [
+        a.id === store.defaultAccountId ? "default" : null,
+        a.passwordHash ? "password" : "no password",
+        a.role,
+        a.status,
+        a.email ? `${a.email}${a.emailVerifiedAt ? "" : " (unverified)"}` : "no email",
+      ].filter(Boolean);
       console.log(`${a.id}\t${a.displayName}\t[${marks.join(", ")}]\t${provider}`);
     }
   },
@@ -175,7 +250,10 @@ const commands = {
     if (store.accounts.some((a) => a.id === id)) fail(`account already exists: ${id}`);
     const name = flags.get("name")?.[0];
     if (typeof name !== "string" || !name.trim()) fail('--name "<display name>" is required');
-    const account = { id, displayName: name.trim().slice(0, 80), provider: null, createdAt: new Date().toISOString() };
+    const role = flags.get("role")?.[0] ?? "admin";
+    if (role !== "admin" && role !== "user") fail("--role must be admin or user");
+    const account = withV2Fields({ id, displayName: name.trim().slice(0, 80), provider: null, createdAt: new Date().toISOString(), role });
+    if (flags.has("email")) Object.assign(account, verifiedEmail(store, id, flags.get("email")[0]));
     if (flags.has("password-prompt")) account.passwordHash = await newPassword();
     store.accounts.push(account);
     writeStore(store);
@@ -187,6 +265,34 @@ const commands = {
     account.passwordHash = await newPassword();
     writeStore(store);
     console.log(`password set for ${account.id}; existing sessions are invalidated`);
+  },
+
+  "set-email"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    Object.assign(account, verifiedEmail(store, account.id, positional[1]));
+    delete account.emailChange;
+    if (account.status === "pending") account.status = "active";
+    writeStore(store);
+    console.log(`email of ${account.id} is now ${account.email} (verified)`);
+  },
+
+  "set-role"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    const role = positional[1];
+    if (role !== "admin" && role !== "user") fail("role must be admin or user");
+    account.role = role;
+    if (role === "admin" && account.storageQuotaBytes !== null && account.storageQuotaBytes !== undefined) account.storageQuotaBytes = null;
+    writeStore(store);
+    console.log(`${account.id} is now ${role}`);
+  },
+
+  "set-status"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    const status = positional[1];
+    if (status !== "active" && status !== "disabled") fail("status must be active or disabled");
+    account.status = status;
+    writeStore(store);
+    console.log(`${account.id} is now ${status}${status === "disabled" ? " (its sessions stop working at once)" : ""}`);
   },
 
   remove(store, { positional }) {
@@ -274,7 +380,7 @@ const commands = {
 
 const [command, ...rest] = process.argv.slice(2);
 if (!command || command === "help" || command === "--help" || !(command in commands)) {
-  console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 22).map((l) => l.slice(3)).join("\n"));
+  console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 28).map((l) => l.slice(3)).join("\n"));
   process.exit(command && command !== "help" && command !== "--help" ? 2 : 0);
 }
 await commands[command](readStore(), parseArgs(rest));

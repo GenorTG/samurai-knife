@@ -135,6 +135,27 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
     );
   }
   const state = service.state;
+  const canManage = service.canManage !== false;
+  if (!canManage) {
+    // Public mode, not an administrator: the shared service is used, never managed (no buttons, no configuration).
+    const running = service.installed && service.ready;
+    return (
+      <Panel title={service.name} right={<Badge tone={badge.tone}>{badge.text}</Badge>} className="sk-sidecar-card">
+        <div className="space-y-4">
+          {intro}
+          <p className="text-sm text-muted">{service.description}</p>
+          {running ? (
+            <Notice tone="good">{service.name} is running and ready to use.</Notice>
+          ) : (
+            <Notice tone="info">
+              {!service.installed ? `An administrator has to install ${service.name}` : `An administrator has to start ${service.name}`} before you can use it here.
+            </Notice>
+          )}
+          <OpProgress op={op} />
+        </div>
+      </Panel>
+    );
+  }
   return (
     <Panel title={service.name} right={<Badge tone={badge.tone}>{badge.text}</Badge>} className="sk-sidecar-card">
       <div className="space-y-4">

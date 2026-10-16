@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
+import { requireAdmin } from "@/lib/accounts/authz";
 import { touch } from "@/lib/services/manager";
 import { learnError } from "@/lib/learn/sql/api";
 import { ensureSeeded, SERVICE_ID, sidecarConnection } from "@/lib/learn/sql/db";
@@ -20,6 +21,11 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
   if (!parsed.success) return jsonError("Bad request: body: expected { force?: boolean }", 422);
+  // Rebuilding wipes the shared course data for everyone.
+  if (parsed.data.force) {
+    const denied = requireAdmin(auth.account, "rebuild the course data");
+    if (denied) return denied;
+  }
   try {
     const seed = await ensureSeeded(sidecarConnection(), parsed.data.force ?? false);
     touch(SERVICE_ID);

@@ -7,6 +7,7 @@ import { Brand } from "@/components/ToolShell";
 import { cx } from "@/lib/format";
 import { canonicalSlug, categoryLabel, findTool, TOOLS } from "@/lib/registry";
 import { openAssistant } from "@/lib/agent-client/bridge";
+import { AccountLink } from "./AccountLink";
 import { AgentPill, AgentStrip } from "./AgentPill";
 import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
@@ -161,6 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <IconButton label="Keyboard shortcuts (?)" onClick={() => emitShell(SHELL_EVENTS.help)} className="max-sm:hidden">
               <span aria-hidden className="font-mono text-sm">?</span>
             </IconButton>
+            <AccountLink />
             <ThemeToggle />
           </div>
         </header>

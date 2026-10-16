@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
 import { normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
 import { getAccount, setProvider, toPublicAccount } from "@/lib/accounts/store";
+import { authMode } from "@/lib/accounts/mode";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,5 +59,5 @@ export async function PUT(request: Request): Promise<Response> {
     openClawResponses,
   });
   if (!saved) return jsonError("account_not_found", 404);
-  return json(toPublicAccount(saved));
+  return json(toPublicAccount(saved, authMode()));
 }
