@@ -37,9 +37,20 @@ export function saveWorkspaceState(accountId: string, state: WorkspaceState): vo
   writeAccountFile(accountId, accountScope(accountId).workspaceFile, contents);
 }
 
+/**
+ * One tool's draft. The saved tool moves to the end (key order = least recently saved first); when the account's drafts
+ * would pass MAX_BYTES (or 160 tools), the least recently saved other tools are dropped to make room.
+ */
 export function saveWorkspaceTool(accountId: string, tool: string, fields: Record<string, string | boolean>): void {
-  const previous = readWorkspaceState(accountId);
-  saveWorkspaceState(accountId, { ...previous, [tool]: fields });
+  const others = Object.entries(readWorkspaceState(accountId)).filter(([name]) => name !== tool);
+  const own = JSON.stringify({ [tool]: fields });
+  if (Buffer.byteLength(own) > MAX_BYTES) throw new Error("workspace state exceeds 2 MiB");
+  let size = Buffer.byteLength(JSON.stringify(Object.fromEntries(others))) + Buffer.byteLength(own);
+  while (others.length && (size > MAX_BYTES || others.length >= 160)) {
+    const [name, dropped] = others.shift()!;
+    size -= Buffer.byteLength(JSON.stringify({ [name]: dropped }));
+  }
+  saveWorkspaceState(accountId, { ...Object.fromEntries(others), [tool]: fields });
 }
 
 /** False when the tool had no draft. */

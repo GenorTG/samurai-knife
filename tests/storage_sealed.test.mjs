@@ -156,3 +156,17 @@ test("unsealAccountStorage opens every sealed file in place (rollback), keeping 
   assert.equal(statSync(path).mtimeMs, before);
   assert.equal(unsealAccountStorage("dave").sealed, 0, "idempotent");
 });
+
+test("tool drafts: the least recently saved tools make room, a re-save moves a tool to the end", () => {
+  const big = "x".repeat(90_000);
+  const fields = (n) => Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`textarea::${n}:${i}`, big]));
+  for (let i = 0; i < 6; i += 1) workspace.saveWorkspaceTool("erin", `tool-${i}`, fields(i)); // ~450 KB each
+  workspace.saveWorkspaceTool("erin", "tool-1", fields(1)); // tool-1 is now the most recent
+  workspace.saveWorkspaceTool("erin", "tool-6", fields(6));
+  const names = Object.keys(workspace.readWorkspaceState("erin"));
+  assert.ok(names.includes("tool-1") && names.includes("tool-6"), names.join());
+  assert.ok(!names.includes("tool-0"), "the oldest draft went first");
+  assert.ok(Buffer.byteLength(JSON.stringify(workspace.readWorkspaceState("erin"))) <= 2 * 1024 * 1024);
+  assert.equal(workspace.deleteWorkspaceTool("erin", "tool-6"), true);
+  assert.equal(workspace.deleteWorkspaceTool("erin", "tool-6"), false);
+});

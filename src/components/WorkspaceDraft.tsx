@@ -4,6 +4,10 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import type { WorkspaceState } from "@/lib/workspace-state/store";
 
 type ControlValue = string | boolean;
+
+/** Per-field and per-tool limits of the drafts API (route.ts): bigger inputs (a pasted 5 MB file) are not kept in a draft. */
+const MAX_FIELD_CHARS = 100_000;
+const MAX_BODY_BYTES = 400 * 1024;
 type DraftProps = { tool: string; Component: ComponentType };
 
 function controlKey(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, index: number): string {
@@ -31,6 +35,21 @@ function read(root: HTMLElement, tool: string, current: WorkspaceState): Workspa
       : element.value;
   });
   return { ...current, [tool]: fields };
+}
+
+/** The fields that fit a draft: oversized texts are left out (largest first until the body fits); `skipped` = any left out. */
+function fitting(fields: Record<string, ControlValue>): { fields: Record<string, ControlValue>; skipped: boolean } {
+  const kept = Object.entries(fields).filter(([, value]) => typeof value !== "string" || value.length <= MAX_FIELD_CHARS);
+  let skipped = kept.length !== Object.keys(fields).length;
+  kept.sort(([, a], [, b]) => (typeof b === "string" ? b.length : 0) - (typeof a === "string" ? a.length : 0));
+  // Characters stand in for bytes (a UTF-8 character is up to 3 bytes in JSON here): cheap and on the safe side.
+  let size = kept.reduce((sum, [key, value]) => sum + key.length + (typeof value === "string" ? value.length * 3 : 5) + 8, 0);
+  while (kept.length && size > MAX_BODY_BYTES) {
+    const [key, value] = kept.shift()!;
+    size -= key.length + (typeof value === "string" ? value.length * 3 : 5) + 8;
+    skipped = true;
+  }
+  return { fields: Object.fromEntries(kept), skipped };
 }
 
 /** Saved fields that differ from what the tool shows now (the restore offer appears only when there is something to bring back). */
@@ -69,6 +88,7 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
   const restoringRef = useRef(false);
   const [phase, setPhase] = useState<"loading" | "ready" | "off">("loading");
   const [offer, setOffer] = useState(false);
+  const [tooLarge, setTooLarge] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   // The same element on every render: the wrapper's own state (draft loaded, save status, offer) never re-renders the
   // tool, so a controlled field is never reset under the user's (or the assistant's) typing.
@@ -100,8 +120,10 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
       });
     };
     const scheduleSave = () => {
-      pending = read(root, tool, {})[tool];
+      const fit = fitting(read(root, tool, {})[tool]);
+      pending = fit.fields;
       savedRef.current = pending;
+      setTooLarge(fit.skipped);
       clearTimeout(timer);
       timer = setTimeout(() => {
         timer = undefined;
@@ -193,6 +215,7 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
   };
 
   const status = saveState === "error" ? "Could not save this draft"
+    : tooLarge && saveState !== "saving" ? "Large inputs are not kept in drafts"
     : saveState === "saving" ? "Saving…"
     : saveState === "saved" ? "Draft saved to your account"
     : phase === "ready" && !offer ? "Edits are saved to your account" : "";
