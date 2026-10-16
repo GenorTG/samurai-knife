@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { childEnv, RUNTIME_ENV_KEYS } from "@/lib/child-env";
 
 /**
  * Container runtime detection and command runner. Docker (compose v2 plugin) first, then Podman (`podman compose`).
@@ -29,7 +30,7 @@ export function run(cmd: string, args: string[], options: RunOptions = {}): Prom
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(cmd, args, { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], env: process.env });
+      child = spawn(cmd, args, { cwd: options.cwd, stdio: ["ignore", "pipe", "pipe"], env: childEnv(RUNTIME_ENV_KEYS) });
     } catch (error) {
       resolve({ code: null, stdout: "", stderr: error instanceof Error ? error.message : String(error) });
       return;

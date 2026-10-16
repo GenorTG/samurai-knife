@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import subprocess
+import threading
 import sys
 import time
 import urllib.error
@@ -161,7 +162,8 @@ def main() -> int:
     shots = Path(args.shots)
     shots.mkdir(parents=True, exist_ok=True)
 
-    prefix = f"sk-e2e-{os.getpid()}"
+    # KNIFE_E2E_SIDECAR_PREFIX: a fixed project prefix on a shared host (the cleanup below touches only this prefix).
+    prefix = os.environ.get("KNIFE_E2E_SIDECAR_PREFIX") or f"sk-e2e-{os.getpid()}"
     project = f"{prefix}-{SERVICE}"
     lessons = lessons_from_source()
     server = ScratchServer(host=args.host)
@@ -261,9 +263,23 @@ def main() -> int:
                 ("CREATE INDEX ON events (customer_id)", "42501"),
                 ("INSERT INTO geo.chains VALUES (99, 'X', 'y')", "42501"),
                 ("SELECT * FROM knife_admin.meta", "42501"),
+                # One role for every learner: nobody may read the others' live SQL (seed revokes, SEED_VERSION 2).
+                ("SELECT query FROM pg_stat_activity", "42501"),
+                ("SELECT * FROM pg_stat_get_activity(NULL)", "42501"),
+                ("SELECT pg_stat_get_backend_activity(1)", "42501"),
             ]:
                 run = api.run(sql)
                 check(f"privileges: {sql[:40]} -> {expect}", (run["error"] or {}).get("code") == expect, str(run["error"]))
+            # Fair share: one run in flight per account; a second one is refused at once (429), not queued.
+            parallel: dict[str, tuple[int, dict]] = {}
+            slow = threading.Thread(target=lambda: parallel.__setitem__("slow", api.call("POST", "/api/learn/sql/run", {"sql": "SELECT pg_sleep(2)"})))
+            slow.start()
+            time.sleep(0.5)
+            parallel["second"] = api.call("POST", "/api/learn/sql/run", {"sql": "SELECT 1"})
+            slow.join()
+            check("a second run of the same account while one is in flight -> 429 run_in_progress",
+                  parallel["second"][0] == 429 and parallel["second"][1].get("code") == "run_in_progress" and parallel["slow"][0] == 200, str(parallel)[:300])
+            check("...and the account runs again once it finished", not api.run("SELECT 1")["error"])
             t1 = time.monotonic()
             run = api.run("SELECT pg_sleep(10)")
             took = time.monotonic() - t1

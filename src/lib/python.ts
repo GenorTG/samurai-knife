@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { childEnv, PYTHON_ENV_KEYS } from "./child-env";
 import { isJobCancelled, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
 
 /**
@@ -47,6 +48,8 @@ export type PythonRunOptions = {
   /** Aborts the job: a queued one is dropped, a running one has its process group killed. */
   signal?: AbortSignal;
   label?: string;
+  /** The account the work is for: its share of the lane is capped and slots are handed out fairly (work-queue.ts). */
+  owner?: string;
 };
 
 export interface PythonRunResult<T> {
@@ -78,7 +81,8 @@ function runChild(args: string[], maxBytes: number, signal: AbortSignal): Promis
   return new Promise((resolve) => {
     const child = spawn(PY_BIN, args, {
       cwd: PY_SCRIPTS_DIR,
-      env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" },
+      // Never the server's own environment (keys, SMTP credentials): see child-env.ts.
+      env: childEnv(PYTHON_ENV_KEYS, { PYTHONDONTWRITEBYTECODE: "1" }),
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
@@ -172,12 +176,13 @@ async function execute<T>(scriptName: string, request: unknown, maxBytes: number
 export function startPythonScript<T = unknown>(
   scriptName: string,
   request: unknown,
-  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label }: PythonRunOptions = {},
+  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   return pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, jobSignal), {
     signal,
     timeoutMs,
     label: label ?? scriptName,
+    owner,
   });
 }
 

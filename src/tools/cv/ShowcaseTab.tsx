@@ -5,6 +5,7 @@ import { Badge, Button, EmptyState, Field, Meter, Notice, Panel, TextInput } fro
 import { errorText, getShowcaseRank, getShowcaseRepo, isUnavailable, type ShowcaseDetail, type ShowcaseRanking, type ShowcaseRepo } from "@/lib/cv/client";
 import { copyText } from "@/lib/format";
 import { SafeLink } from "./shared";
+import { useIsAdmin } from "@/lib/use-is-admin";
 
 /** Plain text the assistant can work from: ranking facts + the checklist with its advice. */
 export function factsForAssistant(repo: ShowcaseRepo, detail: ShowcaseDetail | null): string {
@@ -108,6 +109,7 @@ function RepoCard({ repo, rank }: { repo: ShowcaseRepo; rank: number }) {
 }
 
 export default function ShowcaseTab() {
+  const admin = useIsAdmin();
   const [owner, setOwner] = useState("");
   const [phase, setPhase] = useState<"idle" | "loading" | "ready" | "unavailable" | "error">("idle");
   const [ranking, setRanking] = useState<ShowcaseRanking | null>(null);
@@ -124,6 +126,16 @@ export default function ShowcaseTab() {
       setError(errorText(e));
     }
   };
+
+  if (admin === false) {
+    return (
+      <div className="@container space-y-4">
+        <Panel title="Project showcase">
+          <Notice>An administrator has to run the project showcase on this server: it reads GitHub with the server owner&apos;s own login. Add your projects on the Profile tab by hand, or ask the assistant to write them from what you tell it.</Notice>
+        </Panel>
+      </div>
+    );
+  }
 
   return (
     <div className="@container space-y-4">

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { childEnv, GIT_ENV_KEYS } from "@/lib/child-env";
 
 /**
  * SERVER-ONLY injectable command runner for the showcase gatherers: argv arrays through `execFile` (never a shell string),
@@ -41,7 +42,7 @@ export function execRunner(timeoutMs = 30_000, maxOutputBytes = 2_000_000): Runn
           maxBuffer: maxOutputBytes,
           encoding: "utf8",
           windowsHide: true,
-          env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1" },
+          env: childEnv(GIT_ENV_KEYS, { GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1" }),
         },
         (error, stdout, stderr) => {
           const err = stderr.slice(0, STDERR_CAP);

@@ -9,7 +9,7 @@
  * Bump SEED_VERSION whenever this file changes: `ensureSeeded` (db.ts) rebuilds both schemas when the stored version differs.
  */
 
-export const SEED_VERSION = 1;
+export const SEED_VERSION = 2;
 
 export const COURSE_SCHEMAS = ["shop", "geo"] as const;
 export const LEARNER_ROLE = "knife_learner";
@@ -424,6 +424,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA shop, geo TO ${LEARNER_ROLE};
 -- Writing lessons: allowed on shop, and the runner rolls every run back.
 GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA shop TO ${LEARNER_ROLE};
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA shop TO ${LEARNER_ROLE};
+-- Every learner connects as this one role, and a role sees the query text of its own other sessions: without these,
+-- SELECT query FROM pg_stat_activity would show other learners' live SQL (catalog grants are per database).
+REVOKE SELECT ON pg_catalog.pg_stat_activity FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_activity(integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_activity(integer) FROM PUBLIC;
 
 ANALYZE shop.categories, shop.products, shop.employees, shop.customers, shop.orders, shop.order_items, shop.events,
         geo.regions, geo.cities, geo.chains, geo.stores, geo.candidate_sites, geo.population_grid;

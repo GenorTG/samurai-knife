@@ -17,3 +17,8 @@ export function requireAdmin(account: Account, what = "do this"): NextResponse |
   if (isAdmin(account)) return null;
   return jsonError(`An administrator has to ${what}.`, 403, { code: "admin_required" });
 }
+
+/** The caller identity every `knife_*` tool runs with (src/lib/mcp/define.ts): the account and its admin right. */
+export function toolContextFor(account: Account): { accountId: string; admin: boolean } {
+  return { accountId: account.id, admin: isAdmin(account) };
+}

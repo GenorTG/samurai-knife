@@ -8,6 +8,7 @@ import { uniqueId } from "@/lib/cv/collections";
 import { SECTION_TITLES } from "@/lib/cv/render/view";
 import type { CvLang, Profile } from "@/lib/cv/schema";
 import { effectiveSectionOrder } from "@/lib/cv/variant";
+import { useIsAdmin } from "@/lib/use-is-admin";
 import { AddRow, EditableField, ItemCard, PinButton, RemoveButton, useHidden, useProfileEnv } from "./profile-fields";
 
 /**
@@ -186,6 +187,7 @@ function CustomSectionCard({ section }: { section: Profile["customSections"][num
 
 export function GithubProjectAdd() {
   const env = useProfileEnv();
+  const admin = useIsAdmin();
   const [repo, setRepo] = useState("");
   const [pinned, setPinned] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -211,6 +213,16 @@ export function GithubProjectAdd() {
 
   const describe = (res: GithubProjectResult) =>
     `Write the CV description of my project “${res.project.name}” (${res.project.url}, path /projects/id=${res.project.id}): fetch its facts with knife_cv_github_repo_facts, then write the summary in Polish and English and 2-4 bullets in both languages that show what it proves (architecture, scale, what I built myself), from the repo's facts only. Keep the technologies list accurate.`;
+
+  // It reads GitHub with the server owner's own `gh` login: admins only (docs/ACCOUNTS.md "Roles").
+  if (admin === false) {
+    return (
+      <div className="space-y-2 rounded-xl border border-dashed border-line-strong p-3" aria-label="Add a project from GitHub">
+        <p className="text-[13px] font-semibold text-ink">Add from GitHub</p>
+        <p className="text-xs text-muted">An administrator has to add projects from GitHub on this server (it uses the server owner&apos;s GitHub login). Add the project by hand above.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2 rounded-xl border border-dashed border-line-strong p-3" aria-label="Add a project from GitHub">

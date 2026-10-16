@@ -34,6 +34,7 @@ function scoped<T>(run: () => T): T {
 export const CV_TEXT_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_audit",
+    scope: "account",
     description:
       "Lint all profile text in ONE language (weak openers, buzzwords, first person in EN bullets, long bullets, bullets with no number/name/tech, typography, stripped Polish diacritics, mixed languages, inconsistent bullet lists). " +
       "Returns counts by severity and rule plus findings keyed by the editable path (e.g. /experience/id=x/bullets/id=y/text/en), each with rule, severity, message, hint and span. Fix with knife_cv_patch on that exact path. " +
@@ -45,6 +46,7 @@ export const CV_TEXT_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_translation_audit",
+    scope: "account",
     description:
       "Check every field that has both PL and EN text for facts that must survive translation (numbers, URLs, emails, versions, tech terms, names), untranslated copies, extreme length mismatch and glossary drift; also lists fields missing one side (missingPl / missingEn). " +
       "Findings are keyed by the {pl,en} field path; append /pl or /en to edit a side. Findings never say which side is right: ask the user for the source of truth before changing a figure. " +
@@ -56,6 +58,7 @@ export const CV_TEXT_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_lint_text",
+    scope: "account",
     description:
       "Lint ad-hoc text the user pasted or you drafted (not stored in the profile). kind: bullet (one achievement per line; several lines are checked as a list), summary, or paragraph. " +
       "Use it on a rewrite BEFORE saving it with knife_cv_patch. " +
@@ -72,6 +75,7 @@ export const CV_TEXT_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_glossary",
+    scope: "account",
     description:
       "Look up the preferred PL<->EN rendering of CV/IT terms (query matches PL or EN, diacritics optional) or list them all. Use it when translating so terminology stays consistent; the user's own wording still wins.",
     schema: z.object({ query: z.string().max(100).optional() }).strict(),

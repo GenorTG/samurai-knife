@@ -13,6 +13,7 @@ import { hashPasswordAsync, MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS, verifyPasswo
 import { consumeLimits, checkLimits, hitLimits, LIMITS, type LimitCheck } from "@/lib/accounts/rate-limit";
 import { revokeAllSessions } from "@/lib/accounts/session";
 import { deleteAccountData } from "@/lib/accounts/data";
+import { revokeAllMcpKeys } from "@/lib/accounts/mcp-keys";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
 import {
   accountDeletedMail,
@@ -302,7 +303,8 @@ export function purgeAccount(id: string): { removed: string[]; email: string | n
   });
   if (!gone) return null;
   revokeAllSessions(id);
-  const removed = ["accounts.json (record)", "sessions.json (sessions)", ...deleteAccountData(id)];
+  revokeAllMcpKeys(id);
+  const removed = ["accounts.json (record)", "sessions.json (sessions)", "mcp-keys.json (MCP keys)", ...deleteAccountData(id)];
   return { removed, email: gone.email };
 }
 

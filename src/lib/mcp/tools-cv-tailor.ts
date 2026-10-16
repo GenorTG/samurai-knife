@@ -33,6 +33,7 @@ const bi = z.object({ pl: z.string().max(4_000).optional(), en: z.string().max(4
 export const CV_TAILOR_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_tailor_context",
+    scope: "account",
     description:
       "START HERE to tailor the CV for one saved offer: returns in one call the offer (title, company, requirement and nice-to-have lines, the board's skills with levels, seniority, workplace, salary, languages, the user's NOTES for this offer, an excerpt of the company website), the user's tailoring GUIDANCE (what to emphasise; follow it), every PINNED item (always include, list first), the ranked suggestion for a version (variant ready for knife_cv_variant_create) and the versions already made for this offer. Then: create the version, reword bullets for this offer with knife_cv_variant_rewrite (facts kept, the offer's vocabulary where it is TRUE), write headline + summary, run knife_cv_ats_check and fix what it lists. Default language: pl.",
     schema: z.object({ jobId: z.string().min(1).max(64), lang: z.enum(CV_LANGS).optional() }).strict(),
@@ -72,6 +73,7 @@ export const CV_TAILOR_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_rewrite",
+    scope: "account",
     description:
       "Reword texts for ONE CV version only (the master profile is untouched): set: [{path, text:{pl?,en?}}] where path is a bullet text (/experience/id=x/bullets/id=y/text or /projects/id=p/bullets/id=b/text), a project summary (/projects/id=p/summary), an experience note (/experience/id=x/note) or a custom item text (/customSections/id=s/items/id=i/text); an omitted/empty language keeps the master text. remove: [path] restores the master wording. Use it to put the offer's vocabulary and the most relevant facts first, for things the profile REALLY shows. `warnings` lists facts the new wording dropped or added that the profile does not contain: fix every one (restore, or remove the invention).",
     schema: z.object({
@@ -91,6 +93,7 @@ export const CV_TAILOR_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_ats_check",
+    scope: "account",
     description:
       "ATS check of what a CV version PRINTS against its offer: score 0-100 (a guide), required/nice keyword coverage, each posting keyword as present / dropped (the user has it, this version leaves it out: bring it back) / missing (a real gap: never invent it), offer spellings the version writes differently (use the offer's spelling once, if true), structural checks (contact, headline, summary, dates, length, RODO clause, languages, years asked vs dated roles, the user's pinned priorities), `fixable` (what you can still fix truthfully) and `gaps` (to report, never to add). Run it after your edits, fix `fixable`, run it once more, then stop: re-running without changes returns the same result. Pass variantId (its offer and language), or jobId (+lang) to check the master profile.",
     schema: z.object({
@@ -113,6 +116,7 @@ export const CV_TAILOR_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_company",
+    scope: "account",
     description: "(Re)read the company website of a saved offer as tailoring context (one page, SSRF-guarded); `url` replaces the saved website. Returns the text excerpt. Use it to name the company's domain truthfully in the summary; never invent a connection.",
     schema: z.object({ jobId: z.string().min(1).max(64), url: z.string().max(2_000).optional() }).strict(),
     run({ jobId, url }, ctx) {
@@ -124,6 +128,7 @@ export const CV_TAILOR_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_project_from_github",
+    scope: "admin",
     description:
       "Add a project to the master CV from a GitHub link (https://github.com/owner/name or owner/name; uses the host's authenticated `gh`). A new project is a draft with name, link, technologies (languages, topics, known dependencies) and the repo description; a project already linked to the repo only gets technologies merged (the user's wording is kept). pinned:true marks it as a priority item. Returns `facts` (README excerpt, commits, dates, stars, tests/CI…): then write summary {pl,en} and 2-4 bullets with knife_cv_patch FROM THESE FACTS ONLY (no invented users, numbers or features).",
     schema: z.object({ repo: z.string().min(1).max(300), pinned: z.boolean().optional() }).strict(),

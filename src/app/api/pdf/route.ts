@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
   // Refuse before buffering a (possibly huge) upload when the lane cannot take the job anyway.
   try {
-    pythonQueue().assertCapacity("heavy");
+    pythonQueue().assertCapacity("heavy", owner);
   } catch (error) {
     const full = queueFullOrNull(error);
     if (full) return full;
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
   try {
     staged = await stagePdfInputs(input.uploads);
     const script = pdfScriptRequest(input, staged);
-    const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}` };
+    const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}`, owner };
 
     if (asyncMode) {
       const stagedDirs = staged;
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
       } catch (error) {
         handle.cancel("Job storage is full.");
         if (error instanceof JobStorageFullError) {
-          return NextResponse.json({ ok: false, error: error.message }, { status: 503, headers: { "Retry-After": "30" } });
+          return NextResponse.json({ ok: false, error: error.message }, { status: error.scope === "owner" ? 429 : 503, headers: { "Retry-After": "30" } });
         }
         throw error;
       }

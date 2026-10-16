@@ -6,7 +6,11 @@
  * itself when it fires. The slot is held until the task has actually settled, so a lane cap is a cap on live
  * work, not on promises. A task that ignores the signal is force-released after `abortGraceMs`.
  *
- * Lanes are independent (separate slots, separate FIFO queues): a job in one lane never waits behind another lane.
+ * Lanes are independent (separate slots, separate queues): a job in one lane never waits behind another lane.
+ *
+ * Fairness between accounts: a job may carry an `owner`. A lane can cap one owner's jobs (`perOwner`, running + queued),
+ * and a free slot goes to the queued job whose owner has the fewest jobs running in that lane (FIFO among equals), so one
+ * account submitting many jobs never makes another account's single job wait behind all of them.
  */
 
 export type JobState = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -16,6 +20,8 @@ export interface LaneConfig {
   concurrency: number;
   /** Jobs that may wait (not counting running ones). 0 = reject whenever all slots are busy. */
   maxDepth: number;
+  /** Jobs (running + queued) one owner may have in this lane; unset = no per-owner cap. */
+  perOwner?: number;
 }
 
 export interface TaskContext {
@@ -31,6 +37,8 @@ export interface SubmitOptions {
   /** Run-time limit in ms (queue wait does not count). Aborts the task's signal with a JobTimeoutError. */
   timeoutMs?: number;
   label?: string;
+  /** Who submitted it (account id): per-owner cap and fair slot hand-out. Unset = one shared group, no per-owner cap. */
+  owner?: string;
 }
 
 export class QueueFullError extends Error {
@@ -38,12 +46,17 @@ export class QueueFullError extends Error {
   readonly lane: string;
   readonly depth: number;
   readonly retryAfterSec: number;
-  constructor(lane: string, depth: number, retryAfterSec: number) {
-    super(`The ${lane} work queue is full (${depth} waiting). Try again shortly.`);
+  /** `owner`: the caller's own jobs fill its share of the lane; `lane`: the lane itself is full. */
+  readonly scope: "lane" | "owner";
+  constructor(lane: string, depth: number, retryAfterSec: number, scope: "lane" | "owner" = "lane") {
+    super(scope === "owner"
+      ? `You already have ${depth} jobs in the ${lane} work queue. Wait for one to finish, then try again.`
+      : `The ${lane} work queue is full (${depth} waiting). Try again shortly.`);
     this.name = "QueueFullError";
     this.lane = lane;
     this.depth = depth;
     this.retryAfterSec = retryAfterSec;
+    this.scope = scope;
   }
 }
 
@@ -107,6 +120,7 @@ export interface LaneStats extends LaneConfig {
 interface Entry<T> {
   id: string;
   lane: string;
+  owner: string;
   label?: string;
   task: Task<T>;
   timeoutMs?: number;
@@ -134,6 +148,9 @@ interface LaneRuntime {
   leaked: number;
   waits: number[];
   runs: number[];
+  /** Start sequence number of each owner's most recent job (round-robin among owners). */
+  lastStart: Map<string, number>;
+  starts: number;
 }
 
 const SAMPLE_WINDOW = 256;
@@ -183,6 +200,8 @@ export class WorkQueue<L extends string = string> {
         leaked: 0,
         waits: [],
         runs: [],
+        lastStart: new Map(),
+        starts: 0,
       });
     }
   }
@@ -194,27 +213,43 @@ export class WorkQueue<L extends string = string> {
   }
 
   /** True when a submit to this lane would be accepted right now (lets a route refuse before buffering an upload). */
-  hasCapacity(laneName: string): boolean {
+  hasCapacity(laneName: string, owner?: string): boolean {
     const lane = this.lane(laneName);
+    if (owner !== undefined && lane.config.perOwner !== undefined && this.ownerJobs(lane, owner) >= lane.config.perOwner) return false;
     return lane.running.size < lane.config.concurrency || lane.queue.length < lane.config.maxDepth;
   }
 
-  /** Throws QueueFullError when the lane cannot take another job. */
-  assertCapacity(laneName: string): void {
+  /** Throws QueueFullError when the lane (or the owner's share of it) cannot take another job. */
+  assertCapacity(laneName: string, owner?: string): void {
+    const lane = this.lane(laneName);
+    if (owner !== undefined && lane.config.perOwner !== undefined && this.ownerJobs(lane, owner) >= lane.config.perOwner) {
+      throw this.fullError(laneName, "owner");
+    }
     if (!this.hasCapacity(laneName)) throw this.fullError(laneName);
   }
 
-  private fullError(laneName: string): QueueFullError {
+  /** Running + queued jobs of one owner in a lane. */
+  private ownerJobs(lane: LaneRuntime, owner: string): number {
+    let count = 0;
+    for (const entry of lane.running) if (entry.owner === owner) count += 1;
+    for (const entry of lane.queue) if (entry.owner === owner) count += 1;
+    return count;
+  }
+
+  private fullError(laneName: string, scope: "lane" | "owner" = "lane"): QueueFullError {
     const lane = this.lane(laneName);
     const typical = percentiles(lane.runs).p50 || 2_000;
     const backlog = lane.queue.length + lane.running.size;
     const seconds = Math.ceil((typical * backlog) / lane.config.concurrency / 1000);
-    return new QueueFullError(laneName, lane.queue.length, Math.min(60, Math.max(1, seconds)));
+    const depth = scope === "owner" ? lane.config.perOwner ?? 0 : lane.queue.length;
+    return new QueueFullError(laneName, depth, Math.min(60, Math.max(1, seconds)), scope);
   }
 
   submit<T>(laneName: string, task: Task<T>, options: SubmitOptions = {}): JobHandle<T> {
     const lane = this.lane(laneName);
-    this.assertCapacity(laneName);
+    // Jobs without an owner share one fairness group but are not capped per owner.
+    const owner = options.owner ?? "";
+    this.assertCapacity(laneName, options.owner);
 
     let resolve!: (value: T) => void;
     let reject!: (error: unknown) => void;
@@ -227,6 +262,7 @@ export class WorkQueue<L extends string = string> {
     const entry: Entry<T> = {
       id: `q${++idCounter}`,
       lane: laneName,
+      owner,
       label: options.label,
       task,
       timeoutMs: options.timeoutMs,
@@ -275,14 +311,39 @@ export class WorkQueue<L extends string = string> {
 
   private pump(lane: LaneRuntime): void {
     while (lane.running.size < lane.config.concurrency && lane.queue.length > 0) {
-      const entry = lane.queue.shift()!;
+      const entry = lane.queue.splice(this.nextIndex(lane), 1)[0];
       this.start(lane, entry);
     }
+  }
+
+  /**
+   * The queued job whose owner has the fewest jobs running in the lane; among those, the owner served longest ago
+   * (round-robin); the oldest job of that owner.
+   */
+  private nextIndex(lane: LaneRuntime): number {
+    const running = new Map<string, number>();
+    for (const entry of lane.running) running.set(entry.owner, (running.get(entry.owner) ?? 0) + 1);
+    let best = 0;
+    let bestRunning = Infinity;
+    let bestServed = Infinity;
+    for (let index = 0; index < lane.queue.length; index += 1) {
+      const owner = lane.queue[index].owner;
+      const count = running.get(owner) ?? 0;
+      const served = lane.lastStart.get(owner) ?? -1;
+      if (count < bestRunning || (count === bestRunning && served < bestServed)) {
+        best = index;
+        bestRunning = count;
+        bestServed = served;
+      }
+    }
+    return best;
   }
 
   private start(lane: LaneRuntime, entry: Entry<unknown>): void {
     entry.state = "running";
     entry.startedAt = this.now();
+    lane.lastStart.set(entry.owner, lane.starts++);
+    if (lane.lastStart.size > 10_000) lane.lastStart.clear(); // bounded: forgetting only resets the round-robin order
     pushSample(lane.waits, entry.startedAt - entry.enqueuedAt);
     lane.running.add(entry);
 
@@ -400,10 +461,12 @@ export function pythonQueue(): WorkQueue<PyLane> {
     light: {
       concurrency: intFromEnv("KNIFE_PY_LIGHT", 4, 1),
       maxDepth: intFromEnv("KNIFE_PY_LIGHT_DEPTH", 64, 0),
+      perOwner: intFromEnv("KNIFE_PY_LIGHT_PER_ACCOUNT", 8, 1),
     },
     heavy: {
       concurrency: intFromEnv("KNIFE_PY_HEAVY", 1, 1),
       maxDepth: intFromEnv("KNIFE_PY_HEAVY_DEPTH", 16, 0),
+      perOwner: intFromEnv("KNIFE_PY_HEAVY_PER_ACCOUNT", 3, 1),
     },
   });
   return holder[GLOBAL_KEY];

@@ -11,7 +11,8 @@ import { ACCOUNT_ID_PATTERN, dataDir } from "@/lib/accounts/store";
  *   docs/<id>/                                                                          office documents
  *   learn/<id>.json                                                                     course progress
  *   usage/<id>.json                                                                     token ledger
- * plus the account record in accounts.json and its sessions in sessions.json (removed by the caller).
+ * plus the account record in accounts.json, its sessions in sessions.json and its MCP keys in mcp-keys.json (removed by
+ * the caller, accounts/flows.ts purgeAccount).
  */
 export function accountDataPaths(accountId: string): string[] {
   if (!ACCOUNT_ID_PATTERN.test(accountId)) throw new Error(`invalid account id ${accountId}`);

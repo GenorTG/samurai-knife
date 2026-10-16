@@ -4,6 +4,7 @@ import { findCourse, findLesson } from "@/lib/learn/courses";
 import { updateLesson } from "@/lib/learn/progress";
 import { learnError, readyConnection } from "@/lib/learn/sql/api";
 import { runLearnerSql } from "@/lib/learn/sql/db";
+import { withLearnerSlot } from "@/lib/learn/sql/slots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,8 @@ export async function POST(request: Request): Promise<Response> {
   const course = findCourse("sql");
   if (lessonId && (!course || !findLesson(course, lessonId))) return jsonError("unknown_lesson", 404);
   try {
-    const run = await runLearnerSql(await readyConnection(), sql);
+    const info = await readyConnection();
+    const run = await withLearnerSlot(auth.account.id, () => runLearnerSql(info, sql));
     const progress = lessonId
       ? updateLesson(auth.account.id, "sql", lessonId, (lesson) => ({ ...lesson, attempts: lesson.attempts + 1, lastQuery: sql, lastError: run.error?.message }))
       : undefined;

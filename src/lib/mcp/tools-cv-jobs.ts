@@ -26,6 +26,7 @@ async function surface<T>(work: () => T | Promise<T>): Promise<T> {
 export const CV_JOBS_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_job_fetch",
+    scope: "account",
     description:
       "Read ONE job posting and save it: pass a posting URL (justjoin.it and nofluffjobs.com offer links are read through the board's own offer data: description, requirement lines, skills (with levels on justjoin.it), seniority, salary, languages, company site; pracuj.pl and LinkedIn block servers, so ask for the pasted text there) (http/https; fetched server-side, one page, loopback/private/Tailscale addresses are refused) or the pasted posting text. Returns the saved job id, language, structured fields (title, company, location) and the posting text. Re-fetching a saved URL refreshes that job instead of duplicating it. If the page is empty (JavaScript-rendered or login-walled) or a listing page, the error says so: ask the user to paste the posting and call again with the text. title/company override what the page says. Afterwards read the text and call knife_cv_job_save with the requirement and nice-to-have lines so matching is sharp. Search/listing pages are not scraped.",
     schema: z.object({
@@ -66,6 +67,7 @@ export const CV_JOBS_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_match",
+    scope: "account",
     description:
       "Deterministic profile<->job comparison in `lang`: requirementCoveragePct (share of saved requirement lines with profile evidence) and techCoveragePct (tech-dictionary terms only) are the numbers to trust; coveragePct (all terms) is noisy, matched terms each with evidence (profile id-paths readable with knife_cv_get), missing terms, missingRequired (missing terms from the saved requirement lines) and requirementHits (best evidence per requirement line). Missing terms are GAPS in the user's profile: never claim, add or invent them; say so honestly or ask the user whether they really have the experience. Works best after knife_cv_job_save stored the requirement lines.",
     schema: z.object({ jobId: z.string().min(1).max(64), lang: z.enum(CV_LANGS) }).strict(),
@@ -75,6 +77,7 @@ export const CV_JOBS_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_suggest",
+    scope: "account",
     description:
       "Propose (NOT save) a per-job CV version: roles and bullets ranked by evidence for this job (required terms weigh 3, nice-to-have 2, posting prose 1), projects and skill groups that match, bulletScores with the terms behind each pick and whether a bullet still needs translation into `lang`. The `variant` field is ready for knife_cv_variant_create after you adjust it and write the headline/summary prose from existing profile facts only. Missing required terms are gaps: never fabricate them. maxBulletsPerRole defaults to 4.",
     schema: z.object({ jobId: z.string().min(1).max(64), lang: z.enum(CV_LANGS), maxBulletsPerRole: z.number().int().min(1).max(12).optional() }).strict(),
@@ -88,6 +91,7 @@ export const CV_JOBS_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_board_links",
+    scope: "account",
     description:
       "Search links for Polish/EU job boards (pracuj.pl, justjoin.it, NoFluffJobs via a site: search, LinkedIn, Indeed PL) for a query. LINKS ONLY, best-effort URL formats: the app never scrapes boards. Give them to the user to open; when they paste a posting URL or text, call knife_cv_job_fetch.",
     schema: z.object({ query: z.string().min(1).max(200), location: z.string().max(100).optional(), remote: z.boolean().optional() }).strict(),

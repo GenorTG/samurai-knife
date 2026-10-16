@@ -14,7 +14,7 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | Public-only routes and pages | 404 | on |
 | Session cookie | `SameSite=Strict` | `SameSite=Lax` |
 | Roles | every account may do everything | `admin` / `user` (see Roles) |
-| MCP `POST /api/mcp` | default account, unauthenticated beyond the host guard | the session's account; no session = 401 |
+| MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
 | Mail transport default | `outbox` | `smtp` |
 
 `src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public; `scripts/serve.mjs` refuses to
@@ -77,7 +77,8 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/reset-password?token=` | `POST /api/account/reset {token, password}` | Sets the password, ends every session, mails a notice. |
 | `/account` | `POST /api/account/password {currentPassword, newPassword}` | Ends every session; this browser gets a new one. |
 | `/account` | `POST /api/account/email {password, email}` -> 202 | Link to the NEW address; the address changes when it is opened. Address in use: same answer, its owner is told. |
-| `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here. |
+| `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here. The page (and the assistant's log out) first clears this account's browser storage: transcript, message queue, run lease, SQL lab schema/dialect, trust mode (`src/lib/client-account.ts`). |
+| `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets, create (201, the key once; 20 per hour, 10 kept), revoke (404 for another account's id). |
 | `/account` | `POST /api/account/delete {password}` | Removes the account and all its data (below); refused for the only active admin. Mails a notice. |
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 
@@ -88,7 +89,7 @@ differs goes to the mailbox of the address concerned.
 
 `src/lib/accounts/data.ts` is the list; account deletion (self or admin) removes all of it and returns what it removed:
 
-- `accounts.json` (the record) and `sessions.json` (its sessions)
+- `accounts.json` (the record), `sessions.json` (its sessions) and `mcp-keys.json` (its MCP keys)
 - `cv/<id>.json`, `cv/<id>.snapshots/`, `cv/<id>.photo.jpg`, any other `cv/<id>.*` (CV studio)
 - `conversations/<id>/` (assistant transcripts)
 - `docs/<id>/` (office documents)
@@ -103,9 +104,25 @@ in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new pe
 One rule, `src/lib/accounts/authz.ts` (`isAdmin`, `requireAdmin` -> 403 `{error: "An administrator has to …", code:
 "admin_required"}`). Private mode: every account is an admin. Public mode, admin only: sidecar install/start/stop/update/
 remove/configure and the lazy start (`ensure` of a stopped service), course data rebuild (`setup {force:true}`),
-`GET /api/system/queue`, user management. A non-admin may use a running sidecar (`ensure` while healthy, `touch`), sees
-its status without configuration (`state`, memory, lock: `src/lib/services/view.ts`, `canManage: false`), and the UI
-says "An administrator has to start/install <name>" instead of showing buttons (sidecar cards, Database course, office).
+`GET /api/system/queue`, user management, and everything that reaches the server owner's own resources: the `admin`
+scoped tools (GitHub through the host's `gh` login, git repos on the host's disk: docs/MCP.md "Tool scopes") and their
+routes `/api/cv/showcase/{repo,rank,project,local}`. A non-admin may use a running sidecar (`ensure` while healthy,
+`touch`), sees its status without configuration (`state`, memory, lock: `src/lib/services/view.ts`, `canManage: false`)
+and a running op's progress without its log, pull details or hints (`opViewFor`, also `GET /api/services/ops/<id>`), and
+the UI says "An administrator has to start/install <name>" instead of showing buttons (sidecar cards, Database course,
+office) and that an administrator has to run the GitHub showcase (CV studio). A 401 in public mode names no account.
+
+## Fair share between accounts
+
+- Python lanes (`src/lib/work-queue.ts`): every job carries its account; one account may hold at most
+  `KNIFE_PY_LIGHT_PER_ACCOUNT` (8) light and `KNIFE_PY_HEAVY_PER_ACCOUNT` (3) heavy jobs (running + queued; 429 beyond),
+  and a free slot goes to the account with the fewest jobs running there, round-robin among equals.
+- Async jobs (`src/lib/jobs.ts`): per account at most `KNIFE_JOBS_PER_ACCOUNT` (50) live jobs and
+  `KNIFE_JOBS_ACCOUNT_MAX_MB` (a quarter of `KNIFE_JOBS_MAX_MB`) of scratch (429); job ids are random.
+- Database course: one run in flight per account (`KNIFE_LEARN_RUNS_PER_ACCOUNT`, 429 "still running") and at most
+  `KNIFE_LEARN_MAX_RUNS` (12) on the server, below the learner role's 20 connections (docs/LEARN.md).
+- Child processes (Python lane, `gh`/`git`, docker compose) get an allow-listed environment (`src/lib/child-env.ts`),
+  never the server's own variables.
 
 ## Mail (`src/lib/mail/`)
 
@@ -142,5 +159,5 @@ private-mode restart). Private mode is covered by `tests/accounts_api_e2e.py` an
 
 ## Later phases (not done here)
 
-Per-feature data isolation audit, storage quota enforcement, SSRF guards for user-supplied URLs, per-account MCP
-credentials (public-mode MCP needs a browser session today), office file browser, deployment (reverse proxy, mail server).
+Per-feature data isolation audit, storage quota enforcement, SSRF guards for user-supplied URLs, office file browser,
+deployment (reverse proxy, mail server).

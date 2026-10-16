@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { clearAccountStorage } from "@/lib/client-account";
 import { fetchAccount, fetchConversation, login as apiLogin, logout as apiLogout, resetConversation, saveConversation } from "@/lib/agent-client/api";
 import { clearArtifacts } from "@/lib/agent-client/artifacts";
 import { stopRequested } from "@/lib/agent-client/feedback";
@@ -383,6 +384,8 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
 
   const logout = useCallback(async () => {
     abortRef.current?.abort();
+    // Nothing of this account stays in the browser for the next person (transcript, queue, SQL schema, trust mode).
+    clearAccountStorage(accountIdRef.current);
     await apiLogout();
     accountIdRef.current = null;
     scopeIdRef.current = null;

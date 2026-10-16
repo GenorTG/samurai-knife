@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
 
   // The engine validates per-action params; the cast keeps this route generic over actions.
   try {
-    const result = await runSql(parsed.data.action, parsed.data.params as never, request.signal);
+    const result = await runSql(parsed.data.action, parsed.data.params as never, request.signal, auth.account.id);
     return json(result, result.ok ? 200 : 422);
   } catch (error) {
     const full = queueFullOrNull(error);

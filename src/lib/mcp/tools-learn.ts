@@ -4,6 +4,7 @@ import { findCourse, findLesson } from "@/lib/learn/courses";
 import { readProgress } from "@/lib/learn/progress";
 import { readyConnection } from "@/lib/learn/sql/api";
 import { LearnDbError, runLearnerSql } from "@/lib/learn/sql/db";
+import { withLearnerSlot } from "@/lib/learn/sql/slots";
 import { SQL_COURSE } from "@/lib/learn/sql/lessons";
 
 /**
@@ -21,6 +22,7 @@ function account(ctx: KnifeToolContext | undefined): string {
 export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_learn_lessons",
+    scope: "account",
     description:
       "Database course (SQL & PostGIS, page /tools/db-course): the modules and lessons with this learner's status (done, attempts) and the lesson they are on. Use it before tutoring.",
     schema: z.object({}).strict(),
@@ -42,6 +44,7 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_learn_lesson",
+    scope: "account",
     description:
       "One Database course lesson (default: the learner's current one): explanation, task, the hints the learner has already opened, their last query, its error and the latest check feedback. To tutor: explain the error or nudge with a hint; do NOT give the full answer. Set revealSolution only when the learner explicitly asks for the solution.",
     schema: z.object({ lessonId: z.string().max(80).optional(), revealSolution: z.boolean().optional() }).strict(),
@@ -76,15 +79,18 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_learn_run",
+    scope: "account",
     description:
       "Run SQL in the Database course sandbox (PostgreSQL 16 + PostGIS, schemas shop and geo, low-privilege role, everything rolled back, 5 s limit, first 50 rows). For trying a hint or explaining a result; it does not count as the learner's attempt.",
     schema: z.object({ sql: z.string().min(1).max(20_000) }).strict(),
-    async run({ sql }) {
+    async run({ sql }, ctx) {
       try {
-        const run = await runLearnerSql(await readyConnection(), sql, { rowCap: 50 });
+        const info = await readyConnection();
+        const run = await withLearnerSlot(ctx?.accountId ?? "", () => runLearnerSql(info, sql, { rowCap: 50 }));
         return { error: run.error, notices: run.notices, durationMs: run.durationMs, results: run.results };
       } catch (error) {
-        if (error instanceof LearnDbError) throw new Error(`${error.message} (open /tools/db-course to start it)`);
+        if (error instanceof LearnDbError && error.status === 409) throw new Error(`${error.message} (open /tools/db-course to start it)`);
+        if (error instanceof LearnDbError) throw new Error(error.message);
         throw error;
       }
     },

@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { findCourse, findLesson } from "@/lib/learn/courses";
 import { updateLesson } from "@/lib/learn/progress";
 import { learnError, readyConnection } from "@/lib/learn/sql/api";
+import { withLearnerSlot } from "@/lib/learn/sql/slots";
 import { checkLesson } from "@/lib/learn/sql/check";
 import { DEFAULT_ROW_CAP } from "@/lib/learn/sql/db";
 
@@ -28,7 +29,8 @@ export async function POST(request: Request): Promise<Response> {
   const lesson = course ? findLesson(course, lessonId) : undefined;
   if (!lesson) return jsonError("unknown_lesson", 404);
   try {
-    const outcome = await checkLesson(await readyConnection(), lesson, sql);
+    const info = await readyConnection();
+    const outcome = await withLearnerSlot(auth.account.id, () => checkLesson(info, lesson, sql));
     const progress = updateLesson(auth.account.id, "sql", lessonId, (entry) => ({
       ...entry,
       attempts: entry.attempts + 1,
