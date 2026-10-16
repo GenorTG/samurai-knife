@@ -31,7 +31,7 @@ npm run accounts -- set-role <id> admin                         # v1 accounts ar
 One JSON file (0600, atomic temp+rename). Per account: `id` (= username, `ACCOUNT_ID_PATTERN`), `displayName`,
 `passwordHash` (scrypt, format shared with the CLI), `provider`, `createdAt`, `email` (unique, lowercased),
 `emailVerifiedAt`, `role` (`admin`|`user`), `status` (`pending`|`active`|`disabled`), `storageQuotaBytes` (1 GiB for
-registered users, `null` = unlimited; enforcement is a later phase), `lastLoginAt`, and the pending link tokens
+registered users, `null` = unlimited; enforced, see Storage quota), `lastLoginAt`, and the pending link tokens
 `verifyToken` / `resetToken` / `emailChange` (`{hash, expiresAt}`, SHA-256 of the raw token only).
 
 - Migration: a v1 file (no `version`) is read with the v2 defaults (every account an active admin, no email) and written
@@ -86,17 +86,44 @@ differs goes to the mailbox of the address concerned.
 
 ## Data an account owns
 
-`src/lib/accounts/data.ts` is the list; account deletion (self or admin) removes all of it and returns what it removed:
+Every per-account path is built by `accountScope(id)` (`src/lib/storage/scope.ts`): the id is checked once against
+`ACCOUNT_ID_PATTERN` (no dot, slash or `..` possible), every further part must be one plain segment (`safeJoin` refuses
+separators, `.`/`..`, NUL and anything that resolves outside its base) and a symlinked account directory is refused.
+`src/lib/accounts/data.ts` lists the locations; account deletion (self or admin) removes all of it and returns what it
+removed:
 
 - `accounts.json` (the record) and `sessions.json` (its sessions)
 - `cv/<id>.json`, `cv/<id>.snapshots/`, `cv/<id>.photo.jpg`, any other `cv/<id>.*` (CV studio)
 - `conversations/<id>/` (assistant transcripts)
-- `docs/<id>/` (office documents)
+- `docs/<id>/` (office library: documents, `folders.json`, kept versions, trash)
 - `learn/<id>.json` (course progress)
 - `usage/<id>.json` (token ledger)
 
-Not on disk, so not removed: in-memory async jobs and UI-bridge presence (they expire), rate-limit buckets, `.eml` files
+Not on disk, so not removed: in-memory async jobs (their scratch dirs in the OS temp dir count toward the quota while
+they live) and UI-bridge presence (they expire), rate-limit buckets, `.eml` files
 in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new per-account store must be added to `data.ts`.
+
+## Storage quota (`src/lib/storage/quota.ts`)
+
+- Limit: the account's `storageQuotaBytes` (registration sets 1 GiB; the admin page changes it, 0 in the field = unlimited);
+  administrators are always unlimited, and so is every account in private mode. Accounts made with the CLI start without
+  a quota until an admin sets one.
+- Usage: every byte under the account's locations above (apparent file sizes, symlinks not followed) plus the scratch
+  bytes of its live async jobs (`POST /api/pdf?async=1`). Counted by one walk, cached in memory, moved by the exact delta of
+  every write and removal that goes through `writeAccountFile` / `removeAccountPath`; re-walked after
+  `KNIFE_STORAGE_RECOUNT_SEC` (default 600) to catch changes made outside the server.
+- Checked BEFORE writing, only the growth counts (overwriting with a smaller file always passes): office uploads, new and
+  duplicated documents, restores, editor saves (the Document Server callback first drops that document's oldest kept
+  versions; if it still does not fit it answers an error, the editor keeps the changes and warns, and the open editor
+  page shows "The last save was refused"), CV saves (incl. its snapshot) and the photo, assistant transcript PUTs,
+  async PDF jobs. A refusal is HTTP 507 `{error, code: "storage_quota_exceeded", usedBytes, quotaBytes, neededBytes}`;
+  the message names what is needed, what is free and how to free space. MCP / assistant tools return the same message.
+- Never refused (bookkeeping, still counted): document metadata, folder list, CV snapshots of an accepted save, the
+  token ledger, course progress, the assistant's continuation state. Deleting is never refused.
+- Retention caps so nothing grows without bound: CV snapshots 40 and 20 MB per account, 5 conversation files (one per
+  provider/model) per account, 25 kept versions per document, trash purged 30 days after trashing.
+- Shown on `/account` (Storage panel, `GET /api/account/storage` -> `{usedBytes, quotaBytes, fraction, areas}`), in the
+  office file browser (meter + files / versions / trash split) and on the admin users page.
 
 ## Roles
 
@@ -135,12 +162,15 @@ The Host/Origin guard allows loopback, `KNIFE_HOST`, the host of `KNIFE_PUBLIC_U
 
 ## Tests
 
-`tests/accounts_store.test.mjs` (unit: migration, lock, unique emails, proxy rules, rate limits, flows, purge) and
+`tests/accounts_store.test.mjs` (unit: migration, lock, unique emails, proxy rules, rate limits, flows, purge),
+`tests/office_library.test.mjs` (unit: storage scope, quota, retention), `tests/office_files_e2e.py` (public mode, two users +
+admin: isolation of every office route and `knife_doc_*` tool, quota 507 in the API and the browser) and
 `tests/functional/accounts_public_e2e.py` (self-contained public-mode scratch server, outbox mail, every flow in the UI and
 the API, roles on sidecar ops with a state-file-only sidecar, admin disable, deletion of every data location, then a
 private-mode restart). Private mode is covered by `tests/accounts_api_e2e.py` and the widget suites.
 
 ## Later phases (not done here)
 
-Per-feature data isolation audit, storage quota enforcement, SSRF guards for user-supplied URLs, per-account MCP
-credentials (public-mode MCP needs a browser session today), office file browser, deployment (reverse proxy, mail server).
+SSRF guards for user-supplied URLs, per-account MCP credentials (public-mode MCP needs a browser session today),
+deployment (reverse proxy, mail server). Done on `feat/office-files`: per-account storage scope, quota enforcement, the
+office file browser.

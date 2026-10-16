@@ -78,9 +78,33 @@ Two URLs per sidecar, both shown and editable in its Settings:
   `preparedContainer` in state.json). Measured: new container 53 s to ready, stopped -> ready 11.7 s (was 45 s when every
   start regenerated the cache), RAM ~1.1-1.5 GiB. Volumes: `/var/lib/euro-office/documentserver`,
   `/var/www/euro-office/Data`.
-- **Library**: `$KNIFE_DATA_DIR/docs/<account>/<docId>/` (`meta.json`, `current.<fmt>`, `history/` = last 5 versions).
-  Blank docx/xlsx/pptx/odt/ods/odp are generated in TS (`src/lib/office/templates.ts`, minimal ZIP writer on `node:zlib`).
-  Upload is JSON base64 (≤ 50 MB). Create/upload/download/delete work without the sidecar; only editing needs it.
+- **Library** (per account, path from `accountScope`, counted by the storage quota: docs/ACCOUNTS.md "Storage quota"):
+  `$KNIFE_DATA_DIR/docs/<account>/` with `folders.json` (the folder tree) and one directory per document
+  `<docId>/` (`meta.json`, `current.<fmt>`, `history/v<N>.<fmt>`). Blank docx/xlsx/pptx/odt/ods/odp are generated in TS
+  (`src/lib/office/templates.ts`, minimal ZIP writer on `node:zlib`). Upload is JSON base64 (≤ 50 MB per file).
+  Everything except editing works without the sidecar.
+  - Folders (`src/lib/office/folders.ts`): metadata only (a document names its `folderId`; moving never touches bytes),
+    unique sibling names (case-insensitive), at most 12 levels and 2000 folders, no moves into the own subtree.
+  - Versions: every save (editor callback 2 and 6, a restore) keeps the previous bytes as a version with when, who and
+    how (`editor`, `upload`, `restore` from vN, `copy`…); at most 25 per document (oldest dropped). Restore = the old bytes
+    become a NEW version (nothing lost; the key rotates, so an editor still open on the old session saves its next change
+    as "(edited copy)"). Prune keeps the newest N. Preview = plain text (`knife_doc_read`'s extraction).
+  - Trash: `trashedAt` + `trashedWith` (the item the user trashed: a document, or a folder with its whole subtree).
+    Restore puts things back (root when the parent folder is gone); only the trashed item itself can be restored or deleted
+    for good; purged 30 days after trashing. A trashed document cannot be opened, moved or copied (409).
+  - Routes: `GET /api/office/docs` (library + trash + storage in one read), `POST /api/office/docs` (create/upload with
+    `folderId`), `GET|POST|DELETE /api/office/docs/<id>` (details + versions; rename, move, duplicate, trash, restore,
+    restore_version, prune_versions, forcesave; DELETE = trash, `?permanent=1` = for good),
+    `GET /api/office/docs/<id>/versions/<n>` (text preview, `?download=1`), `POST /api/office/folders`,
+    `POST|DELETE /api/office/folders/<id>` (rename, move, trash, restore; DELETE = a trashed folder for good),
+    `POST /api/office/trash {action:"empty"}`. Another account's ids answer 404 exactly like missing ones.
+  - File browser (`src/tools/sidecars/OfficeTool.tsx`): breadcrumbs, folders first, sortable columns (`aria-sort`),
+    search across folders (with the folder path), per-row Open / Download / Versions / Actions (rename, move, duplicate) /
+    Trash with Undo, a Trash view (restore, delete forever, empty), the storage meter, role=status progress for uploads and
+    every change; Escape closes an open row. Uploads are checked against the free space before they are sent. The page
+    re-reads the library every 10 s while visible (changes from the assistant or MCP show up).
+  - Editor not available: when the sidecar is not installed, Open shows a clean "not installed" state (download, back);
+    a stopped sidecar is lazy-started (or, for non-admins in public mode, the "An administrator has to …" message).
 - **Editor**: `GET /api/office/docs/<id>/editor` returns the DocsAPI script URL and a config signed server-side with the
   sidecar's JWT secret (the browser never sees the secret). The page loads `api.js` from the public URL and mounts
   `DocsAPI.DocEditor` (an iframe). `forcesave: true`: Ctrl+S / the Save button saves at once.
@@ -93,10 +117,14 @@ Two URLs per sidecar, both shown and editable in its Settings:
   before destroying it; leaving the page another way (navigation) does not wait.
 - **Save rules**: status 2 (all editors closed) → save + new `key`; 6 (force-save) → save, same key (the session goes on);
   4 (closed, no changes) → new key; 1 → session open/closed bookkeeping; 3/7 → logged, nothing saved. The save URL must be
-  on the sidecar's own origin (no SSRF). A callback for an outdated key saves "<name> (edited copy)" instead of overwriting.
+  on the sidecar's own origin (no SSRF). A callback for an outdated key saves "<name> (edited copy)" (same folder) instead
+  of overwriting. Over the storage quota the save first drops that document's oldest kept versions; if it still does not
+  fit the callback answers `{error: 1}` (the editor warns and keeps the changes) and the document records `lastSaveError`,
+  which the open editor page shows.
   If the server returns another format (`filetype`), the document takes that format.
 - **Assistant**: the editor iframe is cross-origin, so UI tools cannot click or type in it. The `docs` tool group
-  (`knife_doc_list`, `knife_doc_read`, `knife_doc_create`) works on the SAVED library server-side (widget and MCP); the
+  (`knife_doc_list`, `knife_doc_read`, `knife_doc_create`, `knife_doc_folder_create`, `knife_doc_move`,
+  `knife_doc_versions`, `knife_doc_restore_version`; docs/MCP.md) works on the SAVED library server-side (widget and MCP); the
   document OPEN in the editor is read and edited live through the editor plugin below (`doc_live_*`). Both groups are
   preloaded on `/tools/office`.
 - **Force-save**: `POST /api/office/docs/<id> {action:"forcesave"}` asks the Document Server's command service
@@ -210,6 +238,13 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   image; screenshots in `.tmp/office-live-e2e/`.
 - Real docker: `python3 tests/learn_db_e2e.py` — the course database installed from the course page, seeded, every
   lesson checked, sandbox probes, lazy start, purge (docs/LEARN.md). ~1.5 min with a cached image.
+- Unit: `tests/office_library.test.mjs` (storage scope, quota, folders, trash, versions, callback room-making,
+  `knife_doc_*` isolation, retention).
+- Real docker: `python3 tests/office_files_e2e.py --host <tailscale-ip>` — public mode, admin + two users: every office
+  route and `knife_doc_*` tool (agent route + MCP) isolated between accounts, quota 507 in the API and the browser, the
+  file browser in Chromium and Firefox (folders, upload, rename, move, duplicate, search, sort, download, trash + Undo,
+  restore, delete forever, not-installed editor state), then the sidecar: edit + Ctrl+S = a version, preview/download/
+  restore it, Firefox editor. `--skip-docker` for the browser part only. ~9 min with a cached image.
 - Real docker: `python3 tests/office_e2e.py` — scratch worktree server on the Tailscale address (own data dir, port and
   compose project), install via the API, Playwright typing into a docx, Ctrl+S save (status 6), close save (status 2),
   every blank format opens, knife_doc tools, stop → lazy start, idle stop, CLI status, purge. `--keep` leaves it running,

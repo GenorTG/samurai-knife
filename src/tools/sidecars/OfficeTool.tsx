@@ -595,7 +595,8 @@ export default function OfficeTool() {
       </Panel>
       {service?.installed ? (
         <p className="text-xs text-faint">
-          Editor service: {service.ready ? "running" : service.canManage === false ? "not running (an administrator starts it)" : "stopped (starts when you open a document)"} · {service.canManage === false ? "" : "manage it on the Sidecar services page."}
+          Editor service: {service.ready ? "running" : service.canManage === false ? "not running (an administrator starts it)" : "stopped (starts when you open a document)"}
+          {service.canManage === false ? "" : " · manage it on the Sidecar services page."}
         </p>
       ) : null}
     </div>
