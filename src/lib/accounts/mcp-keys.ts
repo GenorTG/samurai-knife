@@ -42,9 +42,11 @@ export interface McpKeyView {
 }
 
 export class McpKeyError extends Error {
-  constructor(message: string, readonly status: number) {
+  readonly status: number;
+  constructor(message: string, status: number) {
     super(message);
     this.name = "McpKeyError";
+    this.status = status;
   }
 }
 

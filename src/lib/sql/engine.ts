@@ -9,9 +9,10 @@ export async function runSql<A extends SqlAction>(
   action: A,
   params: SqlActionMap[A]["in"],
   signal?: AbortSignal,
+  owner?: string,
 ): Promise<SqlResponse<A>> {
   // `light` lane (never waits behind pdf work); throws QueueFullError when that lane is saturated.
-  const result = await runPythonScript<SqlActionMap[A]["out"]>("sql_tool.py", { action, params }, { timeoutMs: 30_000, lane: "light", signal, label: `sql:${action}` });
+  const result = await runPythonScript<SqlActionMap[A]["out"]>("sql_tool.py", { action, params }, { timeoutMs: 30_000, lane: "light", signal, label: `sql:${action}`, owner });
   if (!result.ok || result.data === undefined) return { ok: false, error: result.error ?? "SQL engine failed." };
   return { ok: true, data: result.data };
 }

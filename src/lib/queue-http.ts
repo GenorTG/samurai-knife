@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { isQueueFull, type QueueFullError } from "@/lib/work-queue";
 
-/** 503 + Retry-After for a full lane. */
+/** 503 + Retry-After for a full lane; 429 when the caller's own share of the lane is full (work-queue.ts `perOwner`). */
 export function queueFullResponse(error: QueueFullError): NextResponse {
+  const status = error.scope === "owner" ? 429 : 503;
   return NextResponse.json(
     { ok: false, error: error.message, lane: error.lane, retryAfterSec: error.retryAfterSec },
-    { status: 503, headers: { "Retry-After": String(error.retryAfterSec), "Cache-Control": "no-store" } },
+    { status, headers: { "Retry-After": String(error.retryAfterSec), "Cache-Control": "no-store" } },
   );
 }
 

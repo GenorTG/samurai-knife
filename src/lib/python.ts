@@ -48,6 +48,8 @@ export type PythonRunOptions = {
   /** Aborts the job: a queued one is dropped, a running one has its process group killed. */
   signal?: AbortSignal;
   label?: string;
+  /** The account the work is for: its share of the lane is capped and slots are handed out fairly (work-queue.ts). */
+  owner?: string;
 };
 
 export interface PythonRunResult<T> {
@@ -174,12 +176,13 @@ async function execute<T>(scriptName: string, request: unknown, maxBytes: number
 export function startPythonScript<T = unknown>(
   scriptName: string,
   request: unknown,
-  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label }: PythonRunOptions = {},
+  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   return pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, jobSignal), {
     signal,
     timeoutMs,
     label: label ?? scriptName,
+    owner,
   });
 }
 

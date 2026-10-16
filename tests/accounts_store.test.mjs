@@ -188,7 +188,8 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
   }
   assert.ok(data.accountStorageBytes("zoe") >= 7);
   const purged = flows.purgeAccount("zoe");
-  assert.deepEqual(purged.removed.slice(2).sort(), ["conversations/zoe", "cv/zoe.json", "cv/zoe.photo.jpg", "cv/zoe.snapshots", "docs/zoe", "learn/zoe.json", "usage/zoe.json"]);
+  assert.deepEqual(purged.removed.slice(3).sort(), ["conversations/zoe", "cv/zoe.json", "cv/zoe.photo.jpg", "cv/zoe.snapshots", "docs/zoe", "learn/zoe.json", "usage/zoe.json"]);
+  assert.deepEqual(purged.removed.slice(0, 3), ["accounts.json (record)", "sessions.json (sessions)", "mcp-keys.json (MCP keys)"]);
   assert.equal(store.getAccount("zoe"), undefined);
   assert.equal(existsSync(join(dataDir, "cv/zoey.json")), true, "another account's files with a common prefix survive");
   delete process.env.KNIFE_AUTH_MODE;

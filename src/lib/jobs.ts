@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 import { isJobCancelled, isJobTimeout, type JobHandle } from "./work-queue";
@@ -5,7 +6,9 @@ import { isJobCancelled, isJobTimeout, type JobHandle } from "./work-queue";
 /**
  * In-memory async jobs on top of the work queue: one record per accepted job, owned by the creating account.
  * Nothing survives a server restart (the scratch dirs are in os.tmpdir()). Finished jobs are reaped `ttlSec`
- * after completion; scratch bytes held by live jobs are capped.
+ * after completion; scratch bytes held by live jobs are capped, in total and per owner (one account cannot fill the
+ * store for everyone: `KNIFE_JOBS_PER_ACCOUNT` live jobs, default 50, and `KNIFE_JOBS_ACCOUNT_MAX_MB`, default a quarter of
+ * the total budget).
  */
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -29,9 +32,14 @@ export interface JobView {
 
 export class JobStorageFullError extends Error {
   readonly code = "JOB_STORAGE_FULL";
-  constructor() {
-    super("Job storage is full; wait for running jobs to be collected or expire, or delete finished jobs.");
+  /** `owner`: the caller's own jobs fill its share (429); `store`: the server-wide budget is full (503). */
+  readonly scope: "store" | "owner";
+  constructor(scope: "store" | "owner" = "store") {
+    super(scope === "owner"
+      ? "Your jobs fill your share of the job storage; download or delete finished jobs, or wait for them to expire."
+      : "Job storage is full; wait for running jobs to be collected or expire, or delete finished jobs.");
     this.name = "JobStorageFullError";
+    this.scope = scope;
   }
 }
 
@@ -65,6 +73,16 @@ export function pdfUploadMaxBytes(): number {
   return mbFromEnv("KNIFE_JOBS_MAX_MB", 2048);
 }
 
+function perOwnerJobs(): number {
+  const parsed = Number.parseInt(process.env.KNIFE_JOBS_PER_ACCOUNT ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 50;
+}
+
+function perOwnerBytes(): number {
+  const parsed = Number.parseInt(process.env.KNIFE_JOBS_ACCOUNT_MAX_MB ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed * 1024 * 1024 : Math.floor(mbFromEnv("KNIFE_JOBS_MAX_MB", 2048) / 4);
+}
+
 export function jobTtlMs(): number {
   const parsed = Number.parseFloat(process.env.KNIFE_JOB_TTL_SEC ?? "");
   return (Number.isFinite(parsed) && parsed > 0 ? parsed : 600) * 1000;
@@ -72,13 +90,18 @@ export function jobTtlMs(): number {
 
 class JobStore {
   private readonly jobs = new Map<string, JobRecord>();
-  private counter = 0;
 
-  /** Total scratch bytes (inputs + results) of all live records. */
-  usedBytes(): number {
+  /** Total scratch bytes (inputs + results) of all live records, or of one owner's. */
+  usedBytes(owner?: string): number {
     let sum = 0;
-    for (const job of this.jobs.values()) sum += job.inputBytes + job.resultBytes;
+    for (const job of this.jobs.values()) if (owner === undefined || job.owner === owner) sum += job.inputBytes + job.resultBytes;
     return sum;
+  }
+
+  private ownerJobs(owner: string): number {
+    let count = 0;
+    for (const job of this.jobs.values()) if (job.owner === owner) count += 1;
+    return count;
   }
 
   add<T>(init: {
@@ -94,10 +117,14 @@ class JobStore {
     settle: (value: T) => Promise<{ result: JobResult; resultBytes: number }>;
   }): string {
     this.sweep();
+    if (this.ownerJobs(init.owner) >= perOwnerJobs() || this.usedBytes(init.owner) + init.inputBytes > perOwnerBytes()) {
+      throw new JobStorageFullError("owner");
+    }
     if (this.jobs.size >= MAX_LIVE_JOBS || this.usedBytes() + init.inputBytes > mbFromEnv("KNIFE_JOBS_MAX_MB", 2048)) {
       throw new JobStorageFullError();
     }
-    const id = `job_${Date.now().toString(36)}${(++this.counter).toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    // Unguessable on top of the owner check in `get` (a foreign id already reads as missing).
+    const id = `job_${randomBytes(12).toString("base64url")}`;
     const record: JobRecord = {
       id,
       owner: init.owner,
