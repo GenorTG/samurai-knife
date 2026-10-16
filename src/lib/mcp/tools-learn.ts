@@ -21,6 +21,7 @@ function account(ctx: KnifeToolContext | undefined): string {
 export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_learn_lessons",
+    scope: "account",
     description:
       "Database course (SQL & PostGIS, page /tools/db-course): the modules and lessons with this learner's status (done, attempts) and the lesson they are on. Use it before tutoring.",
     schema: z.object({}).strict(),
@@ -42,6 +43,7 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_learn_lesson",
+    scope: "account",
     description:
       "One Database course lesson (default: the learner's current one): explanation, task, the hints the learner has already opened, their last query, its error and the latest check feedback. To tutor: explain the error or nudge with a hint; do NOT give the full answer. Set revealSolution only when the learner explicitly asks for the solution.",
     schema: z.object({ lessonId: z.string().max(80).optional(), revealSolution: z.boolean().optional() }).strict(),
@@ -76,6 +78,7 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_learn_run",
+    scope: "account",
     description:
       "Run SQL in the Database course sandbox (PostgreSQL 16 + PostGIS, schemas shop and geo, low-privilege role, everything rolled back, 5 s limit, first 50 rows). For trying a hint or explaining a result; it does not count as the learner's attempt.",
     schema: z.object({ sql: z.string().min(1).max(20_000) }).strict(),

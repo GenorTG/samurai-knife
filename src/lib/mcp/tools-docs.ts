@@ -23,6 +23,7 @@ function rethrow(error: unknown): never {
 export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_list",
+    scope: "account",
     description: "List the user's office documents (Office documents tool): id, name, format (docx/xlsx/pptx/odt/ods/odp), size, version, last update. Newest first.",
     schema: z.object({}).strict(),
     run(_input, ctx) {
@@ -31,6 +32,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_doc_read",
+    scope: "account",
     description:
       "Read one office document as plain text: paragraphs for docx/odt, '# Sheet: name' blocks of tab-separated rows for xlsx/ods, '# Slide N' blocks for pptx/odp. Formatting, images and formulas are not included (cell values are). Use knife_doc_list for ids.",
     schema: z.object({ id: z.string().min(1).max(40), maxChars: z.number().int().min(100).max(200_000).optional() }).strict(),
@@ -48,6 +50,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_doc_create",
+    scope: "account",
     description:
       "Create a new office document in the user's library and return its id and the page that opens it in the editor. format docx/odt take `paragraphs` (one string per paragraph); xlsx/ods take `rows` (array of rows of cell strings; numbers become numeric cells); pptx/odp take `slides` [{title, bullets[]}]. Plain content only (no styling). Omit the content for a blank file.",
     schema: z.object({

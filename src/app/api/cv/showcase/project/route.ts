@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
+import { requireAdmin } from "@/lib/accounts/authz";
 import { showcaseErrorResponse } from "@/lib/cv/showcase/http";
 import { addProjectFromGithub } from "@/lib/cv/showcase/service";
 import { CvStoreError } from "@/lib/cv/store";
@@ -13,6 +14,9 @@ const bodySchema = z.object({ repo: z.string().min(1).max(300), pinned: z.boolea
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  // Admin-only: these reach the server owner's own GitHub login (`gh`) or disk, never a user's (docs/ACCOUNTS.md "Roles").
+  const denied = requireAdmin(auth.account, "read GitHub repositories with the server's own login");
+  if (denied) return denied;
   const read = await readJsonBody(request, 16 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);

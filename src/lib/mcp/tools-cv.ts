@@ -33,6 +33,7 @@ const opSchema = z.discriminatedUnion("op", [
 const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_get",
+    scope: "account",
     description:
       "Read the user's master CV profile (bilingual PL/EN) or one part of it. path is JSON-pointer-like, e.g. '/experience/id=rentiers' or '/summary'; '/' = whole profile. Always read before editing.",
     schema: z.object({ path: z.string().max(300).optional() }).strict(),
@@ -48,6 +49,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_patch",
+    scope: "account",
     description:
       "Edit the master CV profile atomically. ops: [{op:'set'|'add'|'remove', path, value}]. Paths address list items by id: /experience/id=rentiers/bullets/id=b2/text/en ; append with .../bullets/-. The user sees changes live and can undo. Never invent facts: keep numbers, names, technologies and qualifiers. If the result has `warnings`, your new text dropped a number, URL, email, version or name from the old text: restore it (or tell the user why it was removed).",
     schema: z.object({ ops: z.array(opSchema).min(1).max(40) }).strict(),
@@ -67,6 +69,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_missing",
+    scope: "account",
     description: "List profile text fields written in the other language but empty in `lang` (the translation backlog).",
     schema: z.object({ lang: z.enum(CV_LANGS) }).strict(),
     run({ lang }, ctx) {
@@ -75,6 +78,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_import",
+    scope: "account",
     description:
       "Load a COMPLETE master profile you structured from the user's pasted CV (same shape knife_cv_get returns: contact, summary, experience[], projects[], skills[], education[], languages[], consent, extras; every text field {pl,en}, every list item has a lowercase id). Refuses to replace an existing profile unless overwrite=true. Copy facts faithfully; leave the other language empty rather than inventing it, then translate with knife_cv_patch.",
     schema: z.object({ profile: z.record(z.string(), z.unknown()), overwrite: z.boolean().optional() }).strict(),
@@ -90,6 +94,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_undo",
+    scope: "account",
     description: "Revert the last CV data change (profile, variants, jobs or applications).",
     schema: z.object({}).strict(),
     run(_input, ctx) {
@@ -99,6 +104,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_list",
+    scope: "account",
     description: "List the user's saved job offers (id, company, title, url, language, whether requirements were saved) and, for each, whether it was applied to: `application` = {id, status, appliedOn} or null.",
     schema: z.object({}).strict(),
     run(_input, ctx) {
@@ -111,6 +117,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_save",
+    scope: "account",
     description: "Create or update a saved job offer. Use it to store a link (url) and/or pasted posting text, and to save the requirement / nice-to-have lines you extracted so matching is sharp. Without id it ALWAYS creates a new offer (a second one if the company and title already exist): call knife_cv_job_list first and pass the existing id to update. Returns the job id.",
     schema: z.object({
       id: z.string().max(64).optional(), url: z.string().max(2_000).optional(), title: z.string().max(300).optional(), company: z.string().max(300).optional(),
@@ -133,6 +140,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_job_delete",
+    scope: "account",
     description: "Delete a saved job offer (applications that referenced it keep their record, unlinked).",
     schema: z.object({ id: z.string().min(1).max(64) }).strict(),
     run({ id }, ctx) {
@@ -142,6 +150,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_list",
+    scope: "account",
     description: "List saved per-job CV versions (variants).",
     schema: z.object({}).strict(),
     run(_input, ctx) {
@@ -150,6 +159,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_get",
+    scope: "account",
     description: "Read one CV version (which roles/bullets/projects/skill groups, in what order, overrides).",
     schema: z.object({ id: z.string().min(1).max(64) }).strict(),
     run({ id }, ctx) {
@@ -160,6 +170,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_create",
+    scope: "account",
     description: "Create or update a per-job CV version: which experience entries and bullets (by id, in order), projects, skill groups, custom sections, the section print order (sectionOrder, e.g. ['summary','projects','experience','skills','education','languages']), optional headline/summary overrides ({pl,en}) and per-version rewrites [{path, text:{pl,en}}] of bullet texts / project summaries (see knife_cv_variant_rewrite). null/omitted = keep all / profile order. Updating an existing id merges: omitted fields keep their saved value. Ids are validated against the profile; the error lists the valid ones. Never add content that is not in the profile or confirmed by the user; `warnings` lists facts a rewrite dropped or invented and the user's pinned priorities the version breaks: fix every one.",
     schema: z.object({
       id: z.string().min(1).max(64), name: z.string().min(1).max(200), lang: z.enum(CV_LANGS).optional(), target: z.string().max(300).optional(), jobId: z.string().max(64).nullable().optional(),
@@ -183,6 +194,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_variant_delete",
+    scope: "account",
     description: "Delete a CV version.",
     schema: z.object({ id: z.string().min(1).max(64) }).strict(),
     run({ id }, ctx) {
@@ -192,6 +204,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_app_list",
+    scope: "account",
     description:
       "List tracked job applications as the user's pipeline. Each item: status, appliedOn (the day it was sent), daysSinceApplied, open / inProgress flags, next action + due date, overdue, closedOn. Filters: status; open=true (wishlist + applied + screening + interview) or open=false (offer, rejected, withdrawn, ghosted). Sorted by appliedOn (oldest first, so the longest-waiting come first) unless sort='due'. Also returns today's date and counts (open, inProgress, overdue, per status). Use it to answer 'which applications are still open / what did I apply to when'.",
     schema: z.object({ status: z.enum(APPLICATION_STATUSES).optional(), open: z.boolean().optional(), sort: z.enum(["applied", "due"]).optional() }).strict(),
@@ -208,6 +221,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_app_save",
+    scope: "account",
     description: "Track a job application: create (company + role required) or update by id. Without id it ALWAYS creates a new row (a second one for the same company and role): call knife_cv_app_list first and pass the existing id to update. Link the offer (jobId), the CV version sent (variantId), the posting url, next action and its due date (YYYY-MM-DD). appliedOn (YYYY-MM-DD) is the day it was sent: it is set to today automatically when the status becomes 'applied'; pass it explicitly to record an earlier date. A status change is logged with today's date; `note` explains it. Statuses: wishlist, applied, screening, interview, offer, rejected, withdrawn, ghosted.",
     schema: z.object({
       id: z.string().max(64).optional(), company: z.string().max(300).optional(), role: z.string().max(300).optional(), status: z.enum(APPLICATION_STATUSES).optional(),
@@ -226,6 +240,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_app_delete",
+    scope: "account",
     description: "Delete a tracked application.",
     schema: z.object({ id: z.string().min(1).max(64) }).strict(),
     run({ id }, ctx) {
@@ -235,6 +250,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
   }),
   defineTool({
     name: "knife_cv_app_due",
+    scope: "account",
     description: "Open applications whose follow-up / next action is due (today's date is returned). withinDays=0 means due today or overdue.",
     schema: z.object({ withinDays: z.number().int().min(0).max(60).optional() }).strict(),
     run({ withinDays }, ctx) {

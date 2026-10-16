@@ -1,4 +1,5 @@
 import { authenticate, json, jsonError } from "@/lib/accounts/http";
+import { requireAdmin } from "@/lib/accounts/authz";
 import { showcaseErrorResponse } from "@/lib/cv/showcase/http";
 import { localFacts } from "@/lib/cv/showcase/service";
 
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  // Admin-only: these reach the server owner's own GitHub login (`gh`) or disk, never a user's (docs/ACCOUNTS.md "Roles").
+  const denied = requireAdmin(auth.account, "read git repositories on the server's disk");
+  if (denied) return denied;
   const path = new URL(request.url).searchParams.get("path")?.trim() ?? "";
   if (!path) return jsonError("Pass ?path=<git repo root>.", 422);
   try {
