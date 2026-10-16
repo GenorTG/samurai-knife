@@ -112,7 +112,19 @@ removed:
 - `docs/<id>/` (office library: documents, `folders.json`, kept versions, trash)
 - `learn/<id>.json` (course progress)
 - `usage/<id>.json` (token ledger)
-- `workspace/<id>.json.enc` (automatically saved browser-tool drafts)
+- `workspace/<id>.json.enc` (browser-tool drafts, see "Tool drafts" below)
+
+### Tool drafts (`src/components/WorkspaceDraft.tsx`, `/api/workspace`)
+
+Every browser tool is wrapped (`src/tools/registry-client.tsx`) except the ones with their own server data or secrets
+(`NO_DRAFT`: CV studio tabs, office, course, sidecars, MCP keys, db-connect, password generator). Edits to its form
+controls (text, selects, toggles; never password/file/hidden inputs, read-only or disabled outputs, or controls labelled
+like a secret/token/key) autosave to the account 700 ms after the last edit. A visit starts from the tool's defaults:
+when the saved draft differs from them, the bar above the tool offers "Restore saved draft" / "Discard" (DELETE); the
+first edit instead makes the new work the draft. The tool renders at once and is never re-rendered by the wrapper. Fields
+over 100k characters are not kept ("Large inputs are not kept in drafts"); an account keeps at most 2 MiB / 160 tools of
+drafts, the least recently saved go first. Signed out: nothing is offered or saved. `GET /api/workspace?tool=<id>`,
+`PATCH {tool, fields}`, `DELETE ?tool=<id>`; all per account, sealed at rest, counted by the quota.
 
 ### At rest
 
