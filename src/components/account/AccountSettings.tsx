@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, Field, KeyValues, Notice, Panel, TextInput } from "@/components/ui";
 import type { PublicAccount } from "@/lib/accounts/store";
+import { clearAccountStorage } from "@/lib/client-account";
 import { call, fetchMe, hardNavigate } from "./api";
 
 type Note = { tone: "good" | "error"; text: string } | null;
@@ -99,7 +100,7 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
   );
 }
 
-function Sessions() {
+function Sessions({ username }: { username: string }) {
   const [count, setCount] = useState<number | null>(null);
   const [note, setNote] = useState<Note>(null);
   useEffect(() => {
@@ -109,6 +110,8 @@ function Sessions() {
   }, []);
 
   async function logout(everywhere: boolean) {
+    // Nothing of this account stays in this browser for the next person (transcript, queue, SQL schema, trust mode).
+    clearAccountStorage(username);
     const reply = everywhere
       ? await call<{ revoked: number }>("POST", "/api/account/sessions", { action: "revoke-all" })
       : await call("POST", "/api/account/logout", {});
@@ -223,7 +226,7 @@ function McpKeys({ username }: { username: string }) {
   );
 }
 
-function DeleteAccount() {
+function DeleteAccount({ username }: { username: string }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
@@ -235,7 +238,10 @@ function DeleteAccount() {
     setNote(null);
     const reply = await call<{ removed: string[] }>("POST", "/api/account/delete", { password });
     setWorking(false);
-    if (reply.ok) hardNavigate("/?account-deleted=1");
+    if (reply.ok) {
+      clearAccountStorage(username);
+      hardNavigate("/?account-deleted=1");
+    }
     else setNote({ tone: "error", text: reply.message });
   }
 
@@ -312,9 +318,9 @@ export function AccountSettings() {
       </Panel>
       {publicMode ? <ChangePassword /> : null}
       {publicMode ? <ChangeEmail account={account} onChanged={load} /> : null}
-      <Sessions />
+      <Sessions username={account.id} />
       <McpKeys username={account.id} />
-      {publicMode ? <DeleteAccount /> : null}
+      {publicMode ? <DeleteAccount username={account.id} /> : null}
     </div>
   );
 }

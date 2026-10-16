@@ -517,7 +517,7 @@ def engine_suite():
         has("Saved 4 tables as the current schema")
         txt = page.locator('section[aria-label="Current schema"]').first.inner_text()
         assert "customers(" in txt and "products(" in txt, txt
-        stored = page.evaluate("JSON.parse(localStorage.getItem('sk.sql.schema.v1')).schema.tables.map(t => t.name)")
+        stored = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => JSON.parse(localStorage.getItem('sk.sql.schema.v1.' + a.id)).schema.tables.map(t => t.name))")
         eq(stored, ["customers", "products", "orders", "order_items"], "stored tables")
         page.reload(wait_until="domcontentloaded")
         expect(page.locator('section[aria-label="Current schema"]').first).to_contain_text("customers(", timeout=10000)
