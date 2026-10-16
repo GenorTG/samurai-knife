@@ -15,11 +15,15 @@
 //        [--key-prompt | --key-env VAR | --key-stdin] [--header "K: V"]... [--clear-headers]
 //   npm run accounts -- set-provider <id> --preset openclaw-gateway --agent openclaw/<agentId>
 //        [--backend-model provider/model] [--gateway-url URL] [--allow-main] [--key-prompt | --key-env VAR | --key-stdin]
+//   npm run accounts -- set-network <id> private|public   (public mode: may an ADMIN's provider reach loopback/LAN?)
+//   npm run accounts -- provider-json <id>                (prints the provider WITH its key as JSON: for test helpers)
 //
 // API keys are never accepted as argv values (shell history): use --key-prompt (hidden paste), --key-env or --key-stdin.
+// Keys and extra-header values are sealed on disk (AES-256-GCM, key file provider-keys.key next to accounts.json; same
+// format as src/lib/accounts/secret-box.ts); plaintext ones from older files are sealed by the next write.
 // Preset openclaw-gateway: the local OpenClaw gateway's OpenAI-compatible endpoint. Its `model` is an AGENT target and
 // every request is a full agent run, so the main agent (exec/elevated tools) is refused unless --allow-main.
-import { randomBytes, scryptSync } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -77,12 +81,65 @@ function withV2Fields(account) {
   };
 }
 
+// Provider secrets at rest: the format of src/lib/accounts/secret-box.ts (`enc:v1:<iv>:<tag>:<ciphertext>`, base64url,
+// AAD `<account>:apiKey` / `<account>:header:<lower-cased name>`).
+const KEY_FILE = join(dir, "provider-keys.key");
+const SEALED = "enc:v1:";
+let secretKey = null;
+function readSecretKey(create) {
+  if (secretKey) return secretKey;
+  if (existsSync(KEY_FILE)) {
+    const text = readFileSync(KEY_FILE, "utf8").trim();
+    if (!/^[0-9a-f]{64}$/.test(text)) fail(`${KEY_FILE} is malformed (expected 64 hex characters)`);
+    secretKey = Buffer.from(text, "hex");
+  } else if (create) {
+    const key = randomBytes(32);
+    const temp = `${KEY_FILE}.${process.pid}.tmp`;
+    writeFileSync(temp, `${key.toString("hex")}\n`, { mode: 0o600 });
+    chmodSync(temp, 0o600);
+    renameSync(temp, KEY_FILE);
+    secretKey = key;
+  }
+  return secretKey;
+}
+function sealValue(value, context) {
+  if (!value || value.startsWith(SEALED)) return value;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", readSecretKey(true), iv);
+  cipher.setAAD(Buffer.from(context, "utf8"));
+  const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return `${SEALED}${iv.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}:${body.toString("base64url")}`;
+}
+function openValue(value, context) {
+  if (typeof value !== "string" || !value.startsWith(SEALED)) return value;
+  const key = readSecretKey(false);
+  if (!key) fail(`${file} holds sealed provider keys but ${KEY_FILE} is missing`);
+  try {
+    const [iv, tag, body] = value.slice(SEALED.length).split(":").map((part) => Buffer.from(part, "base64url"));
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAAD(Buffer.from(context, "utf8"));
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+  } catch {
+    return fail(`a provider secret (${context}) does not decrypt with ${KEY_FILE}`);
+  }
+}
+function mapSecrets(account, fn) {
+  if (!account.provider) return account;
+  const provider = { ...account.provider, apiKey: fn(account.provider.apiKey, `${account.id}:apiKey`) };
+  if (account.provider.extraHeaders) {
+    provider.extraHeaders = Object.fromEntries(Object.entries(account.provider.extraHeaders).map(([name, value]) => [name, fn(value, `${account.id}:header:${name.toLowerCase()}`)]));
+  }
+  return { ...account, provider };
+}
+
 function writeStore(store) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { chmodSync(dir, 0o700); } catch { /* not ours */ }
   const emails = store.accounts.map((a) => a.email).filter(Boolean);
   if (new Set(emails).size !== emails.length) fail("two accounts would share an email address");
-  const text = `${JSON.stringify({ ...store, version: STORE_VERSION, accounts: store.accounts.map(withV2Fields) }, null, 2)}\n`;
+  const accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a), sealValue));
+  const text = `${JSON.stringify({ ...store, version: STORE_VERSION, accounts }, null, 2)}\n`;
   lock();
   try {
     const current = existsSync(file) ? readFileSync(file, "utf8") : null;
@@ -118,7 +175,7 @@ function readStore() {
     fail(`${file} has an unexpected shape`);
   }
   if (typeof store.version === "number" && store.version > STORE_VERSION) fail(`${file} is format v${store.version}; this CLI knows v${STORE_VERSION}`);
-  store.accounts = store.accounts.map(withV2Fields);
+  store.accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a), openValue));
   return store;
 }
 
@@ -295,6 +352,21 @@ const commands = {
     console.log(`${account.id} is now ${status}${status === "disabled" ? " (its sessions stop working at once)" : ""}`);
   },
 
+  "set-network"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    const value = positional[1];
+    if (value !== "private" && value !== "public") fail("network must be private (may reach loopback/LAN) or public");
+    account.privateNetwork = value === "private";
+    writeStore(store);
+    const note = account.role === "admin" ? "" : " (has no effect until the account is an admin)";
+    console.log(`${account.id}: provider requests ${value === "private" ? "may reach private addresses in public mode" : "are limited to public addresses in public mode"}${note}`);
+  },
+
+  "provider-json"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    process.stdout.write(`${JSON.stringify(account.provider ?? null)}\n`);
+  },
+
   remove(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     if (account.id === store.defaultAccountId) fail("refusing to remove the default account; run set-default first");
@@ -380,7 +452,7 @@ const commands = {
 
 const [command, ...rest] = process.argv.slice(2);
 if (!command || command === "help" || command === "--help" || !(command in commands)) {
-  console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 28).map((l) => l.slice(3)).join("\n"));
+  console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 24).map((l) => l.slice(3)).join("\n"));
   process.exit(command && command !== "help" && command !== "--help" ? 2 : 0);
 }
 await commands[command](readStore(), parseArgs(rest));

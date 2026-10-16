@@ -14,6 +14,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/accounts/secret-box";
 
 /**
  * Account store. Lives outside the repo (KNIFE_DATA_DIR or ~/.local/share/samurai-knife) in `accounts.json` (0600, atomic
@@ -27,6 +28,10 @@ import { randomBytes } from "node:crypto";
  *
  * Format v2 (`version: 2`) adds email, role, status, quota and login times. v1 files (no `version`) are migrated in memory on
  * read and written back as v2 by the next mutation; every v1 account becomes an active admin (the owner's own accounts).
+ *
+ * Provider secrets (API key, extra-header values) are sealed on disk (`secret-box.ts`, AES-256-GCM, key file
+ * `provider-keys.key`) and opened on read, so everything in this module sees plaintext. A file with plaintext secrets
+ * (written before sealing, or hand-edited) is resealed by the first read.
  */
 
 export const ACCOUNT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -62,6 +67,11 @@ const accountSchema = z.object({
   resetToken: tokenSchema.optional(),
   /** A requested address change; `email` changes only when the link sent to `emailChange.email` is opened. */
   emailChange: tokenSchema.extend({ email: z.string() }).optional(),
+  /**
+   * Public mode: this account's provider requests may reach loopback/LAN/Tailscale addresses (the owner's local models).
+   * Honoured for admins only (`src/lib/net/outbound.ts`); set with `npm run accounts -- set-network` or the admin API.
+   */
+  privateNetwork: z.boolean().default(false),
 });
 
 const storeSchema = z.object({
@@ -128,8 +138,61 @@ function initialStore(): AccountStore {
   };
 }
 
+/** A copy of `store` with every non-empty provider secret sealed (the key file is created on the first one). */
+function sealSecrets(store: AccountStore): AccountStore {
+  let key: Buffer | null = null;
+  const sealValue = (value: string, context: string): string => {
+    if (!value || isSealed(value)) return value;
+    key ??= ensureKey(ensureDataDir(), writePrivateFile);
+    return seal(key, value, context);
+  };
+  return {
+    ...store,
+    accounts: store.accounts.map((account) => {
+      const provider = account.provider;
+      if (!provider) return account;
+      const headers = provider.extraHeaders
+        ? Object.fromEntries(Object.entries(provider.extraHeaders).map(([name, value]) => [name, sealValue(value, secretContext(account.id, { header: name }))]))
+        : undefined;
+      return {
+        ...account,
+        provider: { ...provider, apiKey: sealValue(provider.apiKey, secretContext(account.id, "apiKey")), ...(headers ? { extraHeaders: headers } : {}) },
+      };
+    }),
+  };
+}
+
+/** Opens sealed secrets in place; true when a plaintext secret was found (the file needs resealing). */
+function openSecrets(store: AccountStore): boolean {
+  let key: Buffer | null | undefined;
+  let plaintext = false;
+  const openValue = (value: string, context: string): string => {
+    if (!value) return value;
+    if (!isSealed(value)) {
+      plaintext = true;
+      return value;
+    }
+    key ??= readKey(dataDir());
+    if (!key) throw new Error("accounts.json holds sealed provider keys but provider-keys.key is missing from the data directory");
+    try {
+      return open(key, value, context);
+    } catch {
+      throw new Error(`accounts.json: a provider secret (${context}) does not decrypt with provider-keys.key`);
+    }
+  };
+  for (const account of store.accounts) {
+    const provider = account.provider;
+    if (!provider) continue;
+    provider.apiKey = openValue(provider.apiKey, secretContext(account.id, "apiKey"));
+    if (provider.extraHeaders) {
+      for (const name of Object.keys(provider.extraHeaders)) provider.extraHeaders[name] = openValue(provider.extraHeaders[name], secretContext(account.id, { header: name }));
+    }
+  }
+  return plaintext;
+}
+
 function writeStore(store: AccountStore): void {
-  writePrivateFile(accountsPath(), `${JSON.stringify({ ...store, version: STORE_VERSION }, null, 2)}\n`);
+  writePrivateFile(accountsPath(), `${JSON.stringify({ ...sealSecrets(store), version: STORE_VERSION }, null, 2)}\n`);
 }
 
 const LOCK_STALE_MS = 10_000;
@@ -173,8 +236,12 @@ function parseStore(raw: unknown): AccountStore {
   return parsed.data;
 }
 
-/** Reads the file, or creates the initial one. Caller holds the lock when `locked`. */
+/** Reads the file (secrets opened), or creates the initial one. Caller holds the lock when `locked`. */
 function load(locked: boolean): AccountStore {
+  return loadWithFlags(locked).store;
+}
+
+function loadWithFlags(locked: boolean): { store: AccountStore; plaintext: boolean } {
   const path = accountsPath();
   if (!existsSync(path)) {
     const create = (): AccountStore => {
@@ -183,7 +250,7 @@ function load(locked: boolean): AccountStore {
       writeStore(initial);
       return initial;
     };
-    return locked ? create() : withLock(create);
+    return { store: locked ? create() : withLock(create), plaintext: false };
   }
   let raw: unknown;
   try {
@@ -191,11 +258,21 @@ function load(locked: boolean): AccountStore {
   } catch (error) {
     throw new Error(`accounts.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return parseStore(raw);
+  const store = parseStore(raw);
+  return { store, plaintext: openSecrets(store) };
 }
 
 export function readStore(): AccountStore {
-  return load(false);
+  const { store, plaintext } = loadWithFlags(false);
+  if (plaintext) {
+    // Transparent migration: the next write seals them; do it now so plaintext keys do not wait for an unrelated change.
+    try {
+      mutateStore(() => undefined);
+    } catch (error) {
+      console.warn(`[accounts] could not reseal provider keys: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return store;
 }
 
 /**

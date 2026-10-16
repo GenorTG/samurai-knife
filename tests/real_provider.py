@@ -19,6 +19,7 @@ a full operator credential.
 """
 import json
 import os
+import subprocess
 import urllib.request
 import uuid
 
@@ -46,6 +47,14 @@ def _account_provider() -> dict:
         raise SystemExit(f"cannot read {ACCOUNTS_FILE}: {exc.__class__.__name__}") from None
     account = next((a for a in accounts if a.get("id") == ACCOUNT), None)
     provider = account.get("provider") if account else None
+    if provider and "enc:v1:" in json.dumps(provider):
+        # Keys are sealed at rest (provider-keys.key next to accounts.json): the accounts CLI opens them, read-only.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env = {**os.environ, "KNIFE_DATA_DIR": os.path.dirname(ACCOUNTS_FILE)}
+        done = subprocess.run(["node", os.path.join(root, "scripts", "accounts.mjs"), "provider-json", ACCOUNT], env=env, capture_output=True, text=True)
+        if done.returncode != 0:
+            raise SystemExit(f"cannot open the sealed provider of {ACCOUNT!r}: {done.stderr.strip()[:200]}")
+        provider = json.loads(done.stdout)
     if not provider or not provider.get("apiKey"):
         raise SystemExit(f"account {ACCOUNT!r} has no provider with a key: `npm run accounts -- set-provider {ACCOUNT} ...` first")
     return provider

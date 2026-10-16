@@ -15,15 +15,16 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("quota"), bytes: z.number().int().min(0).max(MAX_QUOTA).nullable() }).strict(),
   z.object({ action: z.literal("role"), role: z.enum(["admin", "user"]) }).strict(),
   z.object({ action: z.literal("resend-verification") }).strict(),
+  z.object({ action: z.literal("network"), privateNetwork: z.boolean() }).strict(),
 ]);
 
-/** POST /api/admin/users/<id> { action, ... } -> disable (ends the user's sessions) | enable | delete | quota | role | resend-verification. */
+/** POST /api/admin/users/<id> { action, ... } -> disable (ends the user's sessions) | enable | delete | quota | role | resend-verification | network {privateNetwork}. */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
   const denied = requireAdmin(auth.account, "manage users");
   if (denied) return denied;
-  const parsed = await parseBody(request, bodySchema, "{ action: disable|enable|delete|quota|role|resend-verification }");
+  const parsed = await parseBody(request, bodySchema, "{ action: disable|enable|delete|quota|role|resend-verification|network }");
   if ("response" in parsed) return parsed.response;
   const { id } = await ctx.params;
   const result = adminAct(auth.account.id, id, parsed.data);

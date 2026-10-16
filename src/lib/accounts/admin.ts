@@ -19,6 +19,8 @@ export interface AdminUserRow {
   storageBytes: number;
   storageQuotaBytes: number | null;
   sessions: number;
+  /** Provider requests may reach private addresses (public mode, honoured for admins only). */
+  privateNetwork: boolean;
 }
 
 export function listUsers(): AdminUserRow[] {
@@ -34,6 +36,7 @@ export function listUsers(): AdminUserRow[] {
     storageBytes: accountStorageBytes(account.id),
     storageQuotaBytes: account.storageQuotaBytes,
     sessions: sessionCount(account.id),
+    privateNetwork: account.privateNetwork,
   }));
 }
 
@@ -43,7 +46,8 @@ export type AdminAction =
   | { action: "delete" }
   | { action: "quota"; bytes: number | null }
   | { action: "role"; role: AccountRole }
-  | { action: "resend-verification" };
+  | { action: "resend-verification" }
+  | { action: "network"; privateNetwork: boolean };
 
 export type AdminResult = { ok: true; detail?: string; removed?: string[] } | { ok: false; status: number; error: string };
 
@@ -97,6 +101,13 @@ export function adminAct(actorId: string, targetId: string, body: AdminAction): 
       });
       return { ok: true };
     }
+    case "network":
+      if (body.privateNetwork && target.role !== "admin") return { ok: false, status: 409, error: "Only an administrator's provider may reach private addresses." };
+      mutateStore((s) => {
+        const account = s.accounts.find((a) => a.id === targetId);
+        if (account) account.privateNetwork = body.privateNetwork;
+      });
+      return { ok: true };
     case "resend-verification":
       return issueVerification((account) => account.id === targetId)
         ? { ok: true, detail: "A new confirmation link was sent." }
