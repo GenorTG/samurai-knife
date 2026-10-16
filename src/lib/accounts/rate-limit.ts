@@ -89,4 +89,8 @@ export const LIMITS = {
   forgotEmail: (email: string): Limit => ({ key: `forgot:email:${email}`, max: 3, windowMs: 15 * MINUTE }),
   /** Change email / password / delete with a wrong password: per account. */
   sensitive: (id: string): Limit => ({ key: `sensitive:${id}`, max: 10, windowMs: 15 * MINUTE }),
+  /** Outbound requests a non-admin steers in public mode (`src/lib/net/outbound.ts`): model rounds, provider Test, pages. */
+  outboundProvider: (id: string): Limit => ({ key: `outbound:provider:${id}`, max: 300, windowMs: 10 * MINUTE }),
+  outboundProviderTest: (id: string): Limit => ({ key: `outbound:provider-test:${id}`, max: 20, windowMs: 10 * MINUTE }),
+  outboundPage: (id: string): Limit => ({ key: `outbound:page:${id}`, max: 30, windowMs: 10 * MINUTE }),
 };

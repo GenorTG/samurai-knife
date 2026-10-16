@@ -1,7 +1,8 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
-import { normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
+import { baseUrlProblem, normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
+import { providerPolicy, strictHeaders } from "@/lib/net/outbound";
 import { getAccount, setProvider, toPublicAccount } from "@/lib/accounts/store";
 import { authMode } from "@/lib/accounts/mode";
 
@@ -36,9 +37,12 @@ export async function PUT(request: Request): Promise<Response> {
     return jsonError("baseUrl must be an http(s) URL without credentials, query or fragment.", 400);
   }
   if (parsed.data.extraHeaders) {
-    const headerProblem = validateExtraHeaders(parsed.data.extraHeaders);
+    const headerProblem = validateExtraHeaders(parsed.data.extraHeaders, strictHeaders(auth.account));
     if (headerProblem) return jsonError(headerProblem, 400);
   }
+  // Checked again on every request (DNS can change); refusing here gives the user the reason at once.
+  const addressProblem = await baseUrlProblem(baseUrl, providerPolicy(auth.account));
+  if (addressProblem) return jsonError(`baseUrl: ${addressProblem}`, 400, { code: "address_not_allowed" });
 
   const current = getAccount(auth.account.id)?.provider ?? null;
   const openClawResponses = parsed.data.openClawResponses ?? current?.openClawResponses ?? false;

@@ -18,6 +18,7 @@ import {
   type RoundStart,
 } from "@/lib/agent-client/conversation-store";
 import { recordRound } from "@/lib/accounts/usage-ledger";
+import { consumeOutbound, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const provider = getAccount(auth.account.id)?.provider;
   if (!provider) return jsonError("provider_not_configured", 409);
+  const budget = consumeOutbound(auth.account, "provider");
+  if (!budget.ok) {
+    const limited = jsonError(outboundLimitMessage(budget.retryAfterSeconds), 429, { retryAfterSeconds: budget.retryAfterSeconds });
+    limited.headers.set("Retry-After", String(budget.retryAfterSeconds));
+    return limited;
+  }
+  const net = providerNet(auth.account);
 
   const input = {
     model: provider.model,
@@ -120,10 +128,10 @@ export async function POST(request: Request): Promise<Response> {
     };
     const responsesInput = { ...input, previousResponseId: start.previousResponseId };
     if (parsed.data.stream) {
-      const streamed = await forwardResponsesStream(provider, accountId, sessionId, responsesInput, request.signal, onSettled);
+      const streamed = await forwardResponsesStream(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
       return streamed.ok ? streamed.response : jsonError(streamed.error, streamed.status);
     }
-    const outcome = await forwardResponses(provider, accountId, sessionId, responsesInput, request.signal, onSettled);
+    const outcome = await forwardResponses(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
     return outcome.ok ? json(outcome.result) : jsonError(outcome.error, outcome.status);
   }
   // A round that bypasses the continuation (Responses mode off) leaves the gateway session behind: drop its head.
@@ -134,12 +142,12 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (parsed.data.stream) {
     const streamed = await forwardChatStream(provider, input, request.signal, (round) =>
-      recordRound(accountId, { model: provider.model, ...round }),
+      recordRound(accountId, { model: provider.model, ...round }), net,
     );
     return streamed.ok ? streamed.response : jsonError(streamed.error, streamed.status);
   }
   const started = Date.now();
-  const outcome = await forwardChat(provider, input);
+  const outcome = await forwardChat(provider, input, net);
   recordRound(accountId, { model: provider.model, usage: outcome.ok ? outcome.result.usage ?? null : null, ms: Date.now() - started, failed: !outcome.ok });
   return outcome.ok ? json(outcome.result) : jsonError(outcome.error, outcome.status);
 }

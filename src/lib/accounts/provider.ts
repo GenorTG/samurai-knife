@@ -2,6 +2,7 @@ import { estimateUsage, normalizeUsage, type Usage } from "@/lib/usage";
 import * as z from "zod/v4";
 import type { ProviderConfig } from "@/lib/accounts/store";
 import { openClawUser, providerConversationId } from "@/lib/agent-client/conversation-store";
+import { checkUrl, OutboundError, readTextCapped, resolveAllowed, safeFetch, type OutboundPolicy } from "@/lib/net/safe-fetch";
 
 export const CHAT_TIMEOUT_MS = 120_000;
 export const TEST_TIMEOUT_MS = 10_000;
@@ -17,7 +18,28 @@ const FORBIDDEN_HEADERS = new Set([
   "connection",
   "transfer-encoding",
 ]);
+/**
+ * Extra headers a non-admin may not set in public mode: hop-by-hop and framing headers, proxy and client-address headers
+ * (impersonating a trusted proxy towards the upstream), credentials other than the managed Authorization, method
+ * overrides, and the OpenClaw gateway's own routing headers.
+ */
+const USER_FORBIDDEN_HEADERS = new Set([
+  "keep-alive", "te", "trailer", "upgrade", "via", "expect", "proxy-authorization", "proxy-connection", "forwarded",
+  "x-real-ip", "x-client-ip", "client-ip", "true-client-ip", "cf-connecting-ip", "fastly-client-ip", "x-cluster-client-ip",
+  "x-http-method-override", "x-http-method", "x-method-override", "set-cookie", "origin", "referer",
+]);
+const USER_FORBIDDEN_PREFIXES = ["x-forwarded-", "x-original-", "x-rewrite-", "proxy-", "x-openclaw-", "x-envoy-", "x-amzn-", "sec-"];
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/;
+
+/** How one account's provider requests may go out (`src/lib/net/outbound.ts` builds it). */
+export interface ProviderNet {
+  policy: OutboundPolicy;
+  /** Show raw upstream error text (private mode, admins); otherwise only a provider-shaped JSON error message. */
+  echoUpstream: boolean;
+}
+
+/** Private mode / tests: any address, raw errors (the behaviour before public mode existed). */
+export const OPEN_NET: ProviderNet = { policy: { allowPrivate: true, ports: null, httpsOnly: false }, echoUpstream: true };
 
 /** http(s) only, no credentials/query/hash, trailing slash stripped. */
 export function normalizeBaseUrl(raw: string): string | null {
@@ -32,12 +54,17 @@ export function normalizeBaseUrl(raw: string): string | null {
   return url.toString().replace(/\/+$/, "");
 }
 
-export function validateExtraHeaders(headers: Record<string, string>): string | null {
+/** `strict`: the public-mode user rules on top (USER_FORBIDDEN_*). */
+export function validateExtraHeaders(headers: Record<string, string>, strict = false): string | null {
   const names = Object.keys(headers);
   if (names.length > 16) return "At most 16 extra headers are allowed.";
   for (const name of names) {
     if (!HEADER_NAME.test(name)) return `Invalid header name: ${name}`;
-    if (FORBIDDEN_HEADERS.has(name.toLowerCase())) return `Header ${name} is managed by the server.`;
+    const lower = name.toLowerCase();
+    if (FORBIDDEN_HEADERS.has(lower)) return `Header ${name} is managed by the server.`;
+    if (strict && (USER_FORBIDDEN_HEADERS.has(lower) || USER_FORBIDDEN_PREFIXES.some((prefix) => lower.startsWith(prefix)))) {
+      return `Header ${name} is not allowed.`;
+    }
     const value = headers[name];
     if (value.length > 1_024 || /[\r\n\0]/.test(value)) return `Invalid value for header ${name}.`;
   }
@@ -63,45 +90,77 @@ export function redact(text: string, provider: ProviderConfig): string {
 }
 
 class UpstreamFailure extends Error {
-  constructor(readonly kind: "timeout" | "network" | "too_large") {
+  readonly kind: "timeout" | "network" | "too_large" | "refused";
+  readonly detail: string;
+  constructor(kind: UpstreamFailure["kind"], detail = "") {
     super(kind);
+    this.kind = kind;
+    this.detail = detail;
   }
+}
+
+/** Static + DNS check of a base URL under `policy`; null = allowed. Used when the provider is saved (and per request). */
+export async function baseUrlProblem(baseUrl: string, policy: OutboundPolicy): Promise<string | null> {
+  try {
+    const url = new URL(`${baseUrl}/models`);
+    checkUrl(url, policy);
+    await resolveAllowed(url, policy);
+    return null;
+  } catch (error) {
+    if (error instanceof OutboundError) return error.message;
+    return "baseUrl is not a valid URL.";
+  }
+}
+
+/** Every provider request: through the SSRF-safe transport (resolve, check, pin; redirects are errors). */
+function providerFetch(provider: ProviderConfig, net: ProviderNet, path: string, init: { method: "GET" | "POST"; body?: string; accept?: string; signal: AbortSignal }): Promise<Response> {
+  return safeFetch(`${provider.baseUrl}${path}`, {
+    method: init.method,
+    headers: { ...upstreamHeaders(provider), ...(init.accept ? { Accept: init.accept } : {}) },
+    body: init.body,
+    signal: init.signal,
+    policy: net.policy,
+  });
+}
+
+/** A failed providerFetch -> UpstreamFailure (timeouts and aborts by name, refusals with their reason). */
+function asUpstreamFailure(error: unknown): UpstreamFailure {
+  if (error instanceof UpstreamFailure) return error;
+  if (error instanceof OutboundError) return new UpstreamFailure(error.kind === "refused" || error.kind === "resolve" ? "refused" : "network", error.message);
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return new UpstreamFailure("timeout");
+  return new UpstreamFailure("network");
 }
 
 async function upstreamFetch(
   provider: ProviderConfig,
+  net: ProviderNet,
   path: string,
   init: { method: "GET" | "POST"; body?: string },
   timeoutMs: number,
 ): Promise<{ status: number; text: string }> {
   try {
-    const response = await fetch(`${provider.baseUrl}${path}`, {
-      method: init.method,
-      headers: upstreamHeaders(provider),
-      body: init.body,
-      redirect: "error",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const text = await response.text();
-    if (text.length > MAX_UPSTREAM_BYTES) throw new UpstreamFailure("too_large");
+    const response = await providerFetch(provider, net, path, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    const text = await readTextCapped(response, MAX_UPSTREAM_BYTES);
+    if (text === null) throw new UpstreamFailure("too_large");
     return { status: response.status, text };
   } catch (error) {
-    if (error instanceof UpstreamFailure) throw error;
-    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      throw new UpstreamFailure("timeout");
-    }
-    throw new UpstreamFailure("network");
+    throw asUpstreamFailure(error);
   }
 }
 
 function failureMessage(failure: UpstreamFailure): string {
   if (failure.kind === "timeout") return "The provider did not answer in time.";
   if (failure.kind === "too_large") return "The provider response was too large.";
+  if (failure.kind === "refused") return `The provider address is not allowed: ${failure.detail}`;
   return "Could not reach the provider.";
 }
 
-function errorDetail(text: string, provider: ProviderConfig): string {
-  let detail = text;
+/**
+ * The part of an upstream error answer shown to the user. A provider-shaped JSON error (`{error: "..."}` or
+ * `{error: {message}}`) always; anything else (an HTML page, a body from some other service) only with `echo`.
+ */
+function errorDetail(text: string, provider: ProviderConfig, echo: boolean): string {
+  let detail: string | null = echo ? text : null;
   try {
     const parsed = JSON.parse(text) as { error?: unknown };
     const inner = parsed.error;
@@ -110,8 +169,9 @@ function errorDetail(text: string, provider: ProviderConfig): string {
       detail = inner.message;
     }
   } catch {
-    // keep raw text
+    // keep raw text (echo) or nothing
   }
+  if (detail === null) return "(response body not shown)";
   return redact(detail, provider).slice(0, MAX_ERROR_DETAIL_CHARS);
 }
 
@@ -124,11 +184,11 @@ export interface ProviderTestResult {
 
 const modelListSchema = z.object({ data: z.array(z.unknown()) }).passthrough();
 
-export async function testProvider(provider: ProviderConfig): Promise<ProviderTestResult> {
+export async function testProvider(provider: ProviderConfig, net: ProviderNet): Promise<ProviderTestResult> {
   try {
-    const { status, text } = await upstreamFetch(provider, "/models", { method: "GET" }, TEST_TIMEOUT_MS);
+    const { status, text } = await upstreamFetch(provider, net, "/models", { method: "GET" }, TEST_TIMEOUT_MS);
     if (status < 200 || status >= 300) {
-      return { ok: false, status, error: `Provider returned HTTP ${status}: ${errorDetail(text, provider)}` };
+      return { ok: false, status, error: `Provider returned HTTP ${status}: ${errorDetail(text, provider, net.echoUpstream)}` };
     }
     let parsedJson: unknown;
     try {
@@ -288,8 +348,8 @@ interface ToolCallOut {
  * ("Cannot resolve previous_response_id. Retry with full input context ..."). Only that becomes
  * CONTINUATION_LOST (409); every other 400 is an ordinary upstream error, so it is shown, not replayed.
  */
-function responsesFailure(status: number, text: string, provider: ProviderConfig): { ok: false; status: number; error: string } {
-  const detail = errorDetail(text, provider);
+function responsesFailure(status: number, text: string, provider: ProviderConfig, net: ProviderNet): { ok: false; status: number; error: string } {
+  const detail = errorDetail(text, provider, net.echoUpstream);
   if (status === 400 && /previous_response_id/i.test(detail)) return { ok: false, status: 409, error: CONTINUATION_LOST };
   return { ok: false, status: status === 429 ? 429 : 502, error: `Provider returned HTTP ${status}: ${detail}` };
 }
@@ -302,6 +362,7 @@ export async function forwardResponses(
   input: ChatInput,
   clientSignal: AbortSignal,
   onSettled: (settlement: ResponsesSettlement) => void,
+  net: ProviderNet,
 ): Promise<ChatOutcome> {
   const started = Date.now();
   const fail = (outcome: { ok: false; status: number; error: string }, aborted = false): ChatOutcome => {
@@ -309,16 +370,14 @@ export async function forwardResponses(
     return outcome;
   };
   try {
-    const response = await fetch(`${provider.baseUrl}/responses`, {
+    const response = await providerFetch(provider, net, "/responses", {
       method: "POST",
-      headers: upstreamHeaders(provider),
       body: responsesBody(provider, accountId, sessionId, input, false),
-      redirect: "error",
       signal: AbortSignal.any([AbortSignal.timeout(CHAT_TIMEOUT_MS), clientSignal]),
     });
-    const text = await response.text();
-    if (text.length > MAX_UPSTREAM_BYTES) return fail({ ok: false, status: 502, error: "The provider response was too large." });
-    if (response.status < 200 || response.status >= 300) return fail(responsesFailure(response.status, text, provider));
+    const text = await readTextCapped(response, MAX_UPSTREAM_BYTES);
+    if (text === null) return fail({ ok: false, status: 502, error: "The provider response was too large." });
+    if (response.status < 200 || response.status >= 300) return fail(responsesFailure(response.status, text, provider, net));
     let raw: unknown;
     try { raw = JSON.parse(text) as unknown; } catch { return fail({ ok: false, status: 502, error: "Provider returned a non-JSON Responses reply." }); }
     const parsed = parseResponse(raw);
@@ -327,8 +386,8 @@ export async function forwardResponses(
     return { ok: true, result: parsed.result };
   } catch (error) {
     if (clientSignal.aborted) return fail({ ok: false, status: 499, error: "aborted" }, true);
-    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return fail({ ok: false, status: 504, error: "The provider did not answer in time." });
-    return fail({ ok: false, status: 502, error: "Could not reach the provider." });
+    const failure = asUpstreamFailure(error);
+    return fail({ ok: false, status: failure.kind === "timeout" ? 504 : 502, error: failureMessage(failure) });
   }
 }
 
@@ -345,6 +404,7 @@ export async function forwardResponsesStream(
   input: ChatInput,
   clientSignal: AbortSignal,
   onSettled: (settlement: ResponsesSettlement) => void,
+  net: ProviderNet,
 ): Promise<{ ok: false; status: number; error: string } | { ok: true; response: Response }> {
   const started = Date.now();
   let settled = false;
@@ -369,21 +429,21 @@ export async function forwardResponsesStream(
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${provider.baseUrl}/responses`, {
+    upstream = await providerFetch(provider, net, "/responses", {
       method: "POST",
-      headers: { ...upstreamHeaders(provider), Accept: "text/event-stream" },
+      accept: "text/event-stream",
       body: responsesBody(provider, accountId, sessionId, input, true),
-      redirect: "error",
       signal: controller.signal,
     });
-  } catch {
+  } catch (error) {
+    const failure = asUpstreamFailure(error);
     return failEarly(controller.signal.aborted && !clientSignal.aborted
       ? { ok: false, status: 504, error: "The provider did not answer in time." }
-      : { ok: false, status: 502, error: "Could not reach the provider." });
+      : { ok: false, status: 502, error: failureMessage(failure.kind === "timeout" ? new UpstreamFailure("network") : failure) });
   }
   if (upstream.status < 200 || upstream.status >= 300 || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
-    return failEarly(responsesFailure(upstream.status, text, provider));
+    const text = (await readTextCapped(upstream, MAX_UPSTREAM_BYTES).catch(() => "")) ?? "";
+    return failEarly(responsesFailure(upstream.status, text, provider, net));
   }
 
   const reader = upstream.body.getReader();
@@ -497,10 +557,11 @@ function chatBody(provider: ProviderConfig, input: ChatInput, tokenField: string
   return JSON.stringify(body);
 }
 
-export async function forwardChat(provider: ProviderConfig, input: ChatInput): Promise<ChatOutcome> {
+export async function forwardChat(provider: ProviderConfig, input: ChatInput, net: ProviderNet): Promise<ChatOutcome> {
   try {
     let response = await upstreamFetch(
       provider,
+      net,
       "/chat/completions",
       { method: "POST", body: chatBody(provider, input, "max_tokens") },
       CHAT_TIMEOUT_MS,
@@ -513,6 +574,7 @@ export async function forwardChat(provider: ProviderConfig, input: ChatInput): P
     ) {
       response = await upstreamFetch(
         provider,
+        net,
         "/chat/completions",
         { method: "POST", body: chatBody(provider, input, "max_completion_tokens") },
         CHAT_TIMEOUT_MS,
@@ -523,7 +585,7 @@ export async function forwardChat(provider: ProviderConfig, input: ChatInput): P
       return {
         ok: false,
         status,
-        error: `Provider returned HTTP ${response.status}: ${errorDetail(response.text, provider)}`,
+        error: `Provider returned HTTP ${response.status}: ${errorDetail(response.text, provider, net.echoUpstream)}`,
       };
     }
     let parsedJson: unknown;
@@ -601,7 +663,8 @@ export async function forwardChatStream(
   provider: ProviderConfig,
   input: ChatInput,
   clientSignal: AbortSignal,
-  onRound?: (report: RoundReport) => void,
+  onRound: ((report: RoundReport) => void) | undefined,
+  net: ProviderNet,
 ): Promise<{ ok: false; status: number; error: string } | { ok: true; response: Response }> {
   const started = Date.now();
   const controller = new AbortController();
@@ -615,11 +678,10 @@ export async function forwardChatStream(
   let upstream: Response;
   try {
     const open = (field: string, withUsage: boolean): Promise<Response> =>
-      fetch(`${provider.baseUrl}/chat/completions`, {
+      providerFetch(provider, net, "/chat/completions", {
         method: "POST",
-        headers: { ...upstreamHeaders(provider), Accept: "text/event-stream" },
+        accept: "text/event-stream",
         body: chatBody(provider, input, field, true, withUsage),
-        redirect: "error",
         signal: controller.signal,
       });
     let tokenField = "max_tokens";
@@ -627,29 +689,30 @@ export async function forwardChatStream(
     upstream = await open(tokenField, withUsage);
     // Providers differ: some reject stream_options, newer OpenAI models reject max_tokens. Adapt up to twice.
     for (let attempt = 0; attempt < 2 && upstream.status === 400; attempt++) {
-      const text = await upstream.text();
+      const text = (await readTextCapped(upstream, MAX_UPSTREAM_BYTES)) ?? "";
       if (withUsage && /stream_options|include_usage/i.test(text)) withUsage = false;
       else if (input.maxTokens !== undefined && tokenField === "max_tokens" && text.includes("max_completion_tokens")) tokenField = "max_completion_tokens";
       else {
         cleanup();
         onRound?.({ usage: null, ms: Date.now() - started, failed: true });
-        return { ok: false, status: 502, error: `Provider returned HTTP 400: ${errorDetail(text, provider)}` };
+        return { ok: false, status: 502, error: `Provider returned HTTP 400: ${errorDetail(text, provider, net.echoUpstream)}` };
       }
       upstream = await open(tokenField, withUsage);
     }
-  } catch {
+  } catch (error) {
     cleanup();
     onRound?.({ usage: null, ms: Date.now() - started, failed: true });
-    return { ok: false, status: 502, error: "Could not reach the provider." };
+    const failure = asUpstreamFailure(error);
+    return { ok: false, status: 502, error: failureMessage(failure.kind === "timeout" ? new UpstreamFailure("network") : failure) };
   }
   if (upstream.status < 200 || upstream.status >= 300 || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
+    const text = (await readTextCapped(upstream, MAX_UPSTREAM_BYTES).catch(() => "")) ?? "";
     cleanup();
     onRound?.({ usage: null, ms: Date.now() - started, failed: true });
     return {
       ok: false,
       status: upstream.status === 429 ? 429 : 502,
-      error: `Provider returned HTTP ${upstream.status}: ${errorDetail(text, provider)}`,
+      error: `Provider returned HTTP ${upstream.status}: ${errorDetail(text, provider, net.echoUpstream)}`,
     };
   }
 
