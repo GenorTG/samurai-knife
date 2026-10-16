@@ -8,7 +8,13 @@ import type { OfficeFormat } from "@/lib/office/templates";
  * call passes the Origin guard and the JSON-only body rule; errors carry the API's own `error` (and `hint`) text.
  */
 
-export type ServiceView = SidecarStatus & { op: OpView | null };
+/** `canManage` false = public mode, not an administrator: no lifecycle controls, configuration fields are withheld. */
+export type ServiceView = SidecarStatus & { op: OpView | null; canManage?: boolean };
+
+/** The API's answer when a non-admin would have to start or install a shared service (src/lib/accounts/authz.ts). */
+export function isAdminRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "admin_required";
+}
 export type { DocMeta, OfficeFormat, OpView };
 
 // No TypeScript parameter properties: the assistant's doc_live tools import this file and the unit tests load it through

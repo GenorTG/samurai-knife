@@ -369,7 +369,11 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       const result = await apiLogin(id, password);
       if (!result.ok) {
         const f = result.failure;
-        return f.kind === "error" ? (f.status === 401 || f.status === 403 ? "Wrong password." : f.message) : "Login failed.";
+        if (f.kind !== "error") return "Login failed.";
+        if (f.message === "email_not_verified") return "Confirm your email address first (open the link we sent you).";
+        if (f.message === "account_disabled") return "This account is disabled.";
+        if (f.message === "rate_limited") return "Too many attempts. Wait a minute and try again.";
+        return f.status === 401 || f.status === 403 ? "Wrong password." : f.message;
       }
       await refreshAccount();
       return null;

@@ -1,5 +1,7 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
+import { isAdmin, requireAdmin } from "@/lib/accounts/authz";
+import { serviceViewFor } from "@/lib/services/view";
 import { findSidecar } from "@/lib/services/definitions";
 import { syncAssets } from "@/lib/services/assets";
 import { configure, ensureReaper, needsRecreate, probeHealth, SidecarError, status, touch } from "@/lib/services/manager";
@@ -49,7 +51,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   if (!findSidecar(id)) return jsonError("unknown_service", 404);
   ensureReaper();
   const memory = new URL(request.url).searchParams.get("memory") === "1";
-  return json({ service: { ...(await status(id, { memory })), op: runningOp(id) } });
+  return json({ service: serviceViewFor(auth.account, { ...(await status(id, { memory: memory && isAdmin(auth.account) })), op: runningOp(id) }) });
 }
 
 /**
@@ -68,6 +70,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
   const body = parsed.data;
   ensureReaper();
+  // Public mode: everything but using a running service (ensure while healthy, touch) is an administrator's job.
+  if (body.action !== "ensure" && body.action !== "touch") {
+    const denied = requireAdmin(auth.account, `${body.action} ${def.name}`);
+    if (denied) return denied;
+  }
   try {
     switch (body.action) {
       case "install": {
@@ -93,6 +100,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
             return json({ ready: true });
           }
         }
+        const denied = requireAdmin(auth.account, `start ${def.name}`);
+        if (denied) return denied;
         return json({ ready: false, op: startOp(id, { kind: "start" }) }, 202);
       }
       case "touch":

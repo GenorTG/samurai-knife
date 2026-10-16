@@ -7,7 +7,7 @@ import { Badge, Button, Meter, Notice, Panel, TextArea } from "@/components/ui";
 import { cx, formatInt } from "@/lib/format";
 import { SQL_COURSE } from "@/lib/learn/sql/lessons";
 import type { Lesson } from "@/lib/learn/types";
-import { ApiError, ensureService, errorText, getOp } from "@/tools/sidecars/client";
+import { ApiError, ensureService, errorText, getOp, isAdminRequired } from "@/tools/sidecars/client";
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
 import { useSidecar } from "@/tools/sidecars/useSidecar";
 import {
@@ -515,7 +515,7 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
 
 /* ----------------------------------------------------------------------------------------------- page */
 
-type Stage = { kind: "waiting" } | { kind: "starting" } | { kind: "seeding" } | { kind: "ready" } | { kind: "failed"; message: string };
+type Stage = { kind: "waiting" } | { kind: "starting" } | { kind: "seeding" } | { kind: "ready" } | { kind: "failed"; message: string; needsAdmin?: boolean };
 
 /**
  * SQL & PostGIS course. Needs the `learn-db` sidecar: install card while it is missing; when installed, a lazy start
@@ -558,7 +558,7 @@ export default function SqlCourse() {
         setStage({ kind: "ready" });
         void refresh();
       } catch (err) {
-        if (!cancelled) setStage({ kind: "failed", message: errorText(err) });
+        if (!cancelled) setStage({ kind: "failed", message: errorText(err), needsAdmin: isAdminRequired(err) });
       }
     })();
     return () => {
@@ -604,7 +604,11 @@ export default function SqlCourse() {
         <div className="space-y-3">
           {stage.kind === "failed" ? (
             <>
-              <Notice tone="error">Could not get the course database ready: {stage.message}</Notice>
+              {stage.needsAdmin ? (
+                <Notice tone="info">{stage.message} The course opens once the database is running.</Notice>
+              ) : (
+                <Notice tone="error">Could not get the course database ready: {stage.message}</Notice>
+              )}
               <Button variant="primary" onClick={() => setAttempt((n) => n + 1)}>
                 Try again
               </Button>

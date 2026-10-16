@@ -1,4 +1,5 @@
 import { authenticate, json } from "@/lib/accounts/http";
+import { requireAdmin } from "@/lib/accounts/authz";
 import { jobStore } from "@/lib/jobs";
 import { pythonQueue } from "@/lib/work-queue";
 
@@ -9,5 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const denied = requireAdmin(auth.account, "see server queue stats");
+  if (denied) return denied;
   return json({ ok: true, lanes: pythonQueue().stats(), jobs: jobStore().stats() });
 }

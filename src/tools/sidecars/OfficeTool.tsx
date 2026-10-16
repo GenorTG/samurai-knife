@@ -12,6 +12,7 @@ import {
   ensureService,
   errorText,
   fileToBase64,
+  isAdminRequired,
   getOp,
   listDocs,
   touchService,
@@ -78,7 +79,7 @@ type EditorPhase =
   | { kind: "starting" }
   | { kind: "loading" }
   | { kind: "ready" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; needsAdmin?: boolean };
 
 /** The editor for one document: lazy-starts the sidecar, loads DocsAPI from it and mounts the iframe. */
 function DocEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: ReturnType<typeof useSidecar>; onClose: () => void }) {
@@ -159,7 +160,7 @@ function DocEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: ReturnTyp
           },
         });
       } catch (error) {
-        if (!cancelled) setPhase({ kind: "error", message: errorText(error) });
+        if (!cancelled) setPhase({ kind: "error", message: errorText(error), needsAdmin: isAdminRequired(error) });
       }
     })();
     const heartbeat = setInterval(() => void touchService(SERVICE).catch(() => {}), 60_000);
@@ -219,7 +220,7 @@ function DocEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: ReturnTyp
         </div>
       </div>
       {phase.kind === "starting" ? <OpProgress op={op} /> : null}
-      {phase.kind === "error" ? <Notice tone="error">{phase.message}</Notice> : null}
+      {phase.kind === "error" ? <Notice tone={phase.needsAdmin ? "info" : "error"}>{phase.needsAdmin ? `${phase.message} The editor opens once it is running.` : phase.message}</Notice> : null}
       {live && phase.kind !== "error" ? (
         <p role="status" data-agent-region="office-live-status" className="text-xs text-faint">
           {liveLabel(live)}

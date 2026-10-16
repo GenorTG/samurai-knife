@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 const PRESENCE_MS = 20_000;
 const NOTICE_MS = 7_000;
 const POLL_MS = 1_500;
+const SIGNED_OUT_POLL_MS = 10_000;
 
 function tabId(): string {
   const key = "sk-ui-client";
@@ -74,11 +75,14 @@ export function UiBridge() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
     const poll = async () => {
+      let delay = POLL_MS;
       if (document.visibilityState === "visible") {
         try {
           const res = await fetch(`/api/ui/poll?client=${encodeURIComponent(id.current)}`, { credentials: "same-origin", cache: "no-store" });
           // always read the body (a 401 while signed out too): an unread response keeps the network busy
           const text = await res.text();
+          // Signed out (public mode visitors): nothing can be shown to this tab, so ask far less often.
+          if (res.status === 401) delay = SIGNED_OUT_POLL_MS;
           const body = res.ok ? (JSON.parse(text) as { events?: ShowEvent[] }) : { events: [] };
           const event = body.events?.at(-1);
           // only paths inside the app; the server builds them from the registry, this is belt and braces
@@ -90,7 +94,7 @@ export function UiBridge() {
           // offline / server restarting: try again on the next tick
         }
       }
-      if (!stopped) timer = setTimeout(() => void poll(), POLL_MS);
+      if (!stopped) timer = setTimeout(() => void poll(), delay);
     };
     const wake = () => {
       if (document.visibilityState !== "visible") return;

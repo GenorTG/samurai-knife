@@ -1,68 +1,124 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   ensureDataDir,
+  findByIdentifier,
   getAccount,
   getDefaultAccount,
+  mutateStore,
   writePrivateFile,
   type Account,
 } from "@/lib/accounts/store";
-import { verifyPassword } from "@/lib/accounts/password";
+import { verifyPasswordAsync } from "@/lib/accounts/password";
+import { isPublicMode } from "@/lib/accounts/mode";
+import { clientIp, isHttps } from "@/lib/accounts/network";
+import { checkLimits, clearLimit, hitLimits, LIMITS, type Limit } from "@/lib/accounts/rate-limit";
 
+export { clientIp, isHttps };
+
+/**
+ * Sessions are server-side records in `$KNIFE_DATA_DIR/sessions.json` (0600): the cookie holds 32 random bytes, the file
+ * only their SHA-256, so a leaked data dir holds no usable cookie and any session can be revoked. A record also pins a
+ * fingerprint of the password hash: a password set through the CLI ends every session without touching this file.
+ * Written only by this server process (synchronously, so requests cannot interleave a read-modify-write).
+ */
 export const SESSION_COOKIE = "knife_session";
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const TOUCH_EVERY_MS = 10 * 60_000;
 
-const MAX_LOGIN_FAILURES = 5;
-const LOGIN_WINDOW_MS = 60_000;
-
-function sessionSecret(): Buffer {
-  const path = join(ensureDataDir(), "session.secret");
-  if (!existsSync(path)) writePrivateFile(path, randomBytes(32).toString("hex"));
-  return Buffer.from(readFileSync(path, "utf8").trim(), "hex");
+interface SessionRecord {
+  hash: string;
+  accountId: string;
+  pf: string;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
 }
 
-/** Short fingerprint so changing a password invalidates existing sessions. */
+interface SessionFile {
+  version: 1;
+  sessions: SessionRecord[];
+}
+
+function sessionsPath(): string {
+  return join(ensureDataDir(), "sessions.json");
+}
+
+let cache: { mtimeMs: number; size: number; path: string; data: SessionFile } | null = null;
+
+function isSessionRecord(value: unknown): value is SessionRecord {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return ["hash", "accountId", "pf", "createdAt", "expiresAt", "lastSeenAt"].every((key) => typeof r[key] === "string");
+}
+
+function readSessions(): SessionFile {
+  const path = sessionsPath();
+  if (!existsSync(path)) return { version: 1, sessions: [] };
+  const stat = statSync(path);
+  if (cache && cache.path === path && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size) return cache.data;
+  let data: SessionFile = { version: 1, sessions: [] };
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as { sessions?: unknown };
+    if (Array.isArray(raw.sessions)) data = { version: 1, sessions: raw.sessions.filter(isSessionRecord) };
+  } catch {
+    // Damaged file: every session is gone and users log in again; never a crash on every request.
+  }
+  cache = { mtimeMs: stat.mtimeMs, size: stat.size, path, data };
+  return data;
+}
+
+function writeSessions(mutate: (sessions: SessionRecord[]) => SessionRecord[]): void {
+  const now = Date.now();
+  const next = mutate(readSessions().sessions.map((s) => ({ ...s }))).filter((s) => Date.parse(s.expiresAt) > now);
+  writePrivateFile(sessionsPath(), `${JSON.stringify({ version: 1, sessions: next } satisfies SessionFile)}\n`);
+  cache = null;
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+/** Short fingerprint so changing a password (also through the CLI) invalidates existing sessions. */
 function passwordFingerprint(account: Account): string {
   return createHash("sha256").update(account.passwordHash ?? "").digest("hex").slice(0, 12);
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
-}
-
-function issueToken(account: Account): string {
-  const payload = Buffer.from(JSON.stringify({
-    id: account.id,
-    exp: Math.floor(Date.now() / 1_000) + SESSION_MAX_AGE_SECONDS,
+export function createSession(account: Account): string {
+  const token = randomBytes(32).toString("base64url");
+  const now = new Date();
+  writeSessions((sessions) => [...sessions, {
+    hash: hashToken(token),
+    accountId: account.id,
     pf: passwordFingerprint(account),
-  })).toString("base64url");
-  return `${payload}.${sign(payload)}`;
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1_000).toISOString(),
+    lastSeenAt: now.toISOString(),
+  }]);
+  return token;
 }
 
-function readToken(token: string): Account | null {
-  const [payload, signature, ...rest] = token.split(".");
-  if (!payload || !signature || rest.length > 0) return null;
-  const expected = Buffer.from(sign(payload));
-  const actual = Buffer.from(signature);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-  try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      id?: unknown;
-      exp?: unknown;
-      pf?: unknown;
-    };
-    if (typeof data.id !== "string" || typeof data.exp !== "number" || typeof data.pf !== "string") return null;
-    if (data.exp * 1_000 < Date.now()) return null;
-    const account = getAccount(data.id);
-    if (!account || passwordFingerprint(account) !== data.pf) return null;
-    return account;
-  } catch {
-    return null;
-  }
+export function revokeSessionToken(token: string | undefined): void {
+  if (!token) return;
+  const hash = hashToken(token);
+  if (!readSessions().sessions.some((s) => s.hash === hash)) return;
+  writeSessions((sessions) => sessions.filter((s) => s.hash !== hash));
 }
 
-function cookieValue(request: Request, name: string): string | undefined {
+/** Ends every session of one account (password change/reset, disable, delete, "log out everywhere"). */
+export function revokeAllSessions(accountId: string): number {
+  const count = readSessions().sessions.filter((s) => s.accountId === accountId).length;
+  if (count > 0) writeSessions((sessions) => sessions.filter((s) => s.accountId !== accountId));
+  return count;
+}
+
+export function sessionCount(accountId: string): number {
+  const now = Date.now();
+  return readSessions().sessions.filter((s) => s.accountId === accountId && Date.parse(s.expiresAt) > now).length;
+}
+
+export function cookieValue(request: Request, name: string = SESSION_COOKIE): string | undefined {
   const header = request.headers.get("cookie");
   if (!header) return undefined;
   for (const part of header.split(";")) {
@@ -72,98 +128,96 @@ function cookieValue(request: Request, name: string): string | undefined {
   return undefined;
 }
 
+/** May this account act at all right now? Public mode also needs a password and a verified address. */
+export function accountUsable(account: Account, publicMode = isPublicMode()): boolean {
+  if (account.status !== "active") return false;
+  if (!publicMode) return true;
+  return Boolean(account.passwordHash) && account.emailVerifiedAt !== null && account.email !== null;
+}
+
+function accountFromToken(token: string): Account | null {
+  if (!/^[A-Za-z0-9_-]{20,128}$/.test(token)) return null;
+  const hash = hashToken(token);
+  const record = readSessions().sessions.find((s) => s.hash === hash);
+  if (!record) return null;
+  const now = Date.now();
+  if (Date.parse(record.expiresAt) <= now) return null;
+  const account = getAccount(record.accountId);
+  if (!account || passwordFingerprint(account) !== record.pf || !accountUsable(account)) return null;
+  if (now - Date.parse(record.lastSeenAt) > TOUCH_EVERY_MS) {
+    writeSessions((sessions) => sessions.map((s) => (s.hash === hash ? { ...s, lastSeenAt: new Date(now).toISOString() } : s)));
+  }
+  return account;
+}
+
 /**
- * Valid session cookie, else the default account when it has no password
- * (the tailnet boundary is the auth), else null (caller answers 401).
+ * Valid session cookie, else (private mode only) the default account when it has no password (the tailnet boundary is the
+ * auth), else null (caller answers 401). Public mode never falls back to any account.
  */
 export function resolveAccount(request: Request): Account | null {
-  const token = cookieValue(request, SESSION_COOKIE);
+  const token = cookieValue(request);
   if (token) {
-    const fromCookie = readToken(token);
+    const fromCookie = accountFromToken(token);
     if (fromCookie) return fromCookie;
   }
+  if (isPublicMode()) return null;
   const fallback = getDefaultAccount();
-  return fallback.passwordHash ? null : fallback;
+  return fallback.passwordHash || fallback.status === "disabled" ? null : fallback;
 }
 
-export function isHttps(request: Request): boolean {
-  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
-  if (forwarded) return forwarded === "https";
-  try {
-    return new URL(request.url).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-export function sessionCookieHeader(request: Request, account: Account): string {
-  const attributes = [
-    `${SESSION_COOKIE}=${issueToken(account)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Strict",
-    `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
-  ];
+/** SameSite=Strict in private mode (unchanged); Lax in public mode so a link from an email or another site arrives signed in. */
+function cookieAttributes(request: Request, maxAge: number): string[] {
+  const attributes = ["Path=/", "HttpOnly", `SameSite=${isPublicMode() ? "Lax" : "Strict"}`, `Max-Age=${maxAge}`];
   if (isHttps(request)) attributes.push("Secure");
-  return attributes.join("; ");
+  return attributes;
+}
+
+export function sessionCookieHeader(request: Request, token: string): string {
+  return [`${SESSION_COOKIE}=${token}`, ...cookieAttributes(request, SESSION_MAX_AGE_SECONDS)].join("; ");
 }
 
 export function clearedCookieHeader(request: Request): string {
-  const attributes = [`${SESSION_COOKIE}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
-  if (isHttps(request)) attributes.push("Secure");
-  return attributes.join("; ");
+  return [`${SESSION_COOKIE}=`, ...cookieAttributes(request, 0)].join("; ");
 }
 
-// In-memory login rate limit: 5 failures per minute per account (and per client address when a trusted proxy supplies one).
-const failures = new Map<string, number[]>();
-/** Upper bound on tracked keys: the account id is attacker-chosen, so unknown ids must not grow the map without limit. */
-const MAX_TRACKED_KEYS = 1_000;
-
-function recentFailures(key: string): number[] {
-  const cutoff = Date.now() - LOGIN_WINDOW_MS;
-  const list = (failures.get(key) ?? []).filter((time) => time > cutoff);
-  if (list.length > 0) failures.set(key, list);
-  else failures.delete(key);
-  return list;
-}
-
-function pruneFailures(): void {
-  if (failures.size <= MAX_TRACKED_KEYS) return;
-  for (const key of Array.from(failures.keys())) recentFailures(key);
-  // Still over (a burst of distinct ids inside one window): drop the oldest entries first (Map keeps insertion order).
-  for (const key of failures.keys()) {
-    if (failures.size <= MAX_TRACKED_KEYS) break;
-    failures.delete(key);
-  }
-}
-
-/**
- * Address used to bucket login failures. `X-Forwarded-For` is client-controlled when nothing fronts the app (the normal
- * Tailscale-bind setup), so honouring it would hand every attacker a fresh budget per request: it is only read when the
- * operator says a proxy sets it (`KNIFE_TRUST_PROXY=1`). Otherwise all clients share one bucket per account.
- */
-export function clientIp(request: Request): string {
-  if (process.env.KNIFE_TRUST_PROXY !== "1") return "local";
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+/** New session for `account` on this browser: the request's old session (if any) is revoked first (rotation). */
+export function rotateSession(request: Request, account: Account): string {
+  revokeSessionToken(cookieValue(request));
+  return sessionCookieHeader(request, createSession(account));
 }
 
 export type LoginResult =
   | { ok: true; account: Account }
-  | { ok: false; reason: "invalid_credentials" | "rate_limited"; retryAfterSeconds?: number };
+  | { ok: false; reason: "invalid_credentials" | "rate_limited" | "email_not_verified" | "account_disabled"; retryAfterSeconds?: number };
 
-export function attemptLogin(id: string, password: string, ip: string): LoginResult {
-  const key = `${id}|${ip}`;
-  if (recentFailures(key).length >= MAX_LOGIN_FAILURES) {
-    return { ok: false, reason: "rate_limited", retryAfterSeconds: Math.ceil(LOGIN_WINDOW_MS / 1_000) };
-  }
-  const account = getAccount(id);
-  // Passwordless accounts cannot be signed into (only the default is reachable, implicitly).
-  const valid = verifyPassword(password, account?.passwordHash);
+/**
+ * Username (or, in public mode, email) + password. Rate limit counts failures only: 5/min per account+address (both modes),
+ * plus per-account and per-address caps in public mode. "Not verified"/"disabled" are only told to someone who knows the
+ * password; every other failure is the same `invalid_credentials`.
+ */
+export async function attemptLogin(identifier: string, password: string, ip: string): Promise<LoginResult> {
+  const publicMode = isPublicMode();
+  const key = identifier.trim().toLowerCase();
+  const limits: Limit[] = [LIMITS.loginPair(key, ip), ...(publicMode ? [LIMITS.loginAccount(key), LIMITS.loginIp(ip)] : [])];
+  const verdict = checkLimits(limits);
+  if (!verdict.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds };
+  const account = publicMode ? findByIdentifier(identifier) : getAccount(identifier);
+  // Passwordless accounts cannot be signed into (only the private-mode default is reachable, implicitly).
+  const valid = await verifyPasswordAsync(password, account?.passwordHash);
   if (!account || !valid) {
-    failures.set(key, [...recentFailures(key), Date.now()]);
-    pruneFailures();
+    hitLimits(limits);
     return { ok: false, reason: "invalid_credentials" };
   }
-  failures.delete(key);
-  return { ok: true, account };
+  clearLimit(LIMITS.loginPair(key, ip).key);
+  if (account.status === "disabled") return { ok: false, reason: "account_disabled" };
+  if (publicMode && (account.status === "pending" || account.emailVerifiedAt === null || account.email === null)) {
+    return { ok: false, reason: "email_not_verified" };
+  }
+  const now = new Date().toISOString();
+  const updated = mutateStore((store) => {
+    const target = store.accounts.find((candidate) => candidate.id === account.id);
+    if (target) target.lastLoginAt = now;
+    return target ?? account;
+  });
+  return { ok: true, account: updated };
 }

@@ -59,7 +59,9 @@ the document you have open, live.
 - **Browser first, then a lane.** Heavy browser work moves to a typed Web Worker pool (queue, cancel, timeout, crash
   recovery). Work that needs a real library (PDF, OCR, sqlglot) goes to one-shot Python scripts behind a bounded work
   queue: concurrency per lane, backpressure as `503 + Retry-After`, and client aborts kill the process group.
-- **Security model.** The server binds to loopback or a Tailscale address only (it refuses a wildcard bind). Every route
+- **Security model.** Two modes (`KNIFE_AUTH_MODE`): `private` (default) binds to loopback or a Tailscale address only
+  (it refuses a wildcard bind); `public` runs behind a reverse proxy with registration, verified email, server-side
+  sessions and admin/user roles ([docs/ACCOUNTS.md](docs/ACCOUNTS.md)). Every route
   checks Host, and every mutating route also checks Origin and accepts JSON bodies only, so cross-site "simple" requests
   never get through. The job-offer fetcher blocks private, loopback, link-local and CGNAT targets, including after
   redirects. Provider keys never reach the browser.
@@ -111,12 +113,16 @@ All settings live in `.env.local` (gitignored); see [.env.example](.env.example)
 | `KNIFE_HOST` / `KNIFE_PORT` | `127.0.0.1` / `3210` | Bind address. Use your Tailscale IP to reach it from your other devices; `0.0.0.0` is refused. |
 | `KNIFE_ALLOWED_HOSTS` | (empty) | Other names you open it by (machine name, LAN IP), for the Host/Origin guard and dev origins. |
 | `KNIFE_DATA_DIR` | `~/.local/share/samurai-knife` | Accounts, CV data and documents. Never inside the repo. |
+| `KNIFE_AUTH_MODE` | `private` | `public` = multi-user (registration, verified email, roles); see [docs/ACCOUNTS.md](docs/ACCOUNTS.md). |
+| `KNIFE_PUBLIC_URL` / `KNIFE_TRUSTED_PROXIES` | (empty) | Public mode: absolute base for mail links (its host is allowed by the guard); proxy addresses whose `X-Forwarded-*` headers are trusted. |
+| `KNIFE_MAIL_TRANSPORT`, `KNIFE_SMTP_*` | `outbox` (private) / `smtp` (public) | Account mail: SMTP, or `.eml` files in `$KNIFE_DATA_DIR/mail-outbox/`. |
 | `KNIFE_PYTHON` | `../samurai-knife-py/venv/bin/python` | Interpreter for the Python lane. |
 | `KNIFE_PY_LIGHT` / `KNIFE_PY_HEAVY` | `4` / `1` | Work-queue concurrency per lane. |
 
 ### Accounts
 
-There is no sign-up route. Accounts are created from the CLI only, and each keeps its own model provider:
+In private mode (the default) there is no sign-up route: accounts are created from the CLI only, and each keeps its own
+model provider. Public mode adds self-registration with a verified email (contract: [docs/ACCOUNTS.md](docs/ACCOUNTS.md)).
 
 ```bash
 npm run accounts -- list
@@ -124,8 +130,14 @@ npm run accounts -- add alice --name "Alice" --password-prompt
 npm run accounts -- set-provider alice --base-url https://openrouter.ai/api/v1 --model openai/gpt-4o-mini --key-env OPENROUTER_API_KEY
 ```
 
-The default account has no password: the network bind is the access boundary, so keep it on loopback or a private
-tailnet.
+In private mode the default account has no password: the network bind is the access boundary, so keep it on loopback
+or a private tailnet. Public mode never falls back to it.
+
+```bash
+npm run accounts -- set-email alice alice@example.com    # owner-vouched (verified)
+npm run accounts -- set-role alice admin                 # admin | user
+npm run accounts -- set-status alice disabled            # active | disabled
+```
 
 ## Development
 

@@ -5,6 +5,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { resolveAccount } from "@/lib/accounts/session";
 import { loginChoices, type Account } from "@/lib/accounts/store";
+import { authMode, isPublicMode } from "@/lib/accounts/mode";
 import { knifeHosts } from "@/lib/hosts";
 
 /** Host allow-list; KNIFE_MCP_ALLOWED_HOSTS (comma-separated) replaces it entirely. */
@@ -33,7 +34,29 @@ export function guard(request: Request, mutating: boolean): NextResponse | null 
 }
 
 export function loginRequired(): NextResponse {
-  return jsonError("login_required", 401, { accounts: loginChoices() });
+  return jsonError("login_required", 401, { accounts: loginChoices(isPublicMode()), mode: authMode() });
+}
+
+/** Routes that exist only in public mode answer exactly like a missing route in private mode. */
+export function publicOnly(): NextResponse | null {
+  return isPublicMode() ? null : jsonError("not_found", 404);
+}
+
+/** A failed account flow as a response (`Retry-After` on 429). */
+export function flowErrorResponse(failure: { status: number; error: string; retryAfterSeconds?: number }): NextResponse {
+  const response = jsonError(failure.error, failure.status, failure.retryAfterSeconds ? { retryAfterSeconds: failure.retryAfterSeconds } : undefined);
+  if (failure.retryAfterSeconds) response.headers.set("Retry-After", String(failure.retryAfterSeconds));
+  return response;
+}
+
+/** Guard + JSON body + zod parse in one step, for the account routes. */
+export async function parseBody<T>(request: Request, schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false } }, usage: string, maxBytes = 8 * 1024): Promise<{ data: T } | { response: NextResponse }> {
+  const blocked = guard(request, true);
+  if (blocked) return { response: blocked };
+  const read = await readJsonBody(request, maxBytes);
+  if ("response" in read) return read;
+  const parsed = schema.safeParse(read.body);
+  return parsed.success ? { data: parsed.data } : { response: jsonError(`Expected ${usage}.`, 400) };
 }
 
 export type Authenticated = { account: Account } | { response: NextResponse };
