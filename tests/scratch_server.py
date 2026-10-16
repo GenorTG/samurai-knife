@@ -156,6 +156,16 @@ class ScratchServer:
             self._log.close()
             self._log = None
 
+    def _warm(self) -> None:
+        """Best effort: compile the API route every tool page calls on mount (the drafts lookup), so a suite's first timed
+        page load does not also pay that dev compile. Any answer (401 signed out included) means it is compiled."""
+        try:
+            urllib.request.urlopen(self.url.rstrip("/") + "/api/workspace?tool=warm", timeout=60).close()
+        except urllib.error.HTTPError:
+            pass
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+
     def _wait_ready(self) -> None:
         assert self._proc is not None
         deadline = time.monotonic() + self.ready_timeout
@@ -164,6 +174,7 @@ class ScratchServer:
                 break
             try:
                 with urllib.request.urlopen(self.url, timeout=2):
+                    self._warm()
                     return
             except (urllib.error.URLError, TimeoutError, OSError):
                 time.sleep(0.5)
