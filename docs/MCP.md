@@ -11,13 +11,34 @@ The app has two agent surfaces that share one tool set:
 Both can be used at the same time; edits are atomic per call and every CV save is undoable.
 
 ## Connecting
-- URL: `http://<KNIFE_HOST>:<KNIFE_PORT>/api/mcp`, transport `streamable-http`.
-- Auth: the Tailscale bind is the boundary (no token); the route checks Host (and Origin when a browser sends one).
-  Account-scoped tools act on the **default account**. In public mode (`KNIFE_AUTH_MODE=public`, docs/ACCOUNTS.md) there
-  is no default account: the request needs a session cookie and the tools act on that account; without one the answer is
-  401 (per-account MCP credentials are a later phase).
-- OpenClaw: `openclaw mcp add samurai-knife --url http://<KNIFE_HOST>:3210/api/mcp --transport streamable-http`, then
-  `openclaw mcp doctor samurai-knife --probe`.
+- URL: `<app origin>/api/mcp`, transport `streamable-http`. The route checks Host (and Origin when a browser sends one).
+- Credentials (per account): create a key on `/account` ("MCP keys": name, created, last used; the key is shown once and
+  stored only as its SHA-256 in `$KNIFE_DATA_DIR/mcp-keys.json`; at most 10 per account; revoke any time). Send the
+  username with it, either way:
+  - `Authorization: Basic base64(<username>:<key>)`
+  - `Authorization: Bearer <key>` plus `X-Knife-User: <username>`
+- Every tool then runs as that account: its CV, documents, course progress, and `knife_ui_*` reach only its own open
+  tabs. A key works only with its own username; a revoked key, a key of a disabled or deleted account, or a wrong
+  username is a 401 (`WWW-Authenticate: Basic`); 30 failed attempts per client address per 15 min are a 429. Keys are
+  independent of passwords and browser sessions ("log out everywhere" does not revoke them; deleting the account does).
+- Modes (docs/ACCOUNTS.md): public mode requires a key (no key = 401, a session cookie is not accepted here). Private mode
+  without an Authorization header acts on the **default account** as before (the Tailscale bind is the boundary); with
+  one, the key decides the account, exactly as in public mode.
+- Roles: the tool list and every call are filtered by the caller's role (tool scopes below). A user's `tools/list` never
+  contains admin tools, and calling one is an error.
+- OpenClaw: `openclaw mcp add samurai-knife --url <app origin>/api/mcp --transport streamable-http` with the
+  Authorization header (Basic or Bearer + `X-Knife-User`), then `openclaw mcp doctor samurai-knife --probe`.
+
+## Tool scopes (`src/lib/mcp/define.ts`)
+Every `defineTool` declares `scope` (no default, so a new tool must choose):
+- `pure`: input in, result out (base tools, `knife_sql_*`, `knife_mongo_*`/`chroma`/`redis`).
+- `account`: the caller's own data (`knife_cv_*`, `knife_doc_*`, `knife_learn_*`, `knife_ui_*`).
+- `admin`: the server owner's resources: `knife_cv_github_repos`, `knife_cv_github_repo_facts`, `knife_cv_showcase_rank`,
+  `knife_cv_project_from_github` (the host's `gh` login) and `knife_cv_local_repo_facts` (git repos on the host's disk).
+`toolsFor(ctx)` (tools.ts) is the only list: `GET /api/agent/tools` (the widget), `POST /api/agent/tool` (403
+`admin_required` for an admin tool) and the MCP server all use it, and `defineTool` refuses a call outside its scope a
+second time. The matching routes (`/api/cv/showcase/*`) are admin-only too, and the CV studio shows non-admins that an
+administrator has to run the GitHub showcase.
 
 ## Live view of the user's screen
 - Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast
@@ -41,3 +62,6 @@ Both can be used at the same time; edits are atomic per call and every CV save i
 ## Tests
 `tests/ui_bridge.test.mjs` (store + path rules), `tests/ui_bridge_e2e.py` (real browser; the test acts only through
 MCP: state, live CV edit, show with a version deep link and the note, refusals, idle network, hidden tab).
+`tests/roles_mcp.test.mjs` (scopes, key store, credential parsing) and `tests/functional/roles_mcp_e2e.py` (public mode,
+two accounts: keys good/revoked/wrong user, cross-account data, admin tools and admin routes refused to a user over the
+widget route and MCP).

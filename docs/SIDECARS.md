@@ -38,6 +38,13 @@ touches anything else on the host.
   `removeImage` adds `--rmi all`.
 - **Lazy start**: a tool calls `{action:"ensure"}`: `{ready:true}` when healthy, else it starts (or joins the running start
   op) and returns 202 `{op}`; the tool polls and retries.
+- **Who may** (docs/ACCOUNTS.md "Roles"): in public mode only an admin installs, starts, stops, updates, removes,
+  configures or lazily starts a sidecar, and reads op logs. A user's `ensure` answers `{ready:true}` for a healthy sidecar,
+  joins (progress only, no log) a start an admin already began, and is a 403 `admin_required` otherwise: a user request
+  never starts a container. Pages then say "An administrator has to start <name>". Since an idle-stopped sidecar waits for
+  an admin, a public install that users rely on wants `idleStopMinutes: 0` (configure).
+- **Environment**: docker/podman run with an allow-listed environment (`src/lib/child-env.ts`: PATH, HOME, locale,
+  `DOCKER_*`, `XDG_RUNTIME_DIR`, …), never the app's own secrets.
 - **Idle stop**: the server checks once a minute; a running sidecar with no open editing sessions and no use for
   `idleStopMinutes` (default 30, 0 = never, configurable per sidecar) is stopped. Use = editor heartbeat (`touch`, every
   60 s while a document is open), callbacks, starts.

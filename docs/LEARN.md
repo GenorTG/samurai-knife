@@ -57,6 +57,14 @@ The real boundary is the role. `knife_learner`: `LOGIN NOSUPERUSER NOCREATEDB NO
 `SELECT` on `shop` and `geo`, `INSERT/UPDATE/DELETE` on `shop` only, no `CREATE` anywhere (PUBLIC's `CREATE` on `public`
 revoked), role defaults `search_path = shop, geo, public`, `statement_timeout = 5s`, `temp_file_limit = 256MB`.
 `knife_admin` is invisible to it. TEMP tables are the learner's scratch area (they die with the run).
+Every learner shares this one role, and a role sees its own sessions' query text, so the seed revokes `SELECT` on
+`pg_stat_activity` and `EXECUTE` on `pg_stat_get_activity` / `pg_stat_get_backend_activity` from `PUBLIC` in the course
+database (SEED_VERSION 2): nobody reads another learner's SQL.
+
+Fair share (`src/lib/learn/sql/slots.ts`): one run (or check) in flight per account (`KNIFE_LEARN_RUNS_PER_ACCOUNT`,
+default 1; a second one is refused with 429 `run_in_progress`), at most `KNIFE_LEARN_MAX_RUNS` (default 12) on the server,
+below the role's connection limit; a run waits up to 15 s for a server slot, then 503 `course_db_busy`. Rebuilding the
+course data (`setup {force:true}`) and starting the database are admin-only in public mode (docs/ACCOUNTS.md "Roles").
 
 Every run (`runLearnerSql`):
 
