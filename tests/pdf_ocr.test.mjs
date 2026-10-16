@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PDF_OCR_MAX_FILE_BYTES, readPdfForm } from "../src/lib/pdf-run.ts";
+import { PDF_OCR_MAX_FILE_BYTES, readPdfForm as readParsed } from "../src/lib/pdf-run.ts";
+
+/** The route hands readPdfForm the streamed form; FormData stands in for it here. */
+const readPdfForm = (data) => readParsed({
+  field: (name) => (typeof data.get(name) === "string" ? data.get(name) : null),
+  files: data.getAll("file").filter((entry) => entry instanceof File),
+});
 
 function form(params, files = [new File(["%PDF-fixture"], "scan.pdf", { type: "application/pdf" })]) {
   const data = new FormData();

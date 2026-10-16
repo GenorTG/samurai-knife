@@ -60,9 +60,12 @@ function mbFromEnv(name: string, fallbackMb: number): number {
   return (Number.isInteger(parsed) && parsed > 0 ? parsed : fallbackMb) * 1024 * 1024;
 }
 
-/** Largest total request body /api/pdf will buffer (the same budget the job store holds: KNIFE_JOBS_MAX_MB, default 2 GB). */
+/**
+ * Largest request body /api/pdf accepts: KNIFE_PDF_UPLOAD_MAX_MB (default 512), never more than the job store budget
+ * (KNIFE_JOBS_MAX_MB, default 2 GB). The body is streamed to disk (`multipart-upload.ts`), so this bounds disk, not RAM.
+ */
 export function pdfUploadMaxBytes(): number {
-  return mbFromEnv("KNIFE_JOBS_MAX_MB", 2048);
+  return Math.min(mbFromEnv("KNIFE_PDF_UPLOAD_MAX_MB", 512), mbFromEnv("KNIFE_JOBS_MAX_MB", 2048));
 }
 
 export function jobTtlMs(): number {

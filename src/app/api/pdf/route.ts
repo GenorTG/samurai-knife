@@ -4,10 +4,14 @@ import { NextResponse } from "next/server";
 
 import { authenticate } from "@/lib/accounts/http";
 import { jobResultMaxBytes, jobStore, JobStorageFullError, pdfUploadMaxBytes, type JobResult } from "@/lib/jobs";
+import { receiveMultipart, UploadError, type StreamedForm } from "@/lib/multipart-upload";
 import {
   interpretPdfResult,
   knifeDataHeader,
+  makeUploadDir,
   pdfScriptRequest,
+  PDF_MAX_FILE_BYTES,
+  PDF_MAX_FILES,
   PDF_TIMEOUT_MS,
   readPdfForm,
   stagePdfInputs,
@@ -44,14 +48,15 @@ export async function POST(request: Request) {
   if ("response" in auth) return auth.response;
   const owner = auth.account.id;
 
-  // `request.formData()` buffers the whole body before any per-file check runs: a declared length over the job budget is refused
-  // up front (a chunked body declares none; the per-file caps below still apply to it once parsed).
-  const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > pdfUploadMaxBytes()) {
-    return NextResponse.json({ ok: false, error: `Upload is over ${Math.round(pdfUploadMaxBytes() / 1024 / 1024)} MB.` }, { status: 413 });
+  // A declared length over the request cap is refused before reading anything; the streamed reader below enforces the
+  // same cap (and the per-file caps) on chunked bodies while they arrive, writing file parts straight to disk.
+  const maxBytes = pdfUploadMaxBytes();
+  const declared = request.headers.get("content-length");
+  if (declared !== null && /^\d+$/.test(declared.trim()) && Number(declared) > maxBytes) {
+    return NextResponse.json({ ok: false, error: `Upload is over ${Math.round(maxBytes / 1024 / 1024)} MB.` }, { status: 413 });
   }
 
-  // Refuse before buffering a (possibly huge) upload when the lane cannot take the job anyway.
+  // Refuse before reading a (possibly huge) upload when the lane cannot take the job anyway.
   try {
     pythonQueue().assertCapacity("heavy");
   } catch (error) {
@@ -60,20 +65,27 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Expected multipart form data." }, { status: 400 });
-  }
-  const parsed = readPdfForm(form);
-  if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: parsed.status });
-  const { input } = parsed;
-
+  const workDir = await makeUploadDir();
   let staged: StagedPdf | null = null;
   let handedToJob = false;
   try {
-    staged = await stagePdfInputs(input.uploads);
+    let form: StreamedForm;
+    try {
+      form = await receiveMultipart(request, workDir, {
+        maxTotalBytes: maxBytes,
+        maxFileBytes: PDF_MAX_FILE_BYTES,
+        maxFiles: PDF_MAX_FILES,
+        fileTooLarge: (name) => `${name} is over ${Math.round(PDF_MAX_FILE_BYTES / 1024 / 1024)} MB.`,
+      });
+    } catch (error) {
+      if (error instanceof UploadError) return NextResponse.json({ ok: false, error: error.message }, { status: error.status === 415 ? 400 : error.status });
+      throw error;
+    }
+    const parsed = readPdfForm({ field: (name) => form.fields.get(name)?.[0] ?? null, files: form.files.filter((file) => file.field === "file") });
+    if (!parsed.ok) return NextResponse.json({ ok: false, error: parsed.error }, { status: parsed.status });
+    const { input } = parsed;
+
+    staged = await stagePdfInputs(workDir, input.uploads);
     const script = pdfScriptRequest(input, staged);
     const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}` };
 
@@ -134,9 +146,9 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   } finally {
-    if (staged && !handedToJob) {
-      await disposeDir(staged.workDir);
-      await disposeDir(staged.outDir);
+    if (!handedToJob) {
+      await disposeDir(workDir);
+      if (staged) await disposeDir(staged.outDir);
     }
   }
 }
