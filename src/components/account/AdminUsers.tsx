@@ -97,7 +97,7 @@ export function AdminUsers() {
                     <div className="wrap-anywhere">{row.email ?? "—"}</div>
                     <div className="text-xs text-faint">{row.email ? (row.emailVerified ? "confirmed" : "not confirmed") : ""}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <Badge tone={statusTone(row.status)}>{row.status}</Badge>
                     <div className="mt-1 text-xs text-faint">{row.sessions} session(s){row.hasPassword ? "" : ", no password"}</div>
                   </td>
