@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { knifeHosts } from "./src/lib/hosts";
 
 const nextConfig: NextConfig = {
+  // No `X-Powered-By: Next.js`. Security headers are set at runtime by scripts/security-headers.mjs (serve.mjs preload).
+  poweredByHeader: false,
   // Next blocks its client runtime on unlisted development origins, leaving server HTML inert: list every name the app is
   // opened by (KNIFE_HOST + KNIFE_ALLOWED_HOSTS in .env.local).
   allowedDevOrigins: knifeHosts(),

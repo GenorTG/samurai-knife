@@ -423,3 +423,35 @@ test("python lane: minimal child env (no server secrets), HOME = scratch, per-la
     delete process.env.KNIFE_PY_MEM_MB_LIGHT;
   }
 });
+
+// ---- security headers -----------------------------------------------------------------------
+
+test("security headers: CSP allows exactly what the app needs, frames only the editor origin, HSTS only for https", async () => {
+  const { securityHeaders, sidecarOrigins, originOf } = await import("../scripts/security-headers.mjs");
+  const map = (list) => Object.fromEntries(list);
+  const prod = map(securityHeaders({ publicUrl: "https://knife.example.org", frameOrigins: ["https://office.example.org"] }));
+  const csp = prod["Content-Security-Policy"];
+  for (const part of ["default-src 'self'", "frame-ancestors 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "worker-src 'self' blob:", "'wasm-unsafe-eval'", "upgrade-insecure-requests"]) assert.ok(csp.includes(part), part);
+  assert.match(csp, /frame-src 'self' blob: https:\/\/office\.example\.org/);
+  assert.match(csp, /script-src [^;]*https:\/\/office\.example\.org/);
+  assert.match(csp, /connect-src 'self' https:\/\/office\.example\.org(;|$)/);
+  assert.equal(prod["Strict-Transport-Security"], "max-age=15552000");
+  assert.equal(prod["X-Content-Type-Options"], "nosniff");
+  const plain = map(securityHeaders({ publicUrl: "http://100.64.0.7:3210", dev: true }));
+  assert.equal(plain["Strict-Transport-Security"], undefined);
+  assert.ok(!plain["Content-Security-Policy"].includes("upgrade-insecure-requests"));
+  assert.match(plain["Content-Security-Policy"], /connect-src 'self' ws: wss:/);
+  assert.equal(originOf("javascript:alert(1)"), null);
+  const dir = mkdtempSync(join(tmpdir(), "knife-safenet-csp-"));
+  try {
+    assert.deepEqual(sidecarOrigins(dir), []);
+    const services = join(dir, "services", "office");
+    (await import("node:fs")).mkdirSync(services, { recursive: true });
+    writeFileSync(join(services, "state.json"), JSON.stringify({ bindHost: "100.64.0.7", hostPort: 3211 }));
+    assert.deepEqual(sidecarOrigins(dir), ["http://100.64.0.7:3211"]);
+    writeFileSync(join(services, "state.json"), JSON.stringify({ bindHost: "100.64.0.7", hostPort: 3211, publicUrl: "https://office.example.org/" }));
+    assert.deepEqual(sidecarOrigins(dir), ["https://office.example.org"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
