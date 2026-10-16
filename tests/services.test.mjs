@@ -42,18 +42,16 @@ test("office hardening: request filter on with exactly the app's IP allowed, sec
   assert.equal(svc.cpus, "2");
   assert.ok(office.secrets.some((secret) => secret.name === "SECURE_LINK_SECRET"));
   const base = { id: "office", image: office.image, bindHost: "100.64.0.7", hostPort: 3211, idleStopMinutes: 30, installedAt: "x", updatedAt: "x" };
-  assert.deepEqual(filterAllowIps(base), ["100.64.0.7"], "derived app URL = KNIFE_HOST");
-  assert.deepEqual(filterAllowIps({ ...base, appUrl: "http://[fd7a:115c:a1e0::5]:3210" }), ["fd7a:115c:a1e0::5"]);
-  assert.deepEqual(filterAllowIps({ ...base, appUrl: "https://knife.example.org" }), [], "a name is never resolved into the allow list");
+  assert.deepEqual(filterAllowIps(), [], "the app's own address is not opened to user URLs");
   process.env.KNIFE_SIDECAR_ALLOW_IPS = "172.17.0.1, junk";
   try {
-    assert.deepEqual(filterAllowIps(base), ["100.64.0.7", "172.17.0.1"]);
+    assert.deepEqual(filterAllowIps(), ["172.17.0.1"]);
+    assert.notEqual(composeHashOf(office, base), (delete process.env.KNIFE_SIDECAR_ALLOW_IPS, composeHashOf(office, base)), "a changed allow list recreates the container");
   } finally {
     delete process.env.KNIFE_SIDECAR_ALLOW_IPS;
   }
   const filter = JSON.parse(parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211, extraEnv: onlyofficeFilterEnv(["100.64.0.7", "100.64.0.7"]) })).services.documentserver.environment.NODE_CONFIG);
   assert.deepEqual(filter.services.CoAuthoring["request-filtering-agent"], { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: ["100.64.0.7"] });
-  assert.notEqual(composeHashOf(office, base), composeHashOf(office, { ...base, appUrl: "http://100.64.0.9:3210" }), "a new app address recreates the container");
 });
 
 test("learn-db is published on loopback only (the app is its only client) and CPU-capped", () => {

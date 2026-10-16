@@ -130,7 +130,7 @@ def main() -> int:
     parser.add_argument("--skip-idle", action="store_true")
     args = parser.parse_args()
 
-    prefix = f"sk-e2e-{os.getpid()}"
+    prefix = os.environ.get("KNIFE_E2E_SIDECAR_PREFIX") or f"sk-e2e-{os.getpid()}"
     project = f"{prefix}-office"
     server = ScratchServer(host=args.host)
     url = server.start(env={"KNIFE_SIDECAR_PREFIX": prefix})

@@ -61,9 +61,10 @@ export interface SidecarDefinition {
    */
   publish?: "app-host" | "loopback";
   /**
-   * The container fetches URLs itself (the Document Server: documents, "insert image from URL") behind a request filter
-   * that refuses private addresses. The manager passes the filter an allow list of exactly the app's address (the IP of
-   * the app URL, plus KNIFE_SIDECAR_ALLOW_IPS), so the container can call the app back and nothing else private.
+   * The container fetches URLs a user types (the Document Server's "insert image from URL", compare/merge sources)
+   * behind a request filter: the manager renders its config explicitly (private and metadata addresses refused, allow
+   * list = KNIFE_SIDECAR_ALLOW_IPS only). Signed URLs (document download, save callback) are trusted by the server and
+   * are not filtered.
    */
   requestFilter?: "onlyoffice";
   /**
@@ -99,8 +100,8 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     env: {
       JWT_ENABLED: "true",
       JWT_HEADER: "Authorization",
-      // The request filter stays on: no private, loopback or metadata address for any URL the editor fetches (an image
-      // "from URL", a compared document). The app's own address is allowed explicitly (`requestFilter`).
+      // The request filter stays on: no private, loopback or metadata address for any URL a user makes the editor fetch
+      // (an image "from URL", a compared document). The signed document/callback URLs to the app are trusted, not filtered.
       ALLOW_PRIVATE_IP_ADDRESS: "false",
       ALLOW_META_IP_ADDRESS: "false",
       EXAMPLE_ENABLED: "false",

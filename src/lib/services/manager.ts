@@ -21,7 +21,7 @@ import {
 } from "./state";
 import { appHost, appPort, appUrl, internalUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
 import { writePrivateFile } from "@/lib/accounts/store";
-import { ipLiteralOf, isIpAddress } from "@/lib/net/address-policy";
+import { isIpAddress } from "@/lib/net/address-policy";
 
 /**
  * Sidecar lifecycle shared by the HTTP API (src/app/api/services) and the CLI (scripts/services.ts): install, start,
@@ -221,24 +221,18 @@ export function bindHostFor(def: SidecarDefinition): string {
 }
 
 /**
- * The request filter's allow list: the IP of the app URL (the only private address the container may fetch) plus
- * KNIFE_SIDECAR_ALLOW_IPS. A host NAME in the app URL is not resolved here (the filter matches resolved addresses, and a
- * name the container resolves differently would open a hole or break callbacks): the status warns instead.
+ * The request filter's allow list: KNIFE_SIDECAR_ALLOW_IPS only (empty by default). The app's own address is NOT added:
+ * the Document Server trusts URLs inside the JWT-signed editor config and command requests (document download, save
+ * callback), so those reach the app with the filter on, while a URL a user types into the editor ("image from URL")
+ * stays filtered. Allowing the app's IP would open every port on that address to such URLs (the list is per IP).
+ * Verified against the 9.3.5 image: docs/SIDECARS.md "Request filter".
  */
-export function filterAllowIps(state: SidecarState): string[] {
-  const out: string[] = [];
-  try {
-    const literal = ipLiteralOf(new URL(appUrl(state).url).hostname);
-    if (literal) out.push(literal);
-  } catch {
-    // an invalid app URL is reported by checkUrls / the reachability check
-  }
-  for (const entry of (process.env.KNIFE_SIDECAR_ALLOW_IPS ?? "").split(/[\s,]+/)) if (entry && isIpAddress(entry)) out.push(entry);
-  return out;
+export function filterAllowIps(): string[] {
+  return (process.env.KNIFE_SIDECAR_ALLOW_IPS ?? "").split(/[\s,]+/).filter((entry) => entry && isIpAddress(entry));
 }
 
 function composeText(def: SidecarDefinition, state: SidecarState): string {
-  const extraEnv = def.requestFilter === "onlyoffice" ? onlyofficeFilterEnv(filterAllowIps(state)) : undefined;
+  const extraEnv = def.requestFilter === "onlyoffice" ? onlyofficeFilterEnv(filterAllowIps()) : undefined;
   return renderCompose(def, { bindHost: state.bindHost, hostPort: state.hostPort, image: state.image, extraEnv });
 }
 
@@ -566,9 +560,6 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
   }
   const app = appUrl(state);
   if (app.warning && def.callsBack) warnings.push(app.warning);
-  if (state && def.requestFilter && filterAllowIps(state).length === 0) {
-    warnings.push(`The app URL (${app.url}) names a host, not an IP address, so the editor's request filter has no address to allow: documents load only if that name resolves to a public address. Set the app URL to an IP address (or add it to KNIFE_SIDECAR_ALLOW_IPS).`);
-  }
   if (state && container.state === "running" && state.composeHash !== composeHashOf(def, state)) {
     warnings.push("The running container was created with older settings (for example without the assistant's editor plugin); it is recreated at the next start when no document is open, or restart it now.");
   }
