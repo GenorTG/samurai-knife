@@ -156,7 +156,7 @@ export function quotaFor(accountId: string): number | null {
 
 export function storageUsage(accountId: string): StorageUsage {
   const { areas } = cached(accountId);
-  const jobs = jobStore().ownerBytes(accountId);
+  const jobs = jobStore().usedBytes(accountId);
   const usedBytes = Object.values(areas).reduce((a, b) => a + b, 0) + jobs;
   const quotaBytes = quotaFor(accountId);
   return {
