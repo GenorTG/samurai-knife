@@ -36,6 +36,18 @@ def _git(*args: str) -> str:
 
 
 def free_port(host: str = "127.0.0.1") -> int:
+    """Any free port, or the first free one in KNIFE_SCRATCH_PORTS ("3350-3369") when a run must stay in a range."""
+    span = os.environ.get("KNIFE_SCRATCH_PORTS", "").strip()
+    if span:
+        low, _, high = span.partition("-")
+        for port in range(int(low), int(high or low) + 1):
+            with socket.socket() as sock:
+                try:
+                    sock.bind((host, port))
+                except OSError:
+                    continue
+                return port
+        raise RuntimeError(f"no free port in KNIFE_SCRATCH_PORTS={span}")
     with socket.socket() as sock:
         sock.bind((host, 0))
         return sock.getsockname()[1]
@@ -70,7 +82,8 @@ class ScratchServer:
         if self._proc is not None:
             return self.restart(env)
         if self._tmp is None:
-            self._tmp = tempfile.TemporaryDirectory(prefix="samurai-knife-scratch-")
+            # KNIFE_SCRATCH_PREFIX names the temp dir (data dir = <it>/data-N), e.g. to keep a run's files findable.
+            self._tmp = tempfile.TemporaryDirectory(prefix=os.environ.get("KNIFE_SCRATCH_PREFIX", "samurai-knife-scratch-"))
         scratch = Path(self._tmp.name)
         if not self.in_place and self._worktree is None:
             ref = _git("stash", "create") or "HEAD"
