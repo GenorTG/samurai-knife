@@ -97,6 +97,7 @@ SUITES: list[Suite] = [
     # Self-contained: starts its own public-mode scratch server (KNIFE_AUTH_MODE=public, outbox mail).
     Suite("accounts_public", py(f"{F}/accounts_public_e2e.py"), "static", timeout=1200),
     Suite("safe_net", py(f"{F}/safe_net_e2e.py"), "static", timeout=900),
+    Suite("storage_privacy", py(f"{F}/storage_privacy_e2e.py"), "static", timeout=900),
     Suite("ui_gaps", py("tests/ui_gaps_e2e.py", "{url}", "{mock}"), mock=True, data_env=True),
     Suite("agent_widget", py("tests/agent_widget_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
     Suite("agent_responses", py("tests/agent_responses_e2e.py", "{url}"), timeout=900),

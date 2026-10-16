@@ -394,6 +394,20 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("admin: GET /api/system/queue -> 200", api.call("GET", "/api/system/queue", cookie=admin)[0] == 200)
     check("non-admin: GET /api/admin/users -> 403", api.call("GET", "/api/admin/users", cookie=alice_cookie)[0] == 403)
     check("non-admin: rebuild course data -> 403", api.call("POST", "/api/learn/sql/setup", {"force": True}, cookie=alice_cookie)[0] == 403)
+    # Global/admin settings: every admin action on one's own account and on another, then the record is unchanged.
+    before = {k: {f: v.get(f) for f in ("role", "status", "storageQuotaBytes", "privateNetwork")} for k, v in accounts(data).items()}
+    for target, body in (("alice", {"action": "role", "role": "admin"}), ("alice", {"action": "quota", "bytes": None}),
+                         ("alice", {"action": "quota", "bytes": 50 * 1024 ** 3}), ("alice", {"action": "network", "privateNetwork": True}),
+                         ("genor", {"action": "disable"}), ("genor", {"action": "delete"}), ("genor", {"action": "role", "role": "user"}),
+                         ("alice", {"action": "resend-verification"})):
+        status, answer, _ = api.call("POST", f"/api/admin/users/{target}", body, cookie=alice_cookie)
+        check(f"non-admin: admin action {body['action']} on {target} -> 403", status == 403, (status, answer))
+    after = {k: {f: v.get(f) for f in ("role", "status", "storageQuotaBytes", "privateNetwork")} for k, v in accounts(data).items()}
+    check("non-admin admin actions changed no account record", before == after, (before, after))
+    for extra in ({"role": "admin"}, {"privateNetwork": True}, {"storageQuotaBytes": None}):
+        status, answer, _ = api.call("PUT", "/api/account/provider", {"baseUrl": "https://api.example.com/v1", "model": "m", **extra}, cookie=alice_cookie)
+        check(f"provider PUT smuggling {next(iter(extra))} -> 400", status == 400, (status, answer))
+    check("smuggled provider fields changed nothing", {k: {f: v.get(f) for f in ("role", "status", "storageQuotaBytes", "privateNetwork")} for k, v in accounts(data).items()} == before)
 
     ctx_c, page_c = new_context(browser, base, "198.51.100.91")
     ui_login(page_c, "alice", "alice password 3")
