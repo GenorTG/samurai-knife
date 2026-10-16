@@ -14,6 +14,7 @@ Oracles: the .eml files, accounts.json / sessions.json on disk, the files of eve
 """
 from __future__ import annotations
 
+import calendar
 import email
 import email.policy
 import hashlib
@@ -86,6 +87,7 @@ class Api:
         except urllib.error.HTTPError as err:
             status, text, hdrs = err.code, err.read().decode(), dict(err.headers)
             cookies = err.headers.get_all("Set-Cookie") or []
+        hdrs = {key.lower(): value for key, value in hdrs.items()}
         hdrs["__cookies"] = "\n".join(cookies)
         try:
             parsed: object = json.loads(text)
@@ -175,8 +177,13 @@ def new_context(browser: Browser, base: str, ip: str, width: int = 1280) -> tupl
     return ctx, page
 
 
+def go(page: Page, path: str) -> None:
+    """Navigate and wait until the page is hydrated (networkidle): typing into a controlled input before hydration is lost."""
+    page.goto(path, wait_until="networkidle")
+
+
 def ui_login(page: Page, ident: str, password: str) -> None:
-    page.goto("/login")
+    go(page, "/login")
     page.locator("input[autocomplete=username]").fill(ident)
     page.locator("input[autocomplete=current-password]").fill(password)
     page.get_by_role("button", name="Log in").click()
@@ -213,7 +220,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
 
     # ------------------------------------------------------------------------------------------- 1. register
     ctx_a, page_a = new_context(browser, base, "198.51.100.11")
-    page_a.goto("/register")
+    go(page_a, "/register")
     shot(page_a, "register")
     page_a.locator("input[autocomplete=username]").fill("alice")
     page_a.locator("input[type=email]").fill("alice@example.com")
@@ -240,7 +247,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("unverified + wrong password -> plain invalid_credentials (no state leak)", status == 401 and not cookie, (status, body))
 
     # ------------------------------------------------------------------------------------------------ 3. verify
-    page_a.goto(verify_link.replace(base, ""))
+    go(page_a, verify_link.replace(base, ""))
     page_a.get_by_role("button", name="Confirm my email").click()
     expect(page_a.get_by_text("Your email is confirmed, alice")).to_be_visible(timeout=15_000)
     shot(page_a, "verified")
@@ -266,7 +273,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("login rotates: the session the browser sent is revoked", s_rot == 200 and api.call("GET", "/api/account", cookie=rotated)[0] == 401, s_rot)
 
     # --------------------------------------------------------------------- 5. change password revokes other sessions
-    page_a.goto("/account")
+    go(page_a, "/account")
     form = page_a.get_by_role("form", name="Change password")
     form.locator("input[autocomplete=current-password]").fill("alice password 1")
     form.locator("input[autocomplete=new-password]").fill("alice password 2")
@@ -286,7 +293,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # --------------------------------------------------------------------------------------- 6. forgot / reset
     ctx_b, page_b = new_context(browser, base, "198.51.100.21")
     before = len(box.messages("alice@example.com"))
-    page_b.goto("/forgot-password")
+    go(page_b, "/forgot-password")
     page_b.locator("input[type=email]").fill("alice@example.com")
     page_b.get_by_role("button", name="Send reset link").click()
     expect(page_b.get_by_text(GENERIC_FORGOT)).to_be_visible(timeout=15_000)
@@ -296,11 +303,11 @@ def run(server: ScratchServer, browser: Browser) -> None:
     mails = box.wait("alice@example.com", before + 2)
     check("no mail for an unknown address", box.messages("nobody@example.com") == [])
     reset_link = Outbox.link(mails[-1][2], "/reset-password") if mails else None
-    reset_ttl = (time.mktime(time.strptime(accounts(data)["alice"]["resetToken"]["expiresAt"][:19], "%Y-%m-%dT%H:%M:%S")) - time.mktime(time.gmtime()))
+    reset_ttl = calendar.timegm(time.strptime(accounts(data)["alice"]["resetToken"]["expiresAt"][:19], "%Y-%m-%dT%H:%M:%S")) - time.time()
     check("reset mail with a 1 h single-use link", bool(reset_link) and 3500 < reset_ttl <= 3600, (reset_link, reset_ttl))
     first_reset = Outbox.link(mails[-2][2], "/reset-password")
     check("an older reset link stops working once a newer one exists", api.call("POST", "/api/account/reset", {"token": Outbox.token(first_reset), "password": "never used 123"})[0] == 400)
-    page_b.goto(reset_link.replace(base, ""))
+    go(page_b, reset_link.replace(base, ""))
     page_b.locator("input[autocomplete=new-password]").nth(0).fill("alice password 3")
     page_b.locator("input[autocomplete=new-password]").nth(1).fill("alice password 3")
     page_b.get_by_role("button", name="Set password").click()
@@ -317,7 +324,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     status, body, _ = api.call("POST", "/api/account/register", {"username": "bob", "email": "bob@example.com", "password": "bob password 1"}, ip="198.51.100.31")
     check("register bob through the API -> 202 generic", status == 202 and body.get("message") == GENERIC_REGISTER, (status, body))
     first = box.wait("bob@example.com", 1)
-    page_b.goto("/verify")
+    go(page_b, "/verify")
     page_b.locator("input[type=email]").fill("bob@example.com")
     page_b.get_by_role("button", name="Send a new link").click()
     expect(page_b.get_by_text(GENERIC_RESEND)).to_be_visible(timeout=15_000)
@@ -351,7 +358,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     codes = [api.login("bob", "wrong password", "198.51.100.51")[0] for _ in range(6)]
     check("login: 5 failures then 429", codes == [401] * 5 + [429], codes)
     status, body, hdrs = api.call("POST", "/api/account/login", {"id": "bob", "password": "bob password 1"}, ip="198.51.100.51")
-    check("login limit also blocks the right password, with Retry-After", status == 429 and int(hdrs.get("Retry-After") or body.get("retryAfterSeconds", 0)) > 0, (status, body, hdrs.get("Retry-After")))
+    check("login limit also blocks the right password, with Retry-After", status == 429 and int(hdrs.get("retry-after") or body.get("retryAfterSeconds", 0)) > 0, (status, body, hdrs.get("retry-after")))
     check("another client address is not blocked by that bucket", api.login("bob", "bob password 1", "198.51.100.52")[0] == 200)
     codes = [api.call("POST", "/api/account/forgot", {"email": "dave@example.com"}, ip=f"198.51.100.{60 + i}")[0] for i in range(4)]
     check("forgot: 3 per address (across client addresses) then 429, unknown addresses included", codes == [202, 202, 202, 429], codes)
@@ -359,7 +366,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("resend: 3 per address then 429", codes == [202, 202, 202, 429], codes)
     codes = [api.call("POST", "/api/account/register", {"username": f"r{i}", "email": f"r{i}@example.com", "password": "rate limit pw1"}, ip="198.51.100.80")[0] for i in range(11)]
     _, rl_body, rl_headers = api.call("POST", "/api/account/register", {"username": "rx", "email": "rx@example.com", "password": "rate limit pw1"}, ip="198.51.100.80")
-    check("register: 10 per client address per hour then 429 (Retry-After)", codes == [202] * 10 + [429] and int(rl_headers.get("Retry-After", 0)) > 0, (codes, rl_body))
+    check("register: 10 per client address per hour then 429 (Retry-After)", codes == [202] * 10 + [429] and int(rl_headers.get("retry-after", 0)) > 0, (codes, rl_body))
 
     # ----------------------------------------------------------------------------------------- 10. roles, sidecars
     svc_dir = data / "services" / "learn-db"
@@ -391,15 +398,15 @@ def run(server: ScratchServer, browser: Browser) -> None:
     ctx_c, page_c = new_context(browser, base, "198.51.100.91")
     ui_login(page_c, "alice", "alice password 3")
     page_c.wait_for_url(base + "/", timeout=15_000)
-    page_c.goto("/tools/db-course")
+    go(page_c, "/tools/db-course")
     expect(page_c.get_by_text(re.compile(r"An administrator has to start Course database")).first).to_be_visible(timeout=60_000)
     check("non-admin sees 'An administrator has to start ...' on the course page", True)
     shot(page_c, "course-needs-admin")
-    page_c.goto("/tools/sidecars")
+    go(page_c, "/tools/sidecars")
     expect(page_c.get_by_text(re.compile(r"An administrator has to start Course database")).first).to_be_visible(timeout=60_000)
     check("sidecars page for a non-admin: messages, no lifecycle buttons",
           page_c.get_by_role("button", name=re.compile(r"^(Start|Stop|Install .*|Remove…|Update.*)$")).count() == 0)
-    page_c.goto("/account/admin")
+    go(page_c, "/account/admin")
     expect(page_c.get_by_text("An administrator has to manage users.")).to_be_visible(timeout=15_000)
     check("admin page refuses a non-admin", True)
 
@@ -407,7 +414,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     ctx_d, page_d = new_context(browser, base, "198.51.100.92")
     ui_login(page_d, "genor", ADMIN_PW)
     page_d.wait_for_url(base + "/", timeout=15_000)
-    page_d.goto("/account/admin")
+    go(page_d, "/account/admin")
     row = page_d.locator("tr[data-user=alice]")
     expect(row).to_be_visible(timeout=15_000)
     shot(page_d, "admin-users")
@@ -423,7 +430,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("an admin cannot disable themselves", status == 409, (status, body))
     status, body, _ = api.call("POST", "/api/admin/users/alice", {"action": "quota", "bytes": 5 * 1024 ** 3}, cookie=admin)
     check("admin changes a quota", status == 200 and accounts(data)["alice"]["storageQuotaBytes"] == 5 * 1024 ** 3, (status, body))
-    page_d.reload()
+    page_d.reload(wait_until="networkidle")
     page_d.locator("tr[data-user=alice]").get_by_role("button", name="Enable").click()
     expect(page_d.get_by_text("alice enabled.")).to_be_visible(timeout=15_000)
     check("admin re-enables alice", accounts(data)["alice"]["status"] == "active")
@@ -442,7 +449,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     for rel in keep:
         (data / rel).parent.mkdir(parents=True, exist_ok=True)
         (data / rel).write_text("{}")
-    page_c.goto("/account")
+    go(page_c, "/account")
     page_c.get_by_role("button", name="Delete my account…").click()
     form = page_c.get_by_role("form", name="Delete account")
     form.locator("input[type=password]").fill("not my password")
@@ -470,10 +477,10 @@ def run(server: ScratchServer, browser: Browser) -> None:
         for width in (390,):
             ctx_m, page_m = new_context(browser, base, "198.51.100.99", width)
             for path, name in (("/login", "login-390"), ("/register", "register-390")):
-                page_m.goto(path)
+                go(page_m, path)
                 shot(page_m, name)
             ctx_m.close()
-        page_b.goto("/login")
+        go(page_b, "/login")
         shot(page_b, "login")
     for ctx in (ctx_a, ctx_b, ctx_c, ctx_d):
         ctx.close()
