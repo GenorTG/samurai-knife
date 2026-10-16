@@ -5,7 +5,9 @@ script path), with its own data dir, its own TMPDIR (so leftover scratch dirs ar
 
     mkdir -p /tmp/q-data /tmp/q-tmp
     TMPDIR=/tmp/q-tmp KNIFE_DATA_DIR=/tmp/q-data KNIFE_PORT=3301 KNIFE_PY_LIGHT=4 KNIFE_PY_HEAVY=1 \\
-      KNIFE_PY_HEAVY_DEPTH=8 KNIFE_JOB_TTL_SEC=3 npm run dev
+      KNIFE_PY_HEAVY_DEPTH=8 KNIFE_JOB_TTL_SEC=3 KNIFE_PY_LIGHT_PER_ACCOUNT=64 KNIFE_PY_HEAVY_PER_ACCOUNT=16 npm run dev
+
+(The per-account share is lifted so this one account can fill a lane; that cap is tested in tests/roles_mcp.test.mjs.)
     TMPDIR=/tmp/q-tmp KNIFE_DATA_DIR=/tmp/q-data ../samurai-knife-py/venv/bin/python tests/queue_e2e.py http://127.0.0.1:3301
 
 Independent oracles: the OS process table sampled every 50 ms (peak concurrent `sql_tool.py` / `pdf_tool.py` of THIS

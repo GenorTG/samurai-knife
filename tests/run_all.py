@@ -192,7 +192,10 @@ def run_suite(suite: Suite, server: ScratchServer | None, mock: Mock, out_dir: P
         server_env: dict[str, str] = {}
         if suite.kind == "queue":
             tmp = tempfile.mkdtemp(prefix="knife-queue-tmp-")
-            server_env = {"TMPDIR": tmp, "KNIFE_PY_LIGHT": "4", "KNIFE_PY_HEAVY": "1", "KNIFE_PY_HEAVY_DEPTH": "8", "KNIFE_JOB_TTL_SEC": "3"}
+            # Lane caps under test; the per-account share is lifted so one account can fill a lane (that cap has its own
+            # tests: roles_mcp.test.mjs).
+            server_env = {"TMPDIR": tmp, "KNIFE_PY_LIGHT": "4", "KNIFE_PY_HEAVY": "1", "KNIFE_PY_HEAVY_DEPTH": "8", "KNIFE_JOB_TTL_SEC": "3",
+                          "KNIFE_PY_LIGHT_PER_ACCOUNT": "64", "KNIFE_PY_HEAVY_PER_ACCOUNT": "16"}
             env["TMPDIR"] = tmp
         url = server.restart(server_env)
         data = str(server.data_dir)
