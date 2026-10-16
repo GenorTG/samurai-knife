@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readAccountText } from "@/lib/storage/sealed";
 import { writeAccountFile } from "@/lib/storage/quota";
 import { accountScope } from "@/lib/storage/scope";
 import {
@@ -51,7 +52,7 @@ export function readFolders(accountId: string): Folder[] {
   const path = foldersPath(accountId);
   if (!existsSync(path)) return [];
   try {
-    return fileSchema.parse(JSON.parse(readFileSync(path, "utf8"))).folders;
+    return fileSchema.parse(JSON.parse(readAccountText(accountId, path))).folders;
   } catch {
     throw new DocError("the folder list (folders.json) is damaged", 500);
   }

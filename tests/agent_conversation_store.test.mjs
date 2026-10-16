@@ -10,6 +10,7 @@ process.env.KNIFE_DATA_DIR = dataDir;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const { openClawUser, providerConversationId, readConversation, resetConversation, writeConversation } = await import("../src/lib/agent-client/conversation-store.ts");
+const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 
 test("conversation state is scoped per account and provider and reset rotates the OpenClaw thread", () => {
   const providerId = providerConversationId("http://gateway/v1", "openclaw/agent");
@@ -31,7 +32,8 @@ test("conversation state is scoped per account and provider and reset rotates th
   assert.equal(readConversation("genor", otherProviderId).messages.length, 0);
   const path = join(dataDir, "conversations", "genor", providerId + ".json");
   assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.match(readFileSync(path, "utf8"), /continue this work/);
+  assert.doesNotMatch(readFileSync(path, "latin1"), /continue this work/, "sealed at rest");
+  assert.match(readAccountText("genor", path), /continue this work/);
 
   resetConversation("genor", providerId);
   const reset = readConversation("genor", providerId);

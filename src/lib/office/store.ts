@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { plainSize, readAccountFile, readAccountText } from "@/lib/storage/sealed";
 import { randomBytes } from "node:crypto";
 import { assertCanStore, canStore, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
@@ -149,7 +150,7 @@ function readMeta(accountId: string, docId: string): DocMeta | null {
   const file = docPath(accountId, docId, "meta.json");
   if (!existsSync(file)) return null;
   try {
-    return metaSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+    return metaSchema.parse(JSON.parse(readAccountText(accountId, file)));
   } catch {
     return null;
   }
@@ -202,7 +203,7 @@ export function docFile(accountId: string, meta: DocMeta): string {
 }
 
 export function readDocBytes(accountId: string, meta: DocMeta): Buffer {
-  return readFileSync(docFile(accountId, meta));
+  return readAccountFile(accountId, docFile(accountId, meta));
 }
 
 function checkBytes(bytes: Uint8Array): void {
@@ -263,8 +264,9 @@ export function listVersions(accountId: string, meta: DocMeta): DocVersion[] {
         out.push(recorded);
         continue;
       }
-      const stat = statSync(docPath(accountId, meta.id, "history", name));
-      out.push({ version, format: match[2], bytes: stat.size, savedAt: stat.mtime.toISOString() });
+      const file = docPath(accountId, meta.id, "history", name);
+      const stat = statSync(file);
+      out.push({ version, format: match[2], bytes: plainSize(file, stat.size), savedAt: stat.mtime.toISOString() });
     }
   }
   return out.sort((a, b) => a.version - b.version);
@@ -279,7 +281,7 @@ export function getVersion(accountId: string, meta: DocMeta, version: number): D
 
 export function readVersionBytes(accountId: string, meta: DocMeta, version: number): { version: DocVersion; bytes: Buffer } {
   const found = getVersion(accountId, meta, version);
-  return { version: found, bytes: readFileSync(historyFile(accountId, meta.id, found.version, found.format)) };
+  return { version: found, bytes: readAccountFile(accountId, historyFile(accountId, meta.id, found.version, found.format)) };
 }
 
 function dropVersions(accountId: string, meta: DocMeta, versions: DocVersion[]): number {
@@ -322,7 +324,7 @@ export function saveVersion(accountId: string, docId: string, bytes: Uint8Array,
   ensurePrivateDir(docPath(accountId, docId, "history"));
   const current = docFile(accountId, meta);
   if (existsSync(current)) {
-    writeAccountFile(accountId, historyFile(accountId, docId, meta.version, meta.format), readFileSync(current), { enforce: false });
+    writeAccountFile(accountId, historyFile(accountId, docId, meta.version, meta.format), readAccountFile(accountId, current), { enforce: false });
     kept.push({
       version: meta.version,
       format: meta.format,
@@ -445,7 +447,8 @@ export function docStats(accountId: string): { count: number; bytes: number } {
   const docs = listDocs(accountId);
   for (const doc of docs) {
     try {
-      bytes += statSync(docFile(accountId, doc)).size;
+      const file = docFile(accountId, doc);
+      bytes += plainSize(file, statSync(file).size);
     } catch {
       /* missing file */
     }

@@ -4,7 +4,7 @@
 // solutions are run against real Postgres by tests/learn_db_e2e.py.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/learn_sql.test.mjs
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -20,6 +20,7 @@ const { COURSES, findCourse, findLesson } = await import("../src/lib/learn/cours
 const { evaluate, missingConstructs, lastResult } = await import("../src/lib/learn/sql/check.ts");
 const { seedScript, SEED_VERSION } = await import("../src/lib/learn/sql/seed.ts");
 const progress = await import("../src/lib/learn/progress.ts");
+const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 const { TOOLS, findTool, CATEGORIES } = await import("../src/lib/registry.ts");
 const { findSidecar } = await import("../src/lib/services/definitions.ts");
 
@@ -222,7 +223,7 @@ test("progress: per account and course, private file, attempts/hints/completion,
   const file = join(dataDir, "learn", "alice.json");
   assert.equal(statSync(file).mode & 0o777, 0o600);
   assert.equal(statSync(join(dataDir, "learn")).mode & 0o777, 0o700);
-  assert.equal(JSON.parse(readFileSync(file, "utf8")).version, 1);
+  assert.equal(JSON.parse(readAccountText("alice", file)).version, 1);
   assert.deepEqual(progress.readProgress("bob", "sql"), { lessons: {} }, "accounts are separate");
   progress.updateLesson("alice", "redis", "intro", (p) => p);
   assert.deepEqual(progress.resetCourse("alice", "sql"), { lessons: {} });

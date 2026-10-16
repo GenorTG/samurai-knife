@@ -2,6 +2,7 @@ import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { getAccount, writePrivateFile } from "@/lib/accounts/store";
+import { sealAccountBytes } from "./sealed";
 import { formatBytes } from "@/lib/format";
 import { jobStore } from "@/lib/jobs";
 import { accountScope, parentDir } from "./scope";
@@ -27,7 +28,7 @@ function recountMs(): number {
 }
 const CACHE_KEY = Symbol.for("samurai-knife.storage-usage.v1");
 
-export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "jobs";
+export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "workspace" | "jobs";
 
 export interface StorageUsage {
   usedBytes: number;
@@ -104,6 +105,7 @@ function walk(accountId: string): Cached {
       conversations: pathBytes(scope.conversations),
       learn: pathBytes(scope.learnFile),
       usage: pathBytes(scope.usageFile),
+      workspace: pathBytes(scope.workspaceFile),
     },
     at: Date.now(),
   };
@@ -126,6 +128,7 @@ function areaOf(accountId: string, path: string): Exclude<StorageArea, "jobs"> {
   if (path === scope.conversations || path.startsWith(scope.conversations + sep)) return "conversations";
   if (path === scope.learnFile) return "learn";
   if (path === scope.usageFile) return "usage";
+  if (path === scope.workspaceFile) return "workspace";
   return "cv";
 }
 
@@ -196,15 +199,16 @@ function sizeOf(path: string): number {
 }
 
 /**
- * Atomic 0600 write of one per-account file with the quota check: only the growth counts (overwriting a file with a
+ * Atomic 0600 write of one per-account file, sealed with the account's storage key (`./sealed.ts`; read it back with
+ * `readAccountFile` / `readAccountText`), with the quota check: only the growth counts (overwriting a file with a
  * smaller one always passes). Creates the parent directory (0700).
  */
 export function writeAccountFile(accountId: string, path: string, contents: string | Uint8Array, options: { enforce?: boolean } = {}): void {
-  const size = typeof contents === "string" ? Buffer.byteLength(contents) : contents.byteLength;
-  const delta = size - sizeOf(path);
+  const sealed = sealAccountBytes(accountId, contents);
+  const delta = sealed.byteLength - sizeOf(path);
   if (options.enforce !== false) assertCanStore(accountId, delta);
   parentDir(path);
-  writePrivateFile(path, contents);
+  writePrivateFile(path, sealed);
   note(accountId, path, delta);
 }
 

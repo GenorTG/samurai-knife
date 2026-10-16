@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readAccountText } from "@/lib/storage/sealed";
 import { writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, isValidAccountId, parentDir } from "@/lib/storage/scope";
 
@@ -51,7 +52,7 @@ function readFile(accountId: string): ProgressFile {
   const path = progressPath(accountId);
   if (!existsSync(path)) return { version: 1, courses: {} };
   try {
-    return fileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    return fileSchema.parse(JSON.parse(readAccountText(accountId, path)));
   } catch (error) {
     throw new ProgressError(`learn/${accountId}.json is damaged: ${(error as Error).message}`);
   }

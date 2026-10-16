@@ -106,6 +106,7 @@ const AREAS: [keyof StorageUsage["areas"], string][] = [
   ["docs", "Office documents (with versions and trash)"],
   ["cv", "CV studio (profile, snapshots, photo)"],
   ["conversations", "Assistant conversations"],
+  ["workspace", "Tool drafts"],
   ["jobs", "Running and finished jobs (temporary)"],
   ["learn", "Course progress"],
   ["usage", "Usage counters"],

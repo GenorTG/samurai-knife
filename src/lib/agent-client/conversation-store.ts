@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { readAccountText } from "@/lib/storage/sealed";
 import * as z from "zod/v4";
 import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir } from "@/lib/storage/scope";
@@ -100,7 +101,7 @@ export function readConversation(accountId: string, providerId: string): Durable
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    raw = JSON.parse(readAccountText(accountId, path)) as unknown;
   } catch (error) {
     throw new Error(`Conversation file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }

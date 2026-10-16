@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { plainSize, readAccountFile } from "@/lib/storage/sealed";
 import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
 
@@ -48,18 +49,12 @@ export function photoMeta(accountId: string): CvPhotoMeta | null {
   const file = photoPath(accountId);
   if (!existsSync(file)) return null;
   const stat = statSync(file);
-  return { bytes: stat.size, updatedAt: stat.mtime.toISOString() };
+  return { bytes: plainSize(file, stat.size), updatedAt: stat.mtime.toISOString() };
 }
 
 export function readPhoto(accountId: string): Buffer | null {
   const file = photoPath(accountId);
-  return existsSync(file) ? readFileSync(file) : null;
-}
-
-/** Absolute path of the stored photo, or null; for the DOCX export, which copies it into its scratch dir. */
-export function photoFile(accountId: string): string | null {
-  const file = photoPath(accountId);
-  return existsSync(file) ? file : null;
+  return existsSync(file) ? readAccountFile(accountId, file) : null;
 }
 
 /** Counts toward the storage quota (QuotaExceededError when it would not fit). */

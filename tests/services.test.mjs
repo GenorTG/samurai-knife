@@ -2,7 +2,7 @@
 // lock, pull progress, URLs, HS256 JWT, document templates/text, the document store and the save callback.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/services.test.mjs
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -21,6 +21,7 @@ const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
 const state = await import("../src/lib/services/state.ts");
 const urls = await import("../src/lib/services/urls.ts");
 const { parsePs, bindHostFor, filterAllowIps, composeHashOf } = await import("../src/lib/services/manager.ts");
+const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 const { signJwt, verifyJwt, JwtError, bearerToken } = await import("../src/lib/jwt-hs256.ts");
 const { buildDocument, OFFICE_FORMATS } = await import("../src/lib/office/templates.ts");
 const { readZip, writeZip } = await import("../src/lib/office/zip.ts");
@@ -384,5 +385,5 @@ test("callback: 1 editing, 6 force-save keeps key, 2 saves + rotates, 4 rotates,
   } finally {
     globalThis.fetch = realFetch;
   }
-  assert.ok(readFileSync(join(dataDir, "docs", "genor", doc.id, "meta.json"), "utf8").includes('"version": 3'));
+  assert.ok(readAccountText("genor", join(dataDir, "docs", "genor", doc.id, "meta.json")).includes('"version": 3'));
 });

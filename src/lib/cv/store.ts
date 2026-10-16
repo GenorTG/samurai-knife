@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { readAccountFile, readAccountText } from "@/lib/storage/sealed";
 import { join } from "node:path";
 import { assertCanStore, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
@@ -29,9 +30,9 @@ function dirs(accountId: string): { file: string; snaps: string } {
 }
 
 /** JSON.parse that fails as a CvStoreError (a hand-edited or truncated file otherwise escapes as a bare SyntaxError and an opaque 500). */
-function readStoredJson(path: string): unknown {
+function readStoredJson(accountId: string, path: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return JSON.parse(readAccountText(accountId, path)) as unknown;
   } catch {
     throw new CvStoreError("stored CV data is not valid JSON (edited by hand or cut short); restore it from a snapshot");
   }
@@ -40,7 +41,7 @@ function readStoredJson(path: string): unknown {
 export function loadCv(accountId: string): CvData {
   const { file } = dirs(accountId);
   if (!existsSync(file)) return emptyCvData();
-  const parsed = cvDataSchema.safeParse(readStoredJson(file));
+  const parsed = cvDataSchema.safeParse(readStoredJson(accountId, file));
   if (!parsed.success) {
     throw new CvStoreError(`stored CV data is invalid at ${parsed.error.issues[0].path.join("/") || "/"}: ${parsed.error.issues[0].message}`);
   }
@@ -54,7 +55,7 @@ function snapshot(accountId: string, file: string, snaps: string, revision: numb
   // so the older state was overwritten and one undo step vanished. Names still sort oldest to newest.
   const stamp = `${new Date().toISOString().replace(/[:.]/g, "-")}-r${String(revision).padStart(8, "0")}`;
   // Snapshots are bookkeeping of a save that already passed the quota check: never refused on their own.
-  writeAccountFile(accountId, join(snaps, `${stamp}.json`), readFileSync(file, "utf8"), { enforce: false });
+  writeAccountFile(accountId, join(snaps, `${stamp}.json`), readAccountFile(accountId, file), { enforce: false });
   pruneSnapshots(accountId, snaps);
 }
 
@@ -97,7 +98,7 @@ export function undoCv(accountId: string): boolean {
   const newest = all.at(-1);
   if (!newest) return false;
   const path = join(snaps, newest);
-  const restored = cvDataSchema.parse(readStoredJson(path));
+  const restored = cvDataSchema.parse(readStoredJson(accountId, path));
   const live = existsSync(file) ? loadCv(accountId) : restored;
   // Keep the revision monotonic so pollers see the undo as a change.
   writeAccountFile(accountId, file, JSON.stringify({ ...restored, revision: live.revision + 1 }, null, 2), { enforce: false });

@@ -112,6 +112,27 @@ removed:
 - `docs/<id>/` (office library: documents, `folders.json`, kept versions, trash)
 - `learn/<id>.json` (course progress)
 - `usage/<id>.json` (token ledger)
+- `workspace/<id>.json.enc` (automatically saved browser-tool drafts)
+
+### At rest
+
+Every file above except the account-wide JSON files (`accounts.json`, `sessions.json`, `mcp-keys.json`) is written by
+`writeAccountFile` and is sealed (`src/lib/storage/sealed.ts`): AES-256-GCM with a key derived for that account
+(HKDF-SHA256 of the server storage key, info = account id) and the account id as additional data, so a file copied into
+another account's directory does not open. Layout: `\0SKENC01` | iv (12) | tag (16) | ciphertext. Stores read through
+`readAccountFile` / `readAccountText`; sizes shown to users (photo, document versions) are plaintext sizes, the quota
+counts the bytes on disk (36 bytes more per file).
+
+- Key: `$KNIFE_DATA_DIR/storage.key` (64 hex chars, 0600, created by the first sealed write), or the absolute path in
+  `KNIFE_STORAGE_KEY_FILE`. Keep it OUTSIDE the data directory on a public host, so a copy of the data directory (a
+  backup, a misdirected read) opens nothing; whoever can read both the key and the data can read everything. Back the key
+  up separately: losing it loses every sealed file. A missing key is an error on read, never a new key.
+- Upgrade: files written before sealing still read as plaintext and are sealed by their next write; files that are rarely
+  rewritten (kept document versions, CV snapshots) stay plaintext until `npm run storage -- seal` (`--dry-run` first)
+  seals them in place, keeping their mtimes. Run it with the server stopped and after a backup. Sealed files cannot be
+  read by a build from before sealing: roll back only to a backup taken before the upgrade.
+- Not sealed: async job scratch dirs in the OS temp dir (0700, removed with the job), `.eml` files of the outbox
+  transport, `mail-errors.log`.
 
 Not on disk, so not removed: in-memory async jobs (their scratch dirs in the OS temp dir count toward the quota while
 they live) and UI-bridge presence (they expire), rate-limit buckets, `.eml` files
@@ -126,7 +147,7 @@ in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new pe
   bytes of its live async jobs (`POST /api/pdf?async=1`). Counted by one walk, cached in memory, moved by the exact delta of
   every write and removal that goes through `writeAccountFile` / `removeAccountPath`; re-walked after
   `KNIFE_STORAGE_RECOUNT_SEC` (default 600) to catch changes made outside the server.
-- Checked BEFORE writing, only the growth counts (overwriting with a smaller file always passes): office uploads, new and
+- Checked BEFORE writing, only the growth counts (overwriting with a smaller file always passes): office uploads, tool drafts, new and
   duplicated documents, restores, editor saves (the Document Server callback first drops that document's oldest kept
   versions; if it still does not fit it answers an error, the editor keeps the changes and warns, and the open editor
   page shows "The last save was refused"), CV saves (incl. its snapshot) and the photo, assistant transcript PUTs,

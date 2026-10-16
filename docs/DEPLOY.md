@@ -31,6 +31,7 @@ KNIFE_MAIL_TRANSPORT=smtp
 KNIFE_SMTP_HOST=...                 # see docs/ACCOUNTS.md "Mail"
 KNIFE_SMTP_FROM="Samurai Knife <no-reply@knife.example.org>"
 KNIFE_SSRF_DENY_CIDRS=<this server's public IPv4>/32,<the LAN's delegated IPv6 prefix>/56
+KNIFE_STORAGE_KEY_FILE=/home/<user>/.config/samurai-knife/storage.key   # outside the data dir (docs/ACCOUNTS.md "At rest")
 ```
 
 `KNIFE_SSRF_DENY_CIDRS` matters: a user's provider URL or job link pointing at your own public IP would otherwise reach
@@ -47,7 +48,7 @@ KNIFE_DATA_DIR=... npm run accounts -- set-network owner private   # only if the
 What public mode turns on besides accounts: SSRF-safe outbound requests with per-account budgets (docs/ACCOUNTS.md
 "Outbound requests"), the security headers (CSP with `frame-ancestors 'self'`, HSTS when `KNIFE_PUBLIC_URL` is https,
 nosniff, Referrer-Policy, Permissions-Policy: `scripts/security-headers.mjs`), the stricter extra-header rules. Always
-on: streamed body limits, sealed provider keys, Python-lane rlimits and minimal child env.
+on: streamed body limits, sealed provider keys, sealed per-account files, Python-lane rlimits and minimal child env.
 
 ## 3. Process manager (PM2 example)
 
@@ -126,4 +127,7 @@ Only 443 (and 80 for the certificate challenge) should be reachable from outside
 - [ ] Proxy: HTTPS, forced; body size and streaming as above; office on its own HTTPS name with websockets.
 - [ ] `tests/prod_smoke.py` against a scratch copy of this setup passes; `curl -sI` shows the CSP and HSTS.
 - [ ] Data directory and `provider-keys.key` in the backup (the key opens the sealed provider keys in accounts.json).
+- [ ] `KNIFE_STORAGE_KEY_FILE` points outside the data directory (0600, owned by the app user) and is backed up apart from
+      the data; existing data sealed once with `npm run storage -- seal` (server stopped, backup first; docs/ACCOUNTS.md
+      "At rest").
 - [ ] From outside: only 443/80 open; the app port, the sidecar ports and Postgres are not reachable.

@@ -12,7 +12,8 @@
     "lint": "eslint",
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./tests/ts-resolve.mjs --test tests/*.test.mjs",
     "accounts": "node scripts/accounts.mjs",
-    "services": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./tests/ts-resolve.mjs scripts/services.ts"
+    "services": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./tests/ts-resolve.mjs scripts/services.ts",
+    "storage": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./tests/ts-resolve.mjs scripts/storage.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.2.0",

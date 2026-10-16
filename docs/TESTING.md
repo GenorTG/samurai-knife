@@ -72,6 +72,7 @@ $R tests/csv_tools.test.mjs      # CSV convert keys (duplicate/extra/blank heade
 $R tests/yaml_json.test.mjs      # YAML/JSON: big integers stay exact (+ warning), .inf/.nan warn, parity with JSON.parse
 $R tests/sql_instant_format.test.mjs   # instant formatter: formatted SQL returns the same rows as the original in SQLite (node:sqlite), -- comments never swallow code
 $R tests/cv_store.test.mjs       # damaged cv/<id>.json is a CvStoreError, undo snapshots never share a name, ids with path characters refused
+$R tests/storage_sealed.test.mjs  # every per-account store sealed at rest, cross-account copy refused, legacy plaintext, missing key, `npm run storage -- seal`
 $R tests/accounts_store.test.mjs  # accounts v1->v2 migration, lock, unique emails, trusted-proxy rules, rate limits, public flows, data purge
 $R tests/nosql.test.mjs tests/work-queue.test.mjs tests/workers.test.mjs tests/sql_runtime.test.mjs tests/wait_condition.test.mjs tests/tool_groups.test.mjs tests/agent_runtime_store.test.mjs tests/cv_*.test.mjs tests/random-uuid.test.mjs tests/sql_engine.test.mjs tests/accounts_cli.test.mjs
 ```

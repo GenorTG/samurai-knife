@@ -50,6 +50,7 @@ Launcher, search, categories, counts, metadata and static params all read the re
 - Request bodies: JSON through `readJsonBody` (Content-Length and streamed byte cap, 413 with a message); multipart through `receiveMultipart` (`src/lib/multipart-upload.ts`: streamed to disk, request/file/count caps); never `request.formData()`/`request.text()` on an unbounded body.
 - Child processes get an explicit environment (`childEnv` in `src/lib/python.ts`), never `{...process.env}`; Python scripts start through `server/py/scripts/run_limited.py` (RLIMIT_AS/CPU/FSIZE per lane).
 - Provider secrets are sealed in `accounts.json` (`src/lib/accounts/secret-box.ts`, key file `provider-keys.key`); code that reads the file raw (tests, scripts) must go through the store or `npm run accounts -- provider-json <id>`.
+- Per-account files are sealed at rest by `writeAccountFile` (`src/lib/storage/sealed.ts`, key `storage.key` or `KNIFE_STORAGE_KEY_FILE`): read them only with `readAccountFile` / `readAccountText` (a raw `readFileSync` gets ciphertext; copying one into a new file with `writeAccountFile` would seal it twice), and hand the Python lane a plaintext copy in its own scratch dir, never a data-dir path.
 - No new dependencies without a reason in the commit message; prefer Web APIs.
 - Type everything, no `any`. Typecheck and lint clean before reporting done.
 - Tests use the mock provider by default. Never point tests at a shared model server.

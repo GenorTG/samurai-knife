@@ -14,6 +14,7 @@ test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const { CvStoreError, loadCv, mutateCv, saveCv, undoCv } = await import("../src/lib/cv/store.ts");
 const { emptyCvData } = await import("../src/lib/cv/schema.ts");
+const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 
 const withName = (data, name) => ({ ...data, profile: { ...data.profile, contact: { ...data.profile.contact, name } } });
 const nameOf = (id) => loadCv(id).profile.contact.name;
@@ -69,7 +70,8 @@ test("the revision keeps rising through saves and undo", () => {
   assert.equal(second.revision, first.revision + 1);
   assert.equal(undoCv(id), true);
   assert.equal(loadCv(id).revision, second.revision + 1);
-  assert.match(readFileSync(join(dataDir, "cv", `${id}.json`), "utf8"), /"revision"/);
+  assert.doesNotMatch(readFileSync(join(dataDir, "cv", `${id}.json`), "latin1"), /"revision"/, "sealed at rest");
+  assert.match(readAccountText(id, join(dataDir, "cv", `${id}.json`)), /"revision"/);
 });
 
 test("an account id with path characters is refused", () => {

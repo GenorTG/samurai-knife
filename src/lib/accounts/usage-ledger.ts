@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readAccountText } from "@/lib/storage/sealed";
 import { EMPTY_BUCKET, addUsage, type Usage, type UsageBucket, type UsageSummary } from "@/lib/usage";
 import { writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, isValidAccountId, parentDir } from "@/lib/storage/scope";
@@ -30,9 +31,9 @@ function today(now = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-function read(path: string): LedgerFile {
+function read(accountId: string, path: string): LedgerFile {
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<LedgerFile>;
+    const parsed = JSON.parse(readAccountText(accountId, path)) as Partial<LedgerFile>;
     if (parsed && parsed.version === 1 && parsed.days && parsed.models) return parsed as LedgerFile;
   } catch {
     /* missing or unreadable: start fresh */
@@ -57,7 +58,7 @@ export function recordRound(accountId: string, round: RoundRecord, now = new Dat
   const path = ledgerPath(accountId);
   if (!path) return;
   try {
-    const file = read(path);
+    const file = read(accountId, path);
     const day = today(now);
     file.days[day] = merge(file.days[day], round.usage, round.ms, round.failed);
     const model = round.model.slice(0, 120) || "unknown";
@@ -76,7 +77,7 @@ function sumBuckets(buckets: UsageBucket[]): UsageBucket {
 
 export function usageSummary(accountId: string, now = new Date()): UsageSummary {
   const path = ledgerPath(accountId);
-  const file = path && existsSync(path) ? read(path) : { version: 1 as const, days: {}, models: {} };
+  const file = path && existsSync(path) ? read(accountId, path) : { version: 1 as const, days: {}, models: {} };
   const dates = Object.keys(file.days).sort().reverse();
   const todayKey = today(now);
   const weekCutoff = today(new Date(now.getTime() - 6 * 86_400_000));

@@ -8,7 +8,7 @@ import { cvFileName, resolveForRender } from "@/lib/cv/render/resolve";
 import { buildCvView } from "@/lib/cv/render/view";
 import { CV_LANGS, ID_PATTERN } from "@/lib/cv/schema";
 import { cvStoreErrorResponse } from "@/lib/cv/http";
-import { photoFile } from "@/lib/cv/photo-store";
+import { readPhoto } from "@/lib/cv/photo-store";
 import { loadCv } from "@/lib/cv/store";
 import { disposeDir, makeScratchDir, runPythonScript } from "@/lib/python";
 import { queueFullOrNull } from "@/lib/queue-http";
@@ -66,10 +66,11 @@ export async function POST(request: Request): Promise<Response> {
   const outDir = await makeScratchDir("knife-cv-");
   try {
     let photo: string | null = null;
-    const storedPhoto = parsed.data.photo && CV_LAYOUT_INFO[theme].photo ? photoFile(auth.account.id) : null;
+    // The stored photo is sealed at rest: the Python lane gets a plaintext copy in the job's own scratch dir.
+    const storedPhoto = parsed.data.photo && CV_LAYOUT_INFO[theme].photo ? readPhoto(auth.account.id) : null;
     if (storedPhoto) {
       photo = path.join(outDir, "photo.jpg");
-      await fs.copyFile(storedPhoto, photo);
+      await fs.writeFile(photo, storedPhoto, { mode: 0o600 });
     }
     const result = await runPythonScript<Record<string, unknown>>(
       "cv_docx.py",

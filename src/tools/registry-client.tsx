@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 import { SuiteShell } from "@/components/SuiteShell";
 import { findTool } from "@/lib/registry";
 import McpConnect from "@/tools/McpConnect";
+import { WorkspaceDraft } from "@/components/WorkspaceDraft";
 
 function ToolLoading() {
   return (
@@ -272,9 +273,17 @@ function MissingTool({ slug }: { slug: string }) {
   );
 }
 
+/**
+ * Tools whose inputs must not be restored from a draft: they load their own server-held data (a stale draft would
+ * overwrite it and autosave the old values back), manage credentials, or generate secrets.
+ */
+const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password"]);
+
 function renderComponent(key: string) {
   const Component = COMPONENTS[key];
-  return Component ? <Component /> : <MissingTool slug={key} />;
+  if (!Component) return <MissingTool slug={key} />;
+  if (NO_DRAFT.has(key) || key.startsWith("cv-")) return <Component />;
+  return <WorkspaceDraft key={key} tool={key} Component={Component} />;
 }
 
 /**
