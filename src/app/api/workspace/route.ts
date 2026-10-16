@@ -16,11 +16,16 @@ const toolSchema = z.object({
   fields: z.record(z.string().max(240), fieldSchema).refine((fields) => Object.keys(fields).length <= 300),
 });
 
+/** GET /api/workspace[?tool=<id>] -> every draft of the account, or only that tool's (`{}` when it has none). */
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const tool = new URL(request.url).searchParams.get("tool");
+  if (tool !== null && !/^[a-z0-9-]{1,80}$/.test(tool)) return jsonError("invalid_workspace_state", 400);
   try {
-    return json(readWorkspaceState(auth.account.id));
+    const state = readWorkspaceState(auth.account.id);
+    if (tool === null) return json(state);
+    return json(state[tool] ? { [tool]: state[tool] } : {});
   } catch {
     return jsonError("workspace_unavailable", 500);
   }

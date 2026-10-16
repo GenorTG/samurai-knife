@@ -63,7 +63,7 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/workspace", { cache: "no-store" })
+    fetch(`/api/workspace?tool=${encodeURIComponent(tool)}`, { cache: "no-store" })
       .then(async (response) => {
         // Always read the body (an unread one keeps the request in flight and the page never goes network-idle).
         const body: unknown = await response.json().catch(() => null);
@@ -85,7 +85,7 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
         }
       });
     return () => { active = false; };
-  }, []);
+  }, [tool]);
 
   useEffect(() => {
     const root = ref.current;
