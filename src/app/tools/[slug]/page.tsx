@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { ToolShell } from "@/components/ToolShell";
-import { TOOLS, findTool, resolveAlias, toolHref } from "@/lib/registry";
+import { findTool, resolveAlias, toolHref } from "@/lib/registry";
 import { ToolView } from "@/tools/registry-client";
-
-export function generateStaticParams() {
-  return TOOLS.map((tool) => ({ slug: tool.slug }));
-}
+import { queryString, requireSignIn } from "@/lib/accounts/viewer";
 
 export async function generateMetadata({
   params,
@@ -17,8 +14,13 @@ export async function generateMetadata({
   return { title: tool.name, description: tool.tagline };
 }
 
-export default async function ToolPage({ params }: PageProps<"/tools/[slug]">) {
+// Public mode decides per request whether the visitor may see a tool at all; a prerendered page would skip the gate.
+export const dynamic = "force-dynamic";
+
+export default async function ToolPage({ params, searchParams }: PageProps<"/tools/[slug]">) {
   const { slug } = await params;
+  // Every tool needs a session in public mode (guests see the welcome page); the login round trip keeps ?tab= and friends.
+  await requireSignIn(`/tools/${encodeURIComponent(slug)}${queryString(await searchParams)}`);
   // Retired slugs (tools folded into a suite) are permanent bookmarks: send
   // them to the suite, on the tab that used to be the standalone tool.
   if (resolveAlias(slug)) permanentRedirect(toolHref(slug));

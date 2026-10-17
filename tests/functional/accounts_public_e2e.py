@@ -244,9 +244,19 @@ def run(server: ScratchServer, browser: Browser) -> None:
     go(page_a, "/")
     expect(page_a.get_by_role("heading", level=1)).to_contain_text("in one sharp place", timeout=15_000)
     shot(page_a, "greeter")
-    check("signed-out home is the greeter: register + log in calls to action, the tools still below",
+    check("signed-out home is the welcome page: register + log in calls to action, no tool list, no app shell",
           page_a.locator("main a[href='/register']").count() >= 2 and page_a.locator("main a[href='/login']").count() >= 1
-          and page_a.locator("#tools input[type=search], #tools input").count() >= 1)
+          and page_a.locator("[data-launcher-search]").count() == 0 and page_a.locator("aside").count() == 0
+          and page_a.locator("[data-agent-pill]").count() == 0)
+    for gated in ("/tools/json", "/tools/pdf?tab=tools", "/account"):
+        r = ctx_a.request.get(base + gated, max_redirects=0)
+        check(f"signed out, {gated} redirects to /login with next",
+              r.status in (302, 303, 307, 308) and r.headers.get("location", "").startswith("/login?next="), (r.status, r.headers.get("location")))
+    go(page_a, "/tools/json")
+    page_a.wait_for_url(re.compile(r"/login\?next=%2Ftools%2Fjson$"), timeout=15_000)
+    check("a guest opening a tool lands on the login page in the public frame",
+          page_a.get_by_role("heading", name="Log in").is_visible() and page_a.locator("aside").count() == 0)
+    go(page_a, "/")
     page_a.locator("main a[href='/register']").first.click()
     page_a.wait_for_url(base + "/register", timeout=15_000)
     check("the greeter's call to action opens /register with the account perks beside the form",
@@ -293,6 +303,10 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("signed-in home is the launcher, not the greeter",
           page_a.get_by_role("heading", level=1).inner_text() == "A private room of hand-made tools."
           and page_a.locator("main a[href='/register']").count() == 0)
+    go(page_a, "/login?next=%2Ftools%2Fjson")
+    page_a.wait_for_url(base + "/tools/json", timeout=15_000)
+    check("signed in, /login goes straight on to next", True)
+    go(page_a, "/")
     shot(page_a, "home-signed-in")
     jar = {c["name"]: c for c in ctx_a.cookies()}
     sess = jar.get("knife_session", {})

@@ -6,7 +6,8 @@ import { TOOLS } from "@/lib/registry";
 
 /**
  * First screen for a signed-out visitor on the public server (`/`): what the app does, why it is safe to use, and the way
- * in (register / log in). Server-rendered, no client state; the launcher stays below it for trying browser tools.
+ * in (register / log in). Server-rendered, no client state. Every tool needs an account: the feature cards go through the
+ * login (`/login?next=`) and land on the tool afterwards.
  */
 
 const ICONS = {
@@ -82,7 +83,7 @@ const FEATURES: { icon: keyof typeof ICONS; hue: number; title: string; href: st
     icon: "tools",
     hue: 80,
     title: "The everyday toolbox",
-    href: "#tools",
+    href: "/tools/json",
     text: "PDF editing and OCR, image export, JSON, CSV, SQL, regex, JWT, colours, cron and more. Small, sharp and fast.",
   },
 ];
@@ -93,12 +94,18 @@ const PROMISES: { icon: keyof typeof ICONS; title: string; text: string }[] = [
   { icon: "key", title: "Your model, your key", text: "Use any OpenAI-compatible provider. The key stays on the server and never reaches the page." },
 ];
 
-const GUEST = ["Every browser tool: PDF, images, JSON, CSV, text, dev helpers", "Favourites and history in this browser"];
+const STEPS: { title: string; text: string }[] = [
+  { title: "Pick a username", text: "Register with an email address and a password, or in one click with GitHub." },
+  { title: "Confirm your email", text: "Open the link we send you. Nothing else: no card, no trial clock, no approval queue." },
+  { title: "Use everything", text: "All the tools, the studios, the assistant and your own MCP key, with 1 GB of private storage." },
+];
+
 const MEMBER = [
+  "Every browser tool: PDF, images, JSON, CSV, text, dev helpers",
   "CV studio, office library, website studio, database course",
   "Server tools: searchable PDFs (OCR), SQL checks",
   "The AI assistant and a personal MCP key for your agents",
-  "Drafts saved to your account, 1 GB of private storage",
+  "Drafts saved to your account, encrypted at rest",
 ];
 
 function Check({ on }: { on: boolean }) {
@@ -215,7 +222,7 @@ export function Greeter({ github }: { github: boolean }) {
           {FEATURES.map((feature) => (
             <li key={feature.title}>
               <Link
-                href={feature.href}
+                href={`/login?next=${encodeURIComponent(feature.href)}`}
                 className="group flex h-full flex-col gap-3 rounded-tool border border-line bg-surface p-5 shadow-card transition-colors hover:border-line-strong hover:bg-raised/40"
               >
                 <IconTile name={feature.icon} hue={feature.hue} />
@@ -243,24 +250,23 @@ export function Greeter({ github }: { github: boolean }) {
         </ul>
       </Section>
 
-      <Section id="account" eyebrow="Guest or member" title="Try it now, keep it with an account">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-tool border border-line bg-surface/60 p-5">
-            <h3 className="text-[15px] font-semibold text-ink">Without an account</h3>
-            <ul className="mt-3 space-y-2 text-sm text-muted">
-              {GUEST.map((line) => (
-                <li key={line} className="flex gap-2">
-                  <Check on={false} />
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-            <a href="#tools" className="mt-4 inline-block text-sm text-accent-soft underline underline-offset-2 hover:text-ink">
-              Browse the tools below
-            </a>
-          </div>
+      <Section id="account" eyebrow="Getting in" title="Three steps to your own toolbox">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <ol className="grid gap-3">
+            {STEPS.map((step, i) => (
+              <li key={step.title} className="flex gap-4 rounded-tool border border-line bg-surface/60 p-5">
+                <span className="grid size-8 shrink-0 place-items-center rounded-full border border-accent/40 font-mono text-sm font-semibold text-accent-soft">
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-semibold tracking-tight text-ink">{step.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted">{step.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
           <div className="rounded-tool border border-accent/40 bg-surface p-5 shadow-card ring-1 ring-accent/10">
-            <h3 className="text-[15px] font-semibold text-ink">With a free account</h3>
+            <h3 className="text-[15px] font-semibold text-ink">What your free account includes</h3>
             <ul className="mt-3 space-y-2 text-sm text-muted">
               {MEMBER.map((line) => (
                 <li key={line} className="flex gap-2">

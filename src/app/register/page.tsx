@@ -4,13 +4,15 @@ import { AccountPerks, AuthFrame, RegisterForm } from "@/components/account/Auth
 import { GithubButton } from "@/components/account/GithubButton";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { loadApp } from "@/lib/github-app/config";
+import { skipIfSignedIn } from "@/lib/accounts/viewer";
 
 export const metadata: Metadata = { title: "Create account" };
 export const dynamic = "force-dynamic";
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
   // Private mode has no registration at all (accounts come from `npm run accounts`).
   if (!isPublicMode()) notFound();
+  await skipIfSignedIn(undefined);
   const github = !!loadApp();
   return (
     <AuthFrame title="Create your account" intro="Takes a minute: you confirm your email address before the first login." aside={<AccountPerks />}>

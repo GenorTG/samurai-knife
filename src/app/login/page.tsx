@@ -5,6 +5,7 @@ import { Notice } from "@/components/ui";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { loadApp } from "@/lib/github-app/config";
 import { safeReturnPath } from "@/lib/safe-return";
+import { skipIfSignedIn } from "@/lib/accounts/viewer";
 
 export const metadata: Metadata = { title: "Log in" };
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
   // Only a same-site path survives (the shared open-redirect rule); anything else is dropped here already.
   const next = typeof params.next === "string" ? safeReturnPath(params.next, "") || undefined : undefined;
+  await skipIfSignedIn(next);
   const publicMode = isPublicMode();
   const github = publicMode && !!loadApp();
   const error = githubErrorText(typeof params.github_error === "string" ? params.github_error : undefined, typeof params.github_message === "string" ? params.github_message : undefined);

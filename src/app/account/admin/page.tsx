@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireSignIn } from "@/lib/accounts/viewer";
 import { AdminUsers } from "@/components/account/AdminUsers";
 import { GithubAppAdmin } from "@/components/account/GithubAppAdmin";
 
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** User management and the GitHub App (admins only: the APIs answer 403 to everyone else, the page shows that message). */
 export default async function AdminPage({ searchParams }: PageProps<"/account/admin">) {
+  await requireSignIn("/account/admin");
   const params = await searchParams;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
   return (
