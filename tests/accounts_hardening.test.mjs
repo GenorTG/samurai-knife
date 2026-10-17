@@ -541,6 +541,15 @@ test("lockout DoS (#9): strangers hammering an identifier cannot lock out its kn
   }
   assert.ok(required >= 18, `challenges were required after the first failures (${required})`);
   assert.equal(limits.checkLimits([limits.LIMITS.loginAccount("target")]).ok, false, "the identifier bucket is full");
+  // Even from the exact address that filled the old identifier+address bucket, the signed device bypasses it.
+  for (let i = 0; i < 5; i++) {
+    let result = await session.attemptLogin("target", "bad", "203.0.113.202");
+    if (!result.ok && result.reason === "challenge_required") {
+      result = await session.attemptLogin("target", "bad", "203.0.113.202", { pow: solved("login", "203.0.113.202", { identifierUnderAttack: true }) });
+    }
+    assert.equal(result.reason, "invalid_credentials");
+  }
+  assert.equal((await session.attemptLogin("target", "target password 1", "203.0.113.202", { deviceCookie })).ok, true);
   // Before: a hard 429 for everyone. Now: the known device logs straight in…
   const fromDevice = await session.attemptLogin("target", "target password 1", "203.0.113.200", { deviceCookie });
   assert.equal(fromDevice.ok, true, JSON.stringify(fromDevice));
@@ -550,6 +559,14 @@ test("lockout DoS (#9): strangers hammering an identifier cannot lock out its kn
   assert.equal(fresh.bits, 6 + 3);
   const paid = await session.attemptLogin("target", "target password 1", "203.0.113.201", { pow: solved("login", "203.0.113.201", { identifierUnderAttack: true }) });
   assert.equal(paid.ok, true);
+  // The daily identifier ceiling is also pressure, never a hard refusal for a fresh browser.
+  limits.clearLimit(limits.LIMITS.loginAccount("target").key);
+  limits.clearLimit(limits.LIMITS.loginFailAccount("target").key);
+  limits.hitLimits(Array.from({ length: 200 }, () => limits.LIMITS.loginAccountDay("target")));
+  const dailyPressure = await session.attemptLogin("target", "target password 1", "203.0.113.203");
+  assert.deepEqual([dailyPressure.ok, dailyPressure.reason, dailyPressure.bits], [false, "challenge_required", 6 + 3]);
+  const dailyPaid = await session.attemptLogin("target", "target password 1", "203.0.113.203", { pow: solved("login", "203.0.113.203", { identifierUnderAttack: true }) });
+  assert.equal(dailyPaid.ok, true);
   // The device cookie of another account, or from before a password change, vouches for nothing.
   assert.equal(device.knownDeviceFor(deviceCookie, "someone-else", session.passwordFingerprint(owner)), null);
   assert.equal(device.knownDeviceFor(deviceCookie, "target", "000000000000"), null);

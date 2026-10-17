@@ -27,8 +27,8 @@ function masterKey(): Buffer {
   const path = keyPath();
   if (cached && cached.path === path) return cached.key;
   let key: Buffer;
-  if (existsSync(path)) {
-    const text = readFileSync(path, "utf8").trim();
+  if (existsSync(/*turbopackIgnore: true*/ path)) {
+    const text = readFileSync(/*turbopackIgnore: true*/ path, "utf8").trim();
     if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(`${KEY_NAME} is malformed (expected 64 hex characters)`);
     key = Buffer.from(text, "hex");
   } else {

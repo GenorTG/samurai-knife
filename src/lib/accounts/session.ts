@@ -281,10 +281,10 @@ function recordLogin(account: Account, rehashed: string | null): Account {
  * Username (or, in public mode, email) + password. "Not verified"/"disabled" are only told to someone who knows the
  * password; every other failure is the same `invalid_credentials`. Rate limits count failures only:
  * - both modes: 5/min per identifier + address;
- * - public mode, unknown device: 50/15 min per address, 200/day per identifier (hard); after 3 failures for the
- *   identifier or from the address, proof-of-work is required, and a full 20/15 min identifier bucket raises its
- *   difficulty instead of refusing (so nobody can keep a user locked out);
- * - public mode, known device (`knife_device` cookie vouching for this account): only its own 10/15 min bucket.
+ * - public mode, unknown device: 5/min per identifier+address and 50/15 min per address are hard ceilings; after 3
+ *   failures for the identifier or from the address, proof-of-work is required. A full 20/15 min or 200/day identifier
+ *   bucket raises difficulty instead of refusing, so strangers cannot keep the owner locked out;
+ * - public mode, known device (`knife_device` cookie vouching for this account): only its own 10/15 min failure bucket.
  * Successful logins: 30/h per account. Password hashing waits for the global hash budget (busy -> 503).
  */
 export async function attemptLogin(identifier: string, password: string, ip: string, options: LoginOptions = {}): Promise<LoginResult> {
@@ -299,20 +299,22 @@ export async function attemptLogin(identifier: string, password: string, ip: str
   if (!publicMode) {
     failBuckets = [pair];
   } else if (device) {
-    failBuckets = [pair, LIMITS.loginDevice(device)];
+    // This signed device bypasses every identifier/address failure bucket; only its own bounded bucket applies.
+    failBuckets = [LIMITS.loginDevice(device)];
   } else {
     failBuckets = [pair, LIMITS.loginIp(ip), LIMITS.loginAccount(key), LIMITS.loginAccountDay(key), LIMITS.loginFailAccount(key), LIMITS.loginFailIp(ip)];
     watchLockout = true;
   }
   // Refusing buckets (the identifier's 20/15 min bucket and the failure signals are not among them).
-  const blocking = !publicMode || device ? failBuckets : [pair, LIMITS.loginIp(ip), LIMITS.loginAccountDay(key)];
+  const blocking = !publicMode || device ? failBuckets : [pair, LIMITS.loginIp(ip)];
   const verdict = checkLimits(blocking);
   if (!verdict.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds };
   const lockedOut = watchLockout && !checkLimits([LIMITS.loginAccount(key)]).ok;
+  const identifierDailyPressure = watchLockout && !checkLimits([LIMITS.loginAccountDay(key)]).ok;
   if (watchLockout) {
-    const needsPow = lockedOut || !checkLimits([LIMITS.loginFailAccount(key)]).ok || !checkLimits([LIMITS.loginFailIp(ip)]).ok;
+    const needsPow = lockedOut || identifierDailyPressure || !checkLimits([LIMITS.loginFailAccount(key)]).ok || !checkLimits([LIMITS.loginFailIp(ip)]).ok;
     if (needsPow) {
-      const pow = checkPow("login", ip, options.pow, { identifierUnderAttack: lockedOut });
+      const pow = checkPow("login", ip, options.pow, { identifierUnderAttack: lockedOut || identifierDailyPressure });
       if (!pow.ok) return { ok: false, reason: pow.status === 503 ? "busy" : "challenge_required", bits: pow.bits, retryAfterSeconds: pow.retryAfterSeconds };
     }
   }

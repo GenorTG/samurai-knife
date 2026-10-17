@@ -65,6 +65,12 @@ Pass an existing scratch URL as the first argument to reuse a server. The defaul
 | `tests/office_files_e2e.py` | none (self-contained, **real docker** unless `--skip-docker`) | `KNIFE_SCRATCH_PORTS=<lo>-<hi> python3 tests/office_files_e2e.py --host <tailscale-ip> [--skip-docker] [--shots DIR] [--keep]` — the office file browser in public mode with an admin and two users: every office route and `knife_doc_*` tool (agent route + MCP) isolated between accounts, quota 507 in the API and the browser (sparse filler, `KNIFE_STORAGE_RECOUNT_SEC=1`), the file browser in Chromium and Firefox, then the real sidecar (compose project `knife-test-office-office` by default): edit + Ctrl+S = a version, preview/download/restore it, Firefox editor, purge. Screenshots in `/tmp/knife-office-shots/`. Not in `run_all.py` |
 | `tests/sidecars_ui_e2e.py` | none (self-contained, **real docker**) | `python3 tests/sidecars_ui_e2e.py [--shots dir]` — the Sidecar services page by clicks: Install with live progress, Stop, Start, Remove with confirm + purge; office page install card |
 
+
+Public account form APIs use proof-of-work. Browser tests exercise the Worker-backed flow; any direct API test must first
+`GET /api/account/challenge?form=<register|forgot|resend|reset|login>`, solve SHA-256(`c:nonce`) to the returned `bits`,
+and submit `{pow:{c,nonce}}`. `tests/functional/accounts_public_e2e.py` implements this in `Api.call`; its scratch-only
+`KNIFE_POW_BITS=8` keeps the suite quick while preserving challenge verification. Public mode never disables PoW.
+
 ## Unit tests (no server, no browser)
 
 `npm run test:unit` runs every `tests/*.test.mjs` (Node >= 24: native type stripping; `tests/ts-resolve.mjs` also resolves extensionless relative imports and the `@/` alias so server modules such as `src/lib/cv/store.ts` can be imported). One file: 

@@ -254,9 +254,12 @@ Templates (`templates.ts`): English, plain text + minimal HTML, every value esca
 
 | Action | Buckets |
 | --- | --- |
-| login (failures only) | 5/min per identifier + client address (both modes, as before); public mode also 20/15 min per identifier and 50/15 min per address |
+| login (failures only) | 5/min per identifier + client address; public unknown devices are hard-limited by 5/min per identifier+address and 50/15 min per address; 20/15 min and 200/day identifier buckets, and 3-failure signals, raise proof-of-work instead of locking the account; a known-device cookie uses its own 10/15 min failure bucket |
 | register | 10/h per address, 3/h per email |
 | resend | 10/h per address, 3/15 min per email |
+| verify | 20/10 min per address, 5/10 min per token hash |
+| reset | 20/10 min per address, 5/10 min per token hash |
+| successful login | 30/h per account |
 | forgot | 10/h per address, 3/15 min per email |
 | password/email change, delete (wrong password) | 10/15 min per account |
 | provider rounds (`/api/agent/chat`), public mode, non-admins | 300/10 min per account |
@@ -272,7 +275,7 @@ store lookups, scrypt, or mail. `GET /api/account/challenge?form=...` issues an 
 the form and client IP prefix. The client solves SHA-256 in a Web Worker and reports progress as “Checking your browser…”.
 Challenges are single-use and the replay set is bounded. Difficulty defaults to 18 bits (~2^18 hashes), increases under
 prefix/register pressure, and is capped at 24 bits. E2E clients use `tests/pow_client.py` to fetch and solve challenges;
-they may set `KNIFE_POW_BITS` lower in the isolated test process. The data-dir signing key is `auth.key` (0600).
+direct API probes fetch and solve the challenge too (see `Api.call` in `tests/functional/accounts_public_e2e.py`); isolated e2e servers set a lower `KNIFE_POW_BITS`, never disable the check. The signing key is `auth.key` (0600).
 
 Every password hash and verify shares one asynchronous scrypt gate: `KNIFE_SCRYPT_CONCURRENCY=2`,
 `KNIFE_SCRYPT_QUEUE=32`; excess work returns 503 with `Retry-After`. Scrypt uses N=2^17; unknown usernames perform a

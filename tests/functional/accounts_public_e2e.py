@@ -352,6 +352,21 @@ def run(server: ScratchServer, browser: Browser) -> None:
     status, _, alice_cookie = api.login("alice", "alice password 3", "198.51.100.23")
     check("login with the reset password", status == 200 and alice_cookie, status)
     check("password-changed notice mailed", any("password changed" in subject.lower() for _, subject, _ in box.messages("alice@example.com")))
+    key_status, key_body, _ = api.call("POST", "/api/account/mcp-keys", {"action": "create", "name": "logout test"}, cookie=alice_cookie)
+    check("create MCP key before log out everywhere", key_status == 201 and bool(key_body.get("key")), (key_status, key_body))
+    ui_login(page_a, "alice", "alice password 3")
+    page_a.wait_for_url(base + "/", timeout=15_000)
+    go(page_a, "/account")
+    page_a.get_by_role("checkbox").check()
+    check("log out everywhere offers MCP key revocation", page_a.get_by_role("checkbox").count() == 1)
+    page_a.get_by_role("button", name="Log out everywhere").click()
+    page_a.wait_for_url(re.compile(r"/login(?:\?|$)"), timeout=15_000)
+    key_file = data / "mcp-keys.json"
+    remaining_keys = json.loads(key_file.read_text()).get("keys", []) if key_file.exists() else []
+    check("log out everywhere with the option revokes all of this account's MCP keys",
+          key_status == 201 and not any(key.get("accountId") == "alice" for key in remaining_keys), remaining_keys)
+    status, _, alice_cookie = api.login("alice", "alice password 3", "198.51.100.24")
+    check("sign back in after log out everywhere", status == 200 and bool(alice_cookie), status)
 
     # ------------------------------------------------------------------------------------------------ 7. resend
     status, body, _ = api.call("POST", "/api/account/register", {"username": "bob", "email": "bob@example.com", "password": "bob password 1"}, ip="198.51.100.31")
@@ -362,11 +377,19 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_b.get_by_role("button", name="Send a new link").click()
     expect(page_b.get_by_text(GENERIC_RESEND)).to_be_visible(timeout=15_000)
     both = box.wait("bob@example.com", 2)
-    old_link, new_link = Outbox.link(first[0][2], "/verify"), Outbox.link(both[-1][2], "/verify") if len(both) > 1 else None
-    check("resend sends a new link", bool(new_link) and new_link != old_link, both)
-    check("the replaced link no longer works", api.call("POST", "/api/account/verify", {"token": Outbox.token(old_link)})[0] == 400)
-    status, body, _ = api.call("POST", "/api/account/verify", {"token": Outbox.token(new_link)})
-    check("the new link verifies bob", status == 200 and body.get("username") == "bob", (status, body))
+    old_link = Outbox.link(first[0][2], "/verify")
+    release_text = both[-1][2] if len(both) > 1 else ""
+    check("resend cancels the unverified sign-up and mails a fresh registration link",
+          "Create my account" in release_text and "/register" in release_text and "/verify?token=" not in release_text, both)
+    check("the squatter's verification link no longer works",
+          api.call("POST", "/api/account/verify", {"token": Outbox.token(old_link)})[0] == 400)
+    check("the unverified username and address are released", "bob" not in accounts(data))
+    # Re-register as the actual address owner so the later login, role and deletion coverage uses an active account.
+    status, body, _ = api.call("POST", "/api/account/register", {"username": "bob", "email": "bob@example.com", "password": "bob password 1"}, ip="198.51.100.33")
+    fresh = box.wait("bob@example.com", 3)
+    new_link = Outbox.link(fresh[-1][2], "/verify") if fresh else None
+    status, body, _ = api.call("POST", "/api/account/verify", {"token": Outbox.token(new_link)}, ip="198.51.100.33")
+    check("the released identity can register and verify afresh", status == 200 and body.get("username") == "bob", (status, body))
     alice_mails = len(box.messages("alice@example.com"))
     r_unknown = api.call("POST", "/api/account/resend", {"email": "ghost@example.com"}, ip="198.51.100.32")[:2]
     r_verified = api.call("POST", "/api/account/resend", {"email": "alice@example.com"}, ip="198.51.100.32")[:2]
@@ -388,11 +411,11 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("no account was created for the collisions", "carol" not in acc and "admin" not in acc and acc["alice"]["email"] == "alice@example.com", sorted(acc))
 
     # ---------------------------------------------------------------------------------------------- 9. rate limits
-    codes = [api.login("bob", "wrong password", "198.51.100.51")[0] for _ in range(6)]
+    codes = [api.login("alice", "wrong password", "198.51.100.51")[0] for _ in range(6)]
     check("login: 5 failures then 429", codes == [401] * 5 + [429], codes)
-    status, body, hdrs = api.call("POST", "/api/account/login", {"id": "bob", "password": "bob password 1"}, ip="198.51.100.51")
+    status, body, hdrs = api.call("POST", "/api/account/login", {"id": "alice", "password": "alice password 3"}, ip="198.51.100.51")
     check("login limit also blocks the right password, with Retry-After", status == 429 and int(hdrs.get("retry-after") or body.get("retryAfterSeconds", 0)) > 0, (status, body, hdrs.get("retry-after")))
-    check("another client address is not blocked by that bucket", api.login("bob", "bob password 1", "198.51.100.52")[0] == 200)
+    check("another client address is not blocked by that bucket", api.login("alice", "alice password 3", "198.51.100.52")[0] == 200)
     codes = [api.call("POST", "/api/account/forgot", {"email": "dave@example.com"}, ip=f"198.51.100.{60 + i}")[0] for i in range(4)]
     check("forgot: 3 per address (across client addresses) then 429, unknown addresses included", codes == [202, 202, 202, 429], codes)
     codes = [api.call("POST", "/api/account/resend", {"email": "eve@example.com"}, ip=f"198.51.100.{70 + i}")[0] for i in range(4)]
@@ -534,6 +557,40 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("no console errors on the account pages (hydration etc.)", CONSOLE == [], CONSOLE[:5])
 
 
+def run_firefox_auth_smoke(server: ScratchServer, browser: Browser) -> None:
+    """Exercise the real register/verify/login challenge UX in Firefox as well as Chromium."""
+    data = server.data_dir
+    assert data is not None
+    base = server.url
+    box = Outbox(data)
+    ctx, page = new_context(browser, base, "198.51.100.111")
+    try:
+        go(page, "/register")
+        page.locator("input[autocomplete=username]").fill("foxuser")
+        page.locator("input[type=email]").fill("foxuser@example.com")
+        password = "fox account password 1"
+        page.locator("input[autocomplete=new-password]").nth(0).fill(password)
+        page.locator("input[autocomplete=new-password]").nth(1).fill(password)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_text(GENERIC_REGISTER)).to_be_visible(timeout=20_000)
+        mails = box.wait("foxuser@example.com", 1)
+        verify_link = Outbox.link(mails[0][2], "/verify") if mails else None
+        check("Firefox: register worker solves proof-of-work and gets the generic response", bool(verify_link), mails)
+        if not verify_link:
+            return
+        go(page, verify_link.replace(base, ""))
+        page.get_by_role("button", name="Confirm my email").click()
+        expect(page.get_by_text("Your email is confirmed, foxuser")).to_be_visible(timeout=15_000)
+        check("Firefox: verification form activates the account", accounts(data).get("foxuser", {}).get("status") == "active")
+        ui_login(page, "foxuser", password)
+        page.wait_for_url(base + "/", timeout=15_000)
+        account_status = ctx.request.get(base + "/api/account").status
+        check("Firefox: login succeeds after verification", account_status == 200,
+              {"status": account_status, "url": page.url, "header": page.locator("main").inner_text()[:300]})
+    finally:
+        ctx.close()
+
+
 def run_private(server: ScratchServer) -> None:
     """Private mode on the same code: none of the public-only surface exists, the default account is the implicit identity."""
     api = Api(server.url)
@@ -553,6 +610,21 @@ def run_private(server: ScratchServer) -> None:
 
 
 def main() -> int:
+    if "--firefox-only" in sys.argv:
+        prefix = f"sk-acc-firefox-{secrets.token_hex(3)}"
+        env = {"KNIFE_AUTH_MODE": "public", "KNIFE_MAIL_TRANSPORT": "outbox",
+               "KNIFE_TRUSTED_PROXIES": "127.0.0.1,::1", "KNIFE_SIDECAR_PREFIX": prefix,
+               "KNIFE_POW_BITS": "8", "KNIFE_POW_MAX_BITS": "16"}
+        with ScratchServer() as server:
+            server.start(env=env)
+            with sync_playwright() as pw:
+                browser = pw.firefox.launch(headless=not HEADED)
+                try:
+                    run_firefox_auth_smoke(server, browser)
+                finally:
+                    browser.close()
+        print(f"\n{PASSES} passed, {len(FAILS)} failed")
+        return 1 if FAILS else 0
     prefix = f"sk-acc-e2e-{secrets.token_hex(3)}"
     env = {
         "KNIFE_AUTH_MODE": "public",
@@ -561,6 +633,8 @@ def main() -> int:
         "KNIFE_SIDECAR_PREFIX": prefix,
         "KNIFE_POW_BITS": "8",
         "KNIFE_POW_MAX_BITS": "16",
+        # Keep this suite's register-IP test independent of the separately tested pending-prefix cap.
+        "KNIFE_PENDING_PER_PREFIX": "100",
     }
     with ScratchServer() as server:
         server.start(env=env)
@@ -575,6 +649,15 @@ def main() -> int:
                 print(server.log_tail(3000))
             finally:
                 browser.close()
+            try:
+                firefox = pw.firefox.launch(headless=not HEADED)
+                try:
+                    run_firefox_auth_smoke(server, firefox)
+                finally:
+                    firefox.close()
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                FAILS.append("Firefox auth smoke crashed: " + traceback.format_exc().strip().splitlines()[-1])
         try:
             server.restart(env={"KNIFE_AUTH_MODE": "private", "KNIFE_SIDECAR_PREFIX": prefix})
             run_private(server)
