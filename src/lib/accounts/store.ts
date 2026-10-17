@@ -72,6 +72,8 @@ const accountSchema = z.object({
    * Honoured for admins only (`src/lib/net/outbound.ts`); set with `npm run accounts -- set-network` or the admin API.
    */
   privateNetwork: z.boolean().default(false),
+  /** The GitHub identity linked to this account ("Sign in with GitHub", docs/GITHUB.md); one account per GitHub user. */
+  github: z.object({ id: z.number().int().positive(), login: z.string().max(100), linkedAt: z.string() }).nullable().default(null),
 });
 
 const storeSchema = z.object({
@@ -85,7 +87,10 @@ const storeSchema = z.object({
 }).refine((store) => {
   const emails = store.accounts.map((account) => account.email).filter((email): email is string => email !== null);
   return new Set(emails).size === emails.length;
-}, { message: "two accounts share an email address" });
+}, { message: "two accounts share an email address" }).refine((store) => {
+  const ids = store.accounts.map((account) => account.github?.id).filter((id): id is number => typeof id === "number");
+  return new Set(ids).size === ids.length;
+}, { message: "two accounts are linked to the same GitHub user" });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type Account = z.infer<typeof accountSchema>;
@@ -350,6 +355,8 @@ export interface PublicAccount {
   /** May manage sidecars, users and server settings: every account in private mode, admins only in public mode. */
   isAdmin: boolean;
   authMode: "private" | "public";
+  /** Linked GitHub login, or null. */
+  github: string | null;
 }
 
 export function maskKey(key: string): string | null {
@@ -382,5 +389,6 @@ export function toPublicAccount(account: Account, mode: "private" | "public" = "
     role: account.role,
     isAdmin: mode === "private" || account.role === "admin",
     authMode: mode,
+    github: account.github?.login ?? null,
   };
 }

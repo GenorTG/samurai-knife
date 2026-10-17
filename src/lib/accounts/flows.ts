@@ -39,7 +39,7 @@ const MAX_EMAIL = 254;
 const EMAIL = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 
 /** Names nobody may register: they read as the site itself in mail and the UI. */
-const RESERVED = new Set([
+export const RESERVED = new Set([
   "admin", "administrator", "root", "system", "support", "security", "postmaster", "abuse", "noreply", "no-reply",
   "webmaster", "hostmaster", "mailer-daemon", "knife", "samurai-knife", "api", "account", "accounts",
 ]);
@@ -314,8 +314,13 @@ export function isLastAdmin(id: string, store: AccountStore): boolean {
 }
 
 export async function deleteOwnAccount(account: Account, password: string, store: AccountStore): Promise<FlowOk<{ removed: string[] }> | FlowError> {
-  const wrong = await confirmPassword(account, password);
-  if (wrong) return wrong;
+  // An account made with "Sign in with GitHub" has no password: the typed username confirms instead.
+  if (!account.passwordHash) {
+    if (password.trim() !== account.id) return fail(403, "type_username");
+  } else {
+    const wrong = await confirmPassword(account, password);
+    if (wrong) return wrong;
+  }
   if (isLastAdmin(account.id, store)) return fail(409, "You are the only administrator. Make someone else an administrator first.");
   const result = purgeAccount(account.id);
   if (!result) return fail(404, "not_found");

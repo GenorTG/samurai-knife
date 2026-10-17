@@ -18,7 +18,12 @@ const tokenSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("pat"), value: z.string().min(1).max(500), login: z.string().max(100) }),
   // Admins only: the server's own `gh` login (the token is read from `gh auth token` per call, never stored).
   z.object({ source: z.literal("host-gh"), login: z.string().max(100) }),
+  // The server's GitHub App: an installation this account proved it can reach (no secret stored; tokens are minted per call).
+  z.object({ source: z.literal("app"), installationId: z.number().int().positive(), login: z.string().max(100) }),
 ]);
+
+const installationSchema = z.object({ id: z.number().int().positive(), account: z.string().max(100), accountType: z.string().max(40) });
+export type LinkedInstallation = z.infer<typeof installationSchema>;
 
 export const connectionSchema = z.object({
   repo: z.string().max(200),
@@ -47,6 +52,8 @@ const fileSchema = z.object({
   work: workSchema.nullable().default(null),
   // Audit runs are produced by our own code; stored as they are (validated loosely).
   audits: z.array(z.record(z.string(), z.unknown())).max(KEEP_AUDITS).default([]),
+  /** GitHub App installations verified for this account with a GitHub sign-in (GET /user/installations), and who signed in. */
+  github: z.object({ login: z.string().max(100), installations: z.array(installationSchema).max(100), checkedAt: z.string() }).nullable().default(null),
   /** Last publish / discard, for the Changes tab. */
   lastAction: z.object({ kind: z.string(), at: z.string(), detail: z.string() }).nullable().default(null),
 });
@@ -60,7 +67,7 @@ function path(accountId: string): string {
 
 export function loadSite(accountId: string): SiteFile {
   const file = path(accountId);
-  if (!existsSync(file)) return { version: 1, revision: 0, connection: null, work: null, audits: [], lastAction: null };
+  if (!existsSync(file)) return { version: 1, revision: 0, connection: null, work: null, audits: [], lastAction: null, github: null };
   let raw: unknown;
   try {
     raw = JSON.parse(readAccountText(accountId, file));
@@ -113,13 +120,14 @@ export function siteView(site: SiteFile) {
           baseBranch: c.baseBranch,
           productionUrl: c.productionUrl,
           pages: c.pages,
-          token: { source: c.token.source, login: c.token.login, hint: c.token.source === "pat" ? hint(c.token.value) : "server gh login" },
+          token: { source: c.token.source, login: c.token.login, installationId: c.token.source === "app" ? c.token.installationId : null, hint: c.token.source === "pat" ? hint(c.token.value) : c.token.source === "app" ? `GitHub App installation ${c.token.installationId}` : "server gh login" },
           hasPsiKey: !!c.psiKey,
           connectedAt: c.connectedAt,
         }
       : null,
     work: site.work,
     lastAction: site.lastAction,
+    github: site.github ? { login: site.github.login, installations: site.github.installations, checkedAt: site.github.checkedAt } : null,
     latest: site.audits[0] ? summarize(site.audits[0]) : null,
     history: site.audits.map(summarize),
   };

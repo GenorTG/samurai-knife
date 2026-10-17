@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { isAdmin } from "@/lib/accounts/authz";
 import { getAccount, type Account } from "@/lib/accounts/store";
 import { getRunner, runOk } from "@/lib/cv/showcase/runner";
+import { installationRepos, installationToken } from "@/lib/github-app/installations";
 import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
 import * as github from "./github";
 import { SiteError } from "./net";
@@ -19,8 +20,9 @@ export interface ConnectInput {
   baseBranch?: string;
   productionUrl?: string;
   pages?: string[];
-  /** "pat" needs `token` (unless already connected with one and only settings change); "host-gh" is for admins. */
-  tokenSource?: "pat" | "host-gh";
+  /** "pat" needs `token` (unless already connected with one and only settings change); "host-gh" is for admins; "app" needs `installationId`. */
+  tokenSource?: "pat" | "host-gh" | "app";
+  installationId?: number;
   token?: string;
   psiKey?: string;
 }
@@ -45,7 +47,9 @@ async function hostToken(a: Account): Promise<string> {
 }
 
 async function tokenOf(a: Account, c: SiteConnection): Promise<string> {
-  return c.token.source === "pat" ? c.token.value : hostToken(a);
+  if (c.token.source === "pat") return c.token.value;
+  if (c.token.source === "app") return installationToken(c.token.installationId, c.repo);
+  return hostToken(a);
 }
 
 export function checkUrl(value: string): string {
@@ -71,6 +75,15 @@ export async function connect(accountId: string, input: ConnectInput) {
   if (source === "host-gh") {
     token = await hostToken(a);
     stored = { source: "host-gh", login: "" };
+  } else if (source === "app") {
+    const site = loadSite(accountId);
+    const installationId = input.installationId ?? (current?.token.source === "app" ? current.token.installationId : undefined);
+    const linked = site.github?.installations.find((i) => i.id === installationId);
+    if (!installationId || !linked) throw new SiteError("that GitHub App installation is not linked to your account: use Connect with GitHub first", 403);
+    const repos = await installationRepos(installationId);
+    if (!repos.some((r) => r.fullName.toLowerCase() === repo.toLowerCase())) throw new SiteError(`the GitHub App is not installed on ${repo}: add the repository to the installation (Choose repositories on GitHub)`, 403);
+    token = await installationToken(installationId, repo);
+    stored = { source: "app", installationId, login: site.github?.login ?? linked.account };
   } else {
     const given = input.token?.trim();
     if (given) {
@@ -81,9 +94,9 @@ export async function connect(accountId: string, input: ConnectInput) {
     stored = { source: "pat", value: token, login: "" };
   }
   spend(a);
-  const user = await github.getUser(token);
+  // Installation tokens are not a user: /user answers 403 for them (the login comes from the linked sign-in instead).
+  if (stored.source !== "app") stored.login = (await github.getUser(token)).login;
   const info = await github.getRepo(token, repo);
-  stored.login = user.login;
   const baseBranch = github.checkBranch(input.baseBranch?.trim() || info.defaultBranch);
   if (!(await github.branchSha(token, repo, baseBranch))) throw new SiteError(`branch ${baseBranch} does not exist in ${repo}`, 404);
   const productionUrl = checkUrl(input.productionUrl ?? current?.productionUrl ?? info.homepage ?? "");
@@ -96,7 +109,9 @@ export async function connect(accountId: string, input: ConnectInput) {
     if (s.connection && (s.connection.repo !== connection.repo || s.connection.baseBranch !== connection.baseBranch)) s.work = null;
     s.connection = connection;
   });
-  return { view: siteView(loadSite(accountId)), repo: info, warning: info.canPush ? "" : "this token can read the repository but not push: audits work, changes will be refused" };
+  // An installation token carries the app's permissions (contents: write), not a user's: GitHub reports none for it.
+  const canPush = info.canPush || stored.source === "app";
+  return { view: siteView(loadSite(accountId)), repo: { ...info, canPush }, warning: canPush ? "" : "this token can read the repository but not push: audits work, changes will be refused" };
 }
 
 export function disconnect(accountId: string) {
@@ -137,7 +152,8 @@ export async function status(accountId: string) {
   const view = siteView(site);
   if (!site.connection) return { ...view, instructions: [] as { path: string; text: string }[], repo: null };
   const x = await ctx(accountId);
-  const repo = await github.getRepo(x.token, x.c.repo);
+  const info = await github.getRepo(x.token, x.c.repo);
+  const repo = { ...info, canPush: info.canPush || x.c.token.source === "app" };
   const ref = await readRef(accountId, x);
   const { entries } = await github.getTree(x.token, x.c.repo, ref);
   const instructions: { path: string; text: string }[] = [];
@@ -299,4 +315,33 @@ export async function discard(accountId: string) {
     s.lastAction = { kind: "discarded", at: new Date().toISOString(), detail: `branch ${work.branch}${pull ? ` and #${pull.number}` : ""} discarded` };
   });
   return { discarded: work.branch };
+}
+
+/** After a GitHub sign-in that proved which installations of the app this user can reach: remember them. */
+export function linkInstallations(accountId: string, login: string, installations: { id: number; account: string; accountType: string }[]) {
+  mutateSite(accountId, (site) => {
+    site.github = { login, installations: installations.slice(0, 100), checkedAt: new Date().toISOString() };
+  });
+}
+
+/** GitHub unlinked: the installation list goes too (a repository already connected keeps working until disconnected). */
+export function forgetInstallations(accountId: string) {
+  mutateSite(accountId, (site) => {
+    site.github = null;
+  });
+}
+
+/** Repositories of every linked installation, for the Connect picker. */
+export async function appRepositories(accountId: string) {
+  const site = loadSite(accountId);
+  if (!site.github) return { login: null, installations: [] as { id: number; account: string; repos: Awaited<ReturnType<typeof installationRepos>>; error: string }[] };
+  const installations = [];
+  for (const inst of site.github.installations) {
+    try {
+      installations.push({ ...inst, repos: await installationRepos(inst.id), error: "" });
+    } catch (error) {
+      installations.push({ ...inst, repos: [], error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { login: site.github.login, installations };
 }

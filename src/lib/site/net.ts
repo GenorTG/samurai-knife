@@ -35,11 +35,22 @@ export function sitePolicy(account: Pick<Account, "role" | "privateNetwork">): O
   return { allowPrivate: account.role === "admin" && account.privateNetwork, ports: new Set(["", "80", "443", "8080", "8443"]), httpsOnly: false };
 }
 
-/** The fixed public JSON APIs (GitHub, PageSpeed): https only, public addresses; a test/Enterprise override may be private. */
+/**
+ * The fixed JSON APIs (GitHub, PageSpeed): https only, public addresses. An operator override of their base URL
+ * (KNIFE_GITHUB_API_URL / KNIFE_GITHUB_WEB_URL / KNIFE_PSI_API_URL: GitHub Enterprise on the LAN, test mocks) is server
+ * configuration, not a user-steered URL, so it may be private in any mode.
+ */
 export function apiPolicy(url: string): OutboundPolicy {
-  const overridden = url.startsWith("http://") || !/^https:\/\/(api\.github\.com|www\.googleapis\.com)\//.test(url);
-  if (overridden && !isPublicMode()) return { allowPrivate: true, ports: null, httpsOnly: false };
+  const builtIn = /^https:\/\/(api\.github\.com|github\.com|www\.googleapis\.com)\//.test(url);
+  if (!builtIn && isOperatorOverride(url)) return { allowPrivate: true, ports: null, httpsOnly: false };
   return { allowPrivate: false, ports: null, httpsOnly: true };
+}
+
+function isOperatorOverride(url: string): boolean {
+  return ["KNIFE_GITHUB_API_URL", "KNIFE_GITHUB_WEB_URL", "KNIFE_PSI_API_URL"].some((name) => {
+    const base = process.env[name]?.trim().replace(/\/+$/, "");
+    return !!base && (url === base || url.startsWith(`${base}/`) || url.startsWith(`${base}?`));
+  });
 }
 
 export interface NetDeps {

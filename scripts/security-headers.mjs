@@ -26,7 +26,7 @@ export function originOf(value) {
  * (React escaping and DOMPurify are); the policy's value is frame-ancestors (no clickjacking of the trust prompts),
  * connect-src 'self' (page data cannot be posted elsewhere), object-src/base-uri/form-action, and frame-src.
  */
-export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = [] } = {}) {
+export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = [], formOrigins = [] } = {}) {
   const extra = [...new Set(frameOrigins.filter(Boolean))].join(" ");
   const withExtra = (list) => (extra ? `${list} ${extra}` : list);
   const https = originOf(publicUrl)?.startsWith("https:") ?? false;
@@ -42,7 +42,8 @@ export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = []
     withExtra("frame-src 'self' blob:"),
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    // The GitHub App's manifest is POSTed to github.com by the admin's browser (docs/GITHUB.md).
+    ["form-action 'self'", ...new Set(formOrigins.filter(Boolean))].join(" "),
     "frame-ancestors 'self'",
     "manifest-src 'self'",
     ...(https ? ["upgrade-insecure-requests"] : []),
@@ -89,7 +90,12 @@ function install() {
       // not installed
     }
     if (mtime !== cached.mtime || cached.headers.length === 0) {
-      cached.headers = securityHeaders({ dev, publicUrl: process.env.KNIFE_PUBLIC_URL ?? "", frameOrigins: [...sidecarOrigins(dataDir), ...extra] });
+      cached.headers = securityHeaders({
+        dev,
+        publicUrl: process.env.KNIFE_PUBLIC_URL ?? "",
+        frameOrigins: [...sidecarOrigins(dataDir), ...extra],
+        formOrigins: [originOf(process.env.KNIFE_GITHUB_WEB_URL ?? "") ?? "https://github.com"],
+      });
       cached.mtime = mtime;
     }
     cached.at = now;

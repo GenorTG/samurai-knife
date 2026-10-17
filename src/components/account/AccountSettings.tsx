@@ -8,6 +8,7 @@ import type { StorageUsage } from "@/lib/storage/quota";
 import type { PublicAccount } from "@/lib/accounts/store";
 import { clearAccountStorage } from "@/lib/client-account";
 import { call, fetchMe, hardNavigate } from "./api";
+import { GithubLink } from "./GithubLink";
 
 type Note = { tone: "good" | "error"; text: string } | null;
 
@@ -270,7 +271,7 @@ function McpKeys({ username }: { username: string }) {
   );
 }
 
-function DeleteAccount({ username }: { username: string }) {
+function DeleteAccount({ username, requiresPassword }: { username: string; requiresPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
@@ -298,9 +299,15 @@ function DeleteAccount({ username }: { username: string }) {
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-3" aria-label="Delete account">
-          <Field label="Password" hint="Type it to delete the account for good.">
-            <TextInput autoFocus type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </Field>
+          {requiresPassword ? (
+            <Field label="Password" hint="Type it to delete the account for good.">
+              <TextInput autoFocus type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </Field>
+          ) : (
+            <Field label="Your username" hint={`You sign in with GitHub: type ${username} to delete the account for good.`}>
+              <TextInput autoFocus autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </Field>
+          )}
           <Status note={note} />
           <div className="flex flex-wrap gap-2">
             <Button type="submit" variant="danger" disabled={working || !password}>{working ? "Deleting…" : "Delete account and data"}</Button>
@@ -361,11 +368,17 @@ export function AccountSettings() {
         </div>
       </Panel>
       <Storage />
-      {publicMode ? <ChangePassword /> : null}
+      {publicMode && account.requiresPassword ? <ChangePassword /> : null}
+      {publicMode && !account.requiresPassword ? (
+        <Panel title="Password">
+          <p className="text-sm text-muted">You sign in with GitHub. To be able to log in with a password too, log out and use “Forgot your password?” with {account.email ?? "your email address"}.</p>
+        </Panel>
+      ) : null}
+      <GithubLink account={account} onChanged={load} />
       {publicMode ? <ChangeEmail account={account} onChanged={load} /> : null}
       <Sessions username={account.id} />
       <McpKeys username={account.id} />
-      {publicMode ? <DeleteAccount username={account.id} /> : null}
+      {publicMode ? <DeleteAccount username={account.id} requiresPassword={account.requiresPassword} /> : null}
     </div>
   );
 }

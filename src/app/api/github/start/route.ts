@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+import { isPublicMode } from "@/lib/accounts/mode";
+import { resolveAccount } from "@/lib/accounts/session";
+import { GITHUB_WEB, loadApp } from "@/lib/github-app/config";
+import { back, requestBase } from "@/lib/github-app/http";
+import { callbackPaths } from "@/lib/github-app/manifest";
+import { authorizeUrl, beginFlow, safeReturnTo, stateCookie, type FlowPurpose } from "@/lib/github-app/oauth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/github/start?purpose=login|register|link|install&returnTo=/path
+ * login/register (public mode): "Continue with GitHub". link: the signed-in account proves its GitHub user and the app
+ * installations it can reach. install: GitHub's install page (choose repositories); GitHub then comes back to /setup,
+ * which runs `link` to verify the installation.
+ */
+export async function GET(request: Request): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const purpose = params.get("purpose") as FlowPurpose | null;
+  let base: string;
+  try {
+    base = requestBase(request);
+  } catch {
+    return new NextResponse("unknown host", { status: 400 });
+  }
+  const app = loadApp();
+  const returnTo = safeReturnTo(params.get("returnTo"), purpose === "login" || purpose === "register" ? "/" : "/account");
+  const fail = (code: string) => back(base, purpose === "login" || purpose === "register" ? "/login" : returnTo, { github_error: code });
+  if (!app) return fail("not_configured");
+  if (purpose !== "login" && purpose !== "register" && purpose !== "link" && purpose !== "install") return fail("bad_request");
+  const account = resolveAccount(request);
+  if (purpose === "login" || purpose === "register") {
+    if (!isPublicMode()) return fail("public_only");
+  } else if (!account) {
+    return back(base, "/login", { next: `/api/github/start?purpose=${purpose}&returnTo=${encodeURIComponent(returnTo)}` });
+  }
+  if (purpose === "install") {
+    // Nothing to verify yet: the installation is checked after GitHub sends the user back (setup -> link).
+    return NextResponse.redirect(`${GITHUB_WEB()}/apps/${app.slug}/installations/new`, 303);
+  }
+  const redirectUri = callbackPaths(base).callback;
+  const { state, challenge } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo });
+  const response = NextResponse.redirect(authorizeUrl(app, redirectUri, state, challenge), 303);
+  response.headers.append("Set-Cookie", stateCookie(request, state));
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
