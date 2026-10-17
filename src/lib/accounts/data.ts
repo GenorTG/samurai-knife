@@ -12,6 +12,8 @@ import { accountScope } from "@/lib/storage/scope";
  *   docs/<id>/                                                                          office library
  *   learn/<id>.json                                                                     course progress
  *   usage/<id>.json                                                                     token ledger
+ *   workspace/<id>.json.enc                                                             tool drafts
+ *   site/<id>.json                                                                      website studio
  * plus the account record in accounts.json, its sessions in sessions.json and its MCP keys in mcp-keys.json (removed by
  * the caller, accounts/flows.ts purgeAccount).
  */

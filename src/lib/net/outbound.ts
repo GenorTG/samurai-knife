@@ -5,7 +5,7 @@ import type { ProviderNet } from "@/lib/accounts/provider";
 import type { Account } from "@/lib/accounts/store";
 import type { OutboundPolicy } from "./safe-fetch";
 
-export type OutboundPurpose = "provider" | "provider-test" | "page";
+export type OutboundPurpose = "provider" | "provider-test" | "page" | "audit" | "github";
 
 /**
  * Provider requests (chat, Test) go to the account's own base URL. Private mode: the owner's toolbox, any address (LM
@@ -39,7 +39,12 @@ export function strictHeaders(account: Pick<Account, "role">): boolean {
  */
 export function consumeOutbound(account: Pick<Account, "id" | "role">, purpose: OutboundPurpose): LimitCheck {
   if (!isPublicMode() || account.role === "admin") return { ok: true };
-  const limit = purpose === "provider" ? LIMITS.outboundProvider(account.id) : purpose === "provider-test" ? LIMITS.outboundProviderTest(account.id) : LIMITS.outboundPage(account.id);
+  const limit =
+    purpose === "provider" ? LIMITS.outboundProvider(account.id)
+    : purpose === "provider-test" ? LIMITS.outboundProviderTest(account.id)
+    : purpose === "audit" ? LIMITS.outboundAudit(account.id)
+    : purpose === "github" ? LIMITS.outboundGithub(account.id)
+    : LIMITS.outboundPage(account.id);
   return consumeLimits([limit]);
 }
 

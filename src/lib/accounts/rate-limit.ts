@@ -97,4 +97,8 @@ export const LIMITS = {
   outboundProvider: (id: string): Limit => ({ key: `outbound:provider:${id}`, max: 300, windowMs: 10 * MINUTE }),
   outboundProviderTest: (id: string): Limit => ({ key: `outbound:provider-test:${id}`, max: 20, windowMs: 10 * MINUTE }),
   outboundPage: (id: string): Limit => ({ key: `outbound:page:${id}`, max: 30, windowMs: 10 * MINUTE }),
+  /** Website studio: one audit fetches up to ~15 pages + PageSpeed; counted per run. */
+  outboundAudit: (id: string): Limit => ({ key: `outbound:audit:${id}`, max: 6, windowMs: 60 * MINUTE }),
+  /** Website studio: GitHub API calls made with the account's own token. */
+  outboundGithub: (id: string): Limit => ({ key: `outbound:github:${id}`, max: 600, windowMs: 10 * MINUTE }),
 };

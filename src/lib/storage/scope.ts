@@ -14,6 +14,7 @@ import { ACCOUNT_ID_PATTERN, ensureDataDir } from "@/lib/accounts/store";
  *   learn/<id>.json                                                  course progress
  *   usage/<id>.json                                                  token ledger
  *   workspace/<id>.json.enc                                          encrypted browser-tool drafts
+ *   site/<id>.json                                                   website studio (connection, token, work branch, audits)
  *
  * Not on disk (so not listed): async job scratch dirs in os.tmpdir() (in-memory job store, counted by the quota while alive)
  * and the in-memory UI-bridge presence. A new per-account store gets a field here and an entry in `locations()`.
@@ -68,6 +69,8 @@ export interface AccountScope {
   readonly usageFile: string;
   /** Encrypted account-owned drafts for browser tools. */
   readonly workspaceFile: string;
+  /** Website studio: repository connection (with its token), work branch, audit history. */
+  readonly siteFile: string;
   /** A path inside one of the account's directories; every part is one validated segment. */
   join(base: "docs" | "conversations", ...parts: string[]): string;
   /** Every top-level location the account owns (account deletion, storage usage). CV files are listed from disk. */
@@ -99,11 +102,12 @@ export function accountScope(accountId: string): AccountScope {
     learnFile: safeJoin(root, "learn", `${accountId}.json`),
     usageFile: safeJoin(root, "usage", `${accountId}.json`),
     workspaceFile: safeJoin(root, "workspace", `${accountId}.json.enc`),
+    siteFile: safeJoin(root, "site", `${accountId}.json`),
     join(base, ...parts) {
       return parts.length ? safeJoin(base === "docs" ? docs : conversations, ...parts) : base === "docs" ? docs : conversations;
     },
     locations() {
-      return [conversations, docs, scope.learnFile, scope.usageFile, scope.workspaceFile];
+      return [conversations, docs, scope.learnFile, scope.usageFile, scope.workspaceFile, scope.siteFile];
     },
   };
   return scope;
