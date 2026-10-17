@@ -129,8 +129,8 @@ To keep a server on the newest release without touching the checkout it serves f
 directory (a `git worktree` per tag, its own `npm ci`, `.env.local` copied in) and serve through a `current` symlink: the
 PM2 app's `cwd` is `.../current`. An update is then: fetch tags; build the newest tag in a new directory while the old
 one keeps serving; start the new build once on a spare loopback port with an empty data dir and check a few pages,
-`/api/account` and `/api/mcp`; move the symlink; `pm2 delete` + `pm2 start` the app (a restart alone keeps the old
-resolved directory); check the live URL and move the symlink back on failure. Deploy forward only (`git merge-base
+`/api/account` and `/api/mcp`; move the symlink; start the app again from its config
+(`pm2 delete` + `pm2 start`); check the live URL and move the symlink back on failure. Deploy forward only (`git merge-base
 --is-ancestor <deployed> <tag>`), so an older or unrelated tag never replaces newer code, and keep the previous release
 directory for a rollback. Run it from a timer (systemd user timer or cron) with one run at a time (`flock -o`, so the
 servers it starts never inherit the lock). Keep a separate `next dev` for development on another port with its own
