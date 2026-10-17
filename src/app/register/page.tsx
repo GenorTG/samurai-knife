@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { AuthFrame, RegisterForm } from "@/components/account/AuthForms";
+import { AccountPerks, AuthFrame, RegisterForm } from "@/components/account/AuthForms";
 import { GithubButton } from "@/components/account/GithubButton";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { loadApp } from "@/lib/github-app/config";
@@ -13,7 +13,7 @@ export default function RegisterPage() {
   if (!isPublicMode()) notFound();
   const github = !!loadApp();
   return (
-    <AuthFrame title="Create account" intro="You confirm your email address before the first login.">
+    <AuthFrame title="Create your account" intro="Takes a minute: you confirm your email address before the first login." aside={<AccountPerks />}>
       {github ? (
         <div className="space-y-3">
           <GithubButton label="Sign up with GitHub" />

@@ -13,6 +13,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
+import Link from "next/link";
 import { cx, copyText, formatBytes } from "@/lib/format";
 import { commitDraftValue, liveDraftValue, type NumberDraftSpec } from "@/lib/number-draft";
 
@@ -23,13 +24,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: "sm" | "md" | "lg";
 };
 
-export function Button({
-  variant = "subtle",
-  size = "md",
-  className,
-  type = "button",
-  ...rest
-}: ButtonProps) {
+function buttonClass(variant: NonNullable<ButtonProps["variant"]>, size: NonNullable<ButtonProps["size"]>, className?: string): string {
   const variants = {
     primary:
       "sk-btn-primary bg-accent text-accent-fg border border-transparent font-semibold hover:brightness-110 active:brightness-95",
@@ -45,20 +40,43 @@ export function Button({
     md: "h-9 px-3.5 text-sm",
     lg: "h-11 px-5 text-[15px]",
   };
+  return cx(
+    "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg whitespace-nowrap transition-[background-color,border-color,color,filter] duration-150 select-none",
+    "disabled:cursor-not-allowed disabled:opacity-40",
+    variants[variant],
+    sizes[size],
+    className,
+  );
+}
 
+export function Button({
+  variant = "subtle",
+  size = "md",
+  className,
+  type = "button",
+  ...rest
+}: ButtonProps) {
+  return <button autoComplete="off" type={type} className={buttonClass(variant, size, className)} {...rest} />;
+}
+
+/** A navigation link that looks like a Button (calls to action). */
+export function ButtonLink({
+  href,
+  variant = "subtle",
+  size = "md",
+  className,
+  children,
+}: {
+  href: string;
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <button
-      autoComplete="off"
-      type={type}
-      className={cx(
-        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg whitespace-nowrap transition-[background-color,border-color,color,filter] duration-150 select-none",
-        "disabled:cursor-not-allowed disabled:opacity-40",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
-      {...rest}
-    />
+    <Link href={href} className={buttonClass(variant, size, className)}>
+      {children}
+    </Link>
   );
 }
 

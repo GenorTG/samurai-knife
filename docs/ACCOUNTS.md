@@ -12,6 +12,7 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | Identity without a session | the default account when it has no password | none: every API answers 401 |
 | New accounts | `npm run accounts -- add` only | self-registration with a verified email (+ the CLI) |
 | Public-only routes and pages | 404 | on |
+| Home `/` without a session | the launcher | the greeter (`src/components/Greeter.tsx`: capabilities, privacy, register / log in), launcher below it |
 | Session cookie | `SameSite=Strict` | `SameSite=Lax` |
 | Roles | every account may do everything | `admin` / `user` (see Roles) |
 | MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |

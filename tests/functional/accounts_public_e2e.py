@@ -220,7 +220,16 @@ def run(server: ScratchServer, browser: Browser) -> None:
 
     # ------------------------------------------------------------------------------------------- 1. register
     ctx_a, page_a = new_context(browser, base, "198.51.100.11")
-    go(page_a, "/register")
+    go(page_a, "/")
+    expect(page_a.get_by_role("heading", level=1)).to_contain_text("in one sharp place", timeout=15_000)
+    shot(page_a, "greeter")
+    check("signed-out home is the greeter: register + log in calls to action, the tools still below",
+          page_a.locator("main a[href='/register']").count() >= 2 and page_a.locator("main a[href='/login']").count() >= 1
+          and page_a.locator("#tools input[type=search], #tools input").count() >= 1)
+    page_a.locator("main a[href='/register']").first.click()
+    page_a.wait_for_url(base + "/register", timeout=15_000)
+    check("the greeter's call to action opens /register with the account perks beside the form",
+          page_a.get_by_role("heading", name="Everything in Smart Knife, kept for you").is_visible())
     shot(page_a, "register")
     page_a.locator("input[autocomplete=username]").fill("alice")
     page_a.locator("input[type=email]").fill("alice@example.com")
@@ -260,6 +269,9 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_a.wait_for_url(base + "/", timeout=15_000)
     expect(page_a.get_by_role("link", name="alice")).to_be_visible(timeout=15_000)
     check("login by email (any case) lands on / with the account in the top bar", True)
+    check("signed-in home is the launcher, not the greeter",
+          page_a.get_by_role("heading", level=1).inner_text() == "A private room of hand-made tools."
+          and page_a.locator("main a[href='/register']").count() == 0)
     shot(page_a, "home-signed-in")
     jar = {c["name"]: c for c in ctx_a.cookies()}
     sess = jar.get("knife_session", {})

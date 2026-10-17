@@ -1,9 +1,38 @@
+import { cookies } from "next/headers";
 import { KindBadge } from "@/components/ToolShell";
+import { Greeter } from "@/components/Greeter";
 import { Launcher } from "@/components/Launcher";
+import { isPublicMode } from "@/lib/accounts/mode";
+import { accountForSessionToken, SESSION_COOKIE } from "@/lib/accounts/session";
+import { loadApp } from "@/lib/github-app/config";
 import { TOOLS } from "@/lib/registry";
 
-export default function Home() {
+// Signed in or not is decided per request (public mode); a prerendered page would show one answer to everybody.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
   const serverCount = TOOLS.filter((tool) => tool.kind === "server").length;
+  const signedOut = isPublicMode() && !accountForSessionToken((await cookies()).get(SESSION_COOKIE)?.value);
+
+  if (signedOut) {
+    return (
+      <main className="w-full px-4 py-6 sm:px-6 sm:py-10 xl:px-8">
+        <Greeter github={!!loadApp()} />
+        <section id="tools" aria-labelledby="tools-title" className="mx-auto mt-16 w-full max-w-6xl scroll-mt-20 border-t border-line pt-10 sm:mt-20">
+          <h2 id="tools-title" className="text-2xl font-semibold tracking-tight text-ink">
+            Try the tools
+          </h2>
+          <p className="mt-2 mb-6 max-w-xl text-[15px] text-muted">
+            Browser tools work without an account. Tools marked server or sidecar ask you to log in first.
+          </p>
+          <Launcher tools={TOOLS} />
+        </section>
+        <footer className="mx-auto mt-14 w-full max-w-6xl border-t border-line pt-5 text-xs text-faint">
+          <p>Smart Knife · self-hosted</p>
+        </footer>
+      </main>
+    );
+  }
 
   return (
     <main className="w-full px-4 py-6 sm:px-6 sm:py-10 xl:px-8">

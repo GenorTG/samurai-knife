@@ -153,6 +153,11 @@ function accountFromToken(token: string): Account | null {
   return account;
 }
 
+/** Server components (no Request): the account behind a raw session cookie value, never the private-mode fallback. */
+export function accountForSessionToken(token: string | undefined): Account | null {
+  return token ? accountFromToken(token) : null;
+}
+
 /**
  * Valid session cookie, else (private mode only) the default account when it has no password (the tailnet boundary is the
  * auth), else null (caller answers 401). Public mode never falls back to any account.

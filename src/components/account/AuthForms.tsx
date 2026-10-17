@@ -6,17 +6,60 @@ import { Button, Field, Notice, Panel, TextInput } from "@/components/ui";
 import { call, hardNavigate, safeNext } from "./api";
 
 /** Centered single-panel frame for the sign-in pages (inside <main>, like every page). */
-export function AuthFrame({ title, intro, children }: { title: string; intro?: ReactNode; children: ReactNode }) {
+export function AuthFrame({ title, intro, aside, children }: { title: string; intro?: ReactNode; aside?: ReactNode; children: ReactNode }) {
+  const form = (
+    <div className="mx-auto w-full max-w-md space-y-4 lg:mx-0">
+      <header className="space-y-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+        {intro ? <p className="text-[15px] text-muted">{intro}</p> : null}
+      </header>
+      {children}
+    </div>
+  );
   return (
     <main className="w-full px-4 py-10 sm:px-6 sm:py-16">
-      <div className="mx-auto w-full max-w-md space-y-4">
-        <header className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-          {intro ? <p className="text-[15px] text-muted">{intro}</p> : null}
-        </header>
-        {children}
-      </div>
+      {aside ? (
+        <div className="mx-auto grid w-full max-w-5xl items-start gap-10 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-14">
+          {form}
+          <aside className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none lg:pt-16">{aside}</aside>
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-md">{form}</div>
+      )}
     </main>
+  );
+}
+
+const PERKS: [string, string][] = [
+  ["CV studio", "a bilingual CV, a tailored version per job offer, ATS checks and an application tracker"],
+  ["Office library", "Word, Excel and PowerPoint files with folders and versions, edited in the browser"],
+  ["Website studio and database course", "audit your site from its GitHub repo; learn SQL and PostGIS on a real database"],
+  ["AI assistant", "drives the tools with you on the model you choose; connect your own agents over MCP"],
+  ["Private storage", "1 GB per account, encrypted at rest, visible to you only"],
+];
+
+/** Register page side panel: what an account adds to the browser tools. */
+export function AccountPerks() {
+  return (
+    <div className="rounded-tool border border-line bg-surface/60 p-6">
+      <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-soft">Free account</p>
+      <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">Everything in Smart Knife, kept for you</h2>
+      <ul className="mt-5 space-y-3.5">
+        {PERKS.map(([title, text]) => (
+          <li key={title} className="flex gap-3 text-sm">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0 text-accent-soft">
+              <path d="M3.5 8.5l3 3 6-7" />
+            </svg>
+            <span className="text-muted">
+              <span className="font-medium text-ink">{title}</span>: {text}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-6 border-t border-line pt-4 text-xs text-faint">
+        No card and no trial clock. The browser tools also work without an account: <A href="/">look around first</A>.
+      </p>
+    </div>
   );
 }
 
