@@ -15,6 +15,10 @@ function ToolLoading() {
   );
 }
 
+const SiteConnect = dynamic(() => import("@/tools/site/ConnectTab"), { loading: ToolLoading });
+const SiteScore = dynamic(() => import("@/tools/site/ScoreTab"), { loading: ToolLoading });
+const SiteCopy = dynamic(() => import("@/tools/site/CopyTab"), { loading: ToolLoading });
+const SiteChanges = dynamic(() => import("@/tools/site/ChangesTab"), { loading: ToolLoading });
 const ColorTool = dynamic(() => import("@/tools/ColorTool"), { loading: ToolLoading });
 const CharacterInspector = dynamic(() => import("@/tools/CharacterInspector"), { loading: ToolLoading });
 const CronExplorer = dynamic(() => import("@/tools/CronExplorer"), { loading: ToolLoading });
@@ -260,6 +264,10 @@ const COMPONENTS: Record<string, ComponentType> = {
   "placeholder-text": PlaceholderText,
   cron: CronExplorer,
   office: OfficeTool,
+  "site-connect": SiteConnect,
+  "site-score": SiteScore,
+  "site-copy": SiteCopy,
+  "site-changes": SiteChanges,
   sidecars: SidecarsTool,
   "learn-sql": SqlCourse,
 };
@@ -278,11 +286,12 @@ function MissingTool({ slug }: { slug: string }) {
  * overwrite it and autosave the old values back), manage credentials, or generate secrets.
  */
 const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password"]);
+const NO_DRAFT_PREFIXES = ["cv-", "site-"];
 
 function renderComponent(key: string) {
   const Component = COMPONENTS[key];
   if (!Component) return <MissingTool slug={key} />;
-  if (NO_DRAFT.has(key) || key.startsWith("cv-")) return <Component />;
+  if (NO_DRAFT.has(key) || NO_DRAFT_PREFIXES.some((p) => key.startsWith(p))) return <Component />;
   return <WorkspaceDraft key={key} tool={key} Component={Component} />;
 }
 

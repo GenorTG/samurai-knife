@@ -496,9 +496,9 @@ export function controlElement(id: string): Element | null {
   return findById(id);
 }
 
-/** Words that make a button destructive: it discards, empties or reloads what the user has. */
+/** Words that make a button destructive: it discards, empties or reloads what the user has, or ships it to production. */
 const DESTRUCTIVE_LABEL =
-  /\b(delete|remove|clear|reset|discard|erase|wipe|purge|trash|drop|revert|overwrite|start over|empty|reload|refresh|replace all)\b/i;
+  /\b(delete|remove|clear|reset|discard|erase|wipe|purge|trash|drop|revert|overwrite|start over|empty|reload|refresh|replace all|publish|deploy)\b/i;
 
 /**
  * Buttons that swap the user's content for other content; only a problem when the page holds the user's own input.

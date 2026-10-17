@@ -3,6 +3,7 @@ import { defineTool, KnifeToolForbiddenError, toolAllowed, type KnifeToolContext
 import { CV_KNIFE_TOOLS } from "./tools-cv";
 import { DOC_KNIFE_TOOLS } from "./tools-docs";
 import { LEARN_KNIFE_TOOLS } from "./tools-learn";
+import { SITE_KNIFE_TOOLS } from "./tools-site";
 import { NOSQL_KNIFE_TOOLS } from "./tools-nosql";
 import { SQL_KNIFE_TOOLS } from "./tools-sql";
 import { computeDiff, MAX_DIFF_LINES } from "@/lib/diff";
@@ -276,7 +277,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
 ];
 
-export const KNIFE_TOOLS: KnifeToolDefinition[] = [...BASE_KNIFE_TOOLS, ...SQL_KNIFE_TOOLS, ...NOSQL_KNIFE_TOOLS, ...CV_KNIFE_TOOLS, ...DOC_KNIFE_TOOLS, ...LEARN_KNIFE_TOOLS];
+export const KNIFE_TOOLS: KnifeToolDefinition[] = [...BASE_KNIFE_TOOLS, ...SQL_KNIFE_TOOLS, ...NOSQL_KNIFE_TOOLS, ...CV_KNIFE_TOOLS, ...DOC_KNIFE_TOOLS, ...LEARN_KNIFE_TOOLS, ...SITE_KNIFE_TOOLS];
 
 /** The tools this caller may see and call (`scope`, define.ts). Every listing and every dispatch goes through it. */
 export function toolsFor(ctx: KnifeToolContext | undefined): KnifeToolDefinition[] {

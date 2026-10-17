@@ -22,6 +22,7 @@ export interface ToolGroup {
 export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: "sql", prefixes: ["knife_sql_"], pagePattern: /^\/tools\/sql-lab(\/|$)/, summary: "SQL: compile a JSON query spec for 14 dialects, transpile between dialects, validate, format, DDL to schema, check SQL against a schema" },
   { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: read/edit the bilingual (PL/EN) master CV profile, undo, audit wording and translations, save job offers, match them against the profile, create per-job CV versions with per-offer rewording and an ATS check, track applications, add projects from GitHub links" },
+  { id: "site", prefixes: ["knife_site_"], pagePattern: /^\/tools\/(site-studio|cv-studio)(\/|$)/, summary: "the user's website: audit scores, repo files, changes as a pull request" },
   { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list library + folders, read as text (or a version), create, make folders, move, list/restore versions" },
   // Tutor tools, preloaded on the course page only (MCP clients get them anyway).
   { id: "learn", prefixes: ["knife_learn_"], pagePattern: /^\/tools\/db-course(\/|$)/, summary: "Database course tutor: lessons, the learner's last query/error, SQL in the course sandbox", loadable: false },
@@ -65,7 +66,7 @@ export function loadToolsDef(): FunctionToolDef {
     type: "function",
     function: {
       name: LOAD_TOOLS_NAME,
-      description: `Make a group of specialist tools available for the rest of this conversation (one call, then use them right away). Groups: ${loadable().map((g) => `${g.id} = ${g.summary}`).join("; ")}. Not needed on the sql-lab / nosql-lab / cv-studio / office pages (already loaded).`,
+      description: `Make a group of specialist tools available for the rest of this conversation (one call, then use them right away). Groups: ${loadable().map((g) => `${g.id} = ${g.summary}`).join("; ")}. Each tool's own page (sql-lab, nosql-lab, cv-studio, site-studio, office) has its group already loaded.`,
       parameters: {
         type: "object",
         properties: { group: { type: "string", enum: loadable().map((g) => g.id), description: "Which group to load." } },
