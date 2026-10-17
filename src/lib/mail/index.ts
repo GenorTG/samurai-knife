@@ -46,7 +46,10 @@ function smtpTransport(env: NodeJS.ProcessEnv = process.env): Transporter {
   const port = Number(env.KNIFE_SMTP_PORT?.trim() || "587");
   const secure = env.KNIFE_SMTP_SECURE?.trim() === "1" || env.KNIFE_SMTP_SECURE?.trim().toLowerCase() === "true";
   const user = env.KNIFE_SMTP_USER?.trim();
-  const key = JSON.stringify([host, port, secure, user]);
+  // Connect to an address (e.g. the mail server's LAN/Tailscale IP when its public name loops back to this machine) but
+  // verify the certificate for this name; verification itself is never turned off.
+  const servername = env.KNIFE_SMTP_TLS_SERVERNAME?.trim() || undefined;
+  const key = JSON.stringify([host, port, secure, user, servername]);
   if (smtp?.key !== key) {
     smtp = {
       key,
@@ -55,6 +58,7 @@ function smtpTransport(env: NodeJS.ProcessEnv = process.env): Transporter {
         port,
         secure,
         auth: user ? { user, pass: env.KNIFE_SMTP_PASS ?? "" } : undefined,
+        ...(servername ? { tls: { servername } } : {}),
         connectionTimeout: 15_000,
         greetingTimeout: 15_000,
         socketTimeout: 30_000,
