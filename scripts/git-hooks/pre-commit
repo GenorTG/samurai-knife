@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# pre-commit: every commit gets a new build version (the Finetune Studio scheme).
+# VERSION = MAJOR.MINOR.PATCH.BUILD; BUILD increments once per commit, so the shell chip and GET /api/system/version
+# always pin the exact code that runs. It must be pre-commit, not commit-msg: git snapshots the commit tree before
+# commit-msg runs, so a bump staged there would land in the NEXT commit. pre-commit's `git add` is part of this commit.
+#
+# Escape hatches:
+#   - KNIFE_NO_BUMP=1 git commit ...   -> no bump
+#   - a commit that only touches VERSION -> no bump (manual MAJOR/MINOR/PATCH changes, e.g. 0.2.0.0)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+if [ "${KNIFE_NO_BUMP:-0}" = "1" ]; then
+  exit 0
+fi
+
+STAGED="$(git diff --cached --name-only)"
+[ -z "$STAGED" ] && exit 0
+if [ -z "$(printf '%s\n' "$STAGED" | grep -v '^VERSION$' || true)" ]; then
+  exit 0
+fi
+
+if [ ! -f VERSION ]; then
+  echo "pre-commit: VERSION file missing; creating 0.1.0.0" >&2
+  echo "0.1.0.0" > VERSION
+fi
+
+V="$(tr -d '[:space:]' < VERSION)"
+if ! printf '%s' "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "pre-commit: VERSION '$V' is not MAJOR.MINOR.PATCH.BUILD; fix it or use KNIFE_NO_BUMP=1" >&2
+  exit 1
+fi
+
+NEW="$(printf '%s' "$V" | awk -F. '{printf "%d.%d.%d.%d", $1, $2, $3, $4+1}')"
+printf '%s\n' "$NEW" > VERSION
+git add VERSION
+echo "pre-commit: build version $V -> $NEW"

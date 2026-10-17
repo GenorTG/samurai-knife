@@ -52,7 +52,7 @@ function IconButton({
  * screens), content that fills all remaining width, and the app-wide
  * keyboard layer (palette, help, chords, prev/next tool).
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, version }: { children: React.ReactNode; version: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const collapsed = useSidebarCollapsed();
@@ -135,6 +135,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </svg>
           </IconButton>
           <Brand />
+          <span title="Build version (MAJOR.MINOR.PATCH.BUILD)" className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint tabular-nums sm:inline">
+            v{version}
+          </span>
           {tool ? (
             <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 text-sm md:flex">
               <span aria-hidden className="text-line-strong">/</span>

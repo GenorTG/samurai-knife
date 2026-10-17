@@ -122,15 +122,24 @@ Only 443 (and 80 for the certificate challenge) should be reachable from outside
 
 ## 6. Releases and automatic updates
 
-A release is a `v<semver>` tag (`vX.Y.Z`; tags with a `-` are pre-releases). To cut one: bump `version` in
-package.json, merge to `main`, `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+Version naming (the same scheme as Finetune Studio): the repo-root `VERSION` file is `MAJOR.MINOR.PATCH.BUILD`. The
+versioned pre-commit hook (`npm run hooks` once per clone: `core.hooksPath=scripts/git-hooks`) adds 1 to BUILD in every
+commit and the commit includes the bump; `KNIFE_NO_BUMP=1 git commit ...` skips it and a commit that only changes VERSION
+is never bumped. MAJOR = a change that breaks existing data, URLs or the MCP contract; MINOR = a new tool, suite or
+feature; PATCH = fixes only (BUILD keeps counting across them). Raise MAJOR/MINOR/PATCH by hand in a VERSION-only commit
+(BUILD back to 0, e.g. `0.2.0.0`) and set package.json `version` to the first three parts in the same commit. The running
+build is shown next to the logo and at `GET /api/system/version`. On a merge conflict in VERSION keep the higher one.
+
+A release is the tag `v<VERSION>` on the commit whose VERSION file says exactly that (`v0.2.0.57`); a `-` suffix
+(`v0.2.0.57-rc.1`) marks a pre-release. To cut one: merge to `main`, then `git tag "v$(cat VERSION)" && git push origin
+main "v$(cat VERSION)"`.
 
 To keep a server on the newest release without touching the checkout it serves from, build every release in its own
 directory (a `git worktree` per tag, its own `npm ci`, `.env.local` copied in) and serve through a `current` symlink: the
 PM2 app's `cwd` is `.../current`. An update is then: fetch tags; build the newest tag in a new directory while the old
 one keeps serving; start the new build once on a spare loopback port with an empty data dir and check a few pages,
 `/api/account` and `/api/mcp`; move the symlink; start the app again from its config
-(`pm2 delete` + `pm2 start`); check the live URL and move the symlink back on failure. Deploy forward only (`git merge-base
+(`pm2 delete` + `pm2 start`); check the live URL and move the symlink back on failure. Deploy only tags whose VERSION file matches the tag, and forward only (`git merge-base
 --is-ancestor <deployed> <tag>`), so an older or unrelated tag never replaces newer code, and keep the previous release
 directory for a rollback. Run it from a timer (systemd user timer or cron) with one run at a time (`flock -o`, so the
 servers it starts never inherit the lock). Keep a separate `next dev` for development on another port with its own

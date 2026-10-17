@@ -4,6 +4,7 @@ import { AgentWidget } from "@/components/agent/AgentWidget";
 import { UiBridge } from "@/components/shell/UiBridge";
 import { Suspense } from "react";
 import { AppShell } from "@/components/shell/AppShell";
+import { appVersion } from "@/lib/version";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -50,7 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body suppressHydrationWarning className="min-h-full bg-bg text-ink">
-        <AppShell>{children}</AppShell>
+        <AppShell version={appVersion()}>{children}</AppShell>
         <AgentWidget />
         <Suspense fallback={null}>
           <UiBridge />
