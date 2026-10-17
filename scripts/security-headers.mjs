@@ -79,7 +79,17 @@ function install() {
   const dataDir = process.env.KNIFE_DATA_DIR?.trim() || join(homedir(), ".local", "share", "samurai-knife");
   const extra = (process.env.KNIFE_CSP_FRAME_ORIGINS ?? "").split(/[\s,]+/).map(originOf).filter(Boolean);
   const stateFile = join(dataDir, "services", "office", "state.json");
-  let cached = { at: 0, mtime: -1, headers: [] };
+  // Two variants: requests on the public host (https through the proxy) get HSTS and upgrade-insecure-requests; requests
+  // on any other address (the owner's plain-http Tailscale/LAN URL) get the same policy without both, or the browser
+  // would rewrite every script URL to https on an address without TLS and the page would never start.
+  const publicHost = (() => {
+    try {
+      return new URL(process.env.KNIFE_PUBLIC_URL ?? "").host.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  let cached = { at: 0, mtime: -1, headers: [], plain: [] };
   const current = () => {
     const now = Date.now();
     if (now - cached.at < 5_000) return cached.headers;
@@ -90,23 +100,29 @@ function install() {
       // not installed
     }
     if (mtime !== cached.mtime || cached.headers.length === 0) {
-      cached.headers = securityHeaders({
+      const options = {
         dev,
-        publicUrl: process.env.KNIFE_PUBLIC_URL ?? "",
         frameOrigins: [...sidecarOrigins(dataDir), ...extra],
         formOrigins: [originOf(process.env.KNIFE_GITHUB_WEB_URL ?? "") ?? "https://github.com"],
-      });
+      };
+      cached.headers = securityHeaders({ ...options, publicUrl: process.env.KNIFE_PUBLIC_URL ?? "" });
+      cached.plain = securityHeaders({ ...options, publicUrl: "" });
       cached.mtime = mtime;
     }
     cached.at = now;
-    return cached.headers;
+    return cached;
+  };
+  const forRequest = (request) => {
+    const set = current();
+    const host = String(request?.headers?.host ?? "").toLowerCase();
+    return publicHost && host === publicHost ? set.headers : set.plain;
   };
   for (const Server of [http.Server, https.Server]) {
     const original = Server.prototype.emit;
     if (original.knifeHeaders) continue;
     const patched = function emit(event, request, response, ...rest) {
       if (event === "request" && response && typeof response.setHeader === "function") {
-        for (const [name, value] of current()) response.setHeader(name, value);
+        for (const [name, value] of forRequest(request)) response.setHeader(name, value);
       }
       return original.call(this, event, request, response, ...rest);
     };
