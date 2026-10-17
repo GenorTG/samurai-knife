@@ -29,6 +29,7 @@ state one-time and bound to the admin who started it) for the app id, client id/
 - Callback URLs (up to 10): this server's address, `KNIFE_PUBLIC_URL`, and `KNIFE_GITHUB_EXTRA_BASES` (comma list, e.g.
   the live address and the future domain). The setup URL is the creating server's `/api/github/setup`. When an address
   changes, edit both in the app's settings on GitHub.
+- The app's homepage (public on GitHub): `KNIFE_GITHUB_APP_HOMEPAGE`, else `KNIFE_PUBLIC_URL`, else this server.
 - CSP (public mode): `form-action` allows the GitHub origin for the manifest POST (scripts/security-headers.mjs).
 - `KNIFE_GITHUB_WEB_URL` / `KNIFE_GITHUB_API_URL`: GitHub Enterprise or test mocks (operator configuration: may be a
   private address in any mode).

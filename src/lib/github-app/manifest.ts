@@ -51,7 +51,8 @@ export function buildManifest(base: string, accountId: string, options: { name?:
   const paths = callbackPaths(base);
   const manifest = {
     name: (options.name?.trim() || "Samurai Knife").slice(0, 34),
-    url: (process.env.KNIFE_PUBLIC_URL ?? "").trim() || base,
+    // Shown publicly on the app's GitHub page: KNIFE_GITHUB_APP_HOMEPAGE (e.g. your site), else the public URL, else this server.
+    url: (process.env.KNIFE_GITHUB_APP_HOMEPAGE ?? "").trim() || (process.env.KNIFE_PUBLIC_URL ?? "").trim() || base,
     description: "Samurai Knife website studio: reads your website's repository, prepares changes as pull requests you review and merge, and lets you sign in with GitHub.",
     // No events are used; GitHub requires a hook URL in the object, the hook stays inactive.
     hook_attributes: { url: paths.webhook, active: false },
