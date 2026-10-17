@@ -18,17 +18,22 @@ export type SecurityEventKind =
   | (string & {});
 
 export interface SecurityEvent {
-  kind: SecurityEventKind;
+  kind?: SecurityEventKind;
+  type?: string;
   ipPrefix?: string;
+  ip?: string;
   account?: string;
+  accountId?: string;
   path?: string;
   status?: number;
   count?: number;
-  detail?: string;
+  detail?: string | Record<string, string | number | boolean>;
 }
 
 const MAX_BUFFER = 1_000;
+const MAX_RECENT = 500;
 const buffer: string[] = [];
+const recent: Array<SecurityEvent & { ts: string }> = [];
 let flushing = false;
 
 async function flush(): Promise<void> {
@@ -50,7 +55,14 @@ async function flush(): Promise<void> {
 }
 
 export function recordSecurityEvent(event: SecurityEvent): void {
+  const recorded = { ts: new Date().toISOString(), ...event };
+  recent.push(recorded);
+  if (recent.length > MAX_RECENT) recent.splice(0, recent.length - MAX_RECENT);
   if (buffer.length >= MAX_BUFFER) return;
-  buffer.push(`${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`);
+  buffer.push(`${JSON.stringify(recorded)}\n`);
   void flush();
+}
+
+export function recentSecurityEvents(): readonly (SecurityEvent & { ts: string })[] {
+  return recent;
 }
