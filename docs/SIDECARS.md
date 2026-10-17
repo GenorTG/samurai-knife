@@ -245,7 +245,7 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   exist in the document (`GetStyle` falls back to the default style for an unknown name, so the plugin compares the
   name and lists the known ones); `replace_text` is plain text, whole document; no tracked-changes mode; slides are
   added as plain text boxes, not layout placeholders; one live editor per page (the active bridge); an editor opened
-  outside Samurai Knife never connects (no options).
+  outside Smart Knife never connects (no options).
 
 ## Adding a sidecar
 

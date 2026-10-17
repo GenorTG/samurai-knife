@@ -240,8 +240,8 @@ export async function openPull(accountId: string, title: string, body: string) {
   const x = await ctx(accountId);
   const work = loadSite(accountId).work;
   if (!work || !(await github.branchSha(x.token, x.c.repo, work.branch))) throw new SiteError("there are no changes yet: write files first (knife_site_write / knife_site_replace)", 409);
-  const t = title.trim().slice(0, 250) || "Website update from Samurai Knife";
-  const b = `${body.trim().slice(0, 20_000)}\n\n---\nPrepared in the Samurai Knife website studio. Review the preview, then publish from the studio (or merge here).`;
+  const t = title.trim().slice(0, 250) || "Website update from Smart Knife";
+  const b = `${body.trim().slice(0, 20_000)}\n\n---\nPrepared in the Smart Knife website studio. Review the preview, then publish from the studio (or merge here).`;
   let pull = await github.openPullFor(x.token, x.c.repo, work.branch);
   pull = pull ? await github.updatePull(x.token, x.c.repo, pull.number, { title: t, body: b }) : await github.createPull(x.token, x.c.repo, { title: t, body: b, head: work.branch, base: x.c.baseBranch });
   const number = pull.number;
@@ -291,7 +291,7 @@ export async function publish(accountId: string, expectedHead: string) {
   if (!head) throw new SiteError("the work branch is gone", 409);
   if (head !== expectedHead) throw new SiteError("the changes moved on since you reviewed them: look at the diff again, then publish", 409);
   let pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
-  if (!pull) pull = await openPull(accountId, "Website update from Samurai Knife", "");
+  if (!pull) pull = await openPull(accountId, "Website update from Smart Knife", "");
   if (pull.mergeable === false) throw new SiteError("GitHub cannot merge this pull request (conflicts with the base branch): resolve them on GitHub", 409);
   const merged = await github.mergePull(x.token, x.c.repo, pull.number, head, `${pull.title} (#${pull.number})`);
   await github.deleteBranch(x.token, x.c.repo, work.branch);

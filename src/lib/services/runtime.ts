@@ -67,7 +67,7 @@ export function run(cmd: string, args: string[], options: RunOptions = {}): Prom
 }
 
 const INSTALL_HINT =
-  "Install Docker Engine with the compose plugin (https://docs.docker.com/engine/install/) or Podman with podman-compose, then reload this page. Samurai Knife never runs sudo.";
+  "Install Docker Engine with the compose plugin (https://docs.docker.com/engine/install/) or Podman with podman-compose, then reload this page. Smart Knife never runs sudo.";
 
 async function probe(kind: RuntimeKind): Promise<RuntimeInfo | null> {
   const compose = await run(kind, ["compose", "version", "--short"], { timeoutMs: 15_000 });

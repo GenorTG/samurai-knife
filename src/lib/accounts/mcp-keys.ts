@@ -176,3 +176,10 @@ export function accountForMcpKey(credentials: McpCredentials): Account | null {
   }
   return account;
 }
+
+/** Account rename (scripts/storage.ts rename-account): the keys move to the new id; returns how many. */
+export function reassignMcpKeys(fromId: string, toId: string): number {
+  let moved = 0;
+  writeKeys((keys) => keys.map((k) => (k.accountId === fromId ? (moved += 1, { ...k, accountId: toId }) : k)));
+  return moved;
+}

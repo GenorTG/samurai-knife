@@ -33,8 +33,7 @@ export default function Home() {
 
       <footer className="mt-14 border-t border-line pt-5 text-xs text-faint">
         <p>
-          Samurai Knife · self-hosted ·{" "}
-          <span className="font-mono">~/work/Samurai-Knife</span>
+          Smart Knife · self-hosted
         </p>
       </footer>
     </main>

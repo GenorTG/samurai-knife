@@ -1,4 +1,4 @@
-# Samurai Knife over MCP (agents outside the app)
+# Smart Knife over MCP (agents outside the app)
 
 The app has two agent surfaces that share one tool set:
 

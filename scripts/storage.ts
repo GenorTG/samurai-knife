@@ -4,10 +4,12 @@
 //                                                     step; run with the server stopped; back up the data dir first)
 //   npm run storage -- unseal [--dry-run] [--verbose] open every sealed file in place again (rollback to a build from
 //                                                     before sealing; server stopped; the key is left where it is)
+//   npm run storage -- rename-account <old> <new>     rename an account and move (re-seal) everything it owns; MCP keys
+//                                                     follow, sessions end (server stopped; back up the data dir first)
 //
 // Reads .env.local like scripts/serve.mjs (KNIFE_DATA_DIR, KNIFE_STORAGE_KEY_FILE).
 import { readStore } from "@/lib/accounts/store";
-import { sealAccountStorage, unsealAccountStorage } from "@/lib/storage/migrate";
+import { renameAccount, sealAccountStorage, unsealAccountStorage } from "@/lib/storage/migrate";
 import { storageKeyPath } from "@/lib/storage/sealed";
 
 try {
@@ -17,6 +19,16 @@ try {
 }
 
 const [command, ...rest] = process.argv.slice(2);
+if (command === "rename-account") {
+  const [from, to] = process.argv.slice(3);
+  if (!from || !to) {
+    console.error("usage: npm run storage -- rename-account <old> <new>");
+    process.exit(2);
+  }
+  const report = renameAccount(from, to);
+  console.log(`renamed ${from} -> ${to}: ${report.files} file(s) moved, ${report.mcpKeysMoved} MCP key(s) moved, ${report.sessionsRevoked} session(s) ended`);
+  process.exit(0);
+}
 if (command !== "seal" && command !== "unseal") {
   console.error("usage: npm run storage -- seal|unseal [--dry-run] [--verbose]");
   process.exit(2);

@@ -170,3 +170,42 @@ test("tool drafts: the least recently saved tools make room, a re-save moves a t
   assert.equal(workspace.deleteWorkspaceTool("erin", "tool-6"), true);
   assert.equal(workspace.deleteWorkspaceTool("erin", "tool-6"), false);
 });
+
+test("renameAccount moves and re-seals everything, the provider key opens under the new id, MCP keys follow", async () => {
+  const { renameAccount } = await import("../src/lib/storage/migrate.ts");
+  const accounts = await import("../src/lib/accounts/store.ts");
+  const keys = await import("../src/lib/accounts/mcp-keys.ts");
+  accounts.mutateStore((s) => {
+    s.accounts.push(accounts.newAccountRecord({ id: "olduser", displayName: "Old", provider: { baseUrl: "https://api.example.test/v1", model: "m", apiKey: "sk-secret-provider-key-123" } }));
+  });
+  const profile = emptyCvData();
+  profile.profile.contact.name = MARKER;
+  cv.saveCv("olduser", profile);
+  cv.saveCv("olduser", profile);
+  photo.savePhoto("olduser", JPEG);
+  progress.updateLesson("olduser", "sql", "select-all", (p) => ({ ...p, lastQuery: MARKER }));
+  workspace.saveWorkspaceTool("olduser", "text", { a: MARKER });
+  const doc = office.createDoc("olduser", { name: MARKER, format: "docx", bytes: buildDocument("docx"), source: "blank" });
+  const { key } = keys.createMcpKey("olduser", "laptop");
+
+  const report = renameAccount("olduser", "newuser");
+  assert.ok(report.files >= 6, `${report.files} files`);
+  assert.equal(report.mcpKeysMoved, 1);
+  assert.ok(!accounts.getAccount("olduser"));
+  assert.equal(accounts.getAccount("newuser").provider.apiKey, "sk-secret-provider-key-123", "provider key re-sealed under the new id");
+  assert.equal(cv.loadCv("newuser").profile.contact.name, MARKER);
+  assert.equal(cv.undoCv("newuser"), true, "snapshots moved too");
+  assert.deepEqual(photo.readPhoto("newuser"), JPEG);
+  assert.equal(progress.readProgress("newuser", "sql").lessons["select-all"].lastQuery, MARKER);
+  assert.equal(workspace.readWorkspaceState("newuser").text.a, MARKER);
+  assert.ok(office.readDocBytes("newuser", office.getDoc("newuser", doc.id)).subarray(0, 2).equals(Buffer.from("PK")));
+  assert.equal(keys.listMcpKeys("newuser").length, 1);
+  assert.ok(key.startsWith("skm_"));
+  assert.equal(cv.loadCv("olduser").profile.contact.name, "", "nothing left under the old id");
+  assert.equal(existsSync(join(dataDir, "docs", "olduser")), false);
+  assert.throws(() => renameAccount("newuser", "admin"), /usable username/);
+  accounts.mutateStore((st) => {
+    st.accounts.push(accounts.newAccountRecord({ id: "taken", displayName: "Taken" }));
+  });
+  assert.throws(() => renameAccount("newuser", "taken"), /already exists/);
+});

@@ -23,8 +23,8 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "Samurai Knife",
-    template: "%s · Samurai Knife",
+    default: "Smart Knife",
+    template: "%s · Smart Knife",
   },
   description: "A private room of hand-made tools.",
   icons: { icon: "/blade.svg" },

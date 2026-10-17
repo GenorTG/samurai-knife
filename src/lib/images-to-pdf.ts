@@ -72,7 +72,7 @@ export async function imagesToPdf(files: File[], onProgress?: (done: number, tot
     nativeWidths.push(image.width);
   }
   onProgress?.(files.length, files.length);
-  pdf.setProducer("Samurai Knife");
-  pdf.setCreator("Samurai Knife PDF editor (images to PDF)");
+  pdf.setProducer("Smart Knife");
+  pdf.setCreator("Smart Knife PDF editor (images to PDF)");
   return { bytes: await pdf.save(), nativeWidths };
 }

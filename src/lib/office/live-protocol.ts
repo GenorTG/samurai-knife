@@ -1,5 +1,5 @@
 /**
- * Live editing of the open office document: the wire protocol between the Samurai Knife page and the editor plugin
+ * Live editing of the open office document: the wire protocol between the Smart Knife page and the editor plugin
  * (`sidecars/office/plugins/knife-bridge/bridge.js`). Pure: no DOM, no I/O, so the server (editor config), the browser
  * bridge (live-bridge.ts) and the unit tests share it. Contract and security model: docs/SIDECARS.md ("Live editing plugin").
  *

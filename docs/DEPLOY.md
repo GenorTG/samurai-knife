@@ -1,6 +1,6 @@
 # Deploying the public instance
 
-How to run Samurai Knife for other people: a production build in `KNIFE_AUTH_MODE=public`, bound to an address only the
+How to run Smart Knife for other people: a production build in `KNIFE_AUTH_MODE=public`, bound to an address only the
 reverse proxy reaches, behind HTTPS. The private owner-only toolbox (private mode on a loopback/Tailscale bind) runs the same way
 without the proxy: a production build in its own checkout, started with `serve.mjs start` (sections 1 and 3), never
 from the checkout you develop in. Names below (`knife.example.org`, `office.example.org`) are placeholders.
@@ -30,7 +30,7 @@ KNIFE_PUBLIC_URL=https://knife.example.org
 KNIFE_TRUSTED_PROXIES=127.0.0.1,::1 # the proxy's address as the app sees it (a docker proxy: its bridge gateway or CIDR)
 KNIFE_MAIL_TRANSPORT=smtp
 KNIFE_SMTP_HOST=...                 # see docs/ACCOUNTS.md "Mail"
-KNIFE_SMTP_FROM="Samurai Knife <no-reply@knife.example.org>"
+KNIFE_SMTP_FROM="Smart Knife <no-reply@knife.example.org>"
 KNIFE_SSRF_DENY_CIDRS=<this server's public IPv4>/32,<the LAN's delegated IPv6 prefix>/56
 KNIFE_STORAGE_KEY_FILE=/home/<user>/.config/samurai-knife/storage.key   # outside the data dir (docs/ACCOUNTS.md "At rest")
 KNIFE_GITHUB_APP_FILE=/home/<user>/.config/samurai-knife/github-app.json # GitHub App credentials (docs/GITHUB.md)

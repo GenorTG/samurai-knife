@@ -63,7 +63,7 @@ export default function YamlJsonConverter() {
               spellCheck={false}
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder={'name: Samurai Knife\nfeatures:\n  - convert\n  - lint'}
+              placeholder={'name: Smart Knife\nfeatures:\n  - convert\n  - lint'}
             />
             <WorkStatus running={job.status === "running"} elapsedMs={job.elapsedMs} label="Converting document" cancelLabel="Cancel conversion" onCancel={job.cancel} />
             {job.status === "cancelled" ? <Notice>Conversion cancelled. Edit the input or options to convert again.</Notice> : null}

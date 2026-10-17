@@ -35,7 +35,7 @@ export function outboxDir(): string {
 }
 
 function fromAddress(env: NodeJS.ProcessEnv = process.env): string {
-  return env.KNIFE_SMTP_FROM?.trim() || "Samurai Knife <no-reply@knife.invalid>";
+  return env.KNIFE_SMTP_FROM?.trim() || "Smart Knife <no-reply@knife.invalid>";
 }
 
 let smtp: { key: string; transport: Transporter } | null = null;

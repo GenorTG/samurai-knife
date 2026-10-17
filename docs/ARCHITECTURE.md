@@ -1,6 +1,6 @@
 # Architecture
 
-How Samurai Knife is put together, the rules the code follows, and the traps that cost real debugging time. The README
+How Smart Knife is put together, the rules the code follows, and the traps that cost real debugging time. The README
 has the overview; this is the reference for working on the code.
 
 ## Layout

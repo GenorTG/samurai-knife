@@ -6,7 +6,7 @@ export interface MailContent {
   html: string;
 }
 
-const APP = "Samurai Knife";
+const APP = "Smart Knife";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);

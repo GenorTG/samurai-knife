@@ -16,7 +16,7 @@ export const UI_BRIDGE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_ui_state",
     scope: "account",
     description:
-      "Which Samurai Knife pages the user has open in a browser right now (path, title, visible, last activity), most recently active first. Use it to know what the user is looking at before you change something, and whether knife_ui_show can reach a tab.",
+      "Which Smart Knife pages the user has open in a browser right now (path, title, visible, last activity), most recently active first. Use it to know what the user is looking at before you change something, and whether knife_ui_show can reach a tab.",
     schema: z.object({}).strict(),
     run(_input, ctx) {
       const now = Date.now();
@@ -28,7 +28,7 @@ export const UI_BRIDGE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_ui_show",
     scope: "account",
     description:
-      "Bring the user's open Samurai Knife tab to a page so they SEE your result: slug (e.g. 'cv-studio'), optional tab ('profile', 'jobs', 'variants', 'applications', 'showcase' for cv-studio), optional deep links: job (offer id, Job offers tab), variant (CV version id, CV versions tab), focus (profile id-path, Profile tab), doc (office document id). note = one short line shown to the user ('Tailored your CV for Addepto'). Goes to the most recently active tab (or clientId from knife_ui_state). Changes you make with knife_* tools appear live anyway; use this to point at them.",
+      "Bring the user's open Smart Knife tab to a page so they SEE your result: slug (e.g. 'cv-studio'), optional tab ('profile', 'jobs', 'variants', 'applications', 'showcase' for cv-studio), optional deep links: job (offer id, Job offers tab), variant (CV version id, CV versions tab), focus (profile id-path, Profile tab), doc (office document id). note = one short line shown to the user ('Tailored your CV for Addepto'). Goes to the most recently active tab (or clientId from knife_ui_state). Changes you make with knife_* tools appear live anyway; use this to point at them.",
     schema: z.object({
       slug: z.string().min(1).max(80),
       tab: z.string().max(40).optional(),

@@ -1,4 +1,4 @@
-# Samurai Knife
+# Smart Knife
 
 **A self-hosted, browser-first toolbox with an AI assistant that can actually use it.**
 

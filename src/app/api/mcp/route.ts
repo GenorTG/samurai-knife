@@ -11,7 +11,7 @@ import { checkLimits, hitLimits, LIMITS } from "@/lib/accounts/rate-limit";
 import { getDefaultAccount, type Account } from "@/lib/accounts/store";
 import { knifeMcpHandler } from "@/lib/mcp/server";
 
-const CHALLENGE = 'Basic realm="Samurai Knife MCP", charset="UTF-8"';
+const CHALLENGE = 'Basic realm="Smart Knife MCP", charset="UTF-8"';
 /** JSON-RPC calls are small; the largest tool inputs (a CV import, a document) stay well under this. */
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 

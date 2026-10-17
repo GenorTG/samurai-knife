@@ -33,7 +33,7 @@ async function call<T>(method: string, body?: unknown): Promise<T> {
 export function GithubAppAdmin({ created, errorCode, errorMessage }: { created?: boolean; errorCode?: string; errorMessage?: string }) {
   const [status, setStatus] = useState<AppStatusView | null>(null);
   const [error, setError] = useState("");
-  const [name, setName] = useState("Samurai Knife");
+  const [name, setName] = useState("Smart Knife");
   const [org, setOrg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);

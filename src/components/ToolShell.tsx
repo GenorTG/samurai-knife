@@ -8,7 +8,7 @@ export function Brand() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/blade.svg" alt="" className="size-5 opacity-90 transition-transform group-hover:-rotate-12" />
       <span className="sk-wordmark font-mono max-sm:group-has-[[data-agent-pill]]/header:sr-only text-[12px] font-bold tracking-[0.2em] uppercase">
-        Samurai Knife
+        Smart Knife
       </span>
     </Link>
   );

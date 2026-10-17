@@ -70,7 +70,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_search_tools",
     scope: "pure",
-    description: "Find Samurai Knife UI tools by name, purpose, or keyword.",
+    description: "Find Smart Knife UI tools by name, purpose, or keyword.",
     schema: searchSchema,
     run: ({ query, limit }) => searchToolsLoose(query).slice(0, limit ?? 8).map((tool) => ({
       slug: tool.slug,
@@ -297,7 +297,7 @@ export function getOpenAiToolDefinitions(ctx: KnifeToolContext) {
 
 export async function callKnifeTool(name: string, input: unknown, ctx?: KnifeToolContext): Promise<unknown> {
   const tool = KNIFE_TOOLS.find((candidate) => candidate.name === name);
-  if (!tool) throw new Error(`Unknown Samurai Knife tool: ${name}`);
+  if (!tool) throw new Error(`Unknown Smart Knife tool: ${name}`);
   if (tool.scope === "admin" && ctx?.accountId && !ctx.admin) throw new KnifeToolForbiddenError(name);
   return tool.execute(input, ctx);
 }

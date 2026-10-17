@@ -1,6 +1,6 @@
-# Samurai Knife — 200-tool roadmap
+# Smart Knife — 200-tool roadmap
 
-This is a candidate backlog, not a promise to ship every item. Keep Samurai Knife
+This is a candidate backlog, not a promise to ship every item. Keep Smart Knife
 private, local-first, and hand-made: a tool earns a place when it solves a real
 repeat task cleanly, not because the count looks impressive.
 

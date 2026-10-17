@@ -20,7 +20,7 @@ export default function McpConnect() {
       <Panel title="MCP setup for URL-based agents">
         <div className="space-y-3">
           <p className="text-sm leading-relaxed text-muted">
-            Use this Cursor-style <code>mcpServers</code> URL config (also supported by other Streamable HTTP clients) to let an external agent call Samurai Knife&apos;s deterministic tools. The endpoint is computed from this page&apos;s current origin; the agent must be able to reach that host.
+            Use this Cursor-style <code>mcpServers</code> URL config (also supported by other Streamable HTTP clients) to let an external agent call Smart Knife&apos;s deterministic tools. The endpoint is computed from this page&apos;s current origin; the agent must be able to reach that host.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <code className="min-w-0 flex-1 break-all rounded-lg border border-line bg-raised/50 px-3 py-2 font-mono text-xs text-ink">

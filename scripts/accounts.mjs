@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Manage Samurai Knife accounts. Private mode: the only way to add one. Public mode (KNIFE_AUTH_MODE=public): people
+// Manage Smart Knife accounts. Private mode: the only way to add one. Public mode (KNIFE_AUTH_MODE=public): people
 // register themselves; this sets up the owner (password + email + role admin) and fixes accounts by hand.
 // Shares accounts.json (format v2, lock file accounts.json.lock) with src/lib/accounts/store.ts. No dependencies.
 //
@@ -16,6 +16,8 @@
 //   npm run accounts -- set-provider <id> --preset openclaw-gateway --agent openclaw/<agentId>
 //        [--backend-model provider/model] [--gateway-url URL] [--allow-main] [--key-prompt | --key-env VAR | --key-stdin]
 //   npm run accounts -- set-network <id> private|public   (public mode: may an ADMIN's provider reach loopback/LAN?)
+//   npm run accounts -- set-github <id> <github-login> [--github-id N] | --clear  (link a GitHub user: "Sign in with
+//        GitHub" opens this account; the numeric id is looked up unless given; GITHUB_TOKEN avoids the anonymous limit)
 //   npm run accounts -- provider-json <id>                (prints the provider WITH its key as JSON: for test helpers)
 //
 // API keys are never accepted as argv values (shell history): use --key-prompt (hidden paste), --key-env or --key-stdin.
@@ -186,8 +188,8 @@ function hashPassword(password) {
   return `scrypt$${N}$${r}$${p}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 
-const KNOWN_FLAGS = ["name", "email", "role", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main"];
-const BOOLEAN_FLAGS = ["password-prompt", "key-stdin", "key-prompt", "clear-headers", "allow-main"];
+const KNOWN_FLAGS = ["name", "email", "role", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main", "clear", "github-id"];
+const BOOLEAN_FLAGS = ["password-prompt", "key-stdin", "key-prompt", "clear-headers", "allow-main", "clear"];
 
 function parseArgs(argv) {
   const positional = [];
@@ -360,6 +362,36 @@ const commands = {
     writeStore(store);
     const note = account.role === "admin" ? "" : " (has no effect until the account is an admin)";
     console.log(`${account.id}: provider requests ${value === "private" ? "may reach private addresses in public mode" : "are limited to public addresses in public mode"}${note}`);
+  },
+
+  async "set-github"(store, { positional, flags }) {
+    const account = requireAccount(store, positional[0]);
+    if (flags.has("clear")) {
+      account.github = null;
+      writeStore(store);
+      console.log(`${account.id}: GitHub link removed`);
+      return;
+    }
+    const login = positional[1];
+    if (!login || !/^[A-Za-z0-9-]{1,39}$/.test(login)) fail("usage: set-github <id> <github-login> | set-github <id> --clear");
+    // The stable numeric id is what sign-in matches (a login can be renamed); GitHub's public user API has it.
+    let user;
+    const given = flags.get("github-id")?.at(-1);
+    if (given !== undefined) {
+      if (!/^[1-9][0-9]{0,11}$/.test(String(given))) fail("--github-id must be GitHub's numeric user id");
+      user = { id: Number(given), login };
+    } else {
+      const api = (process.env.KNIFE_GITHUB_API_URL?.trim() || "https://api.github.com").replace(/\/+$/, "");
+      const token = process.env.GITHUB_TOKEN?.trim();
+      const res = await fetch(`${api}/users/${login}`, { headers: { accept: "application/vnd.github+json", "user-agent": "smart-knife-accounts-cli", ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+      if (!res.ok) fail(`GitHub user ${login}: HTTP ${res.status}${res.status === 403 ? " (anonymous rate limit: set GITHUB_TOKEN or pass --github-id N, e.g. from `gh api users/" + login + " --jq .id`)" : ""}`);
+      user = await res.json();
+    }
+    const other = store.accounts.find((a) => a.github?.id === user.id && a.id !== account.id);
+    if (other) fail(`GitHub user ${user.login} is already linked to ${other.id}`);
+    account.github = { id: user.id, login: user.login, linkedAt: new Date().toISOString() };
+    writeStore(store);
+    console.log(`${account.id} is linked to GitHub user ${user.login} (id ${user.id}): signing in with GitHub opens this account`);
   },
 
   "provider-json"(store, { positional }) {
