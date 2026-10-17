@@ -31,8 +31,8 @@ registerHooks({
       if (error?.code === "ERR_MODULE_NOT_FOUND" && specifier.startsWith(".") && !HAS_EXTENSION.test(specifier)) {
         return nextResolve(`${specifier}.ts`, context);
       }
-      // Package subpaths without an exports map (`next/server`): Node's ESM resolver needs the file extension.
-      if (error?.code === "ERR_MODULE_NOT_FOUND" && /^next\/[a-z-]+$/.test(specifier)) {
+      // Package subpaths without an exports map (`next/server`, `ajv/dist/2020`): Node's ESM resolver needs the extension.
+      if (error?.code === "ERR_MODULE_NOT_FOUND" && /^(?:next\/[a-z-]+|ajv\/dist\/[\w/-]+)$/.test(specifier)) {
         return nextResolve(`${specifier}.js`, context);
       }
       throw error;

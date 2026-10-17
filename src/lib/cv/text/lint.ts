@@ -16,7 +16,41 @@ export const LONG_BULLET_WARN = 28;
 export const LONG_BULLET_INFO = 20;
 export const MIN_DIACRITIC_CHARS = 40;
 
-const URL_OR_EMAIL = pyRegex(String.raw`\S+@\S+|(?:https?://|www\.)\S+`, "g");
+/**
+ * Spans of e-mail addresses and URLs, as the regex `\S+@\S+|(?:https?://|www\.)\S+` would find them, in linear time:
+ * that regex backtracks quadratically on a long run of non-space characters without an "@" (a 20k-char word took 0.5 s).
+ * Per whitespace-delimited token: the whole token when it has an "@" with a character on each side, else from the first
+ * `http://`, `https://` or `www.` that is followed by something, to the end of the token.
+ */
+function urlOrEmailSpans(text: string): [number, number][] {
+  const spans: [number, number][] = [];
+  for (const token of text.matchAll(/\S+/g)) {
+    const word = token[0];
+    const start = token.index;
+    const at = word.indexOf("@", 1);
+    if (at >= 1 && at <= word.length - 2) {
+      spans.push([start, start + word.length]);
+      continue;
+    }
+    let from = -1;
+    for (const prefix of ["http://", "https://", "www."]) {
+      const hit = word.indexOf(prefix);
+      if (hit >= 0 && hit + prefix.length < word.length && (from < 0 || hit < from)) from = hit;
+    }
+    if (from >= 0) spans.push([start + from, start + word.length]);
+  }
+  return spans;
+}
+
+export function replaceUrlsAndEmails(text: string, by: (match: string) => string): string {
+  let out = "";
+  let last = 0;
+  for (const [from, to] of urlOrEmailSpans(text)) {
+    out += text.slice(last, from) + by(text.slice(from, to));
+    last = to;
+  }
+  return out + text.slice(last);
+}
 const WORD_RE = /\p{L}+/gu;
 const LEAD = /^[\s\-–—•*·▪●]*/u;
 const SENTENCE_END = /[.!?…]\s+/gu;
@@ -33,7 +67,7 @@ function wordCount(text: string): number {
 const span = (m: RegExpMatchArray | RegExpExecArray): [number, number] => [m.index ?? 0, (m.index ?? 0) + m[0].length];
 
 /** Same-length blanking so offsets into the result are offsets into `text`. */
-const blankUrls = (text: string): string => text.replace(URL_OR_EMAIL, (m) => " ".repeat(m.length));
+const blankUrls = (text: string): string => replaceUrlsAndEmails(text, (m) => " ".repeat(m.length));
 
 // --- vague openers ---------------------------------------------------------------------------------------------
 
@@ -235,7 +269,7 @@ const POLISH_MARKERS: ReadonlySet<string> = new Set([...PL_STOP, "i", "w", "z", 
 
 function missingDiacritics(text: string, lang: CvLang): Finding[] {
   if (lang !== "pl") return [];
-  const body = text.replace(URL_OR_EMAIL, " ").trim();
+  const body = replaceUrlsAndEmails(text, () => " ").trim();
   if (body.length <= MIN_DIACRITIC_CHARS || Array.from(body).some((c) => PL_DIACRITICS.includes(c))) return [];
   const { hits, total } = foreignHits(body, "pl");
   if (total && hits.length / total > 0.25) return []; // it is English, not stripped Polish (see lang-mix)

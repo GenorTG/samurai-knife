@@ -1,0 +1,65 @@
+{
+  "blank docx": {
+    "text": ""
+  },
+  "blank xlsx": {
+    "text": "# Sheet: Sheet1\n"
+  },
+  "blank pptx": {
+    "text": "# Slide 1\n"
+  },
+  "blank odt": {
+    "text": ""
+  },
+  "blank ods": {
+    "text": "# Sheet: Sheet1\n"
+  },
+  "blank odp": {
+    "text": "# Slide 1\n"
+  },
+  "template docx": {
+    "text": "Dear Sir & Madam,\n\n<tags> \"quoted\" 'apos' — ł ó\n  spaced  "
+  },
+  "template odt": {
+    "text": "One & two\n\n<x> \"q\""
+  },
+  "template xlsx": {
+    "text": "# Sheet: Sheet1\nName\tQty\t\tNote\nApple\t3\t\tx & y\n\n\t\t1.5e3"
+  },
+  "template ods": {
+    "text": "# Sheet: Sheet1\nName\tQty\nPear\t-2\t<b>"
+  },
+  "template pptx": {
+    "text": "# Slide 1\nIntro & aims\none\ntwo <2>\n\n# Slide 2\n\n\n# Slide 3\nEnd"
+  },
+  "template odp": {
+    "text": "# Slide 1\nHello\na\nb & c\n\n# Slide 2\n"
+  },
+  "docx runs": {
+    "text": "Title\na \tb\nc&d ł ł <e> \"f\" 'g'\n\n\ncell 1\ncell 2\nlinkend"
+  },
+  "docx empty body": {
+    "text": ""
+  },
+  "docx no document part": {
+    "text": ""
+  },
+  "xlsx shared": {
+    "text": "# Sheet: Data & more\nplain\t\trich text\n42\t1\t\t84\n\n\tinline <b>\n\n# Sheet: Second\nwith & ampph\t7\n#DIV/0!"
+  },
+  "xlsx no shared strings": {
+    "text": "# Sheet: S\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t1"
+  },
+  "pptx slides": {
+    "text": "# Slide 1\n1\n\n# Slide 2\nSecond & \nline\tx\n\n# Slide 3\nThird"
+  },
+  "odt rich": {
+    "text": "Heading\na b   c\td\ne & ä\n\nitem link\nsoftbreak"
+  },
+  "ods sheets": {
+    "text": "# Sheet: Budget & plan\nItem\tCost\nLine 1 Line 2\n\n# Sheet: Empty\n"
+  },
+  "odp pages": {
+    "text": "# Slide 1\nSlide one\n\n# Slide 2\n\n\n# Slide 3\nb1"
+  }
+}

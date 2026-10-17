@@ -73,7 +73,8 @@ export interface ZipReader {
   text(name: string): string | null;
 }
 
-export function readZip(buffer: Buffer, maxInflatedBytes = 200 * 1024 * 1024): ZipReader {
+/** `maxEntryBytes`: refuse any single entry that inflates beyond it (declared size, enforced by the inflater). */
+export function readZip(buffer: Buffer, maxInflatedBytes = 200 * 1024 * 1024, maxEntryBytes = Number.POSITIVE_INFINITY): ZipReader {
   let eocd = -1;
   for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 22 - 0xffff); i -= 1) {
     if (buffer.readUInt32LE(i) === 0x06054b50) {
@@ -106,6 +107,7 @@ export function readZip(buffer: Buffer, maxInflatedBytes = 200 * 1024 * 1024): Z
     if (buffer.readUInt32LE(p) !== 0x04034b50) throw new ZipError(`corrupt local header for ${name}`);
     const start = p + 30 + buffer.readUInt16LE(p + 26) + buffer.readUInt16LE(p + 28);
     const body = buffer.subarray(start, start + entry.compressed);
+    if (entry.size > maxEntryBytes) throw new ZipError(`${name} is larger than ${Math.round(maxEntryBytes / 1024 / 1024)} MB`);
     inflated += entry.size;
     if (inflated > maxInflatedBytes) throw new ZipError("archive inflates beyond the limit");
     if (entry.method === 0) return Buffer.from(body);

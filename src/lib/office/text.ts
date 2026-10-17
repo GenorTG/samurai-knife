@@ -1,139 +1,342 @@
-import { readZip } from "./zip";
+import { readZip, type ZipReader } from "./zip";
 import type { OfficeFormat } from "./templates";
+import { decodeEntities, walkXml } from "./xml-walk";
 
 /**
- * Plain-text view of an office file for the assistant (knife_doc_read). Structure-light on purpose: paragraphs for text
- * documents, tab-separated rows per sheet, "Slide N" blocks for presentations. Regex over the XML parts is enough for
- * this (no DOM on the server); entities are decoded at the end.
+ * Plain-text view of an office file for the assistant (knife_doc_read) and the version preview. Structure-light on
+ * purpose: paragraphs for text documents, tab-separated rows per sheet, "Slide N" blocks for presentations.
+ *
+ * Threat model: the file is untrusted (any user upload). Parsing is a single linear pass per XML part (`xml-walk.ts`,
+ * no regex over the document: the previous regex version went quadratic on unclosed tags), the inflated input is capped
+ * (`TEXT_MAX_PART_BYTES` per part, `TEXT_MAX_TOTAL_BYTES` per file), and server callers run it in the isolate pool
+ * (`extract.ts`) under a timeout. This module stays synchronous and pure so the isolate worker can import it.
  */
 
-function decode(text: string): string {
-  return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&amp;/g, "&");
-}
+/** Largest single XML part read for text (inflated). */
+export const TEXT_MAX_PART_BYTES = 20 * 1024 * 1024;
+/** Largest total inflated size read for text across all parts. */
+export const TEXT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
-/** Text of runs inside one block: <w:t>/<a:t>/<t> text, tabs and breaks. */
-function runText(xml: string, prefix: "w" | "a"): string {
-  let out = "";
-  const pattern = new RegExp(`<${prefix}:t(?:\\s[^>]*)?>([^<]*)</${prefix}:t>|<${prefix}:tab/>|<${prefix}:br/>`, "g");
-  for (const match of xml.matchAll(pattern)) {
-    if (match[1] !== undefined) out += decode(match[1]);
-    else out += match[0].includes("tab") ? "\t" : "\n";
+/** Paragraph stack: text goes to the innermost open paragraph; a paragraph is emitted when it closes (unclosed = dropped). */
+class Paragraphs {
+  private readonly open: string[] = [];
+  readonly done: string[] = [];
+  start(): void {
+    this.open.push("");
   }
-  return out;
+  /** Self-closing paragraph. */
+  empty(): void {
+    this.done.push("");
+  }
+  add(text: string): void {
+    if (this.open.length) this.open[this.open.length - 1] += text;
+  }
+  end(): void {
+    const text = this.open.pop();
+    if (text !== undefined) this.done.push(text);
+  }
+  get inside(): boolean {
+    return this.open.length > 0;
+  }
+  /** Take the paragraphs finished so far (used per table cell / page). */
+  take(): string[] {
+    return this.done.splice(0);
+  }
 }
 
-function docxText(zip: ReturnType<typeof readZip>): string {
-  const xml = zip.text("word/document.xml") ?? "";
-  const paragraphs = xml.match(/<w:p[ >][\s\S]*?<\/w:p>|<w:p\/>/g) ?? [];
-  return paragraphs.map((p) => runText(p, "w")).join("\n");
+/**
+ * w:t / a:t text plus tabs and line breaks. WordprocessingML puts `<w:tab/>`/`<w:br/>` inside runs (a `w:tab` elsewhere is
+ * a tab stop definition, not text); DrawingML puts `<a:br>` between runs.
+ */
+function runParagraphs(xml: string, prefix: "w" | "a"): string[] {
+  const P = `${prefix}:p`;
+  const T = `${prefix}:t`;
+  const R = `${prefix}:r`;
+  const paragraphs = new Paragraphs();
+  let inText = 0;
+  let inRun = 0;
+  walkXml(xml, {
+    open(name, _attrs, selfClosing) {
+      if (name === P) {
+        if (selfClosing) paragraphs.empty();
+        else paragraphs.start();
+      } else if (name === T) {
+        if (!selfClosing) inText += 1;
+      } else if (name === R) {
+        if (!selfClosing) inRun += 1;
+      } else if (paragraphs.inside && (prefix === "a" || inRun > 0)) {
+        if (selfClosing && name === `${prefix}:tab`) paragraphs.add("\t");
+        else if (name === `${prefix}:br` && (selfClosing || prefix === "a")) paragraphs.add("\n");
+      }
+    },
+    close(name) {
+      if (name === P) paragraphs.end();
+      else if (name === T) inText = Math.max(0, inText - 1);
+      else if (name === R) inRun = Math.max(0, inRun - 1);
+    },
+    text(value) {
+      if (inText > 0) paragraphs.add(value);
+    },
+  });
+  return paragraphs.done;
 }
 
-function sheetOrder(zip: ReturnType<typeof readZip>): { name: string; path: string }[] {
-  const workbook = zip.text("xl/workbook.xml") ?? "";
-  const relsXml = zip.text("xl/_rels/workbook.xml.rels") ?? "";
+function docxText(zip: ZipReader): string {
+  return runParagraphs(zip.text("word/document.xml") ?? "", "w").join("\n");
+}
+
+/** `name="value"` from a raw attribute string (attribute strings are short; the pattern has no nested quantifier). */
+function attr(attrs: string, name: string): string | undefined {
+  const at = attrs.search(new RegExp(`(?:^|\\s)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}="`));
+  if (at < 0) return undefined;
+  const start = attrs.indexOf('"', at) + 1;
+  const end = attrs.indexOf('"', start);
+  return end < 0 ? undefined : attrs.slice(start, end);
+}
+
+function sheetOrder(zip: ZipReader): { name: string; path: string }[] {
   const targets = new Map<string, string>();
-  for (const m of relsXml.matchAll(/<Relationship\b[^>]*>/g)) {
-    const id = /Id="([^"]+)"/.exec(m[0])?.[1];
-    const target = /Target="([^"]+)"/.exec(m[0])?.[1];
-    if (id && target) targets.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target}`);
-  }
+  walkXml(zip.text("xl/_rels/workbook.xml.rels") ?? "", {
+    open(name, attrs) {
+      if (name !== "Relationship") return;
+      const id = attr(attrs, "Id");
+      const target = attr(attrs, "Target");
+      if (id && target) targets.set(id, target.startsWith("/") ? target.slice(1) : `xl/${target}`);
+    },
+    close() {},
+    text() {},
+  });
   const out: { name: string; path: string }[] = [];
-  for (const m of workbook.matchAll(/<sheet\b[^>]*>/g)) {
-    const name = decode(/name="([^"]*)"/.exec(m[0])?.[1] ?? "Sheet");
-    const rid = /r:id="([^"]+)"/.exec(m[0])?.[1];
-    const path = rid ? targets.get(rid) : undefined;
-    if (path) out.push({ name, path });
-  }
+  walkXml(zip.text("xl/workbook.xml") ?? "", {
+    open(name, attrs) {
+      if (name !== "sheet") return;
+      const rid = attr(attrs, "r:id");
+      const path = rid ? targets.get(rid) : undefined;
+      if (path) out.push({ name: decodeEntities(attr(attrs, "name") ?? "Sheet"), path });
+    },
+    close() {},
+    text() {},
+  });
   return out;
 }
 
 function columnIndex(ref: string): number {
-  const letters = /^[A-Z]+/.exec(ref)?.[0] ?? "A";
   let n = 0;
-  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  for (const ch of ref) n = n * 26 + (ch.charCodeAt(0) - 64);
   return n - 1;
 }
 
-function xlsxText(zip: ReturnType<typeof readZip>): string {
-  const shared: string[] = [];
-  const sst = zip.text("xl/sharedStrings.xml") ?? "";
-  for (const si of sst.match(/<si>[\s\S]*?<\/si>/g) ?? []) {
-    shared.push([...si.matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map((m) => decode(m[1])).join(""));
-  }
-  const blocks: string[] = [];
-  for (const sheet of sheetOrder(zip)) {
-    const xml = zip.text(sheet.path) ?? "";
-    const lines: string[] = [];
-    for (const row of xml.match(/<row\b[\s\S]*?<\/row>/g) ?? []) {
-      const cells: string[] = [];
-      for (const c of row.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const attrs = c[1];
-        const inner = c[2] ?? "";
-        const ref = /r="([A-Z]+)\d+"/.exec(attrs)?.[1] ?? "";
-        const type = /t="([^"]+)"/.exec(attrs)?.[1];
-        let value = "";
-        if (type === "inlineStr") value = [...inner.matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map((m) => decode(m[1])).join("");
-        else {
-          const v = /<v>([^<]*)<\/v>/.exec(inner)?.[1];
-          if (v !== undefined) value = type === "s" ? (shared[Number(v)] ?? "") : decode(v);
-        }
-        const index = ref ? columnIndex(ref) : cells.length;
-        while (cells.length < index) cells.push("");
-        cells[index] = value;
-      }
-      while (cells.length && cells[cells.length - 1] === "") cells.pop();
-      lines.push(cells.join("\t"));
-    }
-    while (lines.length && lines[lines.length - 1] === "") lines.pop();
-    blocks.push(`# Sheet: ${sheet.name}\n${lines.join("\n")}`);
-  }
-  return blocks.join("\n\n");
+/** Column letters of a cell reference like `AB12` (empty when it is not one). */
+function refColumn(ref: string | undefined): string {
+  const match = ref ? /^([A-Z]+)\d+$/.exec(ref) : null;
+  return match ? match[1] : "";
 }
 
-function pptxText(zip: ReturnType<typeof readZip>): string {
-  const slides = zip
-    .names()
-    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
-    .sort((a, b) => Number(/(\d+)\.xml$/.exec(a)?.[1]) - Number(/(\d+)\.xml$/.exec(b)?.[1]));
-  return slides
-    .map((name, i) => {
-      const xml = zip.text(name) ?? "";
-      const paragraphs = (xml.match(/<a:p>[\s\S]*?<\/a:p>|<a:p\/>/g) ?? []).map((p) => runText(p, "a")).filter((t) => t.trim());
-      return `# Slide ${i + 1}\n${paragraphs.join("\n")}`;
+function sharedStrings(zip: ZipReader): string[] {
+  const shared: string[] = [];
+  let current: string | null = null;
+  let inText = 0;
+  walkXml(zip.text("xl/sharedStrings.xml") ?? "", {
+    open(name, _attrs, selfClosing) {
+      if (name === "si") current = selfClosing ? null : "";
+      else if (name === "t" && !selfClosing && current !== null) inText += 1;
+      if (name === "si" && selfClosing) shared.push("");
+    },
+    close(name) {
+      if (name === "si" && current !== null) {
+        shared.push(current);
+        current = null;
+        inText = 0;
+      } else if (name === "t") inText = Math.max(0, inText - 1);
+    },
+    text(value) {
+      if (inText > 0 && current !== null) current += value;
+    },
+  });
+  return shared;
+}
+
+function sheetLines(xml: string, shared: string[]): string[] {
+  const lines: string[] = [];
+  let cells: string[] | null = null;
+  let cell: { col: string; type: string | undefined; value: string; v: string | null; inV: boolean; inT: number } | null = null;
+  const finishCell = () => {
+    if (!cell || !cells) return;
+    let value = "";
+    if (cell.type === "inlineStr") value = cell.value;
+    else if (cell.v !== null) value = cell.type === "s" ? (shared[Number(cell.v)] ?? "") : cell.v;
+    const index = cell.col ? columnIndex(cell.col) : cells.length;
+    while (cells.length < index) cells.push("");
+    cells[index] = value;
+    cell = null;
+  };
+  const finishRow = () => {
+    if (!cells) return;
+    while (cells.length && cells[cells.length - 1] === "") cells.pop();
+    lines.push(cells.join("\t"));
+    cells = null;
+  };
+  walkXml(xml, {
+    open(name, attrs, selfClosing) {
+      if (name === "row") {
+        finishRow();
+        cells = [];
+        if (selfClosing) finishRow();
+      } else if (name === "c" && cells) {
+        cell = { col: refColumn(attr(attrs, "r")), type: attr(attrs, "t"), value: "", v: null, inV: false, inT: 0 };
+        if (selfClosing) finishCell();
+      } else if (cell && !selfClosing) {
+        if (name === "v" && cell.v === null) {
+          cell.inV = true;
+          cell.v = "";
+        } else if (name === "t") cell.inT += 1;
+      }
+    },
+    close(name) {
+      if (name === "row") finishRow();
+      else if (name === "c") finishCell();
+      else if (cell && name === "v") cell.inV = false;
+      else if (cell && name === "t") cell.inT = Math.max(0, cell.inT - 1);
+    },
+    text(value) {
+      if (!cell) return;
+      if (cell.inV) cell.v += value;
+      if (cell.inT > 0) cell.value += value;
+    },
+  });
+  return lines;
+}
+
+function xlsxText(zip: ZipReader): string {
+  const shared = sharedStrings(zip);
+  return sheetOrder(zip)
+    .map((sheet) => {
+      const lines = sheetLines(zip.text(sheet.path) ?? "", shared);
+      while (lines.length && lines[lines.length - 1] === "") lines.pop();
+      return `# Sheet: ${sheet.name}\n${lines.join("\n")}`;
     })
     .join("\n\n");
 }
 
-function odfText(zip: ReturnType<typeof readZip>, format: "odt" | "ods" | "odp"): string {
-  const xml = (zip.text("content.xml") ?? "").replace(/<text:tab\/>/g, "\t").replace(/<text:line-break\/>/g, "\n").replace(/<text:s(?: text:c="(\d+)")?\/>/g, (_, n?: string) => " ".repeat(Number(n ?? 1)));
-  const para = (fragment: string) => (fragment.match(/<text:(?:p|h)\b[^>]*?(?:\/>|>[\s\S]*?<\/text:(?:p|h)>)/g) ?? []).map((p) => decode(p.replace(/<[^>]+>/g, "")));
-  if (format === "odt") return para(xml).join("\n");
-  if (format === "ods") {
-    return (xml.match(/<table:table\b[\s\S]*?<\/table:table>/g) ?? [])
-      .map((table) => {
-        const name = decode(/table:name="([^"]*)"/.exec(table)?.[1] ?? "Sheet");
-        const rows = (table.match(/<table:table-row\b[\s\S]*?<\/table:table-row>/g) ?? []).map((row) =>
-          (row.match(/<table:table-cell\b[^>]*?(?:\/>|>[\s\S]*?<\/table:table-cell>)/g) ?? []).map((cell) => para(cell).join(" ")).join("\t").replace(/\t+$/, ""),
-        );
-        while (rows.length && rows[rows.length - 1] === "") rows.pop();
-        return `# Sheet: ${name}\n${rows.join("\n")}`;
-      })
-      .join("\n\n");
-  }
-  return (xml.match(/<draw:page\b[\s\S]*?<\/draw:page>/g) ?? [])
-    .map((page, i) => `# Slide ${i + 1}\n${para(page).filter((t) => t.trim()).join("\n")}`)
+function pptxText(zip: ZipReader): string {
+  const slides = zip
+    .names()
+    .filter((n) => /^ppt\/slides\/slide\d{1,6}\.xml$/.test(n))
+    .sort((a, b) => Number(/(\d+)\.xml$/.exec(a)?.[1]) - Number(/(\d+)\.xml$/.exec(b)?.[1]));
+  return slides
+    .map((name, i) => `# Slide ${i + 1}\n${runParagraphs(zip.text(name) ?? "", "a").filter((t) => t.trim()).join("\n")}`)
     .join("\n\n");
 }
 
+const ODF_PARAGRAPH = new Set(["text:p", "text:h"]);
+
+/**
+ * ODF: every paragraph's character data (spans, links, list items...), `text:tab` / `text:line-break` / `text:s` spaces.
+ * Paragraphs are grouped per table cell (ods) or per page (odp) by the callers through `onClose`.
+ */
+function odfWalk(xml: string, paragraphs: Paragraphs, onOpen: (name: string, attrs: string, selfClosing: boolean) => void, onClose: (name: string) => void): void {
+  walkXml(xml, {
+    open(name, attrs, selfClosing) {
+      if (ODF_PARAGRAPH.has(name)) {
+        if (selfClosing) paragraphs.empty();
+        else paragraphs.start();
+      } else if (selfClosing && name === "text:tab") paragraphs.add("\t");
+      else if (selfClosing && name === "text:line-break") paragraphs.add("\n");
+      else if (selfClosing && name === "text:s") {
+        const count = Number(attr(attrs, "text:c") ?? 1);
+        paragraphs.add(" ".repeat(Number.isInteger(count) && count > 0 ? Math.min(count, 1000) : 1));
+      }
+      onOpen(name, attrs, selfClosing);
+    },
+    close(name) {
+      if (ODF_PARAGRAPH.has(name)) paragraphs.end();
+      onClose(name);
+    },
+    text(value) {
+      paragraphs.add(value);
+    },
+  });
+}
+
+function odfText(zip: ZipReader, format: "odt" | "ods" | "odp"): string {
+  const xml = zip.text("content.xml") ?? "";
+  const paragraphs = new Paragraphs();
+  if (format === "odt") {
+    odfWalk(xml, paragraphs, () => {}, () => {});
+    return paragraphs.done.join("\n");
+  }
+  if (format === "ods") {
+    const sheets: string[] = [];
+    let table: { name: string; rows: string[] } | null = null;
+    let row: string[] | null = null;
+    let cellDepth = 0;
+    const endCell = () => {
+      const text = paragraphs.take().join(" ");
+      if (row) row.push(text);
+    };
+    const endRow = () => {
+      if (table && row) {
+        // Trailing tabs trimmed by a scan, not /\t+$/: that regex is quadratic on a long run of tabs.
+        const line = row.join("\t");
+        let end = line.length;
+        while (end > 0 && line.charCodeAt(end - 1) === 9) end -= 1;
+        table.rows.push(line.slice(0, end));
+      }
+      row = null;
+    };
+    const endTable = () => {
+      if (!table) return;
+      while (table.rows.length && table.rows[table.rows.length - 1] === "") table.rows.pop();
+      sheets.push(`# Sheet: ${table.name}\n${table.rows.join("\n")}`);
+      table = null;
+    };
+    odfWalk(
+      xml,
+      paragraphs,
+      (name, attrs, selfClosing) => {
+        if (name === "table:table" && !selfClosing) {
+          table = { name: decodeEntities(attr(attrs, "table:name") ?? "Sheet"), rows: [] };
+        } else if (name === "table:table-row" && table) {
+          row = [];
+          if (selfClosing) endRow();
+        } else if (name === "table:table-cell" && row) {
+          paragraphs.take();
+          if (selfClosing) row.push("");
+          else cellDepth += 1;
+        }
+      },
+      (name) => {
+        if (name === "table:table-cell" && cellDepth > 0) {
+          cellDepth -= 1;
+          endCell();
+        } else if (name === "table:table-row") endRow();
+        else if (name === "table:table") endTable();
+      },
+    );
+    return sheets.join("\n\n");
+  }
+  const pages: string[] = [];
+  let inPage = false;
+  odfWalk(
+    xml,
+    paragraphs,
+    (name, _attrs, selfClosing) => {
+      if (name !== "draw:page") return;
+      paragraphs.take();
+      if (selfClosing) pages.push("");
+      else inPage = true;
+    },
+    (name) => {
+      if (name !== "draw:page" || !inPage) return;
+      inPage = false;
+      pages.push(paragraphs.take().filter((t) => t.trim()).join("\n"));
+    },
+  );
+  return pages.map((text, i) => `# Slide ${i + 1}\n${text}`).join("\n\n");
+}
+
 export function extractText(format: OfficeFormat, bytes: Buffer): string {
-  const zip = readZip(bytes);
+  const zip = readZip(bytes, TEXT_MAX_TOTAL_BYTES, TEXT_MAX_PART_BYTES);
   switch (format) {
     case "docx":
       return docxText(zip);
