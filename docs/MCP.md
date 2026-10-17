@@ -32,7 +32,7 @@ Both can be used at the same time; edits are atomic per call and every CV save i
 ## Tool scopes (`src/lib/mcp/define.ts`)
 Every `defineTool` declares `scope` (no default, so a new tool must choose):
 - `pure`: input in, result out (base tools, `knife_sql_*`, `knife_mongo_*`/`chroma`/`redis`).
-- `account`: the caller's own data (`knife_cv_*`, `knife_doc_*`, `knife_learn_*`, `knife_ui_*`).
+- `account`: the caller's own data (`knife_cv_*`, `knife_doc_*`, `knife_learn_*`, `knife_site_*`, `knife_ui_*`).
 - `admin`: the server owner's resources: `knife_cv_github_repos`, `knife_cv_github_repo_facts`, `knife_cv_showcase_rank`,
   `knife_cv_project_from_github` (the host's `gh` login) and `knife_cv_local_repo_facts` (git repos on the host's disk).
 `toolsFor(ctx)` (tools.ts) is the only list: `GET /api/agent/tools` (the widget), `POST /api/agent/tool` (403
@@ -47,6 +47,14 @@ earlier kept version too), `knife_doc_create {format, name, folderId?, paragraph
 `knife_doc_restore_version {id, version}` (the old content becomes a NEW version; nothing is lost). Nothing deletes:
 trash and permanent deletion stay with the user in the file browser. Every tool acts on the calling account only (another
 account's ids answer "unknown document/folder"), and writes fail with the storage-quota message when the account is full.
+
+## Website (`knife_site_*`, group `site`)
+Score and improve the user's own website from its GitHub repository: `knife_site_status` (start here: connection, the
+repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,
+security headers, Lighthouse via PageSpeed), `knife_site_audit_get`, `knife_site_page`, `knife_site_files`,
+`knife_site_read`, `knife_site_search`, `knife_site_replace` / `knife_site_write` (commit to the `knife/...` work branch,
+never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL). Publishing and discarding are
+the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
 
 ## Live view of the user's screen
 - Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast

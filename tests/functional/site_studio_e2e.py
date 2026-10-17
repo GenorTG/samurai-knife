@@ -120,7 +120,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         expect(page.get_by_role("status").filter(has_text="Auditing")).to_be_visible(timeout=10_000)
         check("audit progress is shown as role=status", True)
         expect(page.get_by_role("group", name="Scores")).to_be_visible(timeout=90_000)
-        scores = page.get_by_role("group", name="Scores").inner_text()
+        scores = page.get_by_role("group", name="Scores").text_content() or ""  # labels are CSS-uppercased in innerText
         check("score tiles: overall, SEO, copywriting, performance 72 from PageSpeed", all(s in scores for s in ("Overall", "Technical SEO", "Copywriting", "Performance")) and "72" in scores, scores)
         issues = page.locator("main").inner_text()
         check("issues with fixes: missing alt text and the stale copyright", "have no alt text" in issues and "Footer says © 2023" in issues and "Fix:" in issues, issues[:400])
@@ -129,15 +129,15 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         # ---------------------------------------------------------------- 3. copy & CV (CV seeded by an agent)
         ok, text = mcp.tool("knife_cv_import", {"profile": {
             "contact": {"name": "Jan Kowalski", "headline": {"pl": "Inżynier systemów AI", "en": "AI systems engineer"}, "links": [{"label": "GitHub", "url": "https://github.com/janko"}]},
-            "projects": [{"name": "Samurai Knife"}, {"name": "Toberenamed RTS"}],
-            "skills": [{"name": {"pl": "Narzędzia", "en": "Tools"}, "items": ["Docker", "Kubernetes"]}],
+            "projects": [{"id": "p1", "name": "Samurai Knife"}, {"id": "p2", "name": "Toberenamed RTS"}],
+            "skills": [{"id": "s1", "name": {"pl": "Narzędzia", "en": "Tools"}, "items": ["Docker", "Kubernetes"]}],
         }, "overwrite": True})
         check("an agent seeds the CV over MCP (knife_cv_import)", ok, text[:300])
         ok, text = mcp.tool("knife_site_audit", {"lighthouse": False})
         check("knife_site_audit over MCP returns scores and CV gaps", ok and '"alignment"' in text and "Toberenamed RTS" in text, text[:400])
         go(page, "/tools/site-studio?tab=copy")
         expect(page.get_by_text("CV fit ·")).to_be_visible(timeout=20_000)
-        badges = page.locator("main").inner_text()
+        badges = page.locator("main").text_content() or ""
         check("Copy & CV: ✓ Samurai Knife, ✗ Toberenamed RTS, ✗ Kubernetes", "✓ Samurai Knife" in badges and "✗ Toberenamed RTS" in badges and "✗ Kubernetes" in badges, badges[:500])
         check("Copy & CV: per-page copy metrics (FOG-PL)", "FOG-PL" in badges and "Calls to action" in badges)
         go(page, "/tools/cv-studio?tab=website")
@@ -153,7 +153,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         check("knife_site_replace commits to a knife/ work branch", ok and '"branch": "knife/' in text, text[:300])
         ok, text = mcp.tool("knife_site_pr", {"title": "Add Toberenamed RTS", "body": "From the CV studio."})
         check("knife_site_pr opens the pull request", ok and '"number": 1' in text, text[:300])
-        expect(page.get_by_text("Pull request #1 Add Toberenamed RTS").or_(page.get_by_role("link", name="#1 Add Toberenamed RTS"))).to_be_visible(timeout=30_000)
+        expect(page.get_by_role("link", name="#1 Add Toberenamed RTS")).to_be_visible(timeout=30_000)
         main = page.locator("main").inner_text()
         check("the open Changes tab shows the branch, commit, diff and preview by itself", "Work branch knife/" in main and "Show Toberenamed RTS on the site" in main and "lib/site-data.ts" in main and "Preview:" in main, main[:600])
         page.get_by_role("button", name="Score the preview").click()

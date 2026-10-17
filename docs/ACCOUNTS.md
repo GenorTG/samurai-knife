@@ -113,6 +113,7 @@ removed:
 - `learn/<id>.json` (course progress)
 - `usage/<id>.json` (token ledger)
 - `workspace/<id>.json.enc` (browser-tool drafts, see "Tool drafts" below)
+- `site/<id>.json` (website studio: repository connection with its token, work branch, audit history; docs/WEBSITE-STUDIO.md)
 
 ### Tool drafts (`src/components/WorkspaceDraft.tsx`, `/api/workspace`)
 
@@ -193,6 +194,7 @@ office) and that an administrator has to run the GitHub showcase (CV studio). A 
   and a free slot goes to the account with the fewest jobs running there, round-robin among equals.
 - Async jobs (`src/lib/jobs.ts`): per account at most `KNIFE_JOBS_PER_ACCOUNT` (50) live jobs and
   `KNIFE_JOBS_ACCOUNT_MAX_MB` (a quarter of `KNIFE_JOBS_MAX_MB`) of scratch (429); job ids are random.
+- Website studio: 6 audits per hour and 600 GitHub API calls per 10 minutes per account (`outboundAudit`, `outboundGithub`); page reads of `knife_site_page` count against the page budget.
 - Database course: one run in flight per account (`KNIFE_LEARN_RUNS_PER_ACCOUNT`, 429 "still running") and at most
   `KNIFE_LEARN_MAX_RUNS` (12) on the server, below the learner role's 20 connections (docs/LEARN.md).
 - Child processes (Python lane, `gh`/`git`, docker compose) get an allow-listed environment (`src/lib/child-env.ts`),
