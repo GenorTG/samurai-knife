@@ -120,7 +120,23 @@ Only 443 (and 80 for the certificate challenge) should be reachable from outside
   URL. Keep the rules in a script that runs after docker starts.
 - Memory/CPU caps are in the definitions (office 3 GB / 2 CPUs, course DB 1 GB / 1 CPU).
 
-## 6. Go-public checklist
+## 6. Releases and automatic updates
+
+A release is a `v<semver>` tag (`vX.Y.Z`; tags with a `-` are pre-releases). To cut one: bump `version` in
+package.json, merge to `main`, `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+
+To keep a server on the newest release without touching the checkout it serves from, build every release in its own
+directory (a `git worktree` per tag, its own `npm ci`, `.env.local` copied in) and serve through a `current` symlink: the
+PM2 app's `cwd` is `.../current`. An update is then: fetch tags; build the newest tag in a new directory while the old
+one keeps serving; start the new build once on a spare loopback port with an empty data dir and check a few pages,
+`/api/account` and `/api/mcp`; move the symlink; `pm2 delete` + `pm2 start` the app (a restart alone keeps the old
+resolved directory); check the live URL and move the symlink back on failure. Deploy forward only (`git merge-base
+--is-ancestor <deployed> <tag>`), so an older or unrelated tag never replaces newer code, and keep the previous release
+directory for a rollback. Run it from a timer (systemd user timer or cron) with one run at a time (`flock -o`, so the
+servers it starts never inherit the lock). Keep a separate `next dev` for development on another port with its own
+`KNIFE_DATA_DIR` and `KNIFE_SIDECAR_PREFIX`, so it never shares data or containers with the served build.
+
+## 7. Go-public checklist
 
 - [ ] `npm run build` in the deploy checkout, process started via `serve.mjs start` with `KNIFE_AUTH_MODE=public`.
 - [ ] Owner account: password, verified email, admin; `set-network private` only if needed.
