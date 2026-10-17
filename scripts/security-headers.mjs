@@ -92,7 +92,7 @@ function install() {
   let cached = { at: 0, mtime: -1, headers: [], plain: [] };
   const current = () => {
     const now = Date.now();
-    if (now - cached.at < 5_000) return cached.headers;
+    if (now - cached.at < 5_000) return cached;
     let mtime = 0;
     try {
       mtime = statSync(stateFile).mtimeMs;
