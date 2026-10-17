@@ -128,11 +128,14 @@ export function cookieValue(request: Request, name: string = SESSION_COOKIE): st
   return undefined;
 }
 
-/** May this account act at all right now? Public mode also needs a password and a verified address. */
+/**
+ * May this account act at all right now? Public mode also needs a way to sign in (a password, or a linked GitHub user:
+ * "Sign in with GitHub" accounts have no password; unlinking is refused for them) and a verified address.
+ */
 export function accountUsable(account: Account, publicMode = isPublicMode()): boolean {
   if (account.status !== "active") return false;
   if (!publicMode) return true;
-  return Boolean(account.passwordHash) && account.emailVerifiedAt !== null && account.email !== null;
+  return (Boolean(account.passwordHash) || account.github !== null) && account.emailVerifiedAt !== null && account.email !== null;
 }
 
 function accountFromToken(token: string): Account | null {

@@ -98,6 +98,14 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 Answers that never depend on whether a username or address exists: register, resend, forgot (and the email change). What
 differs goes to the mailbox of the address concerned.
 
+## Sign in with GitHub
+
+With a GitHub App configured (docs/GITHUB.md), public mode offers "Continue with GitHub" on /login and /register: a
+known GitHub user signs in; a new one registers with GitHub's verified primary email (role user, no password); an
+existing account with that email is never taken over (it signs in with its password and links GitHub in Account
+settings). A session is valid for an account with a password or a linked GitHub user; a GitHub-only account cannot
+unlink until it sets a password, and deletes itself by typing its username. One account per GitHub user id.
+
 ## Data an account owns
 
 Every per-account path is built by `accountScope(id)` (`src/lib/storage/scope.ts`): the id is checked once against

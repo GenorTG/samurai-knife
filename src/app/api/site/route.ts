@@ -26,7 +26,8 @@ const connectSchema = z.object({
   baseBranch: z.string().max(200).optional(),
   productionUrl: z.string().max(500).optional(),
   pages: z.array(z.string().max(300)).max(10).optional(),
-  tokenSource: z.enum(["pat", "host-gh"]).optional(),
+  tokenSource: z.enum(["pat", "host-gh", "app"]).optional(),
+  installationId: z.number().int().positive().optional(),
   token: z.string().max(500).optional(),
   psiKey: z.string().max(200).optional(),
 }).strict();
@@ -35,7 +36,7 @@ const connectSchema = z.object({
 export async function PUT(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
-  const parsed = await parseBody(request, connectSchema, "{ repo, token?, tokenSource?, baseBranch?, productionUrl?, pages?, psiKey? }");
+  const parsed = await parseBody(request, connectSchema, "{ repo, token?, tokenSource?, installationId?, baseBranch?, productionUrl?, pages?, psiKey? }");
   if ("response" in parsed) return parsed.response;
   try {
     return json(await connect(auth.account.id, parsed.data));

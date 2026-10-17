@@ -124,10 +124,12 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         check("Connect offers the GitHub App (no token) by default", page_a.get_by_role("radio", name="GitHub App (no token)").get_attribute("aria-checked") == "true" or page_a.get_by_role("button", name="GitHub App (no token)").count() > 0)
         page_a.get_by_label("GitHub repository").select_option("genor/website")
         page_a.get_by_role("button", name="Connect", exact=True).click()
+        expect(page_a.get_by_text("Connected. Next: run an audit")).to_be_visible(timeout=20_000)
         expect(page_a.get_by_text("read and write")).to_be_visible(timeout=20_000)
-        check("alice connects genor/website through the installation", page_a.get_by_text("GitHub App installation 7").count() >= 0)
+        check("alice connects genor/website through the installation (read and write)", True)
         status, view, _ = api.call("GET", "/api/site", cookie=alice_cookie)
-        check("the stored connection is an installation, no token", status == 200 and view["connection"]["token"]["source"] == "app" and view["connection"]["token"]["installationId"] == 7, view.get("connection") if isinstance(view, dict) else view)
+        conn = (view or {}).get("connection") or {} if isinstance(view, dict) else {}
+        check("the stored connection is an installation, no token", status == 200 and conn.get("token", {}).get("source") == "app" and conn.get("token", {}).get("installationId") == 7, view)
 
         status, body, _ = api.call("POST", "/api/account/mcp-keys", {"action": "create", "name": "alice agent"}, cookie=alice_cookie)
         key = body.get("key", "") if isinstance(body, dict) else ""

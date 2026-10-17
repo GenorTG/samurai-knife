@@ -7,8 +7,9 @@ production until the user clicks Publish.
 
 ## Flow
 
-1. **Connect** a GitHub repository (`owner/name`) with a token, the production URL and up to 9 more page paths. Admins
-   may use the server's own `gh` login instead of a token.
+1. **Connect** a GitHub repository: through the server's **GitHub App** (no token: the user installs the app on the
+   repositories they choose, docs/GITHUB.md), or with a personal token; admins may use the server's own `gh` login. Plus
+   the production URL and up to 9 more page paths.
 2. **Score** (audit) the production site, the pull request's preview, or any URL.
 3. **Change**: the assistant or an MCP agent edits on a work branch `knife/<yyyymmdd>-<id>` (created from the base branch
    on the first change) and opens a pull request. Hosts like Vercel build a preview of it; the studio finds the

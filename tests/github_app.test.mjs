@@ -123,6 +123,9 @@ test("sign-in: a new GitHub user registers (verified email, user role, no passwo
   assert.equal(first.kind, "registered");
   assert.deepEqual({ id: first.account.id, role: first.account.role, status: first.account.status, pw: first.account.passwordHash, gh: first.account.github.id }, { id: "alice", role: "user", status: "active", pw: undefined, gh: 1001 });
   assert.ok(first.account.emailVerifiedAt);
+  const { accountUsable } = await import("../src/lib/accounts/session.ts");
+  assert.equal(accountUsable(first.account), true, "a password-less GitHub account may hold a session (public mode)");
+  assert.equal(accountUsable({ ...first.account, github: null }), false, "without GitHub and without a password it may not");
   const again = gaccounts.signInWithGithub(who, "203.0.113.5", true);
   assert.equal(again.kind, "login");
   assert.equal(again.account.id, "alice");
