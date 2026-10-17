@@ -6,6 +6,10 @@
 //   installations/new -> setup_url?installation_id&setup_action; GET /login/oauth/authorize -> redirect_uri?code&state;
 //   POST /login/oauth/access_token (checks client secret and the PKCE verifier). POST /__mock/user {login} switches who
 //   is "signed in on github.com".
+// - Per-user access (audit H1): installation 7 holds two repositories; alice administers both, carol (a member who sees the
+//   installation) may only read genor/website and cannot see genor/private-notes. GET /user/installations/<id>/repositories
+//   (user token) lists only what that user can access, with `permissions`; GET /repos/<repo>/collaborators/<login>/permission
+//   (installation token) answers the current right. POST /__mock/access {repo, login, permission|null} changes it.
 //
 //   node tests/mock_github_app.mjs <api-port> <web-port> <site-port> <psi-port>    (prints READY)
 import { createHash, createPublicKey, createVerify, generateKeyPairSync, randomBytes } from "node:crypto";
@@ -17,8 +21,18 @@ export const USERS = {
   mallory: { id: 2002, login: "mallory", name: "Mallory", email: "mallory@example.test", installations: [] },
   bob: { id: 3003, login: "bobgh", name: "Bob", email: "bob@example.test", installations: [] },
   noemail: { id: 4004, login: "ghost", name: "", email: null, installations: [] },
+  carol: { id: 5005, login: "carol", name: "Carol", email: "carol@example.test", installations: [7] },
 };
-export const INSTALLATIONS = { 7: { id: 7, account: "genor", repos: [REPO] } };
+export const PRIVATE_REPO = "genor/private-notes";
+export const INSTALLATIONS = { 7: { id: 7, account: "genor", repos: [REPO, PRIVATE_REPO] } };
+/** Who may do what where: repo -> login -> admin | write | read. */
+export const INITIAL_ACCESS = { [REPO]: { alice: "admin", carol: "read" }, [PRIVATE_REPO]: { alice: "admin" } };
+
+const PERMS = {
+  admin: { admin: true, maintain: true, push: true, triage: true, pull: true },
+  write: { admin: false, maintain: false, push: true, triage: true, pull: true },
+  read: { admin: false, maintain: false, push: false, triage: false, pull: true },
+};
 
 const b64 = (s) => Buffer.from(s, "base64url").toString("utf8");
 
@@ -32,6 +46,7 @@ export function createAppWorld() {
     userTokens: new Map(), // ghu_ -> user key
     installTokens: new Map(), // ghs_ -> { installation, repos }
     minted: [], // { installation, repositories } requests seen
+    access: JSON.parse(JSON.stringify(INITIAL_ACCESS)),
   };
 
   function verifyJwt(auth) {
@@ -75,6 +90,24 @@ export function createAppWorld() {
       const t = state.installTokens.get(bearer);
       if (!t) return [401, { message: "Bad credentials" }];
       return [200, { total_count: t.repos.length, repositories: t.repos.map((r) => ({ full_name: r, private: true, default_branch: "main", html_url: `https://github.com/${r}` })) }];
+    }
+    if ((m = /^\/user\/installations\/(\d+)\/repositories$/.exec(p))) {
+      const key = state.userTokens.get(bearer);
+      if (!key) return [401, { message: "Bad credentials" }];
+      const u = USERS[key];
+      const inst = INSTALLATIONS[m[1]];
+      if (!inst || !u.installations.includes(inst.id)) return [404, { message: "Not Found" }];
+      const visible = inst.repos.filter((r) => state.access[r]?.[u.login]);
+      return [200, { total_count: visible.length, repositories: visible.map((r) => ({ full_name: r, private: true, default_branch: "main", html_url: `https://github.com/${r}`, permissions: PERMS[state.access[r][u.login]] })) }];
+    }
+    if ((m = /^\/repos\/([^/]+\/[^/]+)\/collaborators\/([^/]+)\/permission$/.exec(p))) {
+      const t = state.installTokens.get(bearer);
+      if (!t || !t.repos.includes(m[1])) return [404, { message: "Not Found" }];
+      const login = decodeURIComponent(m[2]);
+      const u = Object.values(USERS).find((x) => x.login === login);
+      if (!u) return [404, { message: "Not Found" }];
+      const level = state.access[m[1]]?.[login] ?? null;
+      return [200, { permission: level ?? "none", role_name: level ?? "none", user: { login, id: u.id, permissions: level ? PERMS[level] : { admin: false, maintain: false, push: false, triage: false, pull: false } } }];
     }
     if (p === "/user" || p === "/user/emails" || p === "/user/installations") {
       const key = state.userTokens.get(bearer);
@@ -135,6 +168,13 @@ export function createAppWorld() {
       const token = `ghu_${randomBytes(12).toString("hex")}`;
       state.userTokens.set(token, entry.user);
       return [200, JSON.stringify({ access_token: token, token_type: "bearer", scope: "" })];
+    }
+    if (p === "/__mock/access" && method === "POST") {
+      const { repo, login, permission } = JSON.parse(form);
+      state.access[repo] ??= {};
+      if (permission) state.access[repo][login] = permission;
+      else delete state.access[repo][login];
+      return [200, "ok"];
     }
     if (p === "/__mock/user" && method === "POST") {
       state.webUser = JSON.parse(form).login;

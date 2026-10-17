@@ -12,7 +12,7 @@ export async function GET(request: Request): Promise<Response> {
   if ("response" in auth) return auth.response;
   const app = appStatus();
   try {
-    return json({ app: app.configured ? { slug: app.slug, name: app.name, installUrl: app.installUrl } : null, ...(app.configured ? await appRepositories(auth.account.id) : { login: null, installations: [] }) });
+    return json({ app: app.configured ? { slug: app.slug, name: app.name, installUrl: app.installUrl } : null, ...(app.configured ? appRepositories(auth.account.id) : { login: null, installations: [] }) });
   } catch (error) {
     return siteErrorResponse(error);
   }

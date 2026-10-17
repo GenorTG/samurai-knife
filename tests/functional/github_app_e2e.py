@@ -149,7 +149,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         page_m.wait_for_url("**/tools/site-studio?tab=connect**", timeout=30_000)
         hydrated(page_m)
         expect(page_m.get_by_text("Signed in as @mallory")).to_be_visible(timeout=20_000)
-        check("mallory's setup URL with installation 7 links nothing", page_m.get_by_text("not installed on any repository yet").is_visible())
+        check("mallory's setup URL with installation 7 links nothing", page_m.get_by_text("not installed on any repository you can write to yet").is_visible())
         mal_cookie = "knife_session=" + {c["name"]: c for c in ctx_m.cookies()}["knife_session"]["value"]
         status, body, _ = api.call("PUT", "/api/site", {"repo": "genor/website", "tokenSource": "app", "installationId": 7}, cookie=mal_cookie)
         check("connecting to alice's installation is refused (403)", status == 403, (status, body))

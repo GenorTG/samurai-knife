@@ -22,7 +22,16 @@ const tokenSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("app"), installationId: z.number().int().positive(), login: z.string().max(100) }),
 ]);
 
-const installationSchema = z.object({ id: z.number().int().positive(), account: z.string().max(100), accountType: z.string().max(40) });
+/** A repository of an installation as the linked GitHub user sees it (`GET /user/installations/{id}/repositories`). */
+const repoAccessSchema = z.object({ fullName: z.string().max(200), private: z.boolean(), defaultBranch: z.string().max(200), htmlUrl: z.string().max(500), push: z.boolean() });
+const installationSchema = z.object({
+  id: z.number().int().positive(),
+  account: z.string().max(100),
+  accountType: z.string().max(40),
+  /** Only these may be connected (with push). Absent in files written before per-user scoping: nothing is connectable. */
+  repos: z.array(repoAccessSchema).max(300).default([]),
+  reposVerified: z.boolean().default(false),
+});
 export type LinkedInstallation = z.infer<typeof installationSchema>;
 
 export const connectionSchema = z.object({

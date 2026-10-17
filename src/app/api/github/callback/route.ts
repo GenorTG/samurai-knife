@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/github/callback?code=&state= : GitHub's OAuth redirect. The state must be one this server issued, unused,
  * under 10 minutes old and come back in the browser that started the flow (cookie). Then: login/register -> a session;
- * link -> the GitHub identity and the app installations GitHub says this user can reach are stored for the account.
+ * link -> the GitHub identity and the app installations GitHub says this user can reach are stored for the account,
+ * each with the repositories this user's own token lists there and their push right (the only connectable ones).
  */
 export async function GET(request: Request): Promise<Response> {
   let base: string;
@@ -38,13 +39,13 @@ export async function GET(request: Request): Promise<Response> {
       if (!current || current.id !== flow.accountId) return back(base, "/login", { github_error: "session_changed" }, [clear]);
       const linked = linkGithub(current.id, who);
       if (!linked.ok) return back(base, flow.returnTo, { github_error: linked.code }, [clear]);
-      linkInstallations(current.id, who.login, await userInstallations(userToken));
+      await linkInstallations(current.id, who.login, userToken, await userInstallations(userToken));
       return back(base, flow.returnTo, { github: "linked" }, [clear]);
     }
     const result = signInWithGithub(who, clientIp(request), true);
     if (result.kind === "refused") return back(base, "/login", { github_error: result.code, github_message: result.message }, [clear]);
     try {
-      linkInstallations(result.account.id, who.login, await userInstallations(userToken));
+      await linkInstallations(result.account.id, who.login, userToken, await userInstallations(userToken));
     } catch {
       /* installations are optional for a sign-in */
     }

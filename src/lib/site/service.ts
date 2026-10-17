@@ -2,11 +2,12 @@ import { randomBytes } from "node:crypto";
 import { isAdmin } from "@/lib/accounts/authz";
 import { getAccount, type Account } from "@/lib/accounts/store";
 import { getRunner, runOk } from "@/lib/cv/showcase/runner";
-import { installationRepos, installationToken } from "@/lib/github-app/installations";
+import { installationToken, repoAccessOf, userInstallationRepos, type UserRepoAccess } from "@/lib/github-app/installations";
+import { recordSecurityEvent } from "@/lib/security/events";
 import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
 import * as github from "./github";
 import { SiteError } from "./net";
-import { loadSite, mutateSite, siteView, type SiteConnection } from "./store";
+import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
 
 /**
@@ -46,9 +47,82 @@ async function hostToken(a: Account): Promise<string> {
   return token;
 }
 
+/* ------------------------------------------------------------------ GitHub App: who may use which repository */
+
+/**
+ * An app installation's token can write every repository the app is installed on, so the app path is scoped per USER
+ * (audit H1): at link time we store, per installation, the repositories GitHub lists for the user's own token with
+ * their push right; connecting needs the repository in that list with push; and every site operation re-checks the
+ * linked GitHub user's current permission (cached ACCESS_TTL): unlinked, uninstalled or lost access drops the connection.
+ */
+const ACCESS_KEY = Symbol.for("samurai-knife.github-app-access.v1");
+const MAX_ACCESS_CACHE = 2_000;
+
+function accessTtlMs(): number {
+  const raw = Number(process.env.KNIFE_GITHUB_ACCESS_TTL_SEC ?? "");
+  return Number.isFinite(raw) && raw >= 0 ? Math.min(raw, 3_600) * 1_000 : 5 * 60_000;
+}
+
+function accessCache(): Map<string, number> {
+  const g = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+  const m = g[ACCESS_KEY];
+  return m instanceof Map ? m : (g[ACCESS_KEY] = new Map());
+}
+
+/** Tests only. */
+export function clearAppAccessCache(): void {
+  accessCache().clear();
+}
+
+function linkedRepo(site: ReturnType<typeof loadSite>, installationId: number, repo: string): UserRepoAccess | null {
+  const inst = site.github?.installations.find((i) => i.id === installationId);
+  return inst?.repos.find((r) => r.fullName.toLowerCase() === repo.toLowerCase()) ?? null;
+}
+
+function dropAppConnection(accountId: string, why: string): never {
+  mutateSite(accountId, (s) => {
+    if (s.connection?.token.source !== "app") return;
+    s.connection = null;
+    s.work = null;
+    s.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: why };
+  });
+  recordSecurityEvent({ type: "github-app-access-lost", accountId, detail: { reason: why.slice(0, 120) } });
+  throw new SiteError(`the website connection was removed: ${why}. Connect again (Connect tab) if you still have access.`, 403);
+}
+
+/** May this account (still) use the app installation on `repo`? Throws (and drops the connection) when not. */
+async function assertAppAccess(a: Account, installationId: number, repo: string, fresh = false): Promise<void> {
+  const github = getAccount(a.id)?.github;
+  if (!github) dropAppConnection(a.id, "GitHub is no longer linked to this account");
+  const site = loadSite(a.id);
+  const listed = linkedRepo(site, installationId, repo);
+  if (!listed?.push) dropAppConnection(a.id, `your GitHub user @${github.login} has no push access to ${repo} in the linked installation`);
+  const key = `${a.id}|${installationId}|${repo.toLowerCase()}|${github.id}`;
+  const cache = accessCache();
+  const at = cache.get(key);
+  if (!fresh && at !== undefined && Date.now() - at < accessTtlMs()) return;
+  let access: Awaited<ReturnType<typeof repoAccessOf>>;
+  try {
+    access = await repoAccessOf(installationId, repo, github.login, github.id);
+  } catch (error) {
+    // "No longer installed" is a definite loss; anything else (an outage) refuses this operation and keeps the connection.
+    if (error instanceof SiteError && error.status === 409) dropAppConnection(a.id, error.message);
+    throw error;
+  }
+  if (access !== "push") {
+    cache.delete(key);
+    dropAppConnection(a.id, `GitHub says @${github.login} can no longer push to ${repo}`);
+  }
+  if (cache.size >= MAX_ACCESS_CACHE) cache.delete(cache.keys().next().value as string);
+  cache.set(key, Date.now());
+}
+
 async function tokenOf(a: Account, c: SiteConnection): Promise<string> {
   if (c.token.source === "pat") return c.token.value;
-  if (c.token.source === "app") return installationToken(c.token.installationId, c.repo);
+  if (c.token.source === "app") {
+    await assertAppAccess(a, c.token.installationId, c.repo);
+    return installationToken(c.token.installationId, c.repo);
+  }
   return hostToken(a);
 }
 
@@ -80,8 +154,13 @@ export async function connect(accountId: string, input: ConnectInput) {
     const installationId = input.installationId ?? (current?.token.source === "app" ? current.token.installationId : undefined);
     const linked = site.github?.installations.find((i) => i.id === installationId);
     if (!installationId || !linked) throw new SiteError("that GitHub App installation is not linked to your account: use Connect with GitHub first", 403);
-    const repos = await installationRepos(installationId);
-    if (!repos.some((r) => r.fullName.toLowerCase() === repo.toLowerCase())) throw new SiteError(`the GitHub App is not installed on ${repo}: add the repository to the installation (Choose repositories on GitHub)`, 403);
+    if (!getAccount(accountId)?.github) throw new SiteError("link GitHub to this account first (Account settings, or Connect with GitHub)", 403);
+    // Only repositories GitHub listed for THIS user's own token, with push (never the installation's whole list).
+    const access = linkedRepo(site, installationId, repo);
+    if (!access) throw new SiteError(`${repo} is not one of your repositories in that installation (or the app is not installed on it): add it on GitHub, then Connect with GitHub again`, 403);
+    if (!access.push) throw new SiteError(`your GitHub user has no write access to ${repo}: ask its owner for write access, then Connect with GitHub again`, 403);
+    spend(a);
+    await assertAppAccess(a, installationId, repo, true);
     token = await installationToken(installationId, repo);
     stored = { source: "app", installationId, login: site.github?.login ?? linked.account };
   } else {
@@ -93,7 +172,7 @@ export async function connect(accountId: string, input: ConnectInput) {
     else throw new SiteError("a GitHub token is needed: create a fine-grained token for this repository with Contents and Pull requests (read and write)");
     stored = { source: "pat", value: token, login: "" };
   }
-  spend(a);
+  if (stored.source !== "app") spend(a); // the app path paid before its live permission check
   // Installation tokens are not a user: /user answers 403 for them (the login comes from the linked sign-in instead).
   if (stored.source !== "app") stored.login = (await github.getUser(token)).login;
   const info = await github.getRepo(token, repo);
@@ -317,31 +396,61 @@ export async function discard(accountId: string) {
   return { discarded: work.branch };
 }
 
-/** After a GitHub sign-in that proved which installations of the app this user can reach: remember them. */
-export function linkInstallations(accountId: string, login: string, installations: { id: number; account: string; accountType: string }[]) {
+/** Installations whose repositories are read per link (each costs up to 3 GitHub calls). */
+export const MAX_LINKED_INSTALLATIONS = 20;
+
+/**
+ * After a GitHub sign-in or link: the installations GitHub lists for this user, each with the repositories THIS user can
+ * access there (user token) and their push right. Replaces the previous list, so a lost repository disappears; an app
+ * connection whose repository is no longer listed with push is dropped at once.
+ */
+export async function linkInstallations(accountId: string, login: string, userToken: string, installations: { id: number; account: string; accountType: string }[]) {
+  const linked: LinkedInstallation[] = [];
+  for (const inst of installations.slice(0, MAX_LINKED_INSTALLATIONS)) {
+    let repos: UserRepoAccess[] = [];
+    let reposVerified = false;
+    try {
+      repos = await userInstallationRepos(userToken, inst.id);
+      reposVerified = true;
+    } catch {
+      /* listed without repositories: nothing in it is connectable until the next sign-in */
+    }
+    linked.push({ ...inst, repos, reposVerified });
+  }
+  let dropped = false;
   mutateSite(accountId, (site) => {
-    site.github = { login, installations: installations.slice(0, 100), checkedAt: new Date().toISOString() };
+    site.github = { login, installations: linked, checkedAt: new Date().toISOString() };
+    const c = site.connection;
+    if (c?.token.source === "app" && !linkedRepo(site, c.token.installationId, c.repo)?.push) {
+      site.connection = null;
+      site.work = null;
+      site.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: `GitHub no longer lists push access to ${c.repo} for @${login}` };
+      dropped = true;
+    }
   });
+  if (dropped) recordSecurityEvent({ type: "github-app-access-lost", accountId, detail: { reason: "relink" } });
 }
 
-/** GitHub unlinked: the installation list goes too (a repository already connected keeps working until disconnected). */
+/** GitHub unlinked: the installation list goes, and so does a connection that used the app (it was this user's right). */
 export function forgetInstallations(accountId: string) {
   mutateSite(accountId, (site) => {
     site.github = null;
+    if (site.connection?.token.source === "app") {
+      site.connection = null;
+      site.work = null;
+      site.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: "GitHub was unlinked from this account" };
+    }
   });
 }
 
-/** Repositories of every linked installation, for the Connect picker. */
-export async function appRepositories(accountId: string) {
+/** For the Connect picker: per linked installation, only the repositories this user may push to (no GitHub call). */
+export function appRepositories(accountId: string) {
   const site = loadSite(accountId);
-  if (!site.github) return { login: null, installations: [] as { id: number; account: string; repos: Awaited<ReturnType<typeof installationRepos>>; error: string }[] };
-  const installations = [];
-  for (const inst of site.github.installations) {
-    try {
-      installations.push({ ...inst, repos: await installationRepos(inst.id), error: "" });
-    } catch (error) {
-      installations.push({ ...inst, repos: [], error: error instanceof Error ? error.message : String(error) });
-    }
-  }
-  return { login: site.github.login, installations };
+  if (!site.github) return { login: null, installations: [] as { id: number; account: string; accountType: string; repos: UserRepoAccess[]; error: string }[] };
+  const installations = site.github.installations.map(({ repos, reposVerified, ...inst }) => ({
+    ...inst,
+    repos: repos.filter((r) => r.push),
+    error: reposVerified ? "" : "the repository list could not be read at sign-in: use Connect with GitHub again",
+  }));
+  return { login: site.github.login, installations, checkedAt: site.github.checkedAt };
 }

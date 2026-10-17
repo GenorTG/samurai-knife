@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createAppWorld, serveApi, serveWeb } from "./mock_github_app.mjs";
+import { PRIVATE_REPO } from "./mock_github_app.mjs";
 import { REPO } from "./mock_site_world.mjs";
 
 const dir = mkdtempSync(join(tmpdir(), "knife-ghapp-"));
@@ -208,7 +209,7 @@ test("installation tokens: minted with the app JWT, scoped to one repository, ca
   assert.equal(t1, t2, "cached until close to expiry");
   assert.equal(world.state.minted.length, before + 1);
   assert.deepEqual(world.state.minted.at(-1), { installation: 7, repositories: ["website"] });
-  assert.deepEqual((await installations.installationRepos(7)).map((r) => r.fullName), [REPO]);
+  assert.deepEqual((await installations.installationRepos(7)).map((r) => r.fullName), [REPO, PRIVATE_REPO], "the installation's own list: every repository the app is on");
   await assert.rejects(installations.installationToken(8, REPO), /no longer installed/);
 });
 
@@ -216,16 +217,16 @@ test("website studio on an installation: only installations proven by the user's
   // Mallory claims installation 7 (e.g. by typing it into the setup URL): her sign-in lists none, so nothing is linked.
   await oauthAs("mallory", { purpose: "login", accountId: null }).then(({ who }) => gaccounts.signInWithGithub(who, "203.0.113.9", true));
   const mal = await oauthAs("mallory", { purpose: "link", accountId: "mallory" });
-  service.linkInstallations("mallory", mal.who.login, await oauth.userInstallations(mal.token));
+  await service.linkInstallations("mallory", mal.who.login, mal.token, await oauth.userInstallations(mal.token));
   await assert.rejects(service.connect("mallory", { repo: REPO, tokenSource: "app", installationId: 7, productionUrl: "" }), /not linked to your account/);
   // Alice can reach installation 7: linked, connected, and the stored connection holds no secret.
   const al = await oauthAs("alice", { purpose: "link", accountId: "alice" });
   const insts = await oauth.userInstallations(al.token);
   assert.deepEqual(insts, [{ id: 7, account: "genor", accountType: "User" }]);
-  service.linkInstallations("alice", al.who.login, insts);
-  const repos = await service.appRepositories("alice");
-  assert.deepEqual(repos.installations[0].repos.map((r) => r.fullName), [REPO]);
-  await assert.rejects(service.connect("alice", { repo: "genor/other", tokenSource: "app", installationId: 7 }), /not installed on genor\/other/);
+  await service.linkInstallations("alice", al.who.login, al.token, insts);
+  const repos = service.appRepositories("alice");
+  assert.deepEqual(repos.installations[0].repos.map((r) => r.fullName), [REPO, PRIVATE_REPO], "alice administers both");
+  await assert.rejects(service.connect("alice", { repo: "genor/other", tokenSource: "app", installationId: 7 }), /not one of your repositories/);
   const { view, warning } = await service.connect("alice", { repo: REPO, tokenSource: "app", installationId: 7 });
   assert.equal(warning, "");
   assert.deepEqual({ source: view.connection.token.source, login: view.connection.token.login, inst: view.connection.token.installationId }, { source: "app", login: "alice", inst: 7 });
@@ -237,4 +238,69 @@ test("website studio on an installation: only installations proven by the user's
   assert.match(w.branch, /^knife\//);
   assert.match(world.gh.fileAt(w.branch, "lib/site-data.ts"), /Alice/);
   assert.equal(readFileSync(process.env.KNIFE_GITHUB_APP_FILE, "utf8").includes("PRIVATE KEY"), true, "the app key lives only in the app file");
+});
+
+const events = await import("../src/lib/security/events.ts");
+
+async function signUpAndLink(user) {
+  const { who } = await oauthAs(user, { purpose: "login", accountId: null });
+  const signed = gaccounts.signInWithGithub(who, "203.0.113.20", true);
+  const id = signed.account.id;
+  const linked = await oauthAs(user, { purpose: "link", accountId: id });
+  await service.linkInstallations(id, linked.who.login, linked.token, await oauth.userInstallations(linked.token));
+  return id;
+}
+
+test("H1: an installation member gets only the repositories GITHUB lists for HER token, and only with push", async () => {
+  const mintedBefore = world.state.minted.length;
+  const carol = await signUpAndLink("carol");
+  // The attack from the audit: carol sees installation 7 (an org she belongs to) and names a repository she cannot read.
+  assert.deepEqual(siteStore.loadSite(carol).github.installations.map((i) => i.id), [7], "the installation is linked");
+  assert.deepEqual(siteStore.loadSite(carol).github.installations[0].repos.map((r) => [r.fullName, r.push]), [[REPO, false]], "the private repository is not even listed for her token");
+  assert.deepEqual(service.appRepositories(carol).installations[0].repos, [], "the Connect picker lists no repository she cannot push to (not the installation's private ones)");
+  await assert.rejects(service.connect(carol, { repo: PRIVATE_REPO, tokenSource: "app", installationId: 7 }), /not one of your repositories/);
+  await assert.rejects(service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 }), /no write access/);
+  assert.equal(siteStore.loadSite(carol).connection, null, "nothing connected");
+  assert.deepEqual(world.state.minted.slice(mintedBefore), [], "no installation token was minted for her at all");
+});
+
+test("H1: lost access, a renamed login and unlinking drop the app connection", async () => {
+  const carol = "carol";
+  world.state.access[REPO].carol = "write";
+  const linked = await oauthAs("carol", { purpose: "link", accountId: carol });
+  await service.linkInstallations(carol, linked.who.login, linked.token, await oauth.userInstallations(linked.token));
+  const { view } = await service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 });
+  assert.equal(view.connection.repo, REPO, "with write access the connection works");
+  await service.listFiles(carol);
+  // Access revoked on GitHub: the next operation after the cache window re-checks, refuses and drops the connection.
+  world.state.access[REPO].carol = "read";
+  service.clearAppAccessCache();
+  const before = events.recentSecurityEvents().length;
+  await assert.rejects(service.listFiles(carol), /connection was removed: GitHub says @carol can no longer push/);
+  assert.equal(siteStore.loadSite(carol).connection, null);
+  assert.ok(events.recentSecurityEvents().slice(before).some((e) => e.type === "github-app-access-lost" && e.accountId === carol));
+  // Re-linking after the access came back restores the right to connect; a relink that no longer lists push drops it.
+  world.state.access[REPO].carol = "write";
+  await service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 });
+  world.state.access[REPO].carol = "read";
+  const again = await oauthAs("carol", { purpose: "link", accountId: carol });
+  await service.linkInstallations(carol, again.who.login, again.token, await oauth.userInstallations(again.token));
+  assert.equal(siteStore.loadSite(carol).connection, null, "a relink without push drops the connection at once");
+  // The GitHub user behind the login changed (rename + someone else took it): the stable id no longer matches.
+  world.state.access[REPO].carol = "write";
+  const third = await oauthAs("carol", { purpose: "link", accountId: carol });
+  await service.linkInstallations(carol, third.who.login, third.token, await oauth.userInstallations(third.token));
+  await service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 });
+  accounts.mutateStore((s) => {
+    s.accounts.find((a) => a.id === carol).github.id = 999_999;
+  });
+  service.clearAppAccessCache();
+  await assert.rejects(service.listFiles(carol), /connection was removed/);
+  accounts.mutateStore((s) => {
+    s.accounts.find((a) => a.id === carol).github.id = 5005;
+  });
+  // Unlinking GitHub takes the app connection with it.
+  await service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 });
+  service.forgetInstallations(carol);
+  assert.equal(siteStore.loadSite(carol).connection, null, "unlink drops the app connection");
 });

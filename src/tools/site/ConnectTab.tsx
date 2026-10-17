@@ -181,7 +181,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
               ) : (
                 <>
                   <p className="text-muted">
-                    Signed in as <b>@{gh.login}</b>. {appRepos.length ? `${appRepos.length} repository(ies) available.` : "The app is not installed on any repository yet."}
+                    Signed in as <b>@{gh.login}</b>. {appRepos.length ? `${appRepos.length} repository(ies) available.` : "The app is not installed on any repository you can write to yet."}
                   </p>
                   {gh.installations.filter((i) => i.error).map((i) => <Notice key={i.id} tone="warn">{i.account}: {i.error}</Notice>)}
                   <div className="flex flex-wrap gap-2">
