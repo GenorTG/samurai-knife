@@ -45,7 +45,8 @@ export function createGithub(initialFiles) {
   const deploy = (s) => {
     // Like Vercel: every pushed commit gets a deployment whose success status carries the preview URL.
     const id = deployments.length + 1;
-    deployments.push({ id, sha: s, environment: "Preview", statuses: [{ state: "success", environment_url: `https://preview-${s.slice(0, 7)}.example.test` }] });
+    // MOCK_PREVIEW_URL (e2e): point previews at the mock site so they can be audited.
+    deployments.push({ id, sha: s, environment: "Preview", statuses: [{ state: "success", environment_url: process.env.MOCK_PREVIEW_URL || `https://preview-${s.slice(0, 7)}.example.test` }] });
   };
   const pullJson = (p) => ({
     number: p.number, html_url: `https://github.com/${REPO}/pull/${p.number}`, title: p.title, body: p.body, state: p.state,
