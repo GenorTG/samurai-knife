@@ -1,8 +1,9 @@
 # Deploying the public instance
 
 How to run Samurai Knife for other people: a production build in `KNIFE_AUTH_MODE=public`, bound to an address only the
-reverse proxy reaches, behind HTTPS. The private owner-only toolbox (`npm run dev` on a loopback/Tailscale bind) is a
-different setup and stays as it is. Names below (`knife.example.org`, `office.example.org`) are placeholders.
+reverse proxy reaches, behind HTTPS. The private owner-only toolbox (private mode on a loopback/Tailscale bind) runs the same way
+without the proxy: a production build in its own checkout, started with `serve.mjs start` (sections 1 and 3), never
+from the checkout you develop in. Names below (`knife.example.org`, `office.example.org`) are placeholders.
 
 ## 1. A separate checkout
 
