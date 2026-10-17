@@ -28,12 +28,35 @@ function compose(subject: string, blocks: Block[]): MailContent {
 
 const IGNORE = "If you did not ask for this, ignore this message; nothing changes.";
 
+/**
+ * Says plainly who asked: anyone can type any address into the sign-up form, so the person reading this may not be the
+ * one who chose the username and the password (audit M3: confirming someone else's sign-up hands them your address).
+ */
 export function verifyEmailMail(username: string, link: string): MailContent {
   return compose(`Confirm your email for ${APP}`, [
-    `Hello ${username},`,
-    `Confirm this address to activate your ${APP} account. The link works once and expires in 24 hours.`,
+    `Someone signed up for ${APP} with the username "${username}" and this email address.`,
+    `If that was you, confirm the address to activate the account. The link works once and expires in 24 hours.`,
     { link, label: "Confirm my email" },
+    `If it was not you, do not open the link: ignore this message and no account will use your address. Whoever chose the password would be able to log in to an account you confirm.`,
+  ]);
+}
+
+/** Forgot / resend on an unconfirmed sign-up: that sign-up is gone; the owner of the address starts a fresh one. */
+export function pendingReleasedMail(link: string): MailContent {
+  return compose(`Create your ${APP} account`, [
+    `Someone (maybe you) asked for a ${APP} link for this email address. An unconfirmed sign-up that used this address was cancelled, so the address is free.`,
+    `To use ${APP}, create your account with your own username and password.`,
+    { link, label: "Create my account" },
     IGNORE,
+  ]);
+}
+
+export function loginLockoutMail(username: string, link: string): MailContent {
+  return compose(`Many failed logins on your ${APP} account`, [
+    `Hello ${username},`,
+    `Someone tried many wrong passwords for your ${APP} account in the last minutes. Logins from browsers you have used before still work; everyone else now has to wait or solve an extra check.`,
+    `If this was not you, your password is still safe as long as it is not used elsewhere. You can set a new one at any time.`,
+    { link, label: "Set a new password" },
   ]);
 }
 
@@ -88,10 +111,14 @@ export function emailInUseMail(link: string): MailContent {
   ]);
 }
 
-export function passwordChangedMail(username: string): MailContent {
+export function passwordChangedMail(username: string, mcpKeysRevoked = 0): MailContent {
   return compose(`Your ${APP} password changed`, [
     `Hello ${username},`,
-    `The password of your ${APP} account was changed and every other session was signed out. If this was not you, reset your password now and contact the administrator.`,
+    `The password of your ${APP} account was changed and every other session was signed out.`,
+    mcpKeysRevoked > 0
+      ? `Your ${mcpKeysRevoked} MCP key${mcpKeysRevoked === 1 ? " was" : "s were"} revoked as well: agents that used ${mcpKeysRevoked === 1 ? "it" : "them"} need a new key from Account settings.`
+      : `Any MCP keys of the account were revoked as well; agents need a new key from Account settings.`,
+    `If this was not you, reset your password now and contact the administrator.`,
   ]);
 }
 

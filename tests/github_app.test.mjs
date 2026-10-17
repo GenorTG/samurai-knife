@@ -96,30 +96,62 @@ async function oauthAs(user, flow) {
   await fetch(`http://127.0.0.1:${web.port}/__mock/user`, { method: "POST", body: JSON.stringify({ login: user }) });
   const app = config.loadApp();
   const redirectUri = `${BASE}/api/github/callback`;
-  const { state, challenge } = oauth.beginFlow({ redirectUri, returnTo: "/", ...flow });
+  const { state, challenge, cookie } = oauth.beginFlow({ redirectUri, returnTo: "/", ...flow });
   const back = redirectParams(world.web("GET", new URL(oauth.authorizeUrl(app, redirectUri, state, challenge)), ""));
-  const pending = oauth.takeFlow(back.get("state"), state);
+  const pending = oauth.takeFlow(back.get("state"), cookie);
   assert.ok(pending, "the state comes back once, in the same browser");
   const token = await oauth.exchangeCode(app, back.get("code"), pending);
   return { token, who: await oauth.identity(token) };
 }
 
-test("OAuth state: one-time, must come back in the same browser (cookie)", () => {
-  const { state } = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri: "x", returnTo: "/" });
-  assert.equal(oauth.takeFlow(state, "other-browser"), null, "a callback opened in another browser is refused");
-  assert.equal(oauth.takeFlow(state, state), null, "and the state is burnt");
+test("OAuth state: one-time, must come back in the same browser (sealed cookie, nothing kept per started flow)", () => {
+  const a = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri: "x", returnTo: "/" });
+  const b = oauth.beginFlow({ purpose: "link", accountId: "bob", redirectUri: "x", returnTo: "/account" });
+  assert.equal(oauth.takeFlow(a.state, undefined), null, "a callback opened in another browser (no cookie) is refused");
+  assert.equal(oauth.takeFlow(a.state, b.cookie), null, "another flow's cookie does not carry this state");
+  assert.equal(oauth.takeFlow(a.state, a.state), null, "the bare state is not a cookie");
+  const parts = a.cookie.split(".");
+  const flipped = `${parts[0]}.${parts[1]}.${parts[2].slice(0, -2)}${parts[2].endsWith("AA") ? "BB" : "AA"}`;
+  assert.equal(oauth.takeFlow(a.state, flipped), null, "a tampered cookie does not open");
+  assert.ok(!a.cookie.includes("login") && !Buffer.from(parts[2], "base64url").toString("utf8").includes("verifier"), "the PKCE verifier and purpose are sealed, not readable");
+  const flow = oauth.takeFlow(a.state, a.cookie);
+  assert.equal(flow?.purpose, "login");
+  assert.equal(oauth.takeFlow(a.state, a.cookie), null, "and the state is burnt: the same cookie works once");
   assert.equal(oauth.takeFlow("made-up", "made-up"), null);
+  const old = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri: "x", returnTo: "/" });
+  assert.equal(oauth.takeFlow(old.state, old.cookie, Date.now() + 11 * 60_000), null, "older than 10 minutes");
+  const evil = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri: "x", returnTo: "/\t/evil.example" });
+  assert.equal(oauth.takeFlow(evil.state, evil.cookie)?.returnTo, "/", "the return path is re-checked");
   assert.equal(oauth.safeReturnTo("//evil.example"), "/");
   assert.equal(oauth.safeReturnTo("https://evil.example"), "/");
+  assert.equal(oauth.safeReturnTo("/\t/evil.example"), "/", "audit M1: a tab that browsers strip");
   assert.equal(oauth.safeReturnTo("/tools/site-studio?tab=connect"), "/tools/site-studio?tab=connect");
+});
+
+test("OAuth: the consumed-state set is bounded and refuses instead of forgetting a live state", () => {
+  const key = Symbol.for("samurai-knife.github-consumed-states.v1");
+  const used = globalThis[key];
+  assert.ok(used instanceof Map);
+  const saved = new Map(used);
+  try {
+    const later = Date.now() + 60 * 60_000;
+    for (let i = used.size; i < 10_000; i += 1) used.set(`filler-${i}`, later);
+    const f = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri: "x", returnTo: "/" });
+    assert.equal(oauth.takeFlow(f.state, f.cookie), null, "full with live entries: refused (fail closed)");
+    for (const k of [...used.keys()].filter((k) => k.startsWith("filler-")).slice(0, 10)) used.set(k, Date.now() - 1);
+    assert.ok(oauth.takeFlow(f.state, f.cookie), "expired entries make room again");
+  } finally {
+    used.clear();
+    for (const [k, v] of saved) used.set(k, v);
+  }
 });
 
 test("PKCE: a wrong verifier is refused by GitHub", async () => {
   const app = config.loadApp();
   const redirectUri = `${BASE}/api/github/callback`;
-  const { state, challenge } = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri, returnTo: "/" });
+  const { state, challenge, cookie } = oauth.beginFlow({ purpose: "login", accountId: null, redirectUri, returnTo: "/" });
   const back = redirectParams(world.web("GET", new URL(oauth.authorizeUrl(app, redirectUri, state, challenge)), ""));
-  const pending = oauth.takeFlow(back.get("state"), state);
+  const pending = oauth.takeFlow(back.get("state"), cookie);
   await assert.rejects(oauth.exchangeCode(app, back.get("code"), { ...pending, verifier: "forged" }), /PKCE|did not accept/);
 });
 

@@ -75,10 +75,11 @@ function unlock() {
 // fail() exits mid-write: release only a lock this process took.
 process.on("exit", unlock);
 
-// v1 accounts (no version) get the v2 fields: an account made by the owner is an active admin.
-function withV2Fields(account) {
+// v1 accounts (file without a version) get the v2 fields: an account made by the owner is an active admin. In a v2 file a
+// missing role or status fails closed (user, disabled), the same rule as src/lib/accounts/store.ts.
+function withV2Fields(account, legacy = true) {
   return {
-    email: null, emailVerifiedAt: null, role: "admin", status: "active", storageQuotaBytes: null, lastLoginAt: null,
+    email: null, emailVerifiedAt: null, role: legacy ? "admin" : "user", status: legacy ? "active" : "disabled", storageQuotaBytes: null, lastLoginAt: null,
     ...account,
   };
 }
@@ -140,7 +141,7 @@ function writeStore(store) {
   try { chmodSync(dir, 0o700); } catch { /* not ours */ }
   const emails = store.accounts.map((a) => a.email).filter(Boolean);
   if (new Set(emails).size !== emails.length) fail("two accounts would share an email address");
-  const accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a), sealValue));
+  const accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a, false), sealValue));
   const text = `${JSON.stringify({ ...store, version: STORE_VERSION, accounts }, null, 2)}\n`;
   lock();
   try {
@@ -177,14 +178,16 @@ function readStore() {
     fail(`${file} has an unexpected shape`);
   }
   if (typeof store.version === "number" && store.version > STORE_VERSION) fail(`${file} is format v${store.version}; this CLI knows v${STORE_VERSION}`);
-  store.accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a), openValue));
+  const legacy = typeof store.version !== "number";
+  store.accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a, legacy), openValue));
   return store;
 }
 
 function hashPassword(password) {
-  const N = 16384, r = 8, p = 1;
+  // Same parameters as src/lib/accounts/password.ts (OWASP: N=2^17, r=8, p=1).
+  const N = 131072, r = 8, p = 1;
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64, { N, r, p });
+  const hash = scryptSync(password, salt, 64, { N, r, p, maxmem: 288 * 1024 * 1024 });
   return `scrypt$${N}$${r}$${p}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 

@@ -2,18 +2,19 @@ import * as z from "zod/v4";
 import { flowErrorResponse, json, parseBody, publicOnly } from "@/lib/accounts/http";
 import { clientIp } from "@/lib/accounts/network";
 import { resendVerification } from "@/lib/accounts/flows";
+import { powField } from "@/lib/accounts/pow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const bodySchema = z.object({ email: z.string().max(320) }).strict();
+const bodySchema = z.object({ email: z.string().max(320), pow: powField }).strict();
 
 /** POST /api/account/resend { email } -> 202, same answer for every address. */
 export async function POST(request: Request): Promise<Response> {
   const off = publicOnly();
   if (off) return off;
-  const parsed = await parseBody(request, bodySchema, "{ email }");
+  const parsed = await parseBody(request, bodySchema, "{ email, pow }");
   if ("response" in parsed) return parsed.response;
-  const result = resendVerification(parsed.data.email, clientIp(request));
+  const result = resendVerification(parsed.data.email, clientIp(request), parsed.data.pow);
   return result.ok ? json({ ok: true, message: result.message }, 202) : flowErrorResponse(result);
 }

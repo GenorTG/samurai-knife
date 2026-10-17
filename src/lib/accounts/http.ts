@@ -44,9 +44,16 @@ export function publicOnly(): NextResponse | null {
   return isPublicMode() ? null : jsonError("not_found", 404);
 }
 
-/** A failed account flow as a response (`Retry-After` on 429). */
-export function flowErrorResponse(failure: { status: number; error: string; retryAfterSeconds?: number }): NextResponse {
-  const response = jsonError(failure.error, failure.status, failure.retryAfterSeconds ? { retryAfterSeconds: failure.retryAfterSeconds } : undefined);
+/**
+ * A failed account flow as a response (`Retry-After` on 429/503; `bits` on 428 challenge_required, the proof-of-work
+ * difficulty to fetch a challenge for; `message` when the flow has a readable one).
+ */
+export function flowErrorResponse(failure: { status: number; error: string; retryAfterSeconds?: number; bits?: number; message?: string }): NextResponse {
+  const extra: Record<string, unknown> = {};
+  if (failure.retryAfterSeconds) extra.retryAfterSeconds = failure.retryAfterSeconds;
+  if (failure.bits !== undefined) extra.bits = failure.bits;
+  if (failure.message) extra.message = failure.message;
+  const response = jsonError(failure.error, failure.status, Object.keys(extra).length > 0 ? extra : undefined);
   if (failure.retryAfterSeconds) response.headers.set("Retry-After", String(failure.retryAfterSeconds));
   return response;
 }

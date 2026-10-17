@@ -101,4 +101,21 @@ export const LIMITS = {
   outboundAudit: (id: string): Limit => ({ key: `outbound:audit:${id}`, max: 6, windowMs: 60 * MINUTE }),
   /** Website studio: GitHub API calls made with the account's own token. */
   outboundGithub: (id: string): Limit => ({ key: `outbound:github:${id}`, max: 600, windowMs: 10 * MINUTE }),
+  /* Sign-in hardening (docs/ACCOUNTS.md "Rate limits"): link checks, login signals, GitHub start. */
+  /** Verify / reset links: every request counts, per client address and per token hash (cheap refusals first). */
+  verifyIp: (ip: string): Limit => ({ key: `verify:ip:${ip}`, max: 20, windowMs: 10 * MINUTE }),
+  verifyToken: (hash: string): Limit => ({ key: `verify:token:${hash}`, max: 5, windowMs: 10 * MINUTE }),
+  resetIp: (ip: string): Limit => ({ key: `reset:ip:${ip}`, max: 20, windowMs: 10 * MINUTE }),
+  resetToken: (hash: string): Limit => ({ key: `reset:token:${hash}`, max: 5, windowMs: 10 * MINUTE }),
+  /** Successful logins per account (each one writes a session). */
+  loginSuccess: (id: string): Limit => ({ key: `login:success:${id}`, max: 30, windowMs: HOUR }),
+  /** Failures from one known device (its own bucket instead of the identifier's). */
+  loginDevice: (device: string): Limit => ({ key: `login:device:${device}`, max: 10, windowMs: 15 * MINUTE }),
+  /** Signals, never refusals: 3 failures for an identifier or from an address make the next login need proof-of-work. */
+  loginFailAccount: (id: string): Limit => ({ key: `login:fail:account:${id}`, max: 3, windowMs: 15 * MINUTE }),
+  loginFailIp: (ip: string): Limit => ({ key: `login:fail:ip:${ip}`, max: 3, windowMs: 15 * MINUTE }),
+  /** Hard ceiling per identifier even with proof-of-work (known devices are exempt). */
+  loginAccountDay: (id: string): Limit => ({ key: `login:account-day:${id}`, max: 200, windowMs: 24 * HOUR }),
+  /** `GET /api/github/start` for sign-in/sign-up (no session): per client address. */
+  githubStartIp: (ip: string): Limit => ({ key: `github:start:${ip}`, max: 20, windowMs: 10 * MINUTE }),
 };

@@ -81,6 +81,7 @@ function addAccount(id, extra = {}) {
       email: `${id}@example.com`,
       emailVerifiedAt: "2026-01-01T00:00:00.000Z",
       role: "user",
+      status: "active",
       ...extra,
     }));
     if (!s.defaultAccountId) s.defaultAccountId = id;

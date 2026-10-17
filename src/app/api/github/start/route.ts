@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isPublicMode } from "@/lib/accounts/mode";
-import { resolveAccount } from "@/lib/accounts/session";
+import { consumeLimits, LIMITS } from "@/lib/accounts/rate-limit";
+import { clientIp, resolveAccount } from "@/lib/accounts/session";
 import { GITHUB_WEB, loadApp } from "@/lib/github-app/config";
 import { back, requestBase } from "@/lib/github-app/http";
 import { callbackPaths, publicBase } from "@/lib/github-app/manifest";
@@ -39,6 +40,8 @@ export async function GET(request: Request): Promise<Response> {
   const account = resolveAccount(request);
   if (purpose === "login" || purpose === "register") {
     if (!isPublicMode()) return fail("public_only");
+    // No session yet: bounded per client address (each start costs a sealed cookie and a GitHub round trip).
+    if (!consumeLimits([LIMITS.githubStartIp(clientIp(request))]).ok) return fail("rate_limited");
   } else if (!account) {
     return back(base, "/login", { next: `/api/github/start?purpose=${purpose}&returnTo=${encodeURIComponent(returnTo)}` });
   }
@@ -47,9 +50,9 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(`${GITHUB_WEB()}/apps/${app.slug}/installations/new`, 303);
   }
   const redirectUri = callbackPaths(pub).callback;
-  const { state, challenge } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo });
+  const { state, challenge, cookie } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo });
   const response = NextResponse.redirect(authorizeUrl(app, redirectUri, state, challenge), 303);
-  response.headers.append("Set-Cookie", stateCookie(request, state));
+  response.headers.append("Set-Cookie", stateCookie(request, cookie));
   response.headers.set("Cache-Control", "no-store");
   return response;
 }

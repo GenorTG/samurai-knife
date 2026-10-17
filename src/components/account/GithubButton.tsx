@@ -22,6 +22,7 @@ const MESSAGES: Record<string, string> = {
   github_taken: "That GitHub user is already linked to another account.",
   session_changed: "You were signed in as someone else when GitHub answered: start again.",
   exchange_failed: "GitHub did not accept the sign-in: start again.",
+  rate_limited: "Too many GitHub sign-ins from here. Wait a few minutes and start again.",
 };
 
 /** The message for `?github_error=` (the server's own text in `github_message` wins). */

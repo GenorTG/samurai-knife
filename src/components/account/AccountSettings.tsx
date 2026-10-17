@@ -26,12 +26,13 @@ function ChangePassword() {
     event.preventDefault();
     setWorking(true);
     setNote(null);
-    const reply = await call<{ signedOut: number }>("POST", "/api/account/password", { currentPassword: current, newPassword: next });
+    const reply = await call<{ signedOut: number; mcpKeysRevoked: number }>("POST", "/api/account/password", { currentPassword: current, newPassword: next });
     setWorking(false);
     if (reply.ok) {
       setCurrent("");
       setNext("");
-      setNote({ tone: "good", text: `Password changed. ${reply.body.signedOut} other session(s) were signed out.` });
+      const keys = reply.body.mcpKeysRevoked > 0 ? ` ${reply.body.mcpKeysRevoked} MCP key(s) were revoked: create new ones for your agents.` : "";
+      setNote({ tone: "good", text: `Password changed. ${reply.body.signedOut} other session(s) were signed out.${keys}` });
     } else {
       setNote({ tone: "error", text: reply.message });
     }
@@ -43,7 +44,7 @@ function ChangePassword() {
         <Field label="Current password">
           <TextInput type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
         </Field>
-        <Field label="New password" hint="At least 10 characters. Signs out your other devices.">
+        <Field label="New password" hint="At least 10 characters. Signs out your other devices and revokes your MCP keys.">
           <TextInput type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={10} />
         </Field>
         <div className="space-y-3 sm:col-span-2">
@@ -148,6 +149,7 @@ function Storage() {
 function Sessions({ username }: { username: string }) {
   const [count, setCount] = useState<number | null>(null);
   const [note, setNote] = useState<Note>(null);
+  const [revokeKeys, setRevokeKeys] = useState(false);
   useEffect(() => {
     void call<{ count: number }>("GET", "/api/account/sessions").then((reply) => {
       if (reply.ok) setCount(reply.body.count);
@@ -158,7 +160,7 @@ function Sessions({ username }: { username: string }) {
     // Nothing of this account stays in this browser for the next person (transcript, queue, SQL schema, trust mode).
     clearAccountStorage(username);
     const reply = everywhere
-      ? await call<{ revoked: number }>("POST", "/api/account/sessions", { action: "revoke-all" })
+      ? await call<{ revoked: number }>("POST", "/api/account/sessions", { action: "revoke-all", mcpKeys: revokeKeys })
       : await call("POST", "/api/account/logout", {});
     if (reply.ok) hardNavigate("/login");
     else setNote({ tone: "error", text: reply.message });
@@ -170,6 +172,10 @@ function Sessions({ username }: { username: string }) {
         <p className="text-sm text-muted">
           {count === null ? "Counting your sessions…" : `${count} signed-in session(s) (browsers and devices), this one included.`}
         </p>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={revokeKeys} onChange={(e) => setRevokeKeys(e.target.checked)} />
+          With &quot;Log out everywhere&quot;, also revoke every MCP key (agents lose access until you create a new key)
+        </label>
         <Status note={note} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => void logout(false)}>Log out</Button>

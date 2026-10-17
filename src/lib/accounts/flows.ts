@@ -6,14 +6,19 @@ import {
   mutateStore,
   newAccountRecord,
   normalizeEmail,
+  readStore,
   type Account,
   type AccountStore,
 } from "@/lib/accounts/store";
-import { hashPasswordAsync, MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS, verifyPasswordAsync } from "@/lib/accounts/password";
+import { HashBusyError, hashPasswordAsync, MAX_PASSWORD_CHARS, MIN_PASSWORD_CHARS, verifyPasswordAsync } from "@/lib/accounts/password";
 import { consumeLimits, checkLimits, hitLimits, LIMITS, type LimitCheck } from "@/lib/accounts/rate-limit";
 import { revokeAllSessions } from "@/lib/accounts/session";
 import { deleteAccountData } from "@/lib/accounts/data";
 import { revokeAllMcpKeys } from "@/lib/accounts/mcp-keys";
+import { checkPow, type PowForm, type PowSolution } from "@/lib/accounts/pow";
+import { dropExpiredPending, ensurePendingSweeper, pendingRoom, pendingRoomNow, VERIFY_TTL_MS } from "@/lib/accounts/pending";
+import { clientPrefix, prefixTag } from "@/lib/accounts/ip-prefix";
+import { recordSecurityEvent } from "@/lib/security/events";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
 import {
   accountDeletedMail,
@@ -21,6 +26,7 @@ import {
   emailChangedNoticeMail,
   emailInUseMail,
   passwordChangedMail,
+  pendingReleasedMail,
   registerCollisionMail,
   resetPasswordMail,
   usernameTakenMail,
@@ -31,12 +37,16 @@ import {
  * Public-mode account flows (docs/ACCOUNTS.md "Flows"). The rule for anything an outsider can call (register, resend,
  * forgot): the answer never depends on whether a username or address exists; what differs goes into the mailbox of that
  * address instead. Links carry 32 random bytes; only their SHA-256 is stored, and a link works once.
+ *
+ * Cost order for every unauthenticated flow (audit abuse #4, #6): input syntax, proof-of-work (`pow.ts`), rate limits,
+ * read-only lookups on the cached store, and only then password hashing (inside the global hash budget, busy -> 503),
+ * store writes and mail. A made-up verify/reset token never writes the store or hashes a password.
  */
 
-const VERIFY_TTL_MS = 24 * 60 * 60_000;
 const RESET_TTL_MS = 60 * 60_000;
 const MAX_EMAIL = 254;
 const EMAIL = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
+const TOKEN = /^[A-Za-z0-9_-]{20,128}$/;
 
 /** Names nobody may register: they read as the site itself in mail and the UI. */
 export const RESERVED = new Set([
@@ -44,15 +54,29 @@ export const RESERVED = new Set([
   "webmaster", "hostmaster", "mailer-daemon", "knife", "samurai-knife", "api", "account", "accounts",
 ]);
 
-export type FlowError = { ok: false; status: number; error: string; retryAfterSeconds?: number };
+export type FlowError = { ok: false; status: number; error: string; retryAfterSeconds?: number; bits?: number; message?: string };
 export type FlowOk<T = object> = { ok: true } & T;
 
-function fail(status: number, error: string, extra?: { retryAfterSeconds?: number }): FlowError {
+function fail(status: number, error: string, extra?: { retryAfterSeconds?: number; bits?: number; message?: string }): FlowError {
   return { ok: false, status, error, ...extra };
 }
 
 function limited(verdict: LimitCheck): FlowError | null {
   return verdict.ok ? null : fail(429, "rate_limited", { retryAfterSeconds: verdict.retryAfterSeconds });
+}
+
+/** Proof-of-work gate as a flow error (428 challenge_required / challenge_invalid, 503 busy), or null when it passed. */
+function powGate(form: PowForm, ip: string, pow: PowSolution | null | undefined): FlowError | null {
+  const verdict = checkPow(form, ip, pow);
+  return verdict.ok ? null : fail(verdict.status, verdict.error, { bits: verdict.bits, retryAfterSeconds: verdict.retryAfterSeconds });
+}
+
+function busy(error: unknown): FlowError {
+  if (error instanceof HashBusyError) {
+    recordSecurityEvent({ kind: "hash_busy" });
+    return fail(503, "busy", { retryAfterSeconds: error.retryAfterSeconds, message: error.message });
+  }
+  throw error;
 }
 
 export function newToken(ttlMs: number): { raw: string; record: { hash: string; expiresAt: string } } {
@@ -81,24 +105,14 @@ export function passwordProblem(password: string): string | null {
 
 const link = (path: string, token?: string): string => `${publicBaseUrl()}${path}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
-/** Pending accounts whose link expired hold a username and an address nobody confirmed: free both. */
-function dropExpiredPending(store: AccountStore): void {
-  const now = Date.now();
-  store.accounts = store.accounts.filter((account) => !(
-    account.status === "pending"
-    && account.emailVerifiedAt === null
-    && (!account.verifyToken || Date.parse(account.verifyToken.expiresAt) <= now)
-    && now - Date.parse(account.createdAt) > VERIFY_TTL_MS
-  ));
-}
-
 export const GENERIC_REGISTER = "If the details can be used, a message is on its way to that address. Open the link in it to finish.";
 export const GENERIC_RESEND = "If that address has an account waiting for confirmation, a new link is on its way.";
 export const GENERIC_FORGOT = "If that address belongs to an account, a link to set a new password is on its way.";
+export const PENDING_FULL = "Too many sign-ups are waiting for confirmation right now. Try again later.";
 
 /* ------------------------------------------------------------------------------------------- register */
 
-export async function register(input: { username: string; email: string; password: string }, ip: string): Promise<FlowOk<{ message: string }> | FlowError> {
+export async function register(input: { username: string; email: string; password: string }, ip: string, pow?: PowSolution | null): Promise<FlowOk<{ message: string }> | FlowError> {
   const username = input.username.trim();
   if (!ACCOUNT_ID_PATTERN.test(username)) {
     return fail(400, "The username needs 1-32 characters: lowercase letters, digits, - and _ (starting with a letter or digit).");
@@ -107,16 +121,32 @@ export async function register(input: { username: string; email: string; passwor
   if (!email) return fail(400, "That does not look like an email address.");
   const problem = passwordProblem(input.password);
   if (problem) return fail(400, problem);
+  // Email policy hook (register): an async address policy check (`checkEmailPolicy`) belongs here, after the syntax
+  // check and before proof-of-work, limits, hashing and mail.
+  const unpaid = powGate("register", ip, pow);
+  if (unpaid) return unpaid;
   const blocked = limited(consumeLimits([LIMITS.registerIp(ip), LIMITS.registerEmail(email)]));
   if (blocked) return blocked;
+  ensurePendingSweeper();
+  const ipTag = prefixTag(ip);
+  if (pendingRoomNow(email, ipTag) !== "ok") {
+    recordSecurityEvent({ kind: "pending_full", ipPrefix: clientPrefix(ip) });
+    return fail(429, "pending_full", { message: PENDING_FULL, retryAfterSeconds: 3_600 });
+  }
 
   // Hash before the lock (and on every path, so a taken name costs the same time as a new account).
-  const passwordHash = await hashPasswordAsync(input.password);
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPasswordAsync(input.password);
+  } catch (error) {
+    return busy(error);
+  }
   const token = newToken(VERIFY_TTL_MS);
-  const outcome = mutateStore((store): "created" | "email_taken" | "username_taken" => {
+  const outcome = mutateStore((store): "created" | "email_taken" | "username_taken" | "pending_full" => {
     dropExpiredPending(store);
     if (store.accounts.some((account) => account.email === email || account.emailChange?.email === email)) return "email_taken";
     if (RESERVED.has(username) || store.accounts.some((account) => account.id === username)) return "username_taken";
+    if (pendingRoom(store, email, ipTag) !== "ok") return "pending_full";
     store.accounts.push(newAccountRecord({
       id: username,
       displayName: username,
@@ -126,10 +156,12 @@ export async function register(input: { username: string; email: string; passwor
       status: "pending",
       storageQuotaBytes: DEFAULT_USER_QUOTA_BYTES,
       verifyToken: token.record,
+      pendingIpp: ipTag,
     }));
     if (store.accounts.length === 1) store.defaultAccountId = username;
     return "created";
   });
+  if (outcome === "pending_full") return fail(429, "pending_full", { message: PENDING_FULL, retryAfterSeconds: 3_600 });
   if (outcome === "created") sendMail(email, verifyEmailMail(username, link("/verify", token.raw)));
   else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password")));
   else sendMail(email, usernameTakenMail(username, link("/register")));
@@ -140,15 +172,23 @@ export async function register(input: { username: string; email: string; passwor
 
 export type VerifyResult = FlowOk<{ kind: "verified" | "email_changed"; username: string }> | FlowError;
 
-/** One endpoint for both links: account activation and a confirmed address change. */
-export function verifyToken(raw: string): VerifyResult {
-  if (!/^[A-Za-z0-9_-]{20,128}$/.test(raw)) return fail(400, "invalid_or_expired");
+/**
+ * One endpoint for both links: account activation and a confirmed address change. `sessionToken` is the caller's session
+ * cookie: a confirmed address change signs out every other session of the account and drops a pending reset link.
+ */
+export function verifyToken(raw: string, ip = "local", sessionToken?: string): VerifyResult {
+  if (!TOKEN.test(raw)) return fail(400, "invalid_or_expired");
   const hash = hashToken(raw);
+  const blocked = limited(consumeLimits([LIMITS.verifyIp(ip), LIMITS.verifyToken(hash)]));
+  if (blocked) return blocked;
+  // Read-only first: a made-up token never takes the lock or rewrites accounts.json.
+  if (!readStore().accounts.some((account) => live(account.verifyToken, hash) || live(account.emailChange, hash))) return fail(400, "invalid_or_expired");
   const result = mutateStore((store) => {
     const now = new Date().toISOString();
     const pending = store.accounts.find((account) => live(account.verifyToken, hash));
     if (pending) {
       delete pending.verifyToken;
+      delete pending.pendingIpp;
       pending.emailVerifiedAt = now;
       if (pending.status === "pending") pending.status = "active";
       return { kind: "verified" as const, account: pending, oldEmail: null };
@@ -161,25 +201,50 @@ export function verifyToken(raw: string): VerifyResult {
       const oldEmail = changing.email;
       changing.email = next;
       changing.emailVerifiedAt = now;
+      // A reset link mailed to the old address must not outlive the change.
+      delete changing.resetToken;
       return { kind: "email_changed" as const, account: changing, oldEmail };
     }
     return null;
   });
   if (!result) return fail(400, "invalid_or_expired");
-  if (result.kind === "email_changed" && result.oldEmail && result.account.email) {
-    sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email));
+  if (result.kind === "email_changed") {
+    revokeAllSessions(result.account.id, sessionToken);
+    if (result.oldEmail && result.account.email) sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email));
   }
   return { ok: true, kind: result.kind, username: result.account.id };
 }
 
 /* --------------------------------------------------------------------------------------------- resend */
 
-export function resendVerification(emailInput: string, ip: string): FlowOk<{ message: string }> | FlowError {
+/**
+ * Audit M3 (pre-registration hijack): a pending sign-up proves nothing about who owns its address. When the owner of the
+ * address asks for any link (resend, forgot), that sign-up is cancelled and they get a "create your account" link: the
+ * squatter's verification link is never sent to them again. Returns whether a record was released.
+ */
+function releasePendingFor(email: string): boolean {
+  const released = mutateStore((store) => {
+    const before = store.accounts.length;
+    store.accounts = store.accounts.filter((account) => !(account.email === email && account.status === "pending" && account.emailVerifiedAt === null));
+    if (store.accounts.length > 0 && !store.accounts.some((account) => account.id === store.defaultAccountId)) store.defaultAccountId = store.accounts[0].id;
+    return store.accounts.length < before;
+  });
+  if (released) sendMail(email, pendingReleasedMail(link("/register")));
+  return released;
+}
+
+export function resendVerification(emailInput: string, ip: string, pow?: PowSolution | null): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
   if (!email) return fail(400, "That does not look like an email address.");
+  const unpaid = powGate("resend", ip, pow);
+  if (unpaid) return unpaid;
   const blocked = limited(consumeLimits([LIMITS.resendIp(ip), LIMITS.resendEmail(email)]));
   if (blocked) return blocked;
-  issueVerification((account) => account.email === email);
+  ensurePendingSweeper();
+  const existing = findByEmail(email);
+  if (existing?.status === "pending") releasePendingFor(email);
+  // An active account without a confirmed address (made by the owner with the CLI) gets a fresh confirmation link.
+  else if (existing) issueVerification((account) => account.id === existing.id);
   return { ok: true, message: GENERIC_RESEND };
 }
 
@@ -198,15 +263,17 @@ export function issueVerification(match: (account: Account) => boolean): boolean
 
 /* --------------------------------------------------------------------------------------- forgot / reset */
 
-export function forgotPassword(emailInput: string, ip: string): FlowOk<{ message: string }> | FlowError {
+export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution | null): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
   if (!email) return fail(400, "That does not look like an email address.");
+  const unpaid = powGate("forgot", ip, pow);
+  if (unpaid) return unpaid;
   const blocked = limited(consumeLimits([LIMITS.forgotIp(ip), LIMITS.forgotEmail(email)]));
   if (blocked) return blocked;
+  ensurePendingSweeper();
   const existing = findByEmail(email);
   if (existing && existing.status === "pending") {
-    // Never confirmed: the useful mail is the confirmation link (a reset would not let them in either).
-    issueVerification((account) => account.id === existing.id);
+    releasePendingFor(email);
   } else if (existing && existing.status === "active") {
     const token = newToken(RESET_TTL_MS);
     mutateStore((store) => {
@@ -218,12 +285,23 @@ export function forgotPassword(emailInput: string, ip: string): FlowOk<{ message
   return { ok: true, message: GENERIC_FORGOT };
 }
 
-export async function resetPassword(raw: string, password: string): Promise<FlowOk<{ username: string }> | FlowError> {
+export async function resetPassword(raw: string, password: string, ip = "local", pow?: PowSolution | null): Promise<FlowOk<{ username: string; mcpKeysRevoked: number }> | FlowError> {
   const problem = passwordProblem(password);
   if (problem) return fail(400, problem);
-  if (!/^[A-Za-z0-9_-]{20,128}$/.test(raw)) return fail(400, "invalid_or_expired");
+  if (!TOKEN.test(raw)) return fail(400, "invalid_or_expired");
+  const unpaid = powGate("reset", ip, pow);
+  if (unpaid) return unpaid;
   const hash = hashToken(raw);
-  const passwordHash = await hashPasswordAsync(password);
+  const blocked = limited(consumeLimits([LIMITS.resetIp(ip), LIMITS.resetToken(hash)]));
+  if (blocked) return blocked;
+  // Read-only first: hash the new password only for a real, live token.
+  if (!readStore().accounts.some((candidate) => live(candidate.resetToken, hash) && candidate.status === "active")) return fail(400, "invalid_or_expired");
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPasswordAsync(password);
+  } catch (error) {
+    return busy(error);
+  }
   const account = mutateStore((store) => {
     const target = store.accounts.find((candidate) => live(candidate.resetToken, hash) && candidate.status === "active");
     if (!target) return null;
@@ -232,9 +310,11 @@ export async function resetPassword(raw: string, password: string): Promise<Flow
     return target;
   });
   if (!account) return fail(400, "invalid_or_expired");
+  // Whoever had the password may have left credentials behind: every session and every MCP key ends (audit M2).
   revokeAllSessions(account.id);
-  if (account.email) sendMail(account.email, passwordChangedMail(account.id));
-  return { ok: true, username: account.id };
+  const mcpKeysRevoked = revokeAllMcpKeys(account.id);
+  if (account.email) sendMail(account.email, passwordChangedMail(account.id, mcpKeysRevoked));
+  return { ok: true, username: account.id, mcpKeysRevoked };
 }
 
 /* ----------------------------------------------------------------------------- signed-in account changes */
@@ -244,17 +324,26 @@ async function confirmPassword(account: Account, password: string): Promise<Flow
   const bucket = [LIMITS.sensitive(account.id)];
   const blocked = limited(checkLimits(bucket));
   if (blocked) return blocked;
-  if (await verifyPasswordAsync(password, account.passwordHash)) return null;
+  try {
+    if (await verifyPasswordAsync(password, account.passwordHash)) return null;
+  } catch (error) {
+    return busy(error);
+  }
   hitLimits(bucket);
   return fail(403, "wrong_password");
 }
 
-export async function changePassword(account: Account, current: string, next: string): Promise<FlowOk<{ account: Account; revoked: number }> | FlowError> {
+export async function changePassword(account: Account, current: string, next: string): Promise<FlowOk<{ account: Account; revoked: number; mcpKeysRevoked: number }> | FlowError> {
   const problem = passwordProblem(next);
   if (problem) return fail(400, problem);
   const wrong = await confirmPassword(account, current);
   if (wrong) return wrong;
-  const passwordHash = await hashPasswordAsync(next);
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPasswordAsync(next);
+  } catch (error) {
+    return busy(error);
+  }
   const updated = mutateStore((store) => {
     const target = store.accounts.find((candidate) => candidate.id === account.id);
     if (!target) return null;
@@ -264,14 +353,18 @@ export async function changePassword(account: Account, current: string, next: st
   });
   if (!updated) return fail(404, "not_found");
   const revoked = revokeAllSessions(updated.id);
-  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id));
-  return { ok: true, account: updated, revoked };
+  // A password change is what a user does after noticing a takeover: MCP keys an intruder made go too (audit M2).
+  const mcpKeysRevoked = revokeAllMcpKeys(updated.id);
+  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id, mcpKeysRevoked));
+  return { ok: true, account: updated, revoked, mcpKeysRevoked };
 }
 
 export async function changeEmail(account: Account, password: string, emailInput: string): Promise<FlowOk<{ message: string }> | FlowError> {
   const email = validateEmail(emailInput);
   if (!email) return fail(400, "That does not look like an email address.");
   if (email === account.email) return fail(400, "That is already your address.");
+  // Email policy hook (email change): an async address policy check (`checkEmailPolicy`) belongs here, before the
+  // password check and the mail.
   const wrong = await confirmPassword(account, password);
   if (wrong) return wrong;
   const token = newToken(VERIFY_TTL_MS);

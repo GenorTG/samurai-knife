@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Button, Field, Notice, Panel, TextInput } from "@/components/ui";
 import { call, hardNavigate, safeNext } from "./api";
+import { CHECKING_TEXT, withChallenge } from "./challenge";
 
 /** Centered single-panel frame for the sign-in pages (inside <main>, like every page). */
 export function AuthFrame({ title, intro, aside, children }: { title: string; intro?: ReactNode; aside?: ReactNode; children: ReactNode }) {
@@ -99,7 +100,11 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
     if (working) return;
     setWorking(true);
     setNote(null);
-    const reply = await call("POST", "/api/account/login", { id: id.trim(), password });
+    // Private mode never asks for a challenge; public mode only after failed logins (the server answers 428).
+    const reply = await withChallenge("login", (pow) => call("POST", "/api/account/login", { id: id.trim(), password, ...(pow ? { pow } : {}) }), {
+      upfront: false,
+      onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
+    });
     if (reply.ok) {
       setNote({ tone: "good", text: "Logged in." });
       hardNavigate(safeNext(next));
@@ -155,7 +160,11 @@ export function RegisterForm() {
     if (working || mismatch) return;
     setWorking(true);
     setNote(null);
-    const reply = await call<{ message: string }>("POST", "/api/account/register", { username: username.trim(), email: email.trim(), password });
+    const reply = await withChallenge("register", (pow) => call<{ message: string }>("POST", "/api/account/register", { username: username.trim(), email: email.trim(), password, pow }), {
+      upfront: true,
+      onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
+    });
+    setNote(null);
     setWorking(false);
     if (reply.ok) setDone(reply.body.message);
     else setNote({ tone: "error", text: reply.message });
@@ -255,7 +264,10 @@ export function ResendForm() {
     if (working) return;
     setWorking(true);
     setNote(null);
-    const reply = await call<{ message: string }>("POST", "/api/account/resend", { email: email.trim() });
+    const reply = await withChallenge("resend", (pow) => call<{ message: string }>("POST", "/api/account/resend", { email: email.trim(), pow }), {
+      upfront: true,
+      onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
+    });
     setWorking(false);
     setNote(reply.ok ? { tone: "good", text: reply.body.message } : { tone: "error", text: reply.message });
   }
@@ -286,7 +298,10 @@ export function ForgotForm() {
     if (working) return;
     setWorking(true);
     setNote(null);
-    const reply = await call<{ message: string }>("POST", "/api/account/forgot", { email: email.trim() });
+    const reply = await withChallenge("forgot", (pow) => call<{ message: string }>("POST", "/api/account/forgot", { email: email.trim(), pow }), {
+      upfront: true,
+      onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
+    });
     setWorking(false);
     setNote(reply.ok ? { tone: "good", text: reply.body.message } : { tone: "error", text: reply.message });
   }
@@ -329,11 +344,15 @@ export function ResetForm({ token }: { token: string | null }) {
     if (working || mismatch) return;
     setWorking(true);
     setNote(null);
-    const reply = await call("POST", "/api/account/reset", { token, password });
+    const reply = await withChallenge("reset", (pow) => call<{ mcpKeysRevoked: number }>("POST", "/api/account/reset", { token, password, pow }), {
+      upfront: true,
+      onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
+    });
     setWorking(false);
     if (reply.ok) {
       setDone(true);
-      setNote({ tone: "good", text: "Your password is set. Every device was signed out; log in with the new password." });
+      const keys = reply.body.mcpKeysRevoked > 0 ? ` Your ${reply.body.mcpKeysRevoked} MCP key(s) were revoked too.` : "";
+      setNote({ tone: "good", text: `Your password is set. Every device was signed out; log in with the new password.${keys}` });
     } else {
       setNote({ tone: "error", text: reply.message });
     }

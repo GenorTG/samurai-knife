@@ -10,10 +10,16 @@ import {
   writePrivateFile,
   type Account,
 } from "@/lib/accounts/store";
-import { verifyPasswordAsync } from "@/lib/accounts/password";
+import { HashBusyError, hashPasswordAsync, needsRehash, verifyPasswordAsync } from "@/lib/accounts/password";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { clientIp, isHttps } from "@/lib/accounts/network";
-import { checkLimits, clearLimit, hitLimits, LIMITS, type Limit } from "@/lib/accounts/rate-limit";
+import { checkLimits, clearLimit, consumeLimits, hitLimits, LIMITS, type Limit } from "@/lib/accounts/rate-limit";
+import { knownDeviceFor } from "@/lib/accounts/known-device";
+import { checkPow, type PowSolution } from "@/lib/accounts/pow";
+import { clientPrefix } from "@/lib/accounts/ip-prefix";
+import { recordSecurityEvent } from "@/lib/security/events";
+import { publicBaseUrl, sendMail } from "@/lib/mail";
+import { loginLockoutMail } from "@/lib/mail/templates";
 
 export { clientIp, isHttps };
 
@@ -21,9 +27,12 @@ export { clientIp, isHttps };
  * Sessions are server-side records in `$KNIFE_DATA_DIR/sessions.json` (0600): the cookie holds 32 random bytes, the file
  * only their SHA-256, so a leaked data dir holds no usable cookie and any session can be revoked. A record also pins a
  * fingerprint of the password hash: a password set through the CLI ends every session without touching this file.
- * Written only by this server process (synchronously, so requests cannot interleave a read-modify-write).
+ * Written only by this server process (synchronously, so requests cannot interleave a read-modify-write). At most
+ * MAX_SESSIONS_PER_ACCOUNT live per account (the oldest go first), and successful logins are rate-limited per account, so
+ * one account cannot grow the file without bound.
  */
 export const SESSION_COOKIE = "knife_session";
+export const MAX_SESSIONS_PER_ACCOUNT = 20;
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const TOUCH_EVERY_MS = 10 * 60_000;
 
@@ -81,22 +90,37 @@ function hashToken(token: string): string {
 }
 
 /** Short fingerprint so changing a password (also through the CLI) invalidates existing sessions. */
-function passwordFingerprint(account: Account): string {
+export function passwordFingerprint(account: Pick<Account, "passwordHash">): string {
   return createHash("sha256").update(account.passwordHash ?? "").digest("hex").slice(0, 12);
 }
 
 export function createSession(account: Account): string {
   const token = randomBytes(32).toString("base64url");
   const now = new Date();
-  writeSessions((sessions) => [...sessions, {
-    hash: hashToken(token),
-    accountId: account.id,
-    pf: passwordFingerprint(account),
-    createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1_000).toISOString(),
-    lastSeenAt: now.toISOString(),
-  }]);
+  writeSessions((sessions) => {
+    const live = sessions.filter((s) => Date.parse(s.expiresAt) > now.getTime());
+    const mine = live.filter((s) => s.accountId === account.id).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    // Room for the new one: the account's oldest sessions end first.
+    const evict = new Set(mine.slice(0, Math.max(0, mine.length - (MAX_SESSIONS_PER_ACCOUNT - 1))).map((s) => s.hash));
+    return [...live.filter((s) => !evict.has(s.hash)), {
+      hash: hashToken(token),
+      accountId: account.id,
+      pf: passwordFingerprint(account),
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1_000).toISOString(),
+      lastSeenAt: now.toISOString(),
+    }];
+  });
   return token;
+}
+
+/**
+ * The server rehashed a password with new parameters (same password): move the account's sessions to the new
+ * fingerprint so nobody is signed out. Called synchronously right after the store write (no request can run between).
+ */
+function repinSessions(accountId: string, oldPf: string, newPf: string): void {
+  if (oldPf === newPf || !readSessions().sessions.some((s) => s.accountId === accountId && s.pf === oldPf)) return;
+  writeSessions((sessions) => sessions.map((s) => (s.accountId === accountId && s.pf === oldPf ? { ...s, pf: newPf } : s)));
 }
 
 export function revokeSessionToken(token: string | undefined): void {
@@ -106,10 +130,15 @@ export function revokeSessionToken(token: string | undefined): void {
   writeSessions((sessions) => sessions.filter((s) => s.hash !== hash));
 }
 
-/** Ends every session of one account (password change/reset, disable, delete, "log out everywhere"). */
-export function revokeAllSessions(accountId: string): number {
-  const count = readSessions().sessions.filter((s) => s.accountId === accountId).length;
-  if (count > 0) writeSessions((sessions) => sessions.filter((s) => s.accountId !== accountId));
+/**
+ * Ends every session of one account (password change/reset, disable, delete, "log out everywhere"); `exceptToken` keeps
+ * the session of the browser that made the change (a confirmed email change signs out the other devices only).
+ */
+export function revokeAllSessions(accountId: string, exceptToken?: string): number {
+  const keep = exceptToken ? hashToken(exceptToken) : null;
+  const doomed = (s: SessionRecord) => s.accountId === accountId && s.hash !== keep;
+  const count = readSessions().sessions.filter(doomed).length;
+  if (count > 0) writeSessions((sessions) => sessions.filter((s) => !doomed(s)));
   return count;
 }
 
@@ -196,36 +225,125 @@ export function rotateSession(request: Request, account: Account): string {
 
 export type LoginResult =
   | { ok: true; account: Account }
-  | { ok: false; reason: "invalid_credentials" | "rate_limited" | "email_not_verified" | "account_disabled"; retryAfterSeconds?: number };
+  | {
+    ok: false;
+    reason: "invalid_credentials" | "rate_limited" | "email_not_verified" | "account_disabled" | "challenge_required" | "busy";
+    retryAfterSeconds?: number;
+    /** challenge_required: the difficulty to fetch a challenge for (`GET /api/account/challenge?form=login`). */
+    bits?: number;
+  };
+
+export interface LoginOptions {
+  /** The `knife_device` cookie (`known-device.ts`). */
+  deviceCookie?: string;
+  /** Proof-of-work, needed in public mode after failures (`pow.ts`). */
+  pow?: PowSolution | null;
+}
+
+const LOCKOUT_MAIL_EVERY_MS = 24 * 60 * 60_000;
+const LOCKOUT_MAIL_KEY = Symbol.for("samurai-knife.lockout-mail.v1");
+const LOCKOUT_MAIL_MAX = 10_000;
+
+/** The identifier's failure bucket just filled: log it, and tell the account owner (at most one mail per day). */
+function onLockout(account: Account | undefined, ip: string): void {
+  recordSecurityEvent({ kind: "login_lockout", account: account?.id, ipPrefix: clientPrefix(ip), detail: account ? undefined : "unknown identifier" });
+  if (!account || account.status !== "active" || !account.email) return;
+  const g = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+  const sent = (g[LOCKOUT_MAIL_KEY] ??= new Map());
+  const now = Date.now();
+  const last = sent.get(account.id);
+  if (last !== undefined && now - last < LOCKOUT_MAIL_EVERY_MS) return;
+  if (last === undefined && sent.size >= LOCKOUT_MAIL_MAX) {
+    for (const [id, time] of sent) if (now - time >= LOCKOUT_MAIL_EVERY_MS) sent.delete(id);
+    if (sent.size >= LOCKOUT_MAIL_MAX) return; // fewer notices rather than an unbounded map
+  }
+  sent.set(account.id, now);
+  sendMail(account.email, loginLockoutMail(account.id, `${publicBaseUrl()}/forgot-password`));
+}
+
+/** Records the login and, when the stored hash uses old parameters, the rehash (sessions follow the new fingerprint). */
+function recordLogin(account: Account, rehashed: string | null): Account {
+  const oldPf = passwordFingerprint(account);
+  const now = new Date().toISOString();
+  const updated = mutateStore((store) => {
+    const target = store.accounts.find((candidate) => candidate.id === account.id);
+    if (!target) return account;
+    target.lastLoginAt = now;
+    // Only when nobody changed the password meanwhile (the CLI, a reset in another request).
+    if (rehashed && target.passwordHash === account.passwordHash) target.passwordHash = rehashed;
+    return target;
+  });
+  repinSessions(account.id, oldPf, passwordFingerprint(updated));
+  return updated;
+}
 
 /**
- * Username (or, in public mode, email) + password. Rate limit counts failures only: 5/min per account+address (both modes),
- * plus per-account and per-address caps in public mode. "Not verified"/"disabled" are only told to someone who knows the
- * password; every other failure is the same `invalid_credentials`.
+ * Username (or, in public mode, email) + password. "Not verified"/"disabled" are only told to someone who knows the
+ * password; every other failure is the same `invalid_credentials`. Rate limits count failures only:
+ * - both modes: 5/min per identifier + address;
+ * - public mode, unknown device: 50/15 min per address, 200/day per identifier (hard); after 3 failures for the
+ *   identifier or from the address, proof-of-work is required, and a full 20/15 min identifier bucket raises its
+ *   difficulty instead of refusing (so nobody can keep a user locked out);
+ * - public mode, known device (`knife_device` cookie vouching for this account): only its own 10/15 min bucket.
+ * Successful logins: 30/h per account. Password hashing waits for the global hash budget (busy -> 503).
  */
-export async function attemptLogin(identifier: string, password: string, ip: string): Promise<LoginResult> {
+export async function attemptLogin(identifier: string, password: string, ip: string, options: LoginOptions = {}): Promise<LoginResult> {
   const publicMode = isPublicMode();
   const key = identifier.trim().toLowerCase();
-  const limits: Limit[] = [LIMITS.loginPair(key, ip), ...(publicMode ? [LIMITS.loginAccount(key), LIMITS.loginIp(ip)] : [])];
-  const verdict = checkLimits(limits);
-  if (!verdict.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds };
+  const pair = LIMITS.loginPair(key, ip);
   const account = publicMode ? findByIdentifier(identifier) : getAccount(identifier);
-  // Passwordless accounts cannot be signed into (only the private-mode default is reachable, implicitly).
-  const valid = await verifyPasswordAsync(password, account?.passwordHash);
+  const device = publicMode && account?.passwordHash ? knownDeviceFor(options.deviceCookie, account.id, passwordFingerprint(account)) : null;
+
+  let failBuckets: Limit[];
+  let watchLockout = false;
+  if (!publicMode) {
+    failBuckets = [pair];
+  } else if (device) {
+    failBuckets = [pair, LIMITS.loginDevice(device)];
+  } else {
+    failBuckets = [pair, LIMITS.loginIp(ip), LIMITS.loginAccount(key), LIMITS.loginAccountDay(key), LIMITS.loginFailAccount(key), LIMITS.loginFailIp(ip)];
+    watchLockout = true;
+  }
+  // Refusing buckets (the identifier's 20/15 min bucket and the failure signals are not among them).
+  const blocking = !publicMode || device ? failBuckets : [pair, LIMITS.loginIp(ip), LIMITS.loginAccountDay(key)];
+  const verdict = checkLimits(blocking);
+  if (!verdict.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds };
+  const lockedOut = watchLockout && !checkLimits([LIMITS.loginAccount(key)]).ok;
+  if (watchLockout) {
+    const needsPow = lockedOut || !checkLimits([LIMITS.loginFailAccount(key)]).ok || !checkLimits([LIMITS.loginFailIp(ip)]).ok;
+    if (needsPow) {
+      const pow = checkPow("login", ip, options.pow, { identifierUnderAttack: lockedOut });
+      if (!pow.ok) return { ok: false, reason: pow.status === 503 ? "busy" : "challenge_required", bits: pow.bits, retryAfterSeconds: pow.retryAfterSeconds };
+    }
+  }
+
+  let valid: boolean;
+  try {
+    // Passwordless accounts cannot be signed into (only the private-mode default is reachable, implicitly).
+    valid = await verifyPasswordAsync(password, account?.passwordHash);
+  } catch (error) {
+    if (error instanceof HashBusyError) return { ok: false, reason: "busy", retryAfterSeconds: error.retryAfterSeconds };
+    throw error;
+  }
   if (!account || !valid) {
-    hitLimits(limits);
+    hitLimits(failBuckets);
+    if (watchLockout && !lockedOut && !checkLimits([LIMITS.loginAccount(key)]).ok) onLockout(account, ip);
     return { ok: false, reason: "invalid_credentials" };
   }
-  clearLimit(LIMITS.loginPair(key, ip).key);
+  clearLimit(pair.key);
   if (account.status === "disabled") return { ok: false, reason: "account_disabled" };
   if (publicMode && (account.status === "pending" || account.emailVerifiedAt === null || account.email === null)) {
     return { ok: false, reason: "email_not_verified" };
   }
-  const now = new Date().toISOString();
-  const updated = mutateStore((store) => {
-    const target = store.accounts.find((candidate) => candidate.id === account.id);
-    if (target) target.lastLoginAt = now;
-    return target ?? account;
-  });
-  return { ok: true, account: updated };
+  const success = consumeLimits([LIMITS.loginSuccess(account.id)]);
+  if (!success.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: success.retryAfterSeconds };
+  let rehashed: string | null = null;
+  if (needsRehash(account.passwordHash)) {
+    try {
+      rehashed = await hashPasswordAsync(password);
+    } catch {
+      // Busy: keep the old hash this time; the next login tries again.
+    }
+  }
+  return { ok: true, account: recordLogin(account, rehashed) };
 }

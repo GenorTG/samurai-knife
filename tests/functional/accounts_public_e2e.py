@@ -67,7 +67,7 @@ class Api:
         self.base = base
 
     def call(self, method: str, path: str, body: object | None = None, cookie: str | None = None, ip: str | None = None,
-             headers: dict[str, str] | None = None) -> tuple[int, object, dict[str, str]]:
+             headers: dict[str, str] | None = None, _pow_attempt: bool = False) -> tuple[int, object, dict[str, str]]:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
         if data is not None:
@@ -93,6 +93,27 @@ class Api:
             parsed: object = json.loads(text)
         except ValueError:
             parsed = text
+        # Direct API probes use the same public challenge contract as the browser worker: pay the missing proof, then
+        # retry the exact request once. Test difficulty is lowered below, but the challenge is always solved/verified.
+        if (status == 428 and not _pow_attempt and method == "POST" and isinstance(body, dict)
+                and isinstance(parsed, dict) and parsed.get("error") == "challenge_required"):
+            form = {"/api/account/register": "register", "/api/account/forgot": "forgot",
+                    "/api/account/resend": "resend", "/api/account/reset": "reset",
+                    "/api/account/login": "login"}.get(path.split("?", 1)[0])
+            if form:
+                challenge_status, challenge, _ = self.call("GET", f"/api/account/challenge?form={form}", ip=ip)
+                if challenge_status != 200 or not isinstance(challenge, dict):
+                    raise RuntimeError(f"proof challenge failed: {challenge_status} {challenge}")
+                difficulty = int(challenge["bits"])
+                nonce = 0
+                while True:
+                    candidate = str(nonce)
+                    digest = hashlib.sha256(f"{challenge['c']}:{candidate}".encode()).digest()
+                    if int.from_bytes(digest, "big").bit_length() <= 256 - difficulty:
+                        break
+                    nonce += 1
+                return self.call(method, path, {**body, "pow": {"c": challenge["c"], "nonce": candidate}},
+                                 cookie=cookie, ip=ip, headers=headers, _pow_attempt=True)
         return status, parsed, hdrs
 
     def login(self, ident: str, password: str, ip: str) -> tuple[int, object, str | None]:
@@ -538,6 +559,8 @@ def main() -> int:
         "KNIFE_MAIL_TRANSPORT": "outbox",
         "KNIFE_TRUSTED_PROXIES": "127.0.0.1,::1",
         "KNIFE_SIDECAR_PREFIX": prefix,
+        "KNIFE_POW_BITS": "8",
+        "KNIFE_POW_MAX_BITS": "16",
     }
     with ScratchServer() as server:
         server.start(env=env)

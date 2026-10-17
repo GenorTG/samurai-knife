@@ -31,7 +31,7 @@ npm run accounts -- set-network <id> private                    # its provider m
 ## Store (`$KNIFE_DATA_DIR/accounts.json`, format v2)
 
 One JSON file (0600, atomic temp+rename). Per account: `id` (= username, `ACCOUNT_ID_PATTERN`), `displayName`,
-`passwordHash` (scrypt, format shared with the CLI), `provider`, `createdAt`, `email` (unique, lowercased),
+`passwordHash` (scrypt N=2^17, format shared with the CLI; old hashes verify and are upgraded after successful login), `provider`, `createdAt`, `email` (unique, lowercased),
 `emailVerifiedAt`, `role` (`admin`|`user`), `status` (`pending`|`active`|`disabled`), `storageQuotaBytes` (1 GiB for
 registered users, `null` = unlimited; enforced, see Storage quota), `lastLoginAt`, `privateNetwork` (see "Outbound
 requests"; default false), and the pending link tokens `verifyToken` / `resetToken` / `emailChange` (`{hash, expiresAt}`,
@@ -46,8 +46,8 @@ SHA-256 of the raw token only).
   is an error, never an empty key. This protects a copy of `accounts.json` alone (a backup, one misdirected file read),
   not someone who can read the whole data directory. Back up `provider-keys.key` with `accounts.json`.
 
-- Migration: a v1 file (no `version`) is read with the v2 defaults (every account an active admin, no email) and written
-  as `version: 2` by the next change. The CLI does the same, so either side may write first.
+- Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
+- Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.
 - Concurrency: every change goes through `mutateStore` (lock, re-read, change, validate, write). It is synchronous, so two
   requests in the server cannot interleave (Node runs one at a time); the O_EXCL lock file `accounts.json.lock` (stale
   after 10 s) orders the server against the CLI. The CLI prompts between reading and writing, so it does a
@@ -83,13 +83,13 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | --- | --- | --- |
 | `/register` | `POST /api/account/register {username, email, password}` -> 202 | username = `ACCOUNT_ID_PATTERN`, not reserved; password 10..1024 chars. Always the same answer. New: pending account + verification mail. Address taken: mail to its owner ("someone tried to sign up"). Username taken/reserved: mail to the given address ("choose another username"). Pending accounts whose link expired more than 24 h after creation are dropped at the next registration (frees the name and address). |
 | `/verify?token=` | `POST /api/account/verify {token}` | A button consumes the token (a mail scanner prefetching the link does not). Activates a pending account, or applies a confirmed address change (the old address gets a notice). 24 h, single use. |
-| `/verify` (no token) | `POST /api/account/resend {email}` -> 202 | New link for a pending account (old link stops working); same answer for unknown or verified addresses, no mail for them. |
-| `/login` (both modes) | `POST /api/account/login {id, password}` | `id` = username or (public) email, any case. Correct password but `pending` -> 403 `email_not_verified`, `disabled` -> 403 `account_disabled`; everything else 401 `invalid_credentials`. |
-| `/forgot-password` | `POST /api/account/forgot {email}` -> 202 | Same answer always. Active account: reset link (1 h, single use, a newer one replaces it). Pending: the verification link instead. |
-| `/reset-password?token=` | `POST /api/account/reset {token, password}` | Sets the password, ends every session, mails a notice. |
-| `/account` | `POST /api/account/password {currentPassword, newPassword}` | Ends every session; this browser gets a new one. |
+| `/verify` (no token) | `POST /api/account/resend {email}` -> 202 | For pending accounts, cancels the unverified record and mails a registration link (M3); same answer for unknown addresses. Active accounts with unverified email can receive a new verification link. |
+| `/login` (both modes) | `POST /api/account/login {id, password, pow?}` | `id` = username or (public) email, any case. Correct password but `pending` -> 403 `email_not_verified`, `disabled` -> 403 `account_disabled`; everything else 401 `invalid_credentials`. A successful login gets a signed known-device cookie and is capped at 30 successful logins/account/hour; each account has at most 20 sessions (oldest evicted). |
+| `/forgot-password` | `POST /api/account/forgot {email}` -> 202 | Same answer always. Active account: reset link (1 h, single use, a newer one replaces it). Pending: the pending record is cancelled and the address receives a fresh registration link; an unverified signup cannot reserve an address (M3). |
+| `/reset-password?token=` | `POST /api/account/reset {token, password}` | Checks the reset token before scrypt, sets the password, ends every session, revokes all MCP keys, and mails a notice. Reset/verify attempts have IP and token-hash limits. |
+| `/account` | `POST /api/account/password {currentPassword, newPassword}` | Ends every session; this browser gets a new one; revokes every MCP key and mails a notice. |
 | `/account` | `POST /api/account/email {password, email}` -> 202 | Link to the NEW address; the address changes when it is opened. Address in use: same answer, its owner is told. |
-| `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here. The page (and the assistant's log out) first clears this account's browser storage: transcript, message queue, run lease, SQL lab schema/dialect, trust mode (`src/lib/client-account.ts`). |
+| `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here; everywhere also has an explicit option to revoke MCP keys. The page (and the assistant's log out) first clears this account's browser storage: transcript, message queue, run lease, SQL lab schema/dialect, trust mode (`src/lib/client-account.ts`). |
 | `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets, create (201, the key once; 20 per hour, 10 kept), revoke (404 for another account's id). |
 | `/account` | `POST /api/account/delete {password}` | Removes the account and all its data (below); refused for the only active admin. Mails a notice. |
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
@@ -264,6 +264,24 @@ Templates (`templates.ts`): English, plain text + minimal HTML, every value esca
 | job posting / company page fetches, public mode, non-admins | 30/10 min per account |
 
 Refusals are 429 with `retryAfterSeconds` and `Retry-After`. Unknown addresses count the same as known ones.
+
+## Proof-of-work and password-hash budget
+
+Public register, forgot, resend, reset, and login after failures require a browser-bound proof before rate-limit work,
+store lookups, scrypt, or mail. `GET /api/account/challenge?form=...` issues an HMAC-signed ten-minute challenge bound to
+the form and client IP prefix. The client solves SHA-256 in a Web Worker and reports progress as “Checking your browser…”.
+Challenges are single-use and the replay set is bounded. Difficulty defaults to 18 bits (~2^18 hashes), increases under
+prefix/register pressure, and is capped at 24 bits. E2E clients use `tests/pow_client.py` to fetch and solve challenges;
+they may set `KNIFE_POW_BITS` lower in the isolated test process. The data-dir signing key is `auth.key` (0600).
+
+Every password hash and verify shares one asynchronous scrypt gate: `KNIFE_SCRYPT_CONCURRENCY=2`,
+`KNIFE_SCRYPT_QUEUE=32`; excess work returns 503 with `Retry-After`. Scrypt uses N=2^17; unknown usernames perform a
+dummy verification at current parameters for timing parity.
+
+Environment controls (all have strict public-mode defaults): `KNIFE_POW_BITS` (18), `KNIFE_POW_MAX_BITS` (24),
+`KNIFE_POW_REGISTER_SURGE` (20 registrations/hour), `KNIFE_SCRYPT_CONCURRENCY` (2),
+`KNIFE_SCRYPT_QUEUE` (32), `KNIFE_PENDING_MAX` (2000), `KNIFE_PENDING_PER_DOMAIN` (50), `KNIFE_PENDING_PER_PREFIX` (5), and
+`KNIFE_AUTH_KEY_FILE` (optional absolute path; default `$KNIFE_DATA_DIR/auth.key`).
 
 ## Hosts
 

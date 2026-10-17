@@ -12,6 +12,7 @@ import test from "node:test";
 const dataDir = mkdtempSync(join(tmpdir(), "knife-accounts-store-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_MAIL_TRANSPORT = "outbox";
+process.env.KNIFE_POW_BITS = "4"; // the forms' proof-of-work, solved below at a test difficulty
 delete process.env.KNIFE_AUTH_MODE;
 delete process.env.KNIFE_TRUSTED_PROXIES;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
@@ -149,13 +150,20 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
     assert.fail(`no mail for ${to}`);
   };
   const tokenIn = (mail) => /token=3D([A-Za-z0-9_=\r\n-]+)/.exec(mail)[1].replace(/=\r?\n/g, "").replace(/\s.*$/s, "");
+  const pow = await import("../src/lib/accounts/pow.ts");
+  const { solvePow } = await import("../src/lib/pow/solve.ts");
+  const solved = (form, ip) => {
+    const { c, bits } = pow.issueChallenge(form, ip);
+    return { c, nonce: solvePow(c, bits) };
+  };
+  const register = (input, ip) => flows.register(input, ip, solved("register", ip));
 
-  const ok = await flows.register({ username: "zoe", email: "Zoe@Example.com", password: "zoe password 1" }, "ip-1");
+  const ok = await register({ username: "zoe", email: "Zoe@Example.com", password: "zoe password 1" }, "ip-1");
   assert.equal(ok.ok, true);
-  const taken = await flows.register({ username: "zoe2", email: "zoe@example.com", password: "zoe password 1" }, "ip-2");
-  const takenName = await flows.register({ username: "zoe", email: "other@example.com", password: "zoe password 1" }, "ip-3");
+  const taken = await register({ username: "zoe2", email: "zoe@example.com", password: "zoe password 1" }, "ip-2");
+  const takenName = await register({ username: "zoe", email: "other@example.com", password: "zoe password 1" }, "ip-3");
   assert.deepEqual([taken, takenName], [ok, ok], "the same answer for a new account, a taken address and a taken name");
-  assert.equal((await flows.register({ username: "zoe", email: "x@example.com", password: "short" }, "ip-4")).status, 400);
+  assert.equal((await register({ username: "zoe", email: "x@example.com", password: "short" }, "ip-4")).status, 400);
 
   const [first, collision] = await mails("zoe@example.com", 2);
   const raw = tokenIn([first, collision].find((mail) => mail.includes("Confirm my email")));
@@ -175,12 +183,12 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
   assert.equal(flows.verifyToken(raw).ok, false, "single use");
   assert.equal(store.getAccount("zoe").status, "active");
 
-  assert.deepEqual(flows.forgotPassword("nobody@example.com", "ip-5"), flows.forgotPassword("zoe@example.com", "ip-6"));
+  assert.deepEqual(flows.forgotPassword("nobody@example.com", "ip-5", solved("forgot", "ip-5")), flows.forgotPassword("zoe@example.com", "ip-6", solved("forgot", "ip-6")));
   const reset = tokenIn((await mails("zoe@example.com", 3)).find((mail) => mail.includes("reset-password")));
   const resetTtl = Date.parse(store.getAccount("zoe").resetToken.expiresAt) - Date.now();
   assert.ok(resetTtl > 59 * 60_000 && resetTtl <= 3600_000, "reset links live 1 h");
-  assert.equal((await flows.resetPassword(reset, "brand new password")).ok, true);
-  assert.equal((await flows.resetPassword(reset, "brand new password")).ok, false, "single use");
+  assert.equal((await flows.resetPassword(reset, "brand new password", "ip-7", solved("reset", "ip-7"))).ok, true);
+  assert.equal((await flows.resetPassword(reset, "brand new password", "ip-7", solved("reset", "ip-7"))).ok, false, "single use");
 
   for (const rel of ["cv/zoe.json", "cv/zoe.photo.jpg", "cv/zoe.snapshots/1.json", "conversations/zoe/p.json", "docs/zoe/d1/current.docx", "learn/zoe.json", "usage/zoe.json", "cv/zoey.json"]) {
     mkdirSync(join(dataDir, rel, ".."), { recursive: true });

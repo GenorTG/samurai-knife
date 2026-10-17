@@ -10,7 +10,7 @@ const bodySchema = z.object({ currentPassword: z.string().max(2_048), newPasswor
 
 /**
  * POST /api/account/password { currentPassword, newPassword } -> every session of the account ends (other devices are signed
- * out); this browser gets a fresh one.
+ * out) and every MCP key is revoked; this browser gets a fresh session.
  */
 export async function POST(request: Request): Promise<Response> {
   const off = publicOnly();
@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in parsed) return parsed.response;
   const result = await changePassword(auth.account, parsed.data.currentPassword, parsed.data.newPassword);
   if (!result.ok) return flowErrorResponse(result);
-  const response = json({ ok: true, signedOut: Math.max(0, result.revoked - 1) });
+  const response = json({ ok: true, signedOut: Math.max(0, result.revoked - 1), mcpKeysRevoked: result.mcpKeysRevoked });
   response.headers.append("Set-Cookie", sessionCookieHeader(request, createSession(result.account)));
   return response;
 }

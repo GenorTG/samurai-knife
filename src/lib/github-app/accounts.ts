@@ -83,7 +83,12 @@ export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister:
   if (!blocked.ok) return { kind: "refused", code: "rate_limited", message: `Too many sign-ups from here; try again in ${blocked.retryAfterSeconds} s.` };
   const result = mutateStore((store): GithubSignIn => {
     const email = who.verifiedEmail!;
-    if (store.accounts.some((a) => a.email === email || a.emailChange?.email === email)) {
+    // GitHub has verified this address; claims nobody proved give way (audit M3: a squatter's pending sign-up, or another
+    // account's unconfirmed address change, must not block the address owner forever).
+    store.accounts = store.accounts.filter((a) => !(a.email === email && a.status === "pending" && a.emailVerifiedAt === null && a.github === null));
+    if (store.accounts.length > 0 && !store.accounts.some((a) => a.id === store.defaultAccountId)) store.defaultAccountId = store.accounts[0].id;
+    for (const a of store.accounts) if (a.emailChange?.email === email) delete a.emailChange;
+    if (store.accounts.some((a) => a.email === email)) {
       return { kind: "refused", code: "email_in_use", message: `An account with ${email} already exists. Sign in with its password, then link GitHub in Account settings.` };
     }
     const id = usernameFor(who.login, (candidate) => store.accounts.some((a) => a.id === candidate));

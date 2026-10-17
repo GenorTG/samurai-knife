@@ -1,14 +1,23 @@
 import { createHash, randomBytes } from "node:crypto";
+import { openValue, sealValue } from "@/lib/accounts/auth-secret";
 import { isHttps } from "@/lib/accounts/session";
+import { safeReturnPath } from "@/lib/safe-return";
+import { recordSecurityEvent } from "@/lib/security/events";
 import { apiJson } from "@/lib/site/net";
 import { gh } from "@/lib/site/github";
 import { GITHUB_WEB, type GithubAppConfig } from "./config";
 
 /**
  * "Sign in with GitHub" / account linking through the app's OAuth client (web application flow with PKCE S256). The
- * `state` is one-time, expires after 10 minutes and must come back in the same browser (an HttpOnly cookie set when the
- * flow starts): a callback link opened elsewhere (login CSRF) is refused. Nothing GitHub returns is trusted beyond what
- * the user token itself proves (GET /user, GET /user/emails, GET /user/installations).
+ * `state` is one-time, expires after 10 minutes and must come back in the same browser: an HttpOnly cookie set when the
+ * flow starts carries the whole pending flow, sealed (AES-256-GCM with the auth key, `auth-secret.ts`) so the PKCE
+ * verifier stays secret and nothing can be edited; a callback link opened elsewhere (login CSRF) is refused. Nothing
+ * GitHub returns is trusted beyond what the user token itself proves (GET /user, GET /user/emails, GET /user/installations).
+ *
+ * Why stateless (audit abuse #12): the server keeps nothing per started flow, so `GET /api/github/start` without a
+ * session cannot grow memory. One-time use is kept by a set of consumed states (added only for a genuine sealed cookie
+ * whose state matches, expiring with the flow, at most MAX_CONSUMED; when full, callbacks are refused rather than the set
+ * forgetting a live state). GitHub's codes are single-use as well, so a replay could not sign anyone in anyway.
  */
 
 export type FlowPurpose = "login" | "register" | "link" | "install";
@@ -26,43 +35,71 @@ export interface PendingFlow {
 
 export const STATE_COOKIE = "knife_gh_state";
 const TTL_MS = 10 * 60_000;
-const KEY = Symbol.for("samurai-knife.github-flows.v1");
+const MAX_CONSUMED = 10_000;
+const KEY = Symbol.for("samurai-knife.github-consumed-states.v1");
 
-function flows(): Map<string, PendingFlow> {
-  const g = globalThis as unknown as Record<symbol, Map<string, PendingFlow> | undefined>;
-  return (g[KEY] ??= new Map());
+function consumed(): Map<string, number> {
+  const g = globalThis as unknown as Record<symbol, Map<string, number> | undefined>;
+  const current = g[KEY];
+  if (current instanceof Map) return current;
+  const fresh = new Map<string, number>();
+  g[KEY] = fresh;
+  return fresh;
 }
 
-function gc(now = Date.now()): void {
-  for (const [state, flow] of flows()) if (now - flow.createdAt > TTL_MS) flows().delete(state);
-}
-
-/** Only a path on this site ("/x?y"), never another origin ("//evil", "https://..."). */
+/** Only a path on this site ("/x?y"), never another origin: the shared rule in `src/lib/safe-return.ts`. */
 export function safeReturnTo(value: string | null | undefined, fallback = "/"): string {
-  const v = (value ?? "").trim();
-  return v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") && v.length <= 300 ? v : fallback;
+  return safeReturnPath(value, fallback);
 }
 
-export function beginFlow(flow: Omit<PendingFlow, "verifier" | "createdAt">): { state: string; challenge: string } {
-  gc();
+interface SealedFlow {
+  s: string;
+  p: FlowPurpose;
+  a: string | null;
+  v: string;
+  u: string;
+  r: string;
+  t: number;
+}
+
+/** A new flow: the `state` for GitHub's URL, the PKCE challenge, and the sealed cookie value carrying everything else. */
+export function beginFlow(flow: Omit<PendingFlow, "verifier" | "createdAt">): { state: string; challenge: string; cookie: string } {
   const state = randomBytes(24).toString("base64url");
   const verifier = randomBytes(32).toString("base64url");
-  flows().set(state, { ...flow, verifier, createdAt: Date.now() });
-  return { state, challenge: createHash("sha256").update(verifier).digest("base64url") };
+  const sealed: SealedFlow = { s: state, p: flow.purpose, a: flow.accountId, v: verifier, u: flow.redirectUri, r: safeReturnPath(flow.returnTo), t: Date.now() };
+  return { state, challenge: createHash("sha256").update(verifier).digest("base64url"), cookie: sealValue("github-state", JSON.stringify(sealed)) };
 }
 
-/** One-time: the flow is removed whether or not it matches. */
-export function takeFlow(state: string | null, cookieState: string | undefined): PendingFlow | null {
-  gc();
-  if (!state) return null;
-  const flow = flows().get(state) ?? null;
-  flows().delete(state);
-  if (!flow || !cookieState || cookieState !== state) return null;
-  return flow;
+const PURPOSES: readonly FlowPurpose[] = ["login", "register", "link", "install"];
+
+/** One-time: the flow is consumed when the cookie opens and its state matches; anything else is null. */
+export function takeFlow(state: string | null, cookie: string | undefined, now = Date.now()): PendingFlow | null {
+  if (!state || !cookie) return null;
+  const plain = openValue("github-state", cookie);
+  if (!plain) return null;
+  let sealed: SealedFlow;
+  try {
+    sealed = JSON.parse(plain) as SealedFlow;
+  } catch {
+    return null;
+  }
+  if (typeof sealed.s !== "string" || sealed.s !== state || !PURPOSES.includes(sealed.p) || typeof sealed.v !== "string" || typeof sealed.u !== "string" || typeof sealed.t !== "number") return null;
+  if (now - sealed.t > TTL_MS || sealed.t > now + 60_000) return null;
+  const used = consumed();
+  if (used.has(state)) return null;
+  if (used.size >= MAX_CONSUMED) {
+    for (const [key, expiry] of used) if (expiry <= now) used.delete(key);
+    if (used.size >= MAX_CONSUMED) {
+      recordSecurityEvent({ kind: "oauth_flow_full" });
+      return null;
+    }
+  }
+  used.set(state, sealed.t + TTL_MS + 60_000);
+  return { purpose: sealed.p, accountId: typeof sealed.a === "string" ? sealed.a : null, verifier: sealed.v, redirectUri: sealed.u, returnTo: safeReturnPath(sealed.r), createdAt: sealed.t };
 }
 
-export function stateCookie(request: Request, state: string): string {
-  return [`${STATE_COOKIE}=${state}`, "Path=/api/github", "HttpOnly", "SameSite=Lax", `Max-Age=${TTL_MS / 1000}`, ...(isHttps(request) ? ["Secure"] : [])].join("; ");
+export function stateCookie(request: Request, value: string): string {
+  return [`${STATE_COOKIE}=${value}`, "Path=/api/github", "HttpOnly", "SameSite=Lax", `Max-Age=${TTL_MS / 1000}`, ...(isHttps(request) ? ["Secure"] : [])].join("; ");
 }
 
 export function clearStateCookie(request: Request): string {

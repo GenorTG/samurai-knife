@@ -27,7 +27,13 @@ import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/a
  * index for the unique email/username checks, which is exactly what the single file gives for free.
  *
  * Format v2 (`version: 2`) adds email, role, status, quota and login times. v1 files (no `version`) are migrated in memory on
- * read and written back as v2 by the next mutation; every v1 account becomes an active admin (the owner's own accounts).
+ * read and written back as v2 by the next mutation; every v1 account becomes an active admin (the owner's own accounts),
+ * explicitly in `parseStore`. In a v2 file the defaults fail closed: a record without `role` is a user, one without
+ * `status` is disabled (a hand edit or an import that forgets a field never creates an active admin).
+ *
+ * Reads are cached by the file's identity (path, inode, mtime, size), the same rule as sessions.json: a request that only
+ * reads never parses or decrypts the file again; any write (ours or the CLI's) changes the identity. Callers get copies,
+ * so mutating a returned account never touches the cache.
  *
  * Provider secrets (API key, extra-header values) are sealed on disk (`secret-box.ts`, AES-256-GCM, key file
  * `provider-keys.key`) and opened on read, so everything in this module sees plaintext. A file with plaintext secrets
@@ -58,8 +64,8 @@ const accountSchema = z.object({
   createdAt: z.string(),
   email: z.string().nullable().default(null),
   emailVerifiedAt: z.string().nullable().default(null),
-  role: z.enum(["admin", "user"]).default("admin"),
-  status: z.enum(["pending", "active", "disabled"]).default("active"),
+  role: z.enum(["admin", "user"]).default("user"),
+  status: z.enum(["pending", "active", "disabled"]).default("disabled"),
   /** null = unlimited. Enforcement is a later phase; the value is stored and editable now. */
   storageQuotaBytes: z.number().int().nonnegative().nullable().default(null),
   lastLoginAt: z.string().nullable().default(null),
@@ -74,6 +80,8 @@ const accountSchema = z.object({
   privateNetwork: z.boolean().default(false),
   /** The GitHub identity linked to this account ("Sign in with GitHub", docs/GITHUB.md); one account per GitHub user. */
   github: z.object({ id: z.number().int().positive(), login: z.string().max(100), linkedAt: z.string() }).nullable().default(null),
+  /** Pending accounts only: keyed hash of the client address prefix that registered it (`ip-prefix.ts`), for the caps. */
+  pendingIpp: z.string().max(32).optional(),
 });
 
 const storeSchema = z.object({
@@ -139,7 +147,7 @@ function initialStore(): AccountStore {
   return {
     version: STORE_VERSION,
     defaultAccountId: "genor",
-    accounts: [newAccountRecord({ id: "genor", displayName: "Genor" })],
+    accounts: [newAccountRecord({ id: "genor", displayName: "Genor", role: "admin", status: "active" })],
   };
 }
 
@@ -198,6 +206,7 @@ function openSecrets(store: AccountStore): boolean {
 
 function writeStore(store: AccountStore): void {
   writePrivateFile(accountsPath(), `${JSON.stringify({ ...sealSecrets(store), version: STORE_VERSION }, null, 2)}\n`);
+  cache = null;
 }
 
 const LOCK_STALE_MS = 10_000;
@@ -231,12 +240,25 @@ function withLock<T>(fn: () => T): T {
   }
 }
 
+/** v1 (no `version`): every record is the owner's, an active admin. Done explicitly, never through the schema defaults. */
+function migrateV1(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const file = raw as { version?: unknown; accounts?: unknown };
+  if (typeof file.version === "number" || !Array.isArray(file.accounts)) return raw;
+  return {
+    ...file,
+    accounts: file.accounts.map((account: unknown) => (typeof account === "object" && account !== null
+      ? { role: "admin", status: "active", ...(account as Record<string, unknown>) }
+      : account)),
+  };
+}
+
 function parseStore(raw: unknown): AccountStore {
-  const parsed = storeSchema.safeParse(raw);
+  const parsed = storeSchema.safeParse(migrateV1(raw));
   if (!parsed.success) {
     throw new Error(`accounts.json is invalid: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
   }
-  // v1 -> v2: the zod defaults fill the new fields (role admin, status active); lowercase any hand-edited address.
+  // Lowercase any hand-edited address.
   for (const account of parsed.data.accounts) if (account.email) account.email = normalizeEmail(account.email);
   return parsed.data;
 }
@@ -244,6 +266,58 @@ function parseStore(raw: unknown): AccountStore {
 /** Reads the file (secrets opened), or creates the initial one. Caller holds the lock when `locked`. */
 function load(locked: boolean): AccountStore {
   return loadWithFlags(locked).store;
+}
+
+type FileIdentity = { path: string; ino: number; mtimeMs: number; size: number };
+
+interface StoreCache extends FileIdentity {
+  store: AccountStore;
+  byId: Map<string, Account>;
+  byEmail: Map<string, Account>;
+}
+
+let cache: StoreCache | null = null;
+
+function identity(path: string): FileIdentity | null {
+  try {
+    const stat = statSync(path);
+    return { path, ino: stat.ino, mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
+const sameFile = (a: FileIdentity, b: FileIdentity): boolean => a.path === b.path && a.ino === b.ino && a.mtimeMs === b.mtimeMs && a.size === b.size;
+
+/** The cached parse of accounts.json (never handed out directly: callers get copies). */
+function cachedStore(): StoreCache {
+  const path = accountsPath();
+  const before = identity(path);
+  if (cache && before && sameFile(cache, before)) return cache;
+  const { store, plaintext } = loadWithFlags(false);
+  if (plaintext) {
+    // Transparent migration: the next write seals them; do it now so plaintext keys do not wait for an unrelated change.
+    try {
+      mutateStore(() => undefined);
+    } catch (error) {
+      console.warn(`[accounts] could not reseal provider keys: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const after = identity(path);
+  const fresh: StoreCache = {
+    ...(after ?? { path, ino: -1, mtimeMs: -1, size: -1 }),
+    store,
+    byId: new Map(store.accounts.map((account) => [account.id, account])),
+    byEmail: new Map(store.accounts.filter((account) => account.email).map((account) => [account.email as string, account])),
+  };
+  // Only cache what is known to match the file on disk now (a write between our read and this stat is re-read next time).
+  cache = after && before && !plaintext && sameFile(before, after) ? fresh : null;
+  return fresh;
+}
+
+/** Tests and the CLI interop suite: drop the cache (the next read parses the file). */
+export function invalidateStoreCache(): void {
+  cache = null;
 }
 
 function loadWithFlags(locked: boolean): { store: AccountStore; plaintext: boolean } {
@@ -267,17 +341,9 @@ function loadWithFlags(locked: boolean): { store: AccountStore; plaintext: boole
   return { store, plaintext: openSecrets(store) };
 }
 
+/** A copy of the whole store (cheap reads: see the cache above). */
 export function readStore(): AccountStore {
-  const { store, plaintext } = loadWithFlags(false);
-  if (plaintext) {
-    // Transparent migration: the next write seals them; do it now so plaintext keys do not wait for an unrelated change.
-    try {
-      mutateStore(() => undefined);
-    } catch (error) {
-      console.warn(`[accounts] could not reseal provider keys: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  return store;
+  return structuredClone(cachedStore().store);
 }
 
 /**
@@ -294,12 +360,13 @@ export function mutateStore<T>(fn: (store: AccountStore) => T): T {
 }
 
 export function getAccount(id: string): Account | undefined {
-  return readStore().accounts.find((account) => account.id === id);
+  const found = cachedStore().byId.get(id);
+  return found ? structuredClone(found) : undefined;
 }
 
 export function findByEmail(email: string): Account | undefined {
-  const wanted = normalizeEmail(email);
-  return readStore().accounts.find((account) => account.email === wanted);
+  const found = cachedStore().byEmail.get(normalizeEmail(email));
+  return found ? structuredClone(found) : undefined;
 }
 
 /** Login identifier: a username, or an email address (anything with an @). */
@@ -309,10 +376,10 @@ export function findByIdentifier(identifier: string): Account | undefined {
 }
 
 export function getDefaultAccount(): Account {
-  const store = readStore();
-  const found = store.accounts.find((account) => account.id === store.defaultAccountId);
+  const { store, byId } = cachedStore();
+  const found = byId.get(store.defaultAccountId);
   if (!found) throw new Error("accounts.json has no default account");
-  return found;
+  return structuredClone(found);
 }
 
 export function setProvider(id: string, provider: ProviderConfig | null): Account | undefined {
