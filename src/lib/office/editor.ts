@@ -6,6 +6,7 @@ import type { Account } from "@/lib/accounts/store";
 import { documentTypeOf } from "./templates";
 import type { DocMeta } from "./store";
 import { LIVE_PLUGIN_GUID, type LivePluginOptions } from "./live-protocol";
+import { proxiedApiUrl } from "./proxy";
 
 /**
  * Document Server (DocsAPI) glue. The browser gets a config signed with the sidecar's JWT secret (it never sees the
@@ -107,7 +108,7 @@ export function editorConfig(
   };
   const token = signJwt(base, officeSecret());
   return {
-    apiUrl: `${publicUrl(state)}/web-apps/apps/api/documents/api.js`,
+    apiUrl: proxiedApiUrl(account.id) ?? `${publicUrl(state)}/web-apps/apps/api/documents/api.js`,
     config: { ...base, token, width: "100%", height: "100%", type: "desktop" },
     live,
   };

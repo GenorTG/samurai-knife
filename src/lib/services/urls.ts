@@ -31,7 +31,24 @@ export function stripSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+/**
+ * The office editor served by this app on its own host name (scripts/office-proxy.mjs): KNIFE_OFFICE_PUBLIC_URL, as an
+ * origin, or null. While set, the office sidecar is published on loopback only and the browser reaches it through the app.
+ */
+export function officeProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env.KNIFE_OFFICE_PUBLIC_URL?.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export function publicUrl(state: SidecarState): string {
+  const proxied = state.id === "office" ? officeProxyUrl() : null;
+  if (proxied) return proxied;
   return stripSlash(state.publicUrl || `http://${hostForUrl(state.bindHost)}:${state.hostPort}`);
 }
 

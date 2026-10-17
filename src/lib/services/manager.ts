@@ -19,7 +19,7 @@ import {
   type OpLock,
   type SidecarState,
 } from "./state";
-import { appHost, appPort, appUrl, internalUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
+import { appHost, appPort, appUrl, internalUrl, officeProxyUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
 import { writePrivateFile } from "@/lib/accounts/store";
 import { isIpAddress } from "@/lib/net/address-policy";
 
@@ -217,7 +217,12 @@ async function withLock<T>(id: string, op: OpKind, fn: () => Promise<T>): Promis
 
 /** Address a definition's port is published on: KNIFE_HOST, or loopback for app-only services (`publish: "loopback"`). */
 export function bindHostFor(def: SidecarDefinition): string {
-  return def.publish === "loopback" ? "127.0.0.1" : appHost();
+  return loopbackOnly(def) ? "127.0.0.1" : appHost();
+}
+
+/** Only this app connects: a `publish: "loopback"` definition, or the office editor while the app proxies it. */
+function loopbackOnly(def: SidecarDefinition): boolean {
+  return def.publish === "loopback" || (def.id === "office" && officeProxyUrl() !== null);
 }
 
 /**
@@ -394,10 +399,10 @@ function requireState(id: string): SidecarState {
   return state;
 }
 
-/** An install from before `publish: "loopback"` keeps its old bind address until the next start/update moves it. */
+/** An install from before `publish: "loopback"` (or the office proxy) keeps its old bind address until the next start/update moves it. */
 function movedToBindHost(def: SidecarDefinition, state: SidecarState, reporter?: OpReporter): SidecarState {
   const wanted = bindHostFor(def);
-  if (def.publish !== "loopback" || state.bindHost === wanted) return state;
+  if (!loopbackOnly(def) || state.bindHost === wanted) return state;
   reporter?.log(`publishing on ${wanted} instead of ${state.bindHost} (only this app connects)`);
   return writeState({ ...state, bindHost: wanted });
 }

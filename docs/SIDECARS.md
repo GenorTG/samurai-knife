@@ -68,11 +68,40 @@ touches anything else on the host.
 Two URLs per sidecar, both shown and editable in its Settings:
 
 - **Public URL** (browser → sidecar): default `http://<KNIFE_HOST>:<port>`. The editor's scripts and websocket load from it.
+  `KNIFE_OFFICE_PUBLIC_URL` (the app proxies the editor, above) replaces it and publishes the sidecar on loopback.
 - **App URL** (container → app): default `http://<KNIFE_HOST>:<KNIFE_PORT>`. A container reaches the host's Tailscale/LAN
   address fine, but **not the host's loopback**. With `KNIFE_HOST=127.0.0.1` the derived URL is
   `http://host.docker.internal:<port>` (the compose file maps it with `host-gateway`) and the status carries a warning,
   because the app does not listen on the docker bridge. Fix: bind the app to the Tailscale/LAN address (the live setup),
   or set the app URL / `KNIFE_SIDECAR_APP_URL` to an address the container can reach.
+
+## Office editor behind the app (`KNIFE_OFFICE_PUBLIC_URL`)
+
+On a public host the browser must reach the editor over https, on an origin that is NOT the app's: the editor's scripts
+(and whatever a document makes them do) must never run with the signed-in user's origin. With
+`KNIFE_OFFICE_PUBLIC_URL=https://office.<app host>` the app serves the editor itself (`scripts/office-proxy.mjs`,
+preloaded by `serve.mjs` through `peer-address.mjs`); the reverse proxy only has to send that name to the app's port with
+websockets on (docs/DEPLOY.md §4).
+
+- Every request and websocket upgrade whose `Host` is that name goes to the sidecar and never reaches Next; the app is
+  never served on the office host. The sidecar is published on `127.0.0.1` only (an older install moves on its next
+  start/update) and its Public URL setting is ignored while the variable is set.
+- Gate: the editor config loads `api.js?knife_ticket=<ticket>` (`src/lib/office/proxy.ts`: HMAC ticket naming the account,
+  6 h, key = HMAC of a fixed context under the sidecar's JWT secret). A valid ticket on `api.js` sets `knife_office`
+  (HttpOnly, SameSite=Strict, Secure on https) on the office host; everything else needs that cookie. App and office host
+  must be one site (same registrable domain) or the browser does not send it.
+- Allow-list: editor files (`web-apps`, `sdkjs`, `sdkjs-plugins`, `fonts`, `dictionaries`, the service worker,
+  `meta/formats`, `plugins.json`, `themes.json`), the document websocket/long-poll `doc/<id>/c/…`, `cache/files/…` and the
+  editor's per-document `downloadas|savefile|printfile|downloadfile|upload|uploadold`, each after an optional version
+  prefix. CommandService, ConvertService, converter/docbuilder, info, internal, admin, ai-proxy, welcome/example,
+  healthcheck and WOPI answer 404; `..`, encoded dots/slashes/backslashes and control characters too. The editor itself
+  asks for `sdkjs/slide/themes//themes.js`, so `//` is allowed.
+- Hygiene: the browser's cookies, `X-Forwarded-*`, `Forwarded`, `X-Real-IP` and `x-knife-*` never reach the sidecar; it gets
+  `X-Forwarded-Host` = the office host and `X-Forwarded-Proto` (its nginx builds absolute URLs from them). `Set-Cookie`,
+  `Server` and `X-Powered-By` from the sidecar are dropped; responses get `frame-ancestors <app origin> <office origin>`,
+  `nosniff`, a referrer policy and HSTS on https.
+- Limits: 3000 requests/min and 64 at once per account, 16 websockets per account (512 in total), 60 refused requests/min
+  per client address (then 429), 110 MB bodies, 5 min idle (15 min on websockets). No sidecar: 503.
 
 ## Office (`office`, slug `office`)
 
@@ -278,6 +307,12 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   file browser in Chromium and Firefox (folders, upload, rename, move, duplicate, search, sort, download, trash + Undo,
   restore, delete forever, not-installed editor state), then the sidecar: edit + Ctrl+S = a version, preview/download/
   restore it, Firefox editor. `--skip-docker` for the browser part only. ~9 min with a cached image.
+- Unit: `tests/office_proxy.test.mjs` (allow-list, tickets from `src/lib/office/proxy.ts` verified by the proxy, forged/
+  expired tickets, cookie gate, header hygiene, websocket pass-through, budgets, sidecar down) against a fake sidecar.
+- Real docker: `python3 tests/office_proxy_e2e.py --host <tailscale-ip>` — the editor through the proxy: app and office
+  host as two names of one site (Chromium `--host-resolver-rules`), sidecar on loopback only, every service/admin path
+  refused, ticket -> cookie, docx typed + Ctrl+S + close saves, xlsx/pptx open, the proxy refused nothing the editor
+  asked for. ~3 min with a cached image.
 - Real docker: `python3 tests/office_e2e.py` — scratch worktree server on the Tailscale address (own data dir, port and
   compose project), install via the API, Playwright typing into a docx, Ctrl+S save (status 6), close save (status 2),
   every blank format opens, knife_doc tools, stop → lazy start, idle stop, CLI status, purge. `--keep` leaves it running,

@@ -61,8 +61,11 @@ export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = []
   return headers;
 }
 
-/** The office sidecar's browser-facing origin from its state file (`publicUrl`, else http://<bindHost>:<hostPort>). */
+/** The office sidecar's browser-facing origin: KNIFE_OFFICE_PUBLIC_URL, else its state file (`publicUrl`, else bind:port). */
 export function sidecarOrigins(dataDir) {
+  // Proxied by the app on its own host name (scripts/office-proxy.mjs): that origin, whatever the state says.
+  const proxied = originOf(process.env.KNIFE_OFFICE_PUBLIC_URL ?? "");
+  if (proxied) return [proxied];
   try {
     const state = JSON.parse(readFileSync(join(dataDir, "services", "office", "state.json"), "utf8"));
     const host = String(state.bindHost ?? "");

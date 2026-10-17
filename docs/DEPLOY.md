@@ -102,10 +102,12 @@ One Proxy Host per name:
 
   - `KNIFE_TRUSTED_PROXIES` must match the address the proxy connects FROM, as seen by the app, or every client shares one
     rate-limit bucket and cookies are never `Secure` (docs/ACCOUNTS.md "Client address").
-- **office.example.org** (only with the office sidecar) → `http://<sidecar bind address>:<sidecar port>`, SSL as above,
-  **Websockets on** (the editor uses them), `client_max_body_size 100m`. Then in Sidecars → Office editor → Settings set
-  the Public URL to `https://office.example.org` (the browser loads `api.js` from it; an http editor inside an https page
-  is blocked as mixed content). The CSP picks the new origin up from the sidecar state within seconds.
+- **office.knife.example.org** (only with the office sidecar) → the SAME `http://<KNIFE_HOST>:<KNIFE_PORT>` as the app,
+  SSL as above, **Websockets Support on**, the same advanced config with `client_max_body_size 110m`. Set
+  `KNIFE_OFFICE_PUBLIC_URL=https://office.knife.example.org` in the app's environment: the app proxies the editor itself
+  (docs/SIDECARS.md "Office editor behind the app"), the sidecar is published on loopback only, and the CSP picks the
+  origin up. The name must be on the same registrable domain as the app (the editor's cookie is SameSite=Strict). Without
+  the variable the sidecar is published on `KNIFE_HOST` and needs its own proxy host and Public URL instead.
 
 Only 443 (and 80 for the certificate challenge) should be reachable from outside; check from another network with
 `curl -sI https://knife.example.org` and a port scan of the public address.
@@ -113,8 +115,8 @@ Only 443 (and 80 for the certificate challenge) should be reachable from outside
 ## 5. Sidecars on a public host
 
 - Only admins install, start, stop, update or configure them (docs/ACCOUNTS.md "Roles"); users may use a running one.
-- The course database is published on 127.0.0.1 only. The office editor is published on `KNIFE_HOST` and must be reached
-  by browsers through the proxy (above), never directly.
+- The course database is published on 127.0.0.1 only, and so is the office editor when the app proxies it
+  (`KNIFE_OFFICE_PUBLIC_URL`, above); browsers never reach a sidecar port directly.
 - The editor's request filter is on (docs/SIDECARS.md "Request filter"). Add network egress filtering for the sidecar
   networks, which compose cannot express: in `DOCKER-USER`, allow established traffic, DNS and the internet from the
   sidecar network, and drop its traffic to the host's own addresses, the LAN, the Tailscale range (100.64.0.0/10,
@@ -152,7 +154,8 @@ servers it starts never inherit the lock). Keep a separate `next dev` for develo
 - [ ] `npm run build` in the deploy checkout, process started via `serve.mjs start` with `KNIFE_AUTH_MODE=public`.
 - [ ] Owner account: password, verified email, admin; `set-network private` only if needed.
 - [ ] `KNIFE_PUBLIC_URL` (https), `KNIFE_TRUSTED_PROXIES`, SMTP, `KNIFE_SSRF_DENY_CIDRS` set.
-- [ ] Proxy: HTTPS, forced; body size and streaming as above; office on its own HTTPS name with websockets.
+- [ ] Proxy: HTTPS, forced; body size and streaming as above; the office name on the app's port with websockets, and
+      `KNIFE_OFFICE_PUBLIC_URL` set.
 - [ ] `tests/prod_smoke.py` against a scratch copy of this setup passes; `curl -sI` shows the CSP and HSTS.
 - [ ] Data directory and `provider-keys.key` in the backup (the key opens the sealed provider keys in accounts.json).
 - [ ] GitHub App created (Users page) with the public domain among its callback URLs and as its setup URL; the
