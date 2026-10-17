@@ -100,7 +100,8 @@ class ScratchServer:
         self._runs += 1
         self.data_dir = scratch / f"data-{self._runs}"
         self.data_dir.mkdir()
-        port = free_port(self.host)
+        # A suite that must know its URL before start (e.g. KNIFE_PUBLIC_URL) passes KNIFE_PORT itself.
+        port = int((env or {}).get("KNIFE_PORT") or free_port(self.host))
         child_env = os.environ.copy()
         child_env.update({"KNIFE_HOST": self.host, "KNIFE_PORT": str(port), "KNIFE_DATA_DIR": str(self.data_dir), **(env or {})})
         self._log = (scratch / f"server-{self._runs}.log").open("w+")

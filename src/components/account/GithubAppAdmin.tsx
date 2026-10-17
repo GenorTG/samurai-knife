@@ -15,7 +15,8 @@ interface AppStatusView {
   settingsUrl?: string;
   createdAt?: string;
   callbackUrls: string[];
-  setupUrl: string;
+  setupUrl: string | null;
+  publicUrl: string | null;
 }
 
 async function call<T>(method: string, body?: unknown): Promise<T> {
@@ -123,8 +124,16 @@ export function GithubAppAdmin({ created, errorCode, errorMessage }: { created?:
               <Field label="App name (unique on GitHub)"><TextInput value={name} maxLength={34} onChange={(e) => setName(e.target.value)} /></Field>
               <Field label="Organization (optional)" hint="Empty = your personal account."><TextInput value={org} onChange={(e) => setOrg(e.target.value)} placeholder="my-company" /></Field>
             </div>
-            <p className="text-xs text-faint">Callback URLs it registers: {status.callbackUrls.join(", ")}</p>
-            <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? "Opening GitHub…" : "Create the GitHub App on GitHub"}</Button>
+            {!status.publicUrl ? (
+              <Notice tone="warn">Set <code>KNIFE_PUBLIC_URL</code> (the public https address of this server) first: GitHub sends users back only to that address.</Notice>
+            ) : typeof window !== "undefined" && window.location.origin !== status.publicUrl ? (
+              <Notice tone="info">Create it from the public address: <a className="underline" href={`${status.publicUrl}/account/admin`}>{status.publicUrl}/account/admin</a> (GitHub returns you there).</Notice>
+            ) : (
+              <>
+                <p className="text-xs text-faint">GitHub will send users back only to {status.publicUrl} (callback {status.callbackUrls.join(", ")}).</p>
+                <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? "Opening GitHub…" : "Create the GitHub App on GitHub"}</Button>
+              </>
+            )}
           </>
         )}
       </div>

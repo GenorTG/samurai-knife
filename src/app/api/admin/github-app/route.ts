@@ -2,8 +2,8 @@ import * as z from "zod/v4";
 import { authenticate, json, parseBody } from "@/lib/accounts/http";
 import { requireAdmin } from "@/lib/accounts/authz";
 import { appStatus, forgetApp } from "@/lib/github-app/config";
-import { requestBase } from "@/lib/github-app/http";
-import { buildManifest, callbackBases, callbackPaths } from "@/lib/github-app/manifest";
+import { jsonError } from "@/lib/accounts/http";
+import { buildManifest, callbackBases, callbackPaths, publicBase } from "@/lib/github-app/manifest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,8 +14,8 @@ export async function GET(request: Request): Promise<Response> {
   if ("response" in auth) return auth.response;
   const denied = requireAdmin(auth.account, "manage the GitHub App");
   if (denied) return denied;
-  const base = requestBase(request);
-  return json({ ...appStatus(), callbackUrls: callbackBases(base).map((b) => callbackPaths(b).callback), setupUrl: callbackPaths(base).setup });
+  const base = publicBase();
+  return json({ ...appStatus(), publicUrl: base, callbackUrls: callbackBases().map((b) => callbackPaths(b).callback), setupUrl: base ? callbackPaths(base).setup : null });
 }
 
 const createSchema = z.object({ name: z.string().max(34).optional(), org: z.string().max(39).optional() }).strict();
@@ -28,8 +28,12 @@ export async function POST(request: Request): Promise<Response> {
   if (denied) return denied;
   const parsed = await parseBody(request, createSchema, "{ name?, org? }");
   if ("response" in parsed) return parsed.response;
-  const { postUrl, manifest } = buildManifest(requestBase(request), auth.account.id, parsed.data);
-  return json({ postUrl, manifest: JSON.stringify(manifest) });
+  try {
+    const { postUrl, manifest } = buildManifest(auth.account.id, parsed.data);
+    return json({ postUrl, manifest: JSON.stringify(manifest) });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : String(error), 409);
+  }
 }
 
 /** DELETE -> forget the local credentials (the app stays on GitHub until its owner deletes it there). */

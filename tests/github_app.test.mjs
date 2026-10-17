@@ -39,6 +39,7 @@ const service = await import("../src/lib/site/service.ts");
 const siteStore = await import("../src/lib/site/store.ts");
 
 const BASE = "http://127.0.0.1:3999";
+process.env.KNIFE_PUBLIC_URL = BASE;
 accounts.mutateStore((s) => {
   s.accounts.push(accounts.newAccountRecord({ id: "owner", displayName: "Owner", role: "admin", status: "active", email: "owner@example.test", emailVerifiedAt: new Date().toISOString(), passwordHash: "x" }));
   s.accounts.push(accounts.newAccountRecord({ id: "bob", displayName: "Bob", role: "user", status: "active", email: "bob@example.test", emailVerifiedAt: new Date().toISOString(), passwordHash: "x" }));
@@ -52,8 +53,12 @@ function redirectParams(response) {
 }
 
 test("manifest: permissions and callback URLs; state is one-time and bound to the admin", () => {
+  assert.deepEqual(manifest.callbackBases(), [BASE], "by default only the public URL is registered");
+  delete process.env.KNIFE_PUBLIC_URL;
+  assert.throws(() => manifest.buildManifest("owner"), /KNIFE_PUBLIC_URL/, "no public URL, no app");
+  process.env.KNIFE_PUBLIC_URL = `${BASE}/some/path`;
   process.env.KNIFE_GITHUB_EXTRA_BASES = "http://100.64.0.7:3210, https://knife.example.org";
-  const built = manifest.buildManifest(BASE, "owner", { name: "Knife Test" });
+  const built = manifest.buildManifest("owner", { name: "Knife Test" });
   assert.deepEqual(built.manifest.default_permissions, { contents: "write", pull_requests: "write", metadata: "read", statuses: "read", deployments: "read", checks: "read", email_addresses: "read" });
   assert.deepEqual(built.manifest.callback_urls, [`${BASE}/api/github/callback`, "http://100.64.0.7:3210/api/github/callback", "https://knife.example.org/api/github/callback"]);
   assert.equal(built.manifest.hook_attributes.active, false);
@@ -61,11 +66,13 @@ test("manifest: permissions and callback URLs; state is one-time and bound to th
   assert.ok(built.postUrl.startsWith(`http://127.0.0.1:${web.port}/settings/apps/new?state=`));
   assert.equal(manifest.takeManifestState(built.state, "bob"), false, "another account cannot finish it");
   assert.equal(manifest.takeManifestState(built.state, "owner"), false, "and the state is gone after one try");
+  assert.equal(built.manifest.redirect_url, `${BASE}/api/github/app-created`, "the public origin, not the path");
   delete process.env.KNIFE_GITHUB_EXTRA_BASES;
+  process.env.KNIFE_PUBLIC_URL = BASE;
 });
 
 test("manifest flow end to end: GitHub's code becomes the saved app (0600); the app JWT verifies", async () => {
-  const built = manifest.buildManifest(BASE, "owner", { name: "Knife Test" });
+  const built = manifest.buildManifest("owner", { name: "Knife Test" });
   const back = redirectParams(world.web("POST", new URL(built.postUrl), `manifest=${encodeURIComponent(JSON.stringify(built.manifest))}`));
   assert.equal(back.get("state"), built.state);
   assert.equal(manifest.takeManifestState(back.get("state"), "owner"), true);

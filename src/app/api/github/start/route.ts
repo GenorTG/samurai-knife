@@ -3,7 +3,7 @@ import { isPublicMode } from "@/lib/accounts/mode";
 import { resolveAccount } from "@/lib/accounts/session";
 import { GITHUB_WEB, loadApp } from "@/lib/github-app/config";
 import { back, requestBase } from "@/lib/github-app/http";
-import { callbackPaths } from "@/lib/github-app/manifest";
+import { callbackPaths, publicBase } from "@/lib/github-app/manifest";
 import { authorizeUrl, beginFlow, safeReturnTo, stateCookie, type FlowPurpose } from "@/lib/github-app/oauth";
 
 export const runtime = "nodejs";
@@ -24,10 +24,17 @@ export async function GET(request: Request): Promise<Response> {
   } catch {
     return new NextResponse("unknown host", { status: 400 });
   }
+  // Every GitHub flow runs on the public address (the only one GitHub knows): opened elsewhere, start over there, so the
+  // state cookie and GitHub's callback land on the same origin.
+  const pub = publicBase();
+  if (pub && pub !== base) {
+    const url = new URL(request.url);
+    return NextResponse.redirect(`${pub}${url.pathname}${url.search}`, 303);
+  }
   const app = loadApp();
   const returnTo = safeReturnTo(params.get("returnTo"), purpose === "login" || purpose === "register" ? "/" : "/account");
   const fail = (code: string) => back(base, purpose === "login" || purpose === "register" ? "/login" : returnTo, { github_error: code });
-  if (!app) return fail("not_configured");
+  if (!app || !pub) return fail("not_configured");
   if (purpose !== "login" && purpose !== "register" && purpose !== "link" && purpose !== "install") return fail("bad_request");
   const account = resolveAccount(request);
   if (purpose === "login" || purpose === "register") {
@@ -39,7 +46,7 @@ export async function GET(request: Request): Promise<Response> {
     // Nothing to verify yet: the installation is checked after GitHub sends the user back (setup -> link).
     return NextResponse.redirect(`${GITHUB_WEB()}/apps/${app.slug}/installations/new`, 303);
   }
-  const redirectUri = callbackPaths(base).callback;
+  const redirectUri = callbackPaths(pub).callback;
   const { state, challenge } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo });
   const response = NextResponse.redirect(authorizeUrl(app, redirectUri, state, challenge), 303);
   response.headers.append("Set-Cookie", stateCookie(request, state));

@@ -30,11 +30,26 @@ export function callbackPaths(base: string) {
   };
 }
 
-/** Bases the app's OAuth callback may use: this server, KNIFE_PUBLIC_URL, KNIFE_GITHUB_EXTRA_BASES (comma list). Max 10. */
-export function callbackBases(base: string): string[] {
+/**
+ * The one address GitHub talks to: KNIFE_PUBLIC_URL (origin only). The app's redirect, callback and setup URLs all use
+ * it; a server without one cannot create or use the app (private Tailscale/LAN addresses are never registered).
+ */
+export function publicBase(): string | null {
+  const raw = (process.env.KNIFE_PUBLIC_URL ?? "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return /^https?:$/.test(url.protocol) ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Callback URLs to register: the public URL, plus KNIFE_GITHUB_EXTRA_BASES (comma list, empty by default). Max 10. */
+export function callbackBases(): string[] {
+  const pub = publicBase();
   const extra = (process.env.KNIFE_GITHUB_EXTRA_BASES ?? "").split(",").map((b) => b.trim().replace(/\/+$/, "")).filter((b) => /^https?:\/\/[^/]+$/.test(b));
-  const pub = (process.env.KNIFE_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
-  return [...new Set([base, ...(pub ? [pub] : []), ...extra])].slice(0, 10);
+  return [...new Set([...(pub ? [pub] : []), ...extra])].slice(0, 10);
 }
 
 const KEY = Symbol.for("samurai-knife.github-manifest-states.v1");
@@ -43,7 +58,9 @@ function states(): Map<string, { accountId: string; createdAt: number }> {
   return (g[KEY] ??= new Map());
 }
 
-export function buildManifest(base: string, accountId: string, options: { name?: string; org?: string } = {}) {
+export function buildManifest(accountId: string, options: { name?: string; org?: string } = {}) {
+  const base = publicBase();
+  if (!base) throw new Error("set KNIFE_PUBLIC_URL (the public address GitHub sends users back to) before creating the GitHub App");
   const now = Date.now();
   for (const [s, v] of states()) if (now - v.createdAt > 60 * 60_000) states().delete(s);
   const state = randomBytes(24).toString("base64url");
@@ -52,12 +69,12 @@ export function buildManifest(base: string, accountId: string, options: { name?:
   const manifest = {
     name: (options.name?.trim() || "Samurai Knife").slice(0, 34),
     // Shown publicly on the app's GitHub page: KNIFE_GITHUB_APP_HOMEPAGE (e.g. your site), else the public URL, else this server.
-    url: (process.env.KNIFE_GITHUB_APP_HOMEPAGE ?? "").trim() || (process.env.KNIFE_PUBLIC_URL ?? "").trim() || base,
+    url: (process.env.KNIFE_GITHUB_APP_HOMEPAGE ?? "").trim() || base,
     description: "Samurai Knife website studio: reads your website's repository, prepares changes as pull requests you review and merge, and lets you sign in with GitHub.",
     // No events are used; GitHub requires a hook URL in the object, the hook stays inactive.
     hook_attributes: { url: paths.webhook, active: false },
     redirect_url: paths.redirect,
-    callback_urls: callbackBases(base).map((b) => callbackPaths(b).callback),
+    callback_urls: callbackBases().map((b) => callbackPaths(b).callback),
     setup_url: paths.setup,
     setup_on_update: true,
     public: true,

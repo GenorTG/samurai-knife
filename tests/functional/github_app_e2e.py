@@ -196,7 +196,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
 
 
 def main() -> int:
-    api_port, web_port, site_port, psi_port = free_port(), free_port(), free_port(), free_port()
+    api_port, web_port, site_port, psi_port, app_port = free_port(), free_port(), free_port(), free_port(), free_port()
     web = f"http://127.0.0.1:{web_port}"
     tmp = Path(tempfile.mkdtemp(prefix="knife-ghapp-e2e-"))
     app_file = tmp / "ops" / "github-app.json"
@@ -211,6 +211,9 @@ def main() -> int:
             "KNIFE_GITHUB_WEB_URL": web,
             "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run",
             "KNIFE_GITHUB_APP_FILE": str(app_file),
+            # GitHub only ever talks to the public URL (docs/GITHUB.md): here the scratch server's own address.
+            "KNIFE_PORT": str(app_port),
+            "KNIFE_PUBLIC_URL": f"http://127.0.0.1:{app_port}",
         }
         with ScratchServer() as server:
             server.start(env=env)

@@ -26,9 +26,11 @@ state one-time and bound to the admin who started it) for the app id, client id/
 - Credentials: `KNIFE_GITHUB_APP_FILE` (absolute path, 0600; share one file between the dev and the live server) or
   `$KNIFE_DATA_DIR/github-app.json`. It is a server secret like `.env.local`: back it up apart from the data dir.
   "Remove from this server" forgets the file; delete the app itself in its GitHub settings.
-- Callback URLs (up to 10): this server's address, `KNIFE_PUBLIC_URL`, and `KNIFE_GITHUB_EXTRA_BASES` (comma list, e.g.
-  the live address and the future domain). The setup URL is the creating server's `/api/github/setup`. When an address
-  changes, edit both in the app's settings on GitHub.
+- **Only the public URL** (`KNIFE_PUBLIC_URL`, origin) is registered: redirect, callback and setup URLs all use it, and a
+  server without one cannot create the app. No Tailscale/LAN address is ever sent to GitHub. Create the app from the
+  public address (GitHub returns there); a flow started on another address first moves to the public one, so the state
+  cookie and the callback share an origin. `KNIFE_GITHUB_EXTRA_BASES` (comma list, empty by default) adds callback bases
+  for special setups. When the public address changes, edit the URLs in the app's settings on GitHub.
 - The app's homepage (public on GitHub): `KNIFE_GITHUB_APP_HOMEPAGE`, else `KNIFE_PUBLIC_URL`, else this server.
 - CSP (public mode): `form-action` allows the GitHub origin for the manifest POST (scripts/security-headers.mjs).
 - `KNIFE_GITHUB_WEB_URL` / `KNIFE_GITHUB_API_URL`: GitHub Enterprise or test mocks (operator configuration: may be a
