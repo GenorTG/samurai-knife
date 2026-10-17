@@ -35,22 +35,40 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def free_port(host: str = "127.0.0.1") -> int:
-    """Any free port, or the first free one in KNIFE_SCRATCH_PORTS ("3330-3349") when a shared host reserves a range."""
+def free_ports(count: int, host: str = "127.0.0.1") -> list[int]:
+    """Reserve distinct free ports together, or raise if the requested scratch range is exhausted."""
+    if count < 1:
+        raise ValueError("count must be positive")
     span = os.environ.get("KNIFE_SCRATCH_PORTS", "").strip()
-    if span:
-        low, _, high = span.partition("-")
-        for port in range(int(low), int(high or low) + 1):
-            with socket.socket() as sock:
-                try:
-                    sock.bind((host, port))
-                except OSError:
-                    continue
-                return port
-        raise RuntimeError(f"no free port in KNIFE_SCRATCH_PORTS={span} on {host}")
-    with socket.socket() as sock:
-        sock.bind((host, 0))
-        return sock.getsockname()[1]
+    held: list[socket.socket] = []
+    ports: list[int] = []
+    try:
+        if span:
+            low, _, high = span.partition("-")
+            candidates = range(int(low), int(high or low) + 1)
+        else:
+            candidates = range(count)
+        for port in candidates:
+            sock = socket.socket()
+            try:
+                sock.bind((host, port if span else 0))
+            except OSError:
+                sock.close()
+                continue
+            held.append(sock)
+            ports.append(sock.getsockname()[1])
+            if len(ports) == count:
+                return ports
+        label = f"KNIFE_SCRATCH_PORTS={span}" if span else "the OS ephemeral range"
+        raise RuntimeError(f"could not reserve {count} distinct free ports in {label} on {host}")
+    finally:
+        for sock in held:
+            sock.close()
+
+
+def free_port(host: str = "127.0.0.1") -> int:
+    """Any free port, or one in the reserved scratch range."""
+    return free_ports(1, host)[0]
 
 
 class ScratchServer:

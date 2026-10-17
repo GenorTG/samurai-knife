@@ -274,8 +274,9 @@ Public register, forgot, resend, reset, and login after failures require a brows
 store lookups, scrypt, or mail. `GET /api/account/challenge?form=...` issues an HMAC-signed ten-minute challenge bound to
 the form and client IP prefix. The client solves SHA-256 in a Web Worker and reports progress as “Checking your browser…”.
 Challenges are single-use and the replay set is bounded. Difficulty defaults to 18 bits (~2^18 hashes), increases under
-prefix/register pressure, and is capped at 24 bits. E2E clients use `tests/pow_client.py` to fetch and solve challenges;
-direct API probes fetch and solve the challenge too (see `Api.call` in `tests/functional/accounts_public_e2e.py`); isolated e2e servers set a lower `KNIFE_POW_BITS`, never disable the check. The signing key is `auth.key` (0600).
+prefix/register pressure, and is capped at 24 bits. Browser e2e uses the Worker-backed forms; direct API probes fetch
+and solve the challenge too (see `Api.call` in `tests/functional/accounts_public_e2e.py`). Isolated e2e servers set a
+lower `KNIFE_POW_BITS`, never disable the check. The signing key is `auth.key` (0600).
 
 Every password hash and verify shares one asynchronous scrypt gate: `KNIFE_SCRYPT_CONCURRENCY=2`,
 `KNIFE_SCRYPT_QUEUE=32`; excess work returns 503 with `Retry-After`. Scrypt uses N=2^17; unknown usernames perform a

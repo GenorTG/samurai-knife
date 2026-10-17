@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT))
 from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
 
 from tests.functional.accounts_public_e2e import Api, cli, new_context, ui_login  # noqa: E402
-from tests.scratch_server import ScratchServer, free_port  # noqa: E402
+from tests.scratch_server import ScratchServer, free_ports  # noqa: E402
 
 HEADED = "--headed" in sys.argv
 FAILS: list[str] = []
@@ -196,7 +196,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
 
 
 def main() -> int:
-    api_port, web_port, site_port, psi_port, app_port = free_port(), free_port(), free_port(), free_port(), free_port()
+    api_port, web_port, site_port, psi_port, app_port = free_ports(5)
     web = f"http://127.0.0.1:{web_port}"
     tmp = Path(tempfile.mkdtemp(prefix="knife-ghapp-e2e-"))
     app_file = tmp / "ops" / "github-app.json"
