@@ -60,6 +60,18 @@ def default_host() -> str | None:
     return None
 
 
+def read_sealed(data_dir: Path, path: Path) -> str:
+    """A per-account file as the app reads it: sealed at rest (src/lib/storage/sealed.ts), the account id is its name."""
+    script = "const { readAccountText } = await import('./src/lib/storage/sealed.ts'); process.stdout.write(readAccountText(process.argv[1], process.argv[2]));"
+    env = {k: v for k, v in os.environ.items() if k != "KNIFE_STORAGE_KEY_FILE"}
+    env["KNIFE_DATA_DIR"] = str(data_dir)
+    out = subprocess.run(["node", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--import", "./tests/ts-resolve.mjs", "--input-type=module", "-e", script, path.stem, str(path)],
+                         cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr[-500:])
+    return out.stdout
+
+
 class Api:
     def __init__(self, base: str) -> None:
         self.base = base
@@ -350,7 +362,7 @@ def main() -> int:
             check("after reload: counter still 1 done", page.get_by_text(f"1 of {len(lessons)} lessons done").is_visible())
             check("after reload: lesson 1 is current and its last query is back", editor(page).input_value() == "SELECT * FROM categories;", editor(page).input_value())
             files = list((Path(server.data_dir) / "learn").glob("*.json"))
-            saved = json.loads(files[0].read_text()) if files else {}
+            saved = json.loads(read_sealed(server.data_dir, files[0])) if files else {}
             entry = saved.get("courses", {}).get("sql", {}).get("lessons", {}).get("select-all", {})
             check("progress file in the data dir (600) records completion, attempts, hints", bool(files) and oct(files[0].stat().st_mode & 0o777) == "0o600" and entry.get("completedAt") and entry.get("hintsShown") == 1 and entry.get("failedChecks") == 1, json.dumps(entry)[:200])
 
