@@ -28,6 +28,8 @@ npm run accounts -- set-email <id> owner@example.com            # marked verifie
 npm run accounts -- set-role <id> admin                         # v1 accounts are admins already
 npm run accounts -- set-network <id> private                    # its provider may reach local models (LAN/loopback)
 ```
+`set-password` ends the account's sessions and revokes its MCP keys, like the web reset (it prints how many);
+`remove` revokes the removed account's MCP keys, so an id registered again never inherits them.
 
 ## Store (`$KNIFE_DATA_DIR/accounts.json`, format v2)
 

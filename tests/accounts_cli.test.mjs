@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -73,4 +73,19 @@ test("argv keys are still impossible and only one key source is allowed", () => 
   assert.match(r.stderr, /use only one of/);
   r = run(["set-provider", "openclaw", "--base-url", "http://a/v1", "--model", "m", "--key-prompt"], "\n");
   assert.match(r.stderr, /no key entered/);
+});
+
+test("set-password revokes the account's MCP keys (like the web reset) and says so; other accounts keep theirs", () => {
+  const key = (id, accountId) => ({ id, accountId, name: "agent", hash: "0".repeat(64), hint: "skm_abcd…", createdAt: "2026-10-18T00:00:00.000Z", lastUsedAt: null });
+  const keysFile = join(dir, "mcp-keys.json");
+  writeFileSync(keysFile, JSON.stringify({ version: 1, keys: [key("mk_1", "openclaw"), key("mk_2", "openclaw"), key("mk_3", "someone-else")] }), { mode: 0o600 });
+  const r = run(["set-password", "openclaw"], "anotherlongone2\nanotherlongone2\n");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /2 MCP key\(s\) revoked/);
+  const left = JSON.parse(readFileSync(keysFile, "utf8")).keys;
+  assert.deepEqual(left.map((k) => k.id), ["mk_3"]);
+  assert.equal(statSync(keysFile).mode & 0o777, 0o600);
+  const again = run(["set-password", "openclaw"], "anotherlongone3\nanotherlongone3\n");
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /0 MCP key\(s\) revoked/);
 });
