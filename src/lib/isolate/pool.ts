@@ -20,6 +20,7 @@ export interface IsolateWorker {
   on(event: "error", listener: (error: Error) => void): unknown;
   on(event: "exit", listener: (code: number) => void): unknown;
   removeAllListeners(): unknown;
+  ref?(): void;
   unref?(): void;
 }
 
@@ -257,7 +258,6 @@ export class IsolatePool<Tasks extends TaskMap> {
     this.counters.spawned += 1;
     slot.worker = worker;
     slot.ready = false;
-    worker.unref?.(); // an idle pool never keeps the process alive
     worker.on("message", (message) => {
       if (slot.worker === worker) this.onMessage(slot, message as ResponseMessage);
     });
@@ -267,6 +267,9 @@ export class IsolatePool<Tasks extends TaskMap> {
     worker.on("exit", () => {
       if (slot.worker === worker) this.onCrash(slot, null);
     });
+    // After the listeners (attaching a "message" listener re-refs a worker_threads Worker): an idle pool never keeps the
+    // process alive; `start` refs the worker while it has a task.
+    worker.unref?.();
     slot.startupTimer = setTimeout(() => {
       slot.startupTimer = null;
       if (slot.worker === worker && !slot.ready) this.onCrash(slot, new Error("worker start-up timed out"));
@@ -284,6 +287,7 @@ export class IsolatePool<Tasks extends TaskMap> {
       return;
     }
     slot.job = job;
+    worker.ref?.();
     job.startedAt = this.options.now();
     pushSample(this.waits, job.startedAt - job.enqueuedAt);
     if (slot.ready) this.armTimeout(slot, job);
@@ -293,6 +297,7 @@ export class IsolatePool<Tasks extends TaskMap> {
     } catch (error) {
       // Not structured-cloneable: the caller's fault, not the worker's. The worker is fine.
       slot.job = null;
+      worker.unref?.();
       this.counters.failed += 1;
       this.settle(job, "reject", error);
       this.pump();
@@ -322,6 +327,7 @@ export class IsolatePool<Tasks extends TaskMap> {
     const job = slot.job;
     if (!job || message.id !== job.id || message.type === "progress") return;
     slot.job = null;
+    slot.worker?.unref?.();
     if (message.type === "result") {
       this.counters.completed += 1;
       this.settle(job, "resolve", message.value);
@@ -338,6 +344,8 @@ export class IsolatePool<Tasks extends TaskMap> {
     if (job) {
       this.counters.crashed += 1;
       const oom = error && /ERR_WORKER_OUT_OF_MEMORY|out of memory|heap/i.test(`${(error as { code?: string }).code ?? ""} ${error.message}`);
+      // Not the input's fault (a worker that cannot load, an uncaught error): leave a trace for the operator.
+      if (error && !oom) console.error(`[isolate:${this.options.name}] worker failed during a task:`, error.message);
       this.settle(job, "reject", new IsolateCrashError(oom ? "The computation needed more memory than allowed and was stopped." : undefined));
     } else if (error) {
       console.error(`[isolate:${this.options.name}] idle worker died:`, error.message);

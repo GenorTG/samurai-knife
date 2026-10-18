@@ -83,6 +83,8 @@ $R tests/sql_instant_format.test.mjs   # instant formatter: formatted SQL return
 $R tests/cv_store.test.mjs       # damaged cv/<id>.json is a CvStoreError, undo snapshots never share a name, ids with path characters refused
 $R tests/github_app.test.mjs      # GitHub App: manifest flow, app JWT, PKCE + one-time browser-bound state, sign-in/registration rules (no takeover by email), linking, installation tokens scoped to one repo, studio on an installation
 $R tests/site_studio.test.mjs     # website studio: page/copy (PL+EN)/CV-fit analyzers, PageSpeed parsing, path rules, the GitHub work-branch flow (connect, write, replace, PR, preview, publish at the reviewed head, discard) and an audit against tests/mock_site_world.mjs
+$R tests/isolate_server.test.mjs  # server isolate pool with real worker threads: JSON Schema ReDoS (`^(a+)+$`) stopped at the timeout while the event loop keeps running, pool recovers, queue/per-account refusals, regex generation + office text in the worker, an idle pool lets the process exit
+$R tests/office_text.test.mjs     # office text extraction: golden corpus (tests/fixtures/office-text-*), crafted xlsx/odt/docx (columns past XFD, padding, shared-string and text:s amplification, unclosed tags) finish fast with output capped at maxChars
 $R tests/version.test.mjs         # VERSION format, package.json in sync, the pre-commit hook bumps BUILD inside its own commit, KNIFE_NO_BUMP / VERSION-only commits skip
 $R tests/storage_sealed.test.mjs  # every per-account store sealed at rest, cross-account copy refused, legacy plaintext, missing key, `npm run storage -- seal`
 $R tests/accounts_store.test.mjs  # accounts v1->v2 migration, lock, unique emails, trusted-proxy rules, rate limits, public flows, data purge
