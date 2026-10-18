@@ -126,16 +126,21 @@ export function openTabs(accountId: string, now = Date.now()): (UiPresence & { c
 }
 
 /**
- * A tab's poll: marks it as listening and hands over (and forgets) what was asked of it. A tab that has not reported
- * its presence yet (or any more) is not recorded: it reports on mount and every 20 s, and its next poll counts.
+ * A tab's poll: marks it as listening and hands over (and forgets) what was asked of it. A tab without presence (its
+ * first poll raced its first report, or the server restarted) is not recorded: `known: false` tells it to report now
+ * and poll again.
  */
-export function takePending(accountId: string, clientId: string, now = Date.now()): UiShowEvent[] {
+export function takePoll(accountId: string, clientId: string, now = Date.now()): { known: boolean; events: UiShowEvent[] } {
   const b = state().accounts.get(accountId);
-  if (!b?.presence.has(clientId)) return [];
+  if (!b?.presence.has(clientId)) return { known: false, events: [] };
   b.polls.set(clientId, now);
   const events = b.pending.get(clientId) ?? [];
   b.pending.delete(clientId);
-  return events;
+  return { known: true, events };
+}
+
+export function takePending(accountId: string, clientId: string, now = Date.now()): UiShowEvent[] {
+  return takePoll(accountId, clientId, now).events;
 }
 
 /** Ask the most recently active listening tab (or `clientId`) to open `path`. Returns the target, or null if no tab listens. */

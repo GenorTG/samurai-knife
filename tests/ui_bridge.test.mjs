@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-const { reportPresence, openTabs, takePending, requestShow, resetUiBridge, uiBridgeSize, PRESENCE_TTL_MS, POLL_TTL_MS, MAX_TABS, validClientId } = await import("../src/lib/ui-bridge/store.ts");
+const { reportPresence, openTabs, takePending, takePoll, requestShow, resetUiBridge, uiBridgeSize, PRESENCE_TTL_MS, POLL_TTL_MS, MAX_TABS, validClientId } = await import("../src/lib/ui-bridge/store.ts");
 const { showPath, ShowPathError } = await import("../src/lib/ui-bridge/path.ts");
 
 const tab = (clientId, path, extra = {}) => ({ clientId, path, title: "T", visible: true, active: true, ...extra });
@@ -40,8 +40,9 @@ test("bounded: polls with random client ids (no presence) are answered but never
   resetUiBridge();
   for (let i = 0; i < 50_000; i += 1) assert.deepEqual(takePending("a", `random-${String(i).padStart(8, "0")}`, 1_000), []);
   assert.deepEqual(uiBridgeSize(), { accounts: 0, presence: 0, polls: 0, pending: 0 });
+  assert.deepEqual(takePoll("a", "tab-one-0001", 1_000), { known: false, events: [] }, "unknown: the tab reports, then polls again");
   reportPresence("a", tab("tab-one-0001", "/tools/json"), 1_000);
-  takePending("a", "tab-one-0001", 1_000);
+  assert.deepEqual(takePoll("a", "tab-one-0001", 1_000), { known: true, events: [] });
   assert.equal(openTabs("a", 1_000)[0].connected, true, "a tab that reported is listening once it polls");
 });
 
