@@ -35,6 +35,7 @@ const device = await import("../src/lib/accounts/known-device.ts");
 const ipPrefix = await import("../src/lib/accounts/ip-prefix.ts");
 const pending = await import("../src/lib/accounts/pending.ts");
 const gaccounts = await import("../src/lib/github-app/accounts.ts");
+const securityEvents = await import("../src/lib/security/events.ts");
 const accountsFile = join(dataDir, "accounts.json");
 const outbox = join(dataDir, "mail-outbox");
 
@@ -577,10 +578,11 @@ test("lockout DoS (#9): strangers hammering an identifier cannot lock out its kn
   assert.equal(codes.slice(0, 10).every((r) => r === "invalid_credentials"), true);
   assert.equal(codes[10], "rate_limited");
   // The lockout was recorded and the owner told once.
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  const events = readFileSync(join(dataDir, "security", "events.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  await securityEvents.flushSecurityEvents();
+  const eventsFile = join(dataDir, "security", `events-${new Date().toISOString().slice(0, 10)}.jsonl`);
+  const events = readFileSync(eventsFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   assert.ok(events.some((e) => e.kind === "login_lockout" && e.account === "target"));
-  assert.equal(statSync(join(dataDir, "security", "events.jsonl")).mode & 0o777, 0o600);
+  assert.equal(statSync(eventsFile).mode & 0o777, 0o600);
   const notices = (await mails("target@example.com", 1)).filter((m) => m.includes("Many failed logins"));
   assert.equal(notices.length, 1, "one notice per day");
 });
@@ -607,4 +609,63 @@ test("client prefixes: IPv6 by /64, mapped IPv4 as IPv4", () => {
   assert.equal(ipPrefix.clientPrefix("local"), "local");
   assert.equal(ipPrefix.prefixTag("2001:db8::1"), ipPrefix.prefixTag("2001:db8::2"));
   assert.notEqual(ipPrefix.prefixTag("2001:db8::1"), ipPrefix.prefixTag("2001:db8:0:1::1"));
+});
+
+/* --------------------------------------------- edge lane: global failed-login budget (E2), full namespace (E1) */
+
+test("E2: a full server-wide failed-login budget only raises proof-of-work, never refuses; known devices skip it", async () => {
+  await limits.resetRateLimitsForTests();
+  pow.resetPowState();
+  process.env.KNIFE_LOGIN_GLOBAL_FAILS = "30";
+  addAccount("stuffed", { passwordHash: await password.hashPasswordAsync("stuffed password 1") });
+  const owner = store.getAccount("stuffed");
+  const deviceCookie = device.deviceCookieHeader(undefined, "stuffed", session.passwordFingerprint(owner), true).split(";")[0].slice(`${device.DEVICE_COOKIE}=`.length);
+  // Credential stuffing: one failure per random identifier and address, never 3 from one place.
+  for (let i = 0; i < 30; i++) {
+    const r = await session.attemptLogin(`nobody${i}@example.com`, "guess guess", `198.18.${i}.1`);
+    assert.equal(r.reason, "invalid_credentials");
+  }
+  assert.equal(limits.checkLimits([limits.LIMITS.loginGlobal()]).ok, false, "the global budget is full");
+  const fresh = await session.attemptLogin("stuffed", "stuffed password 1", "203.0.113.230");
+  assert.deepEqual([fresh.ok, fresh.reason, fresh.bits], [false, "challenge_required", 6 + 3], "a fresh browser pays raised proof-of-work, no 429");
+  const paid = await session.attemptLogin("stuffed", "stuffed password 1", "203.0.113.230", { pow: solved("login", "203.0.113.230", { atLeastBits: fresh.bits }) });
+  assert.equal(paid.ok, true, JSON.stringify(paid));
+  const fromDevice = await session.attemptLogin("stuffed", "stuffed password 1", "203.0.113.231", { deviceCookie });
+  assert.equal(fromDevice.ok, true, "the known device needs no proof at all");
+  // The challenge route honours the difficulty a 428 named (the browser flow under attack), never less than required.
+  assert.equal(pow.issueChallenge("login", "203.0.113.232", { atLeastBits: 9 }).bits, 9);
+  assert.equal(pow.issueChallenge("login", "203.0.113.232", { atLeastBits: 1 }).bits, 6);
+  assert.equal(pow.issueChallenge("login", "203.0.113.232", { atLeastBits: 99 }).bits, 12, "capped at KNIFE_POW_MAX_BITS");
+  delete process.env.KNIFE_LOGIN_GLOBAL_FAILS;
+  await limits.resetRateLimitsForTests();
+});
+
+test("E1: a `login` namespace filled by one attacker locks out neither other clients nor known devices", async () => {
+  await limits.resetRateLimitsForTests({ login: { maxKeys: 400 } });
+  pow.resetPowState();
+  addAccount("crowded", { passwordHash: await password.hashPasswordAsync("crowded password 1") });
+  const owner = store.getAccount("crowded");
+  const deviceCookie = device.deviceCookieHeader(undefined, "crowded", session.passwordFingerprint(owner), true).split(";")[0].slice(`${device.DEVICE_COOKIE}=`.length);
+  // One /48, rotating /64s, junk identifiers: each failure creates identifier keys until the namespace is past its cap.
+  const now = Date.now();
+  for (let i = 0; i < 600; i++) {
+    const ip = `2001:0db8:00ee:${i.toString(16).padStart(4, "0")}::/64`;
+    limits.hitLimits([limits.LIMITS.loginPair(`junk${i}`, ip), limits.LIMITS.loginIp(ip), limits.LIMITS.loginAccount(`junk${i}`), limits.LIMITS.loginFailAccount(`junk${i}`), limits.LIMITS.loginFailIp(ip)], now);
+  }
+  assert.ok(limits.rateLimitStats().login.keys >= 400, "past the soft cap");
+  const attacker = await session.attemptLogin("junk-next", "guess", "2001:0db8:00ee:ffff::/64");
+  assert.equal(attacker.reason, "rate_limited", "the creating /48 is refused new keys");
+  let other = await session.attemptLogin("crowded", "crowded password 1", "198.51.100.231");
+  if (!other.ok && other.reason === "challenge_required") other = await session.attemptLogin("crowded", "crowded password 1", "198.51.100.231", { pow: solved("login", "198.51.100.231", { atLeastBits: other.bits }) });
+  assert.equal(other.ok, true, `another client still logs in: ${JSON.stringify(other)}`);
+  // Hard cap reached by many creators: strangers wait, the known device does not.
+  for (let i = 0; i < 300; i++) limits.hitLimits([limits.LIMITS.loginPair(`bot${i}`, `192.0.${i % 250}.${Math.floor(i / 250) + 1}`)], now);
+  assert.equal(limits.rateLimitStats().login.keys, 500, "hard cap 1.25x");
+  const stranger = await session.attemptLogin("crowded", "crowded password 1", "198.51.100.232");
+  assert.equal(stranger.reason, "rate_limited");
+  const known = await session.attemptLogin("crowded", "crowded password 1", "198.51.100.233", { deviceCookie });
+  assert.equal(known.ok, true, "a known device always gets in");
+  const knownWrong = await session.attemptLogin("crowded", "wrong", "198.51.100.233", { deviceCookie });
+  assert.equal(knownWrong.reason, "invalid_credentials", "and its failures still count in its own bucket");
+  await limits.resetRateLimitsForTests();
 });

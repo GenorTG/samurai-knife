@@ -103,8 +103,13 @@ function noteUse(form: PowForm, prefix: string, now: number): void {
 
 /** Context that raises the difficulty for one request. */
 export interface PowContext {
-  /** Login: the identifier's failure bucket is full (someone is hammering it). */
+  /** Login: the identifier's failure bucket (or the server-wide failed-login budget) is full. */
   identifierUnderAttack?: boolean;
+  /**
+   * Challenges only: issue at least this difficulty (capped at KNIFE_POW_MAX_BITS). A client asks for the difficulty a
+   * 428 named; asking for more only costs that client, never less than the server's own requirement.
+   */
+  atLeastBits?: number;
 }
 
 /** The difficulty this client prefix must meet for `form` right now. */
@@ -115,7 +120,8 @@ export function requiredBits(form: PowForm, ip: string, context: PowContext = {}
   let extra = recent === null ? max - base : recent > 20 ? 5 : recent > 5 ? 3 : 0;
   if (form === "register" && state().registers.filter((t) => t > now - HOUR).length > registerSurge) extra += 3;
   if (context.identifierUnderAttack) extra += 3;
-  return Math.min(max, base + extra);
+  const asked = Number.isInteger(context.atLeastBits) ? (context.atLeastBits as number) : 0;
+  return Math.min(max, Math.max(base + extra, asked));
 }
 
 /* ---------------------------------------------------------------------------------------- challenges */

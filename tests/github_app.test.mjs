@@ -278,7 +278,7 @@ test("H1: lost access, a renamed login and unlinking drop the app connection", a
   const before = events.recentSecurityEvents().length;
   await assert.rejects(service.listFiles(carol), /connection was removed: GitHub says @carol can no longer push/);
   assert.equal(siteStore.loadSite(carol).connection, null);
-  assert.ok(events.recentSecurityEvents().slice(before).some((e) => e.type === "github-app-access-lost" && e.accountId === carol));
+  assert.ok(events.recentSecurityEvents().slice(before).some((e) => e.kind === "github_app_access_lost" && e.account === carol));
   // Re-linking after the access came back restores the right to connect; a relink that no longer lists push drops it.
   world.state.access[REPO].carol = "write";
   await service.connect(carol, { repo: REPO, tokenSource: "app", installationId: 7 });

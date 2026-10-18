@@ -122,6 +122,14 @@ class ScratchServer:
         port = int((env or {}).get("KNIFE_PORT") or free_port(self.host))
         child_env = os.environ.copy()
         child_env.update({"KNIFE_HOST": self.host, "KNIFE_PORT": str(port), "KNIFE_DATA_DIR": str(self.data_dir), **(env or {})})
+        # The abuse guard (scripts/abuse-guard.mjs) sees a whole suite (many simulated users, deliberate 4xx probes) as
+        # one client: scale its budgets and block threshold. tests/abuse_guard.test.mjs covers the real numbers.
+        child_env.setdefault("KNIFE_GUARD_SCALE", "20")
+        if child_env.get("KNIFE_AUTH_MODE", "").strip().lower() == "public":
+            # serve.mjs refuses public mode without a trusted proxy and a public URL (scripts/deploy-config.mjs): a test
+            # server is its own "proxy" on loopback (suites pick client addresses with X-Forwarded-For) at its bind address.
+            child_env.setdefault("KNIFE_TRUSTED_PROXIES", "127.0.0.1,::1")
+            child_env.setdefault("KNIFE_PUBLIC_URL", f"http://{self.host}:{port}")
         self._log = (scratch / f"server-{self._runs}.log").open("w+")
         self._proc = subprocess.Popen(
             ["npm", "run", "dev"], cwd=self._worktree or ROOT, env=child_env, stdout=self._log, stderr=subprocess.STDOUT,

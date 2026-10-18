@@ -5,7 +5,8 @@ import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
 
 /**
  * One server secret for everything the sign-in pages sign or seal: proof-of-work challenges, the "known device" cookie,
- * the GitHub OAuth state cookie, and the keyed hashes of client address prefixes stored with pending accounts.
+ * the GitHub OAuth state cookie, the keyed hashes of client address prefixes stored with pending accounts, and the keyed
+ * hashes of rate-limit bucket names saved across restarts (src/lib/accounts/rate-limit.ts).
  * `$KNIFE_DATA_DIR/auth.key` (64 hex chars, 0600, created on first use; `KNIFE_AUTH_KEY_FILE` = an absolute path
  * elsewhere). Each use derives its own key (HMAC(master, purpose)), so a value made for one purpose never verifies as
  * another. Threat model: whoever holds this file can forge challenges and device cookies (not sessions, passwords or
@@ -14,7 +15,7 @@ import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
 
 const KEY_NAME = "auth.key";
 
-export type AuthPurpose = "pow" | "device" | "github-state" | "ip-prefix";
+export type AuthPurpose = "pow" | "device" | "github-state" | "ip-prefix" | "rate-limit";
 
 let cached: { path: string; key: Buffer } | null = null;
 

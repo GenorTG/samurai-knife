@@ -8,7 +8,7 @@ Suites that create accounts or provider settings need an isolated data dir and t
 KNIFE_REAL_ACCOUNT=openclaw python3 tests/agent_coverage_e2e.py [--group docs|media|data|css_time|web|db|cv] [--only slug[:tab] ...] [--concurrency 1]
 ```
 
-On a shared host, `KNIFE_SCRATCH_PORTS=3330-3349` makes every self-contained suite (`tests/scratch_server.py`) take its port from that range; allocate multiple mock/app ports at once with `free_ports(n)` so they are distinct. `KNIFE_E2E_SIDECAR_PREFIX=<name>` gives the docker suites (`office_e2e.py`, `learn_db_e2e.py`) a fixed compose project name; `TMPDIR` decides where the scratch worktree and data dir go. `KNIFE_SECURITY_HEADERS=1` runs a private-mode scratch server with the public-mode headers (the office e2e then proves the editor loads and saves under the CSP).
+On a shared host, `KNIFE_SCRATCH_PORTS=3330-3349` makes every self-contained suite (`tests/scratch_server.py`) take its port from that range; allocate multiple mock/app ports at once with `free_ports(n)` so they are distinct. `KNIFE_E2E_SIDECAR_PREFIX=<name>` gives the docker suites (`office_e2e.py`, `learn_db_e2e.py`) a fixed compose project name; `TMPDIR` decides where the scratch worktree and data dir go. `KNIFE_SECURITY_HEADERS=1` runs a private-mode scratch server with the public-mode headers (the office e2e then proves the editor loads and saves under the CSP). Every scratch server runs the abuse guard with `KNIFE_GUARD_SCALE=20` (a suite is many simulated users from one address); a public-mode scratch server also gets `KNIFE_TRUSTED_PROXIES=127.0.0.1,::1` and `KNIFE_PUBLIC_URL=http://<host>:<port>` unless the suite sets them, because `serve.mjs` refuses public mode without them (docs/DEPLOY.md "Startup checks").
 
 Pass an existing scratch URL as the first argument to reuse a server. The default run uses a temporary data directory and an available loopback port, and stops the server on exit; it never starts, reads, or mutates the live `:3210` service or data.
 
@@ -86,6 +86,8 @@ $R tests/site_studio.test.mjs     # website studio: page/copy (PL+EN)/CV-fit ana
 $R tests/version.test.mjs         # VERSION format, package.json in sync, the pre-commit hook bumps BUILD inside its own commit, KNIFE_NO_BUMP / VERSION-only commits skip
 $R tests/storage_sealed.test.mjs  # every per-account store sealed at rest, cross-account copy refused, legacy plaintext, missing key, `npm run storage -- seal`
 $R tests/accounts_store.test.mjs  # accounts v1->v2 migration, lock, unique emails, trusted-proxy rules, rate limits, public flows, data purge
+$R tests/client_ip.test.mjs tests/rate_limit.test.mjs   # one client-address module (TS = preload), /64 + /48 prefixes; limiter namespaces, eviction flush, full-namespace fairness, HMAC-named persistence
+$R tests/security_events.test.mjs tests/abuse_guard.test.mjs tests/deploy_config.test.mjs   # the events API + alert digest; guard budgets, scanner blocks, table eviction; fail-closed startup checks
 $R tests/nosql.test.mjs tests/work-queue.test.mjs tests/workers.test.mjs tests/sql_runtime.test.mjs tests/wait_condition.test.mjs tests/tool_groups.test.mjs tests/agent_runtime_store.test.mjs tests/cv_*.test.mjs tests/random-uuid.test.mjs tests/sql_engine.test.mjs tests/accounts_cli.test.mjs
 ```
 

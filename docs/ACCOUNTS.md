@@ -19,8 +19,10 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
 | Mail transport default | `outbox` | `smtp` |
 
-`src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public; `scripts/serve.mjs` refuses to
-start with an unknown value. Before switching a live install to public, give the owner a password and an address:
+`src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public, and so is an empty value with
+`KNIFE_PUBLIC_URL` set; `scripts/serve.mjs` refuses to start with an unknown value, with an empty value and
+`KNIFE_PUBLIC_URL` (say `private` explicitly for a private install that uses the URL for the GitHub App), and with an
+incomplete public config (docs/DEPLOY.md "Startup checks"). Before switching a live install to public, give the owner a password and an address:
 
 ```bash
 KNIFE_AUTH_MODE=public npm run accounts -- set-password <id>     # 10+ characters in public mode
@@ -73,8 +75,15 @@ Route handlers never see the socket, and Next keeps a client-sent `X-Forwarded-F
 `scripts/peer-address.mjs`, which writes the TCP peer into `x-knife-peer` on every request (overwriting any client value).
 `src/lib/accounts/network.ts` reads `X-Forwarded-For` / `X-Forwarded-Proto` only when that peer matches
 `KNIFE_TRUSTED_PROXIES` (comma-separated IPs or CIDRs, e.g. `127.0.0.1,::1` for a proxy on the same host); the client
-address is the right-most untrusted entry. Without a match every client is `local` (one shared bucket) and cookies are
-not `Secure`. A server started without `serve.mjs` has no peer stamp and never trusts forwarded headers.
+address is the right-most untrusted entry. Without a match the client is the TCP peer itself (forwarded headers are
+ignored, cookies are not `Secure`). A server started without `serve.mjs` has no peer stamp: every client is `local` and
+forwarded headers are never trusted.
+
+One implementation for the app and the preloads: `src/lib/net/client-ip.mjs` (`resolveClient`, `addressBuckets`). Every
+per-client key (rate limits, the proof-of-work binding, pending-account caps, security events, the abuse guard) is the
+client's prefix: IPv4 /32, IPv6 /64 in one zero-padded spelling (`2001:0db8:0001:0002::/64`), with coarser /24 and /48
+companions where a limit asks for them (Rate limits). `network.ts` `clientIp` already returns the prefix and
+`ip-prefix.ts` `clientPrefix` is idempotent, so passing either along is safe.
 
 ## Flows (public mode; 404 in private mode unless noted)
 
@@ -96,6 +105,7 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 
 | `/account/admin` (both modes) | `POST /api/admin/users/<id> {action:"network", privateNetwork}` | Admins only; `true` is refused for a non-admin (409). |
+| `/account/admin` (both modes) | `GET /api/admin/security`, `POST /api/admin/security {action:"unblock", key}` | Admins only. The abuse guard's blocks (Unblock), table sizes and counters, the last 500 security events, rate-limit namespace sizes, alert status. |
 
 Answers that never depend on whether a username or address exists: register, resend, forgot (and the email change). What
 differs goes to the mailbox of the address concerned.
@@ -251,17 +261,22 @@ nodemailer. `KNIFE_MAIL_TRANSPORT=smtp` (default in public mode): `KNIFE_SMTP_HO
 header. Sending never blocks a response; failures go to the server log and `$KNIFE_DATA_DIR/mail-errors.log`.
 Templates (`templates.ts`): English, plain text + minimal HTML, every value escaped.
 
-## Rate limits (`src/lib/accounts/rate-limit.ts`, in memory, per server process)
+## Rate limits (`src/lib/accounts/rate-limit.ts`, per server process)
+
+"Address" below is the client prefix (IPv4 /32, IPv6 /64); every per-address bucket has an IPv6 /48 companion at 5x the
+limit (one subscriber owns a whole /64, often a /48), registration also an IPv4 /24 companion at 3x.
 
 | Action | Buckets |
 | --- | --- |
-| login (failures only) | 5/min per identifier + client address; public unknown devices are hard-limited by 5/min per identifier+address and 50/15 min per address; 20/15 min and 200/day identifier buckets, and 3-failure signals, raise proof-of-work instead of locking the account; a known-device cookie uses its own 10/15 min failure bucket |
-| register | 10/h per address, 3/h per email |
+| login (failures only) | 5/min per identifier + client address; public unknown devices are hard-limited by 5/min per identifier+address and 50/15 min per address; 20/15 min and 200/day identifier buckets, 3-failure signals and the server-wide failed-login budget (`KNIFE_LOGIN_GLOBAL_FAILS` per 15 min, default 600) raise proof-of-work instead of locking anyone out; a known-device cookie uses its own 10/15 min failure bucket |
+| register | 10/h per address (30/h per IPv4 /24), 3/h per email |
 | resend | 10/h per address, 3/15 min per email |
 | verify | 20/10 min per address, 5/10 min per token hash |
 | reset | 20/10 min per address, 5/10 min per token hash |
 | successful login | 30/h per account |
 | forgot | 10/h per address, 3/15 min per email |
+| GitHub sign-in start (`/api/github/start` without a session) | 20/10 min per address |
+| MCP requests with a wrong key | 30/15 min per address |
 | password/email change, delete (wrong password) | 10/15 min per account |
 | provider rounds (`/api/agent/chat`), public mode, non-admins | 300/10 min per account |
 | provider Test, public mode, non-admins | 20/10 min per account |
@@ -269,13 +284,85 @@ Templates (`templates.ts`): English, plain text + minimal HTML, every value esca
 
 Refusals are 429 with `retryAfterSeconds` and `Retry-After`. Unknown addresses count the same as known ones.
 
+Bounded by construction (bucket keys are attacker-chosen): one store per namespace (the key's first segment; the 24 h
+identifier buckets have their own, `login-day`), expired buckets swept every minute and whenever a namespace is full, and
+a bucket that is limiting someone is never evicted. Pre-login namespaces (login, register, resend, forgot, verify,
+reset, GitHub start, MCP auth) never evict: past their cap (100,000 keys for login, 50,000 for the others) a new key is
+refused only for the client /48 or /24 that already created more than its fair share in 15 minutes (`max(20, cap/2000)`),
+and past 1.25x the cap for everyone except a known device, which makes room instead. So filling the table locks out
+the filler, not other users. Signed-in namespaces (successful logins, known devices, sensitive actions, MCP keys,
+outbound) evict their least recently used bucket that is not limiting.
+
+Security-relevant buckets (login pressure, every register/resend/forgot/verify/reset bucket, MCP auth, sensitive) are
+saved every minute and on exit to `$KNIFE_DATA_DIR/security/rate-limits.json` (0600; at most 50,000 rows, limiting ones
+first; written asynchronously), so a restart does not reset them. Bucket names there are HMAC'd with a key derived from
+`auth.key`, so the file holds no email, identifier or address and a guessed email cannot be checked against it. It is
+loaded asynchronously at startup (files over 16 MB are ignored). Each refusal is a `rate_block` security event (once per
+bucket and window) naming only the bucket kind (`forgot:email`), never the email or identifier.
+
+## Abuse guard (`src/lib/security/guard.mjs`, installed by `scripts/abuse-guard.mjs`)
+
+A preload (last in the `scripts/peer-address.mjs` chain, so it wraps the office proxy, the security headers and Next)
+decides every request before Next routes it; a refusal costs microseconds: 429 + `Retry-After` + a one-line body,
+connection closed. It identifies the client by prefix (`src/lib/net/client-ip.mjs`, same rules as the app) and the
+credential by an opaque hash of the session cookie or `Authorization` header (never stored or logged raw).
+
+| Budget (public mode; private x10) | Scope | Limit |
+| --- | --- | --- |
+| all `/api/*` | client prefix | 600/min, burst 150 per 10 s |
+| `/api/account/{register,forgot,resend,reset,verify,login}` | client prefix | 30 per 10 min |
+| `/api/github/start` | client prefix | 20 per 10 min |
+| pages and `/_next/*` | client prefix | 1,200/min, burst 400 per 10 s |
+| `/api/office/ds/*` (the Document Server container; JWT-checked) | client prefix | 3,000/min, never scored |
+| `/api/*` | credential | 400/min |
+| `/api/mcp`, `/api/agent/tool` | credential | 120/min |
+
+Every per-prefix budget also applies to the IPv6 /48 at 5x. Scanner scoring (decays after 60 s): known probe paths
+(`/.env`, `/.git`, `/wp-*`, `*.php`, ...; answered 404 at once) +10; a failed sign-in-flow request +1; a route-level 429
++1; a distinct 4xx on an API path +1 (a signed-out tab polling the same route never adds up; `GET /api/account` 401 is
+free). 30 points block the prefix for 15 min, repeat blocks 1 h, then 24 h (strikes remembered 7 days); four blocked /64s
+in one /48 block the /48. Blocks (10,000 max, `$KNIFE_DATA_DIR/security/blocks.json`, 0600) survive restarts; an admin
+lifts one on the Users page. Signed-in administrators are never blocked (budgets 4x). Private mode never blocks.
+
+Bounded: the client and credential tables hold 100,000 entries each; idle entries (10 min without a request, no live
+score) are swept, and a full table evicts its least recently seen entry (preferring one without a live score) instead
+of refusing anyone, so filling it never locks out new visitors and never lifts a block.
+
+The preload also hardens the Node server: `headersTimeout` 20 s, `requestTimeout` 330 s, `keepAliveTimeout` 10 s,
+`maxConnections` 1,024, and a request body must arrive within 30 s (300 s for the upload routes: PDF, office upload, CV
+import/photo, drafts, transcripts, MCP) or the request ends with 408. `UV_THREADPOOL_SIZE` defaults to 16. Environment:
+`KNIFE_ABUSE_GUARD=off` (private mode only; the timeouts stay), `KNIFE_GUARD_SCALE` (multiplies budgets and the block
+threshold; scratch test servers use 20), `KNIFE_HEADERS_TIMEOUT_MS`, `KNIFE_REQUEST_TIMEOUT_MS`,
+`KNIFE_KEEPALIVE_TIMEOUT_MS`, `KNIFE_MAX_CONNECTIONS`, `KNIFE_BODY_TIMEOUT_MS`, `KNIFE_SLOW_BODY_TIMEOUT_MS`. A server
+started without `serve.mjs` has no guard.
+
+## Security events (`src/lib/security/events.ts`)
+
+One API for every module that refuses or notices abuse: `recordSecurityEvent({ kind, ipPrefix?, account?, path?, status?,
+count?, detail? })` or positionally `recordSecurityEvent(kind, detail?, extra?)`. The kinds, fields and aliases are
+documented at the top of `events.ts`; `detail` is a short string or a flat record of at most 8 short scalars. Never put a
+secret, token, password, full email or full client address in an event (`ipPrefix` is reduced to the /64 or /32 anyway).
+Recording never blocks or throws: identical events are coalesced into one line with a `count`, buffered (2,000 lines,
+then dropped and the drop itself logged) and appended asynchronously once a second to
+`$KNIFE_DATA_DIR/security/events-<UTC day>.jsonl` (dir 0700, files 0600, 30 days kept; the single `events.jsonl` of
+older builds is renamed `events-<day>.legacy.jsonl` and ages out the same way). The abuse-guard preload writes through
+the same buffer (`events-core.mjs`).
+
+Admins see the last 500 events (including the tail of the last two day files after a restart) on the Users page. In public
+mode `src/lib/security/alerts.ts` (started by `src/instrumentation.ts`) mails one digest to every active admin with a
+confirmed email, at most every `KNIFE_ALERT_INTERVAL_MIN` (15) minutes and 50 lines, for: a 24 h block, a `mail_budget`
+event, a registration surge (more than 50 an hour), a `tool_timeout`, a full table or quota (`quota_full`), the global
+failed-login budget, and free disk on the data dir under `KNIFE_DISK_FLOOR_MB` (2048, checked every minute).
+
 ## Proof-of-work and password-hash budget
 
 Public register, forgot, resend, reset, and login after failures require a browser-bound proof before rate-limit work,
 store lookups, scrypt, or mail. `GET /api/account/challenge?form=...` issues an HMAC-signed ten-minute challenge bound to
 the form and client IP prefix. The client solves SHA-256 in a Web Worker and reports progress as “Checking your browser…”.
 Challenges are single-use and the replay set is bounded. Difficulty defaults to 18 bits (~2^18 hashes), increases under
-prefix/register pressure, and is capped at 24 bits. Browser e2e uses the Worker-backed forms; direct API probes fetch
+prefix/register pressure and while an identifier or the server-wide failed-login budget is under attack (+3), and is capped
+at 24 bits. A 428 names the difficulty; the browser asks for a challenge at it (`GET /api/account/challenge?form=login&bits=N`,
+never below the server's own requirement). Browser e2e uses the Worker-backed forms; direct API probes fetch
 and solve the challenge too (see `Api.call` in `tests/functional/accounts_public_e2e.py`). Isolated e2e servers set a
 lower `KNIFE_POW_BITS`, never disable the check. The signing key is `auth.key` (0600).
 

@@ -7,6 +7,7 @@ import { resolveAccount } from "@/lib/accounts/session";
 import { loginChoices, type Account } from "@/lib/accounts/store";
 import { authMode, isPublicMode } from "@/lib/accounts/mode";
 import { knifeHosts } from "@/lib/hosts";
+import { noteAuthenticated } from "@/lib/security/guard-bridge";
 
 /** Host allow-list; KNIFE_MCP_ALLOWED_HOSTS (comma-separated) replaces it entirely. */
 export function allowedHosts(): string[] {
@@ -75,7 +76,10 @@ export function authenticate(request: Request, mutating: boolean): Authenticated
   const blocked = guard(request, mutating);
   if (blocked) return { response: blocked };
   const account = resolveAccount(request);
-  return account ? { account } : { response: loginRequired() };
+  if (!account) return { response: loginRequired() };
+  // Administrators are never blocked by the abuse guard (src/lib/security/guard-bridge.ts); same rule as authz.ts isAdmin.
+  noteAuthenticated(request, !isPublicMode() || account.role === "admin");
+  return { account };
 }
 
 export type JsonBody = { body: unknown } | { response: NextResponse };

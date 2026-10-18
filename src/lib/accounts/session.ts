@@ -281,10 +281,12 @@ function recordLogin(account: Account, rehashed: string | null): Account {
  * Username (or, in public mode, email) + password. "Not verified"/"disabled" are only told to someone who knows the
  * password; every other failure is the same `invalid_credentials`. Rate limits count failures only:
  * - both modes: 5/min per identifier + address;
- * - public mode, unknown device: 5/min per identifier+address and 50/15 min per address are hard ceilings; after 3
- *   failures for the identifier or from the address, proof-of-work is required. A full 20/15 min or 200/day identifier
- *   bucket raises difficulty instead of refusing, so strangers cannot keep the owner locked out;
- * - public mode, known device (`knife_device` cookie vouching for this account): only its own 10/15 min failure bucket.
+ * - public mode, unknown device: 5/min per identifier+address and 50/15 min per address (/64, 250 per /48) are hard
+ *   ceilings; after 3 failures for the identifier or from the address, proof-of-work is required. A full 20/15 min or
+ *   200/day identifier bucket, or the server-wide failed-login budget (`LIMITS.loginGlobal`, credential stuffing), raises
+ *   difficulty instead of refusing, so strangers cannot keep the owner, or everyone, locked out;
+ * - public mode, known device (`knife_device` cookie vouching for this account): only its own 10/15 min failure bucket,
+ *   and a full rate-limit namespace never refuses it (`trusted`).
  * Successful logins: 30/h per account. Password hashing waits for the global hash budget (busy -> 503).
  */
 export async function attemptLogin(identifier: string, password: string, ip: string, options: LoginOptions = {}): Promise<LoginResult> {
@@ -302,19 +304,24 @@ export async function attemptLogin(identifier: string, password: string, ip: str
     // This signed device bypasses every identifier/address failure bucket; only its own bounded bucket applies.
     failBuckets = [LIMITS.loginDevice(device)];
   } else {
-    failBuckets = [pair, LIMITS.loginIp(ip), LIMITS.loginAccount(key), LIMITS.loginAccountDay(key), LIMITS.loginFailAccount(key), LIMITS.loginFailIp(ip)];
+    failBuckets = [pair, LIMITS.loginIp(ip), LIMITS.loginAccount(key), LIMITS.loginAccountDay(key), LIMITS.loginFailAccount(key), LIMITS.loginFailIp(ip), LIMITS.loginGlobal()];
     watchLockout = true;
   }
-  // Refusing buckets (the identifier's 20/15 min bucket and the failure signals are not among them).
+  // A signed device is vouched for: a rate-limit namespace filled by strangers never refuses it (rate-limit.ts, E1).
+  const trust = { trusted: Boolean(device) };
+  // Refusing buckets (the identifier buckets, the failure signals and the global budget are not among them).
   const blocking = !publicMode || device ? failBuckets : [pair, LIMITS.loginIp(ip)];
-  const verdict = checkLimits(blocking);
+  const verdict = checkLimits(blocking, Date.now(), trust);
   if (!verdict.ok) return { ok: false, reason: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds };
   const lockedOut = watchLockout && !checkLimits([LIMITS.loginAccount(key)]).ok;
   const identifierDailyPressure = watchLockout && !checkLimits([LIMITS.loginAccountDay(key)]).ok;
+  // Signals only (E2): like the identifier buckets, the global failed-login budget only makes proof-of-work required at
+  // the raised difficulty; it never refuses a login by itself.
+  const globalPressure = watchLockout && !checkLimits([LIMITS.loginGlobal()]).ok;
   if (watchLockout) {
-    const needsPow = lockedOut || identifierDailyPressure || !checkLimits([LIMITS.loginFailAccount(key)]).ok || !checkLimits([LIMITS.loginFailIp(ip)]).ok;
+    const needsPow = lockedOut || identifierDailyPressure || globalPressure || !checkLimits([LIMITS.loginFailAccount(key)]).ok || !checkLimits([LIMITS.loginFailIp(ip)]).ok;
     if (needsPow) {
-      const pow = checkPow("login", ip, options.pow, { identifierUnderAttack: lockedOut || identifierDailyPressure });
+      const pow = checkPow("login", ip, options.pow, { identifierUnderAttack: lockedOut || identifierDailyPressure || globalPressure });
       if (!pow.ok) return { ok: false, reason: pow.status === 503 ? "busy" : "challenge_required", bits: pow.bits, retryAfterSeconds: pow.retryAfterSeconds };
     }
   }
@@ -328,7 +335,7 @@ export async function attemptLogin(identifier: string, password: string, ip: str
     throw error;
   }
   if (!account || !valid) {
-    hitLimits(failBuckets);
+    hitLimits(failBuckets, Date.now(), trust);
     if (watchLockout && !lockedOut && !checkLimits([LIMITS.loginAccount(key)]).ok) onLockout(account, ip);
     return { ok: false, reason: "invalid_credentials" };
   }

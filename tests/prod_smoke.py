@@ -3,7 +3,9 @@
 
 Against a server YOU started from a build, with its own fresh KNIFE_DATA_DIR (never the live one):
   npm run build
-  KNIFE_AUTH_MODE=public KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=<port> KNIFE_MAIL_TRANSPORT=outbox npm run start
+  KNIFE_AUTH_MODE=public KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=<port> KNIFE_MAIL_TRANSPORT=outbox \
+    KNIFE_TRUSTED_PROXIES=127.0.0.1,::1 KNIFE_PUBLIC_URL=http://127.0.0.1:<port> npm run start
+  (serve.mjs refuses public mode without a trusted proxy and a public URL: scripts/deploy-config.mjs)
   node tests/mock_provider.mjs <mock-port>
   KNIFE_DATA_DIR=<same> python3 tests/prod_smoke.py http://127.0.0.1:<port> http://127.0.0.1:<mock-port>
 
