@@ -203,6 +203,7 @@ export const SITE_KNIFE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_replace",
     scope: "account",
     effect: "write",
+    publishes: true,
     description:
       "Preferred edit for copy and small code changes: replace an exact text snippet in one repository file and commit it to the work branch (`knife/...`, created from the base branch on the first change; the base/production branch is never written). `find` must occur exactly once (or set all=true). Then knife_site_pr. Keep the site's own conventions (its AGENTS.md from knife_site_status).",
     schema: z.object({ path: PATH, find: z.string().min(1).max(50_000), replace: z.string().max(200_000), message: z.string().min(1).max(500), all: z.boolean().optional() }).strict(),
@@ -217,6 +218,7 @@ export const SITE_KNIFE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_write",
     scope: "account",
     effect: "write",
+    publishes: true,
     destructiveWhen: [{ arg: "delete", when: "nonEmpty" }],
     description:
       "Write whole files (new files, rewrites) to the work branch in ONE commit: `files` [{path, content}] plus optional `delete` [paths]; at most 25 files, 1 MB each. Workflow files and real .env files are refused. For changing a few lines use knife_site_replace instead. Then knife_site_pr.",
@@ -236,6 +238,7 @@ export const SITE_KNIFE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_pr",
     scope: "account",
     effect: "write",
+    publishes: true,
     description:
       "Open (or update) the pull request from the work branch into the base branch with a title and a body that explains what changed and why (copy, SEO, projects added...). The host (e.g. Vercel) builds a preview of it: check knife_site_changes for the preview URL, then knife_site_audit target=preview. The USER publishes (merges) it from the Website studio's Changes tab; never ask them to merge elsewhere unless they want to.",
     schema: z.object({ title: z.string().min(1).max(250), body: z.string().max(20_000).default("") }).strict(),

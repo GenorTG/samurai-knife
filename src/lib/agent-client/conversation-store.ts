@@ -27,13 +27,16 @@ export const conversationContentSchema = z.object({
 
 /**
  * The whole file. `sessionId`, `responseId` and `pendingCallIds` are the OpenClaw continuation
- * state and are owned by the server alone (`/api/agent/chat`); a PUT never touches them.
+ * state and `untrusted` the conversation's taint; all are owned by the server alone (`/api/agent/chat`);
+ * a PUT never touches them.
  */
 export const conversationSchema = conversationContentSchema.extend({
   responseId: z.string().max(256).nullable(),
   sessionId: z.string().uuid(),
   // Function calls the head response asked for; the next delta must answer all of them. Absent in pre-2026-10-11 files.
   pendingCallIds: z.array(z.string().max(256)).max(64).default([]),
+  // Third-party text has entered this conversation (server-tool-policy.ts): sticky until Clear. Absent in older files.
+  untrusted: z.boolean().default(false),
 });
 
 export interface ConversationContent {
@@ -46,6 +49,8 @@ export interface DurableConversation extends ConversationContent {
   responseId: string | null;
   sessionId: string;
   pendingCallIds: string[];
+  /** Server-owned taint flag (see conversationSchema); optional for values built by older callers. */
+  untrusted?: boolean;
 }
 
 export function emptyConversation(): DurableConversation {
@@ -56,6 +61,7 @@ export function emptyConversation(): DurableConversation {
     responseId: null,
     sessionId: randomUUID(),
     pendingCallIds: [],
+    untrusted: false,
   };
 }
 
@@ -205,4 +211,19 @@ export function breakContinuation(accountId: string, providerId: string, session
     value.responseId = null;
     value.pendingCallIds = [];
   });
+}
+
+/**
+ * The conversation's sticky taint (server-tool-policy.ts): `seen` = this round's messages carry third-party text. Set
+ * once and kept until Clear (resetConversation), because the model keeps seeing that text in later turns (and an
+ * OpenClaw session keeps it after the browser's transcript cap dropped it). Writes only on the first change. Returns
+ * the flag after the update.
+ */
+export function noteUntrusted(accountId: string, providerId: string, seen: boolean): boolean {
+  const current = readConversation(accountId, providerId);
+  if (current.untrusted || !seen) return current.untrusted === true;
+  updateConversation(accountId, providerId, (value) => {
+    value.untrusted = true;
+  });
+  return true;
 }

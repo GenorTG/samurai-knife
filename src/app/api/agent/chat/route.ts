@@ -14,11 +14,15 @@ import {
   beginResponsesRound,
   breakContinuation,
   commitResponsesRound,
+  noteUntrusted,
   providerConversationId,
   type RoundStart,
 } from "@/lib/agent-client/conversation-store";
 import { recordRound } from "@/lib/accounts/usage-ledger";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
+import { toolContextFor } from "@/lib/accounts/authz";
+import { carriesUntrusted, UNTRUSTED_HEADER } from "@/lib/agent-client/server-tool-policy";
+import { getToolEffects } from "@/lib/mcp/tools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,6 +110,19 @@ export async function POST(request: Request): Promise<Response> {
   };
   const accountId = auth.account.id;
   const providerId = providerConversationId(provider.baseUrl, provider.model);
+  // The conversation's taint is server-owned (never written by the browser): every round's messages are checked and
+  // the sticky flag goes back as a header, so the widget's approval policy holds across turns and reloads.
+  const seen = carriesUntrusted(parsed.data.messages, getToolEffects(toolContextFor(auth.account)));
+  let untrusted = seen;
+  try {
+    untrusted = noteUntrusted(accountId, providerId, seen);
+  } catch {
+    // An unreadable store: this round's own messages still decide.
+  }
+  const mark = (response: Response): Response => {
+    if (untrusted) response.headers.set(UNTRUSTED_HEADER, "1");
+    return response;
+  };
   if (provider.openClawResponses) {
     // Stored before the PUT validated it, or hand-edited: refuse instead of sending a request the gateway cannot route.
     const problem = openClawResponsesProblem(provider.baseUrl, provider.model);
@@ -131,10 +148,10 @@ export async function POST(request: Request): Promise<Response> {
     const responsesInput = { ...input, previousResponseId: start.previousResponseId };
     if (parsed.data.stream) {
       const streamed = await forwardResponsesStream(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
-      return streamed.ok ? streamed.response : jsonError(streamed.error, streamed.status);
+      return streamed.ok ? mark(streamed.response) : jsonError(streamed.error, streamed.status);
     }
     const outcome = await forwardResponses(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
-    return outcome.ok ? json(outcome.result) : jsonError(outcome.error, outcome.status);
+    return outcome.ok ? mark(json(outcome.result)) : jsonError(outcome.error, outcome.status);
   }
   // A round that bypasses the continuation (Responses mode off) leaves the gateway session behind: drop its head.
   try {
@@ -146,10 +163,10 @@ export async function POST(request: Request): Promise<Response> {
     const streamed = await forwardChatStream(provider, input, request.signal, (round) =>
       recordRound(accountId, { model: provider.model, ...round }), net,
     );
-    return streamed.ok ? streamed.response : jsonError(streamed.error, streamed.status);
+    return streamed.ok ? mark(streamed.response) : jsonError(streamed.error, streamed.status);
   }
   const started = Date.now();
   const outcome = await forwardChat(provider, input, net);
   recordRound(accountId, { model: provider.model, usage: outcome.ok ? outcome.result.usage ?? null : null, ms: Date.now() - started, failed: !outcome.ok });
-  return outcome.ok ? json(outcome.result) : jsonError(outcome.error, outcome.status);
+  return outcome.ok ? mark(json(outcome.result)) : jsonError(outcome.error, outcome.status);
 }

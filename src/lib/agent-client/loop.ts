@@ -1,7 +1,6 @@
 import { chat, chatStream, fetchServerToolCatalog, runServerTool, type ChatRequest, type StreamHandlers } from "./api";
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
-import { containsUntrusted } from "@/lib/security/untrusted";
-import { assessServerCall, type TurnContext } from "./server-tool-policy";
+import { assessServerCall, carriesUntrusted, type TurnContext } from "./server-tool-policy";
 import { installArtifactCapture } from "./artifacts";
 import { EMPTY_USAGE, addUsage, describeRunUsage, type RunUsage, type Usage } from "@/lib/usage";
 import { buildSystemPrompt } from "./system-prompt";
@@ -239,22 +238,15 @@ const DENIED = JSON.stringify({
   error: "The user declined this action. Do not retry it; tell them what you wanted to do and ask how they would like to proceed.",
 });
 
-/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV studio). */
-const PAGE_READS = new Set(["page_snapshot", "read_text"]);
-
-/** Did this turn already bring third-party text into the conversation (see server-tool-policy.ts)? */
-export function turnContext(turn: readonly TranscriptMessage[], effects: Record<string, KnifeToolEffectInfo>): TurnContext {
-  const names = new Map<string, string>();
-  for (const m of turn) if (m.role === "assistant") for (const c of m.tool_calls ?? []) names.set(c.id, c.function.name);
-  const userTexts: string[] = [];
-  let untrustedSeen = false;
-  for (const m of turn) {
-    if (m.role === "user") userTexts.push(typeof m.content === "string" ? m.content : "");
-    if (m.role !== "tool") continue;
-    const name = names.get(m.tool_call_id) ?? "";
-    if (containsUntrusted(m.content) || PAGE_READS.has(name) || effects[name]?.untrustedOutput) untrustedSeen = true;
-  }
-  return { userTexts, untrustedSeen };
+/**
+ * What the approval policy knows (see server-tool-policy.ts): the user's own texts of THIS turn (the message that started
+ * the run and any steering, from `turnStart`), and whether third-party text entered the conversation at all: any stored
+ * message, or the server's sticky flag for this conversation (`stickyUntrusted`, from /api/agent/chat), which also
+ * covers what the browser no longer holds (the capped transcript, an OpenClaw session seeded earlier).
+ */
+export function turnContext(conversation: readonly TranscriptMessage[], turnStart: number, effects: Record<string, KnifeToolEffectInfo>, stickyUntrusted = false): TurnContext {
+  const userTexts = conversation.slice(turnStart).flatMap((m) => (m.role === "user" ? [typeof m.content === "string" ? m.content : ""] : []));
+  return { userTexts, untrustedSeen: stickyUntrusted || carriesUntrusted(conversation, effects) };
 }
 
 /** Trust-mode gate (see approval-policy.ts). Returns a ready tool result when the user said no, null to proceed. */
@@ -301,6 +293,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   /** This turn = the user's message that started the run and everything after it (steering included). */
   const turnStart = Math.max(0, working.length - 1);
   const responses = options.openClawResponses === true;
+  /** The server says this conversation already holds third-party text (sticky until Clear; see turnContext). */
+  let stickyUntrusted = false;
   /** Responses mode: head of the gateway continuation chain (null = the next round seeds a fresh session). */
   let head = responses ? options.previousResponseId ?? null : null;
   const append = (m: TranscriptMessage) => {
@@ -338,6 +332,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       head = null;
       result = await attempt(toWire(working), null);
     }
+    if (result.ok && result.value.untrusted) stickyUntrusted = true;
     if (responses && result.ok) {
       head = result.value.responseId ?? null;
       if (head) options.onResponseId?.(head);
@@ -364,7 +359,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   try {
     onActivity("Preparing…");
     const { defs: serverDefs, effects } = await fetchServerToolCatalog();
-    const serverGate = { effects, turn: () => turnContext(working.slice(turnStart), effects) };
+    const serverGate = { effects, turn: () => turnContext(working, turnStart, effects, stickyUntrusted) };
     const uiNames = new Set(UI_TOOL_DEFS.map((d) => d.function.name));
     const serverTools = serverDefs.filter((d) => !uiNames.has(d.function.name));
     const serverToolNames = new Set(serverTools.map((d) => d.function.name));

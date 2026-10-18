@@ -99,6 +99,8 @@ export interface ChatReply {
   ms?: number;
   /** OpenResponses continuation identifier (OpenClaw provider mode only). */
   responseId?: string;
+  /** The server's sticky flag: third-party text has entered this conversation (header `x-knife-untrusted: 1`). */
+  untrusted?: boolean;
 }
 
 export type ApiFailure =

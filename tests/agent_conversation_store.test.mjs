@@ -43,3 +43,15 @@ test("conversation state is scoped per account and provider and reset rotates th
   assert.notEqual(reset.sessionId, initial.sessionId);
   assert.notEqual(openClawUserId, openClawUser("genor", providerId, reset.sessionId));
 });
+
+test("untrusted taint is server-owned and sticky: kept across turns and transcript saves, cleared only by Clear", async () => {
+  const { noteUntrusted, saveConversationContent } = await import("../src/lib/agent-client/conversation-store.ts");
+  const providerId = providerConversationId("https://api.example/v1", "taint-model");
+  assert.equal(noteUntrusted("taint", providerId, false), false, "a fresh conversation is clean");
+  assert.equal(noteUntrusted("taint", providerId, true), true);
+  assert.equal(noteUntrusted("taint", providerId, false), true, "the next turn ('continue') still knows");
+  saveConversationContent("taint", providerId, { version: 1, messages: [{ role: "user", content: "continue" }], actions: [] });
+  assert.equal(readConversation("taint", providerId).untrusted, true, "a browser PUT never clears it");
+  resetConversation("taint", providerId);
+  assert.equal(noteUntrusted("taint", providerId, false), false, "Clear starts clean");
+});

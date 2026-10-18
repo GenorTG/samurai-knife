@@ -1,15 +1,23 @@
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
 import type { TrustMode } from "./interaction";
+import { containsUntrusted } from "@/lib/security/untrusted";
 
 /**
  * Approval rules for the server-side knife_* tools, derived from the effect each tool declares (src/lib/mcp/define.ts),
  * never from its name. Threat: a prompt-injected model (instructions hidden in a fetched posting or page) deleting the
- * user's data or sending it out through a URL argument. Pure (no DOM): unit-tested in node.
+ * user's data, publishing it, or sending it out through a URL argument. Pure (no DOM): unit-tested in node, and the
+ * taint detection (`carriesUntrusted`) is shared with /api/agent/chat, which keeps the conversation's flag.
  *  - read: never asks.
  *  - write: asks in All / Most (it "runs" something); free in Risky / None.
  *  - destructive (or a write whose arguments make it one): asks in every mode but None, never waived by "allow this run".
- *  - outbound: shows the destination; asks in All / Most. After third-party content entered this turn, a host the user
- *    did not name in this turn's messages asks in every mode but None, as destructive (an exfiltration channel).
+ *  - outbound: shows the destination; asks in All / Most. Once third-party content entered the CONVERSATION (any earlier
+ *    turn too: the flag is sticky until Clear), a host the user did not name asks in every mode but None, as destructive
+ *    (an exfiltration channel).
+ *  - publishing writes (`publishes`: site commits and pull requests): after third-party content, ask in every mode but
+ *    None, as destructive (a channel that publishes injected text or the user's data).
+ * "Named" (mentionedHosts): typed by the user in this turn's own messages, outside what looks pasted: fenced code
+ * blocks, quote lines (`> …`) and long paragraphs (more than PASTE_CHARS characters or PASTE_LINES lines). A posting
+ * pasted into the prompt therefore cannot name its own exfiltration host. Heuristic by design: when unsure, it asks.
  */
 
 export interface Assessment {
@@ -20,12 +28,39 @@ export interface Assessment {
   detail: string;
 }
 
-/** What the run knows about the current turn (since the user's message that started it). */
+/** What the run knows when a call is assessed. */
 export interface TurnContext {
   /** Texts the user wrote in this turn (the prompt and any steering). */
   userTexts: string[];
-  /** A tool result in this turn carried third-party text (an untrusted envelope, a page read). */
+  /** Third-party text entered the conversation (an untrusted envelope, a page read), in this turn or an earlier one. */
   untrustedSeen: boolean;
+}
+
+/** Response header of /api/agent/chat: "1" when the conversation holds third-party text (sticky until Clear). */
+export const UNTRUSTED_HEADER = "x-knife-untrusted";
+
+/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV studio). */
+export const PAGE_READS: ReadonlySet<string> = new Set(["page_snapshot", "read_text"]);
+
+/** The message shapes both the widget transcript and the chat route's body share. */
+export type PolicyMessage =
+  | { role: "assistant"; tool_calls?: readonly { id: string; function: { name: string } }[] | null }
+  | { role: "tool"; tool_call_id: string; content: unknown }
+  | { role: string };
+
+/** Did any tool result in `messages` carry third-party text (an envelope, a page read, a tool declaring it)? */
+export function carriesUntrusted(messages: readonly PolicyMessage[], effects: Record<string, KnifeToolEffectInfo>): boolean {
+  const names = new Map<string, string>();
+  for (const m of messages) {
+    if (m.role !== "assistant" || !("tool_calls" in m) || !Array.isArray(m.tool_calls)) continue;
+    for (const c of m.tool_calls) names.set(c.id, c.function.name);
+  }
+  for (const m of messages) {
+    if (m.role !== "tool" || !("tool_call_id" in m)) continue;
+    const name = names.get(m.tool_call_id) ?? "";
+    if ((typeof m.content === "string" && containsUntrusted(m.content)) || PAGE_READS.has(name) || effects[name]?.untrustedOutput) return true;
+  }
+  return false;
 }
 
 type Args = Record<string, unknown>;
@@ -65,10 +100,33 @@ export function destinationHost(value: unknown): string | null {
   }
 }
 
-/** Hosts the user named in this turn: URLs and bare domains in their own messages. */
+/** A paragraph longer than this (characters or lines) reads as pasted content, not an instruction the user typed. */
+export const PASTE_CHARS = 400;
+export const PASTE_LINES = 4;
+
+/** The parts of a user message that read as typed instructions: no fenced blocks, quote lines or long paragraphs. */
+export function instructionText(text: string): string {
+  // Line scan, not a regex over the whole message: linear on any input. An unclosed fence hides the rest (conservative).
+  const kept: string[] = [];
+  let fenced = false;
+  for (const line of text.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    else if (!fenced) kept.push(/^\s*>/.test(line) ? "" : line);
+  }
+  return kept
+    .join("\n")
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.split("\n").filter((line) => line.trim() !== ""))
+    .filter((lines) => lines.length > 0 && lines.length <= PASTE_LINES && lines.join("\n").length <= PASTE_CHARS)
+    .map((lines) => lines.join("\n"))
+    .join("\n\n");
+}
+
+/** Hosts the user named in this turn: URLs and bare domains in the instruction parts of their own messages. */
 export function mentionedHosts(texts: readonly string[]): Set<string> {
   const out = new Set<string>();
-  for (const text of texts) {
+  for (const raw of texts) {
+    const text = instructionText(raw);
     for (const m of text.matchAll(/\b[a-z][a-z\d+.-]*:\/\/[^\s"'<>]+/gi)) {
       const host = destinationHost(m[0]);
       if (host) out.add(host);
@@ -110,12 +168,20 @@ export function assessServerCall(name: string, info: KnifeToolEffectInfo | undef
           ask: true,
           destructive: true,
           title: `Send a request to ${unnamed.join(", ")}?`,
-          detail: `Third-party text was read earlier in this turn and you did not name this address; a request there could carry your data out. ${detail}`,
+          detail: `Third-party text was read earlier in this conversation and you did not type this address yourself; a request there could carry your data out. ${detail}`,
         };
       }
       return mode === "destructive" ? NO : { ask: true, destructive: false, title: `Fetch from ${hosts.join(", ")}?`, detail };
     }
     // An outbound tool given pasted text instead of an address only saves it: a write.
+  }
+  if (info.publishes && turn.untrustedSeen) {
+    return {
+      ask: true,
+      destructive: true,
+      title: `Run “${label(name)}”?`,
+      detail: `Third-party text was read earlier in this conversation; this writes to your repository outside Smart Knife (check that the content is what you asked for). ${detail}`,
+    };
   }
   if (info.effect === "outbound" || info.effect === "write") {
     return mode === "destructive" ? NO : { ask: true, destructive: false, title: `Run “${label(name)}”?`, detail };
