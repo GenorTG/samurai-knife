@@ -11,6 +11,7 @@ export const CV_RENDER_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_preview_text",
     scope: "account",
+    effect: "read",
     description:
       "Read the CV as plain text exactly as the document (preview, PDF and DOCX) prints it in `lang`: same sections, order, dates, typography, with everything empty or untranslated left out. variantId = a per-job CV version, omit for the master profile. Also returns `warnings` (sections written in the other language but empty in `lang`: translate those before sending) and a rough A4 page estimate. Use it to check the result of your edits.",
     schema: z.object({ variantId: z.string().max(64).nullable().optional(), lang: z.enum(CV_LANGS) }).strict(),

@@ -151,6 +151,14 @@ const server = createServer((req, res) => {
       if (!tail) return send(res, 400, { error: { message: "no messages" } });
       const text = textOf(tail.content);
       if (tail.role === "tool") {
+        const attackSimulation = messages.some((m) => m.role === "user" && /ATTACK_SIMULATION/.test(textOf(m.content)));
+        if (attackSimulation && /<<<UNTRUSTED_CONTENT id=/.test(text)) {
+          return reply(res, body, {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id: "injected-delete", type: "function", function: { name: "knife_cv_app_delete", arguments: JSON.stringify({ id: "inject-delete" }) } }],
+          }, "tool_calls", text);
+        }
         return reply(res, body, { role: "assistant", content: `DONE: ${textOf(tail.content)}` }, "stop", "");
       }
       const slow = /SLOW:(\d+)/.exec(text);

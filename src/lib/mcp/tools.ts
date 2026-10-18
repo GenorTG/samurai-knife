@@ -1,5 +1,6 @@
 import * as z from "zod/v4";
-import { defineTool, KnifeToolForbiddenError, toolAllowed, type KnifeToolContext, type KnifeToolDefinition } from "./define";
+import { defineTool, effectInfo, KnifeToolForbiddenError, toolAllowed, type KnifeToolContext, type KnifeToolDefinition, type KnifeToolEffectInfo } from "./define";
+import { UNTRUSTED_NOTE } from "@/lib/security/untrusted";
 import { CV_KNIFE_TOOLS } from "./tools-cv";
 import { DOC_KNIFE_TOOLS } from "./tools-docs";
 import { LEARN_KNIFE_TOOLS } from "./tools-learn";
@@ -13,7 +14,7 @@ import { searchToolsLoose } from "@/lib/registry";
 import { runIsolated } from "@/lib/isolate/server";
 import { resolveJsonPointer } from "@/lib/json-pointer";
 
-export type { KnifeToolContext, KnifeToolDefinition } from "./define";
+export type { KnifeToolContext, KnifeToolDefinition, KnifeToolEffectInfo } from "./define";
 
 const searchSchema = z.object({
   query: z.string().min(1).max(120),
@@ -71,6 +72,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_search_tools",
     scope: "pure",
+    effect: "read",
     description: "Find Smart Knife UI tools by name, purpose, or keyword.",
     schema: searchSchema,
     run: ({ query, limit }) => searchToolsLoose(query).slice(0, limit ?? 8).map((tool) => ({
@@ -84,6 +86,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_hash",
     scope: "pure",
+    effect: "read",
     description: "Hash text (UTF-8) with md5, sha1, sha256, sha384 or sha512 and return the hex digest.",
     schema: z.object({
       text: z.string().max(200_000),
@@ -94,6 +97,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_diff",
     scope: "pure",
+    effect: "read",
     description: "Compare two text values and return line statistics plus a unified patch.",
     schema: diffSchema,
     run: ({ leftText, rightText, maxLines }) => {
@@ -111,6 +115,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_generate_regex",
     scope: "pure",
+    effect: "read",
     description: "Generate and verify a regular expression from positive and negative examples.",
     schema: regexSchema,
     // Verifies a pattern shaped by the examples against them: user-shaped regex work, so in the isolate pool.
@@ -127,6 +132,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_format_json",
     scope: "pure",
+    effect: "read",
     description: "Parse and pretty-print JSON, returning a readable parse error when invalid.",
     schema: jsonSchema,
     run: ({ text, indent }) => {
@@ -137,6 +143,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_inspect_url",
     scope: "pure",
+    effect: "read",
     description: "Parse a URL and list its parts and ordered query parameters without fetching it.",
     schema: urlSchema,
     run: ({ input }) => {
@@ -160,6 +167,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_convert_epoch",
     scope: "pure",
+    effect: "read",
     description: "Convert an ISO date or Unix timestamp to UTC and a selected IANA time zone.",
     schema: epochSchema,
     run: ({ value, unit, timeZone }) => {
@@ -194,6 +202,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_decode_jwt",
     scope: "pure",
+    effect: "read",
     description: "Decode a JWT's header and payload locally. Pass secret to verify an HS256/HS384/HS512 signature (verified true/false); without it verified is null: the signature was NOT checked, which is not the same as invalid.",
     schema: jwtSchema,
     run: ({ token, secret }) => {
@@ -231,6 +240,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_count_text",
     scope: "pure",
+    effect: "read",
     description: "Count user-perceived characters (graphemes), Unicode code points, UTF-8 bytes, words and lines in text.",
     schema: textSchema,
     run: ({ text }) => ({
@@ -244,6 +254,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_validate_json_schema",
     scope: "pure",
+    effect: "read",
     description: "Validate a JSON value against a JSON Schema Draft 2020-12 schema, including common format checks.",
     schema: jsonSchemaValidationSchema,
     // Ajv runs the schema's `pattern`s with the backtracking RegExp engine: only ever in the isolate pool (2 s limit).
@@ -252,6 +263,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_get_json_pointer",
     scope: "pure",
+    effect: "read",
     description: "Read a nested value from JSON using an RFC 6901 JSON Pointer; does not fetch URLs or files.",
     schema: jsonPointerSchema,
     run: ({ document, pointer }) => {
@@ -273,15 +285,25 @@ export function toolsFor(ctx: KnifeToolContext | undefined): KnifeToolDefinition
   return KNIFE_TOOLS.filter((tool) => toolAllowed(tool, ctx));
 }
 
+/** What a model reads about a tool: its description, plus the untrusted-content rule when its result carries third-party text. */
+export function modelDescription(tool: KnifeToolDefinition): string {
+  return tool.untrustedOutput ? `${tool.description} ${UNTRUSTED_NOTE}` : tool.description;
+}
+
 export function getOpenAiToolDefinitions(ctx: KnifeToolContext) {
   return toolsFor(ctx).map((tool) => ({
     type: "function" as const,
     function: {
       name: tool.name,
-      description: tool.description,
+      description: modelDescription(tool),
       parameters: z.toJSONSchema(tool.schema, { target: "draft-7" }) as Record<string, unknown>,
     },
   }));
+}
+
+/** Effect metadata per tool for the widget's approval policy (`/api/agent/tools`). */
+export function getToolEffects(ctx: KnifeToolContext): Record<string, KnifeToolEffectInfo> {
+  return Object.fromEntries(toolsFor(ctx).map((tool) => [tool.name, effectInfo(tool)]));
 }
 
 export async function callKnifeTool(name: string, input: unknown, ctx?: KnifeToolContext): Promise<unknown> {

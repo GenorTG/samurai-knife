@@ -1,4 +1,6 @@
-import { chat, chatStream, fetchServerTools, runServerTool, type ChatRequest, type StreamHandlers } from "./api";
+import { chat, chatStream, fetchServerToolCatalog, runServerTool, type ChatRequest, type StreamHandlers } from "./api";
+import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
+import { assessServerCall, carriesUntrusted, type TurnContext } from "./server-tool-policy";
 import { installArtifactCapture } from "./artifacts";
 import { EMPTY_USAGE, addUsage, describeRunUsage, type RunUsage, type Usage } from "@/lib/usage";
 import { buildSystemPrompt } from "./system-prompt";
@@ -236,9 +238,22 @@ const DENIED = JSON.stringify({
   error: "The user declined this action. Do not retry it; tell them what you wanted to do and ask how they would like to proceed.",
 });
 
+/**
+ * What the approval policy knows (see server-tool-policy.ts): the user's own texts of THIS turn (the message that started
+ * the run and any steering, from `turnStart`), and whether third-party text entered the conversation at all: any stored
+ * message, or the server's sticky flag for this conversation (`stickyUntrusted`, from /api/agent/chat), which also
+ * covers what the browser no longer holds (the capped transcript, an OpenClaw session seeded earlier).
+ */
+export function turnContext(conversation: readonly TranscriptMessage[], turnStart: number, effects: Record<string, KnifeToolEffectInfo>, stickyUntrusted = false): TurnContext {
+  const userTexts = conversation.slice(turnStart).flatMap((m) => (m.role === "user" ? [typeof m.content === "string" ? m.content : ""] : []));
+  return { userTexts, untrustedSeen: stickyUntrusted || carriesUntrusted(conversation, effects) };
+}
+
 /** Trust-mode gate (see approval-policy.ts). Returns a ready tool result when the user said no, null to proceed. */
-async function gateCall(call: ToolCall, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolRunResult | null> {
-  const verdict = assessCall(call.function.name, args, call.function.arguments, getTrustMode());
+async function gateCall(call: ToolCall, args: Record<string, unknown>, signal: AbortSignal, server?: { info: KnifeToolEffectInfo | undefined; turn: TurnContext }): Promise<ToolRunResult | null> {
+  const verdict = server
+    ? assessServerCall(call.function.name, server.info, args, getTrustMode(), server.turn)
+    : assessCall(call.function.name, args, call.function.arguments, getTrustMode());
   if (!verdict.ask) return null;
   if (isRunAllowed() && !verdict.destructive) return null;
   const decision = await requestApproval({ title: verdict.title, detail: verdict.detail, destructive: verdict.destructive }, signal);
@@ -250,6 +265,7 @@ async function executeCall(
   toolNames: readonly string[],
   serverToolNames: ReadonlySet<string>,
   options: LoopOptions,
+  server: { effects: Record<string, KnifeToolEffectInfo>; turn: () => TurnContext },
 ): Promise<ToolRunResult> {
   const parsed = parseArgs(call.function.arguments);
   if (!parsed.ok) return { ok: false, content: JSON.stringify({ ok: false, error: parsed.error }) };
@@ -259,7 +275,11 @@ async function executeCall(
     if (blocked) return blocked;
     return runUiTool(name, parsed.args, { navigate: options.navigate, signal: options.signal });
   }
-  if (serverToolNames.has(name)) return runServerTool(name, parsed.args, options.signal);
+  if (serverToolNames.has(name)) {
+    const blocked = await gateCall(call, parsed.args, options.signal, { info: server.effects[name], turn: server.turn() });
+    if (blocked) return blocked;
+    return runServerTool(name, parsed.args, options.signal);
+  }
   return { ok: false, content: JSON.stringify({ ok: false, error: `Unknown tool "${name}". Available tools: ${toolNames.join(", ")}.` }) };
 }
 
@@ -270,7 +290,11 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const onActivity = runtime.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
+  /** This turn = the user's message that started the run and everything after it (steering included). */
+  const turnStart = Math.max(0, working.length - 1);
   const responses = options.openClawResponses === true;
+  /** The server says this conversation already holds third-party text (sticky until Clear; see turnContext). */
+  let stickyUntrusted = false;
   /** Responses mode: head of the gateway continuation chain (null = the next round seeds a fresh session). */
   let head = responses ? options.previousResponseId ?? null : null;
   const append = (m: TranscriptMessage) => {
@@ -308,6 +332,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       head = null;
       result = await attempt(toWire(working), null);
     }
+    if (result.ok && result.value.untrusted) stickyUntrusted = true;
     if (responses && result.ok) {
       head = result.value.responseId ?? null;
       if (head) options.onResponseId?.(head);
@@ -333,7 +358,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   resetRunTrust();
   try {
     onActivity("Preparing…");
-    const serverDefs = await fetchServerTools();
+    const { defs: serverDefs, effects } = await fetchServerToolCatalog();
+    const serverGate = { effects, turn: () => turnContext(working, turnStart, effects, stickyUntrusted) };
     const uiNames = new Set(UI_TOOL_DEFS.map((d) => d.function.name));
     const serverTools = serverDefs.filter((d) => !uiNames.has(d.function.name));
     const serverToolNames = new Set(serverTools.map((d) => d.function.name));
@@ -409,7 +435,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         const loading = call.function.name === LOAD_TOOLS_NAME ? parseArgs(call.function.arguments) : null;
         const run = loading
           ? loading.ok ? runLoadTools(loading.args, activeGroups, allTools) : { ok: false, content: JSON.stringify({ ok: false, error: loading.error }) }
-          : await executeCall(call, toolNames, serverToolNames, options);
+          : await executeCall(call, toolNames, serverToolNames, options, serverGate);
         stepFinished(call.id, run.ok);
         const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipResult(run.content) };
         append(toolResult);

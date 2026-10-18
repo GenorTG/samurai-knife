@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { getAccount } from "@/lib/accounts/store";
 import { loadCv } from "@/lib/cv/store";
-import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
+import { admitOutbound, hostGate, mayUseAnonymousPageSpeed, outboundLimitMessage, pageSpeedKey } from "@/lib/net/outbound";
 import { fetchPage, sitePolicy, SiteError, type FetchedPage, type NetDeps } from "../net";
 import { loadSite, mutateSite } from "../store";
+import { siteTargetProblem } from "../ownership";
 import { alignCvWithSite, alignmentIssues } from "./align";
 import { analyzeCopy, copyIssues } from "./copy";
-import { lighthouseIssues, runLighthouse } from "./lighthouse";
+import { lighthouseIssues, PSI_API, runLighthouse } from "./lighthouse";
 import { analyzePage } from "./page";
 import { checkSite, siteIssues, SECURITY_HEADERS } from "./site";
 import type { AuditRun, Issue, LighthouseResult, ScoreKey } from "./types";
@@ -18,6 +19,9 @@ import type { AuditRun, Issue, LighthouseResult, ScoreKey } from "./types";
  */
 
 export const MAX_PAGES = 10;
+
+/** Where a site fetch may go (verified production origin for public non-admins): src/lib/site/ownership.ts. */
+export { siteTargetProblem };
 
 export interface AuditOptions {
   /** Absolute base URL; default: the connection's production URL. */
@@ -128,11 +132,14 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
   }
   if (!/^https?:$/.test(origin.protocol)) throw new SiteError("only http(s) sites can be audited");
   const paths = normalizePaths(options.pages ?? site.connection?.pages ?? []);
-  const budget = consumeOutbound(account, "audit");
+  const refused = siteTargetProblem(account, site.connection, origin.href);
+  if (refused) throw new SiteError(refused, 403);
+  const budget = admitOutbound(account, "audit", origin);
   if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);
 
   const policy = sitePolicy(account);
-  const deps = options.deps ?? {};
+  // Every page, robots.txt, sitemap and redirect hop of the run is counted against its host's budget (once per host).
+  const deps: NetDeps = { ...(options.deps ?? {}), admitHop: hostGate(account, "audit", origin) };
   const lighthouseOn = options.lighthouse !== false;
   const progress: AuditProgress = {
     id: `audit_${randomBytes(6).toString("hex")}`,
@@ -186,8 +193,19 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
     let lighthouse: LighthouseResult[] = [];
     if (lighthouseOn) {
       progress.phase = "Running Lighthouse (PageSpeed Insights, mobile + desktop)";
-      const key = site.connection?.psiKey ?? "";
-      lighthouse = await Promise.all([runLighthouse(home.finalUrl, "mobile", key, deps), runLighthouse(home.finalUrl, "desktop", key, deps)]);
+      // The server's PageSpeed key and its anonymous quota are the admin's; everyone else brings their own key.
+      const psi = pageSpeedKey(account, site.connection?.psiKey ?? "");
+      if (psi.source === "none" && !mayUseAnonymousPageSpeed(account)) {
+        notes.push("Lighthouse skipped: add your own PageSpeed Insights API key in Connect to get performance scores.");
+      } else {
+        const homeUrl = home.finalUrl;
+        const one = (strategy: LighthouseResult["strategy"]): Promise<LighthouseResult> => {
+          const admitted = admitOutbound(account, "psi", PSI_API());
+          if (!admitted.ok) return Promise.resolve({ strategy, ok: false, error: `PageSpeed Insights: ${outboundLimitMessage(admitted.retryAfterSeconds)}`, scores: {}, metrics: {}, failing: [] });
+          return runLighthouse(homeUrl, strategy, psi.key, deps);
+        };
+        lighthouse = await Promise.all([one("mobile"), one("desktop")]);
+      }
       for (const r of lighthouse) if (!r.ok) notes.push(`${r.strategy}: ${r.error}`);
       issues.push(...lighthouseIssues(lighthouse, home.finalUrl));
       progress.done += 1;

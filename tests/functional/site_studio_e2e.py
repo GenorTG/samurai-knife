@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 
 from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
 
-from tests.scratch_server import ScratchServer, free_port  # noqa: E402
+from tests.scratch_server import ScratchServer, free_ports  # noqa: E402
 
 HEADED = "--headed" in sys.argv
 FAILS: list[str] = []
@@ -104,6 +104,10 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         go(page, "/tools/site-studio?tab=connect")
         page.get_by_label("GitHub repository").fill("genor/website")
         page.get_by_label("Production URL").fill(site_url)
+        # The scratch server can have a GitHub App configured; choose the PAT path this test exercises.
+        access = page.get_by_role("radiogroup", name="GitHub access")
+        if access.count():
+            access.get_by_text("Personal token", exact=True).click()
         page.get_by_label("GitHub token").fill(TOKEN)
         page.get_by_text("More settings").click()
         page.get_by_label("More pages to audit").fill("/projekty")
@@ -201,9 +205,9 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
 
 
 def main() -> int:
-    gh_port, site_port, psi_port = free_port(), free_port(), free_port()
+    gh_port, site_port, psi_port = free_ports(3)
     site_url = f"http://127.0.0.1:{site_port}"
-    world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url})
+    world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url, "MOCK_REPO_HOMEPAGE": site_url})
     try:
         assert world.stdout is not None and world.stdout.readline().strip() == "READY", "mock world did not start"
         env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run"}

@@ -216,7 +216,7 @@ def main() -> int:
             "KNIFE_PUBLIC_URL": f"http://127.0.0.1:{app_port}",
         }
         with ScratchServer() as server:
-            server.start(env=env)
+            server.start(env=env, overlay=["src/lib/agent-client/server-tool-policy.ts", "src/lib/net/budgets.ts", "src/lib/security/"])
             print(f"scratch server {server.url} data {server.data_dir}", flush=True)
             try:
                 run(server, web, app_file)

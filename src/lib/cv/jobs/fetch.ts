@@ -42,6 +42,8 @@ export interface FetchDeps {
   transport?: Transport;
   timeoutMs?: number;
   maxBytes?: number;
+  /** Called with every URL before it is requested (each redirect hop, a board's API): the per-host outbound budget. */
+  admitHop?: (url: URL) => void;
 }
 
 // --- guard ----------------------------------------------------------------------------------
@@ -149,6 +151,7 @@ async function download(start: URL, deps: FetchDeps, signal: AbortSignal): Promi
   let current = start;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     checkUrl(current);
+    deps.admitHop?.(current);
     const addresses = await raceAbort(resolvePublic(current, resolve), signal, timedOut);
     let response: TransportResponse;
     try {

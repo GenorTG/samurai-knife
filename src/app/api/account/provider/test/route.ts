@@ -1,7 +1,7 @@
 import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { testProvider } from "@/lib/accounts/provider";
 import { getAccount } from "@/lib/accounts/store";
-import { consumeOutbound, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
+import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,8 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in auth) return auth.response;
   const provider = getAccount(auth.account.id)?.provider;
   if (!provider) return jsonError("provider_not_configured", 409);
-  const budget = consumeOutbound(auth.account, "provider-test");
+  const budget = admitProvider(auth.account, "provider-test", provider.baseUrl);
+  if (budget.problem) return jsonError(budget.problem, 403, { code: "provider_not_allowed" });
   if (!budget.ok) {
     const limited = jsonError(outboundLimitMessage(budget.retryAfterSeconds), 429, { retryAfterSeconds: budget.retryAfterSeconds });
     limited.headers.set("Retry-After", String(budget.retryAfterSeconds));

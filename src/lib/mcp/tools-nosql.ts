@@ -88,6 +88,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_mongo_compile",
     scope: "pure",
+    effect: "read",
     description:
       "Turn a small JSON spec of a MongoDB operation into correct, validated code for mongosh, PyMongo and the Node.js driver (plus Extended JSON), with a plain-English explanation. " +
       "Use this instead of hand-writing MongoDB syntax, and validate filters/pipelines through it. Returns errors with exact field paths and fixes when the spec is wrong. No database connection is made. " +
@@ -102,6 +103,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_mongo_validate",
     scope: "pure",
+    effect: "read",
     description:
       "Check a MongoDB operation spec without generating code: every $operator is validated against the official lists (with did-you-mean), update documents, projections, sorts, index options and aggregation pipelines (stage order, $group needs _id, $out last, $match early). " +
       "Always run it on filters and pipelines you wrote before showing them. Same spec format as knife_mongo_compile.",
@@ -116,6 +118,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_chroma_compile",
     scope: "pure",
+    effect: "read",
     description:
       "Turn a small JSON spec of a Chroma (vector database) operation into validated Python (chromadb) and JavaScript (chromadb npm) code, with explanation. " +
       "Use it instead of hand-writing Chroma calls; it enforces equal-length ids/documents/embeddings/metadatas, unique string ids, scalar metadata, valid where/where_document operators, and notes the embedding-function default. No database connection is made. " +
@@ -130,6 +133,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_chroma_validate",
     scope: "pure",
+    effect: "read",
     description:
       "Check a Chroma operation spec without generating code: where / where_document filters (operator names, exactly one condition per object, $and/$or need 2+ items, operand types), metadata types, list lengths, ids, collection name rules, include values. Always run it on filters you wrote. Same spec format as knife_chroma_compile.",
     schema: validateSchema,
@@ -143,6 +147,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_redis_compile",
     scope: "pure",
+    effect: "read",
     description:
       "Turn a list of Redis commands (JSON spec, or redis-cli lines) into validated redis-cli lines, redis-py and node-redis code. Arity, option spelling and argument types are checked against the official command table; dangerous or slow commands (KEYS, FLUSHALL, SMEMBERS, blocking calls) come back as warnings. " +
       "Use it instead of hand-writing client code. No server connection is made. " + REDIS_MANUAL,
@@ -156,6 +161,7 @@ export const NOSQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_redis_explain",
     scope: "pure",
+    effect: "read",
     description:
       "Explain Redis commands in plain English: what each command does, its documented time complexity, and pitfalls (KEYS, FLUSHALL, big collections, blocking commands, deprecated commands). Also validates arity and option spelling. Same spec format as knife_redis_compile (a {ops: [{command, args}]} object, or redis-cli lines in specText).",
     schema: validateSchema,

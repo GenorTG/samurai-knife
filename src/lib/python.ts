@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { admitPythonJob } from "./python-admission";
-import { isJobCancelled, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
+import { isJobCancelled, isJobTimeout, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
+import { recordSecurityEvent } from "./security/events";
 
 /**
  * The Python lane. Server tools run as a one-shot script inside
@@ -225,7 +226,7 @@ export function startPythonScript<T = unknown>(
   { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   const limits = laneLimits(lane, timeoutMs);
-  return admitPythonJob(lane, owner, (admission) =>
+  const handle = admitPythonJob(lane, owner, (admission) =>
     pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal), {
       signal,
       timeoutMs,
@@ -234,6 +235,12 @@ export function startPythonScript<T = unknown>(
       ...admission,
     }),
   );
+  // A job killed by its time limit is worth an operator's look (input crafted to run long). The queue itself stays
+  // self-contained (node --test loads it without the events module), so its server owner records it.
+  handle.promise.catch((error: unknown) => {
+    if (isJobTimeout(error)) recordSecurityEvent({ kind: "tool_timeout", account: owner, detail: { lane, script: scriptName, timeoutMs } });
+  });
+  return handle;
 }
 
 /** Result contract unchanged; a timeout or caller abort comes back as `{ ok: false, error, cancelled? }`. */

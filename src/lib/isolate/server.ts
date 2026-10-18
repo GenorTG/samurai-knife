@@ -10,6 +10,7 @@
 import { Worker } from "node:worker_threads";
 import { IsolatePool, isIsolateCrash, isIsolateTimeout, type IsolateStats } from "./pool";
 import type { IsolateTasks } from "./tasks";
+import { recordSecurityEvent } from "../security/events";
 
 function intFromEnv(name: string, fallback: number, min: number): number {
   const parsed = Number.parseInt(process.env[name] ?? "", 10);
@@ -67,6 +68,8 @@ export async function runIsolated<K extends keyof IsolateTasks & keyof typeof IS
   try {
     return await pool.call(task, payload, { timeoutMs, owner: options.owner, signal: options.signal });
   } catch (error) {
+    // A task killed by its limit: input built to backtrack or crawl. Recorded here (pool.ts stays self-contained).
+    if (isIsolateTimeout(error)) recordSecurityEvent({ kind: "tool_timeout", account: options.owner, detail: { task, timeoutMs } });
     if (isIsolateTimeout(error) || isIsolateCrash(error)) throw new IsolateStoppedError(task, error);
     throw error;
   }

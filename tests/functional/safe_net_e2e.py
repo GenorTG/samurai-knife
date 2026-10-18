@@ -152,9 +152,12 @@ def run(server: ScratchServer, mock: str) -> None:
     }
     for label, url in targets.items():
         status, body, _ = api.call("PUT", "/api/account/provider", {"baseUrl": url, "model": "mock-model", "apiKey": "mock-key"}, cookie=bob)
-        ok = status == 400 and isinstance(body, dict) and body.get("code") == "address_not_allowed"
+        # Public accounts first need an allow-listed or admin-approved provider host. A disallowed host is
+        # rejected before DNS/address policy, which is an equally safe early refusal; SSRF address checks
+        # themselves are covered by the safe-fetch unit matrix.
+        ok = status == 400 and isinstance(body, dict) and body.get("code") in {"address_not_allowed", "provider_not_allowed"}
         if label == "plain http":
-            ok = status == 400 and "only https" in str(body)
+            ok = status == 400 and ("only https" in str(body) or (isinstance(body, dict) and body.get("code") == "provider_not_allowed"))
         check(f"user baseUrl refused: {label}", ok, (status, body))
     status, body, _ = api.call("PUT", "/api/account/provider", {"baseUrl": "https://api.example.com/v1", "model": "m", "extraHeaders": {"X-Forwarded-For": "10.0.0.1"}}, cookie=bob)
     check("user extra header X-Forwarded-For refused", status == 400 and "not allowed" in str(body), (status, body))
@@ -162,6 +165,8 @@ def run(server: ScratchServer, mock: str) -> None:
     # -- a private base URL stored behind the server's back (CLI): Test and chat still refuse, nothing reaches the mock --
     r = cli(data, "set-provider", "bob", "--base-url", f"{mock}/v1", "--model", "mock-model", "--key-stdin", stdin="mock-key")
     check("CLI stores a loopback provider for the user", r.returncode == 0, r.stderr)
+    r = cli(data, "approve-provider", "bob", f"{mock}/v1")
+    check("admin explicitly approves the custom provider URL", r.returncode == 0, r.stderr)
     before = mock_stats(mock)
     status, body, _ = api.call("POST", "/api/account/provider/test", {}, cookie=bob)
     check("user provider Test refused (no connection)", status == 200 and isinstance(body, dict) and body.get("ok") is False and "not allowed" in str(body.get("error")), (status, body))
@@ -239,6 +244,9 @@ def main() -> int:
             "KNIFE_MAIL_TRANSPORT": "outbox",
             "KNIFE_TRUSTED_PROXIES": "127.0.0.1,::1",
             "KNIFE_SSRF_DENY_CIDRS": OWN_PUBLIC,
+            # Let the loopback fixture pass the provider-host allow-list so this suite reaches the separate
+            # SSRF/address check and can exercise provider-purpose budgets without a real outbound connection.
+            "KNIFE_PROVIDER_HOSTS": "127.0.0.1",
             "KNIFE_PDF_UPLOAD_MAX_MB": "1",
             "KNIFE_SIDECAR_PREFIX": "knife-test-safenet",
         }

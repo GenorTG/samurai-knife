@@ -60,7 +60,7 @@ test("manifest: permissions and callback URLs; state is one-time and bound to th
   process.env.KNIFE_PUBLIC_URL = `${BASE}/some/path`;
   process.env.KNIFE_GITHUB_EXTRA_BASES = "http://100.64.0.7:3210, https://knife.example.org";
   const built = manifest.buildManifest("owner", { name: "Knife Test" });
-  assert.deepEqual(built.manifest.default_permissions, { contents: "write", pull_requests: "write", metadata: "read", statuses: "read", deployments: "read", checks: "read", email_addresses: "read" });
+  assert.deepEqual(built.manifest.default_permissions, { contents: "write", pull_requests: "write", metadata: "read", statuses: "read", deployments: "read", checks: "read", pages: "read", email_addresses: "read" });
   assert.deepEqual(built.manifest.callback_urls, [`${BASE}/api/github/callback`, "http://100.64.0.7:3210/api/github/callback", "https://knife.example.org/api/github/callback"]);
   assert.equal(built.manifest.hook_attributes.active, false);
   assert.equal(built.manifest.setup_url, `${BASE}/api/github/setup`);

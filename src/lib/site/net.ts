@@ -1,6 +1,7 @@
 // SERVER ONLY. Outbound requests of the website studio: pages of the user's site (audits) and the JSON APIs it uses
 // (GitHub, PageSpeed Insights), all through the shared SSRF guard (src/lib/net/safe-fetch.ts).
 import { isPublicMode } from "@/lib/accounts/mode";
+import { OutboundRefused } from "@/lib/net/outbound";
 import type { Account } from "@/lib/accounts/store";
 import {
   checkUrl,
@@ -56,6 +57,8 @@ function isOperatorOverride(url: string): boolean {
 export interface NetDeps {
   resolve?: Resolver;
   transport?: Transport;
+  /** Called with every page URL before it is requested (each redirect hop): the per-host outbound budget. */
+  admitHop?: (url: URL) => void;
 }
 
 export interface FetchedPage {
@@ -132,6 +135,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       checkUrl(current, policy);
+      deps.admitHop?.(current);
       const addresses = await resolveAllowed(current, policy, deps.resolve, denyList());
       const sent = Date.now();
       let response: TransportResponse;
@@ -179,6 +183,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
     }
   } catch (error) {
     if (error instanceof OutboundError) throw new SiteError(error.message, error.kind === "refused" ? 400 : 502);
+    if (error instanceof OutboundRefused) throw new SiteError(error.message, 429);
     throw error;
   }
   throw new SiteError(`${input} redirects more than ${MAX_REDIRECTS} times`, 502);

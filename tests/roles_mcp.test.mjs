@@ -65,7 +65,7 @@ test("toolAllowed: pure for anyone, account needs an account, admin needs an adm
 
 test("a defined admin tool refuses a non-admin caller even when dispatched directly", async () => {
   let ran = 0;
-  const tool = defineTool({ name: "t_admin", scope: "admin", description: "", schema: z.object({}), run: () => ++ran });
+  const tool = defineTool({ name: "t_admin", scope: "admin", effect: "read", description: "", schema: z.object({}), run: () => ++ran });
   await assert.rejects(tool.execute({}, { accountId: "bob", admin: false }), /administrator/);
   await assert.rejects(tool.execute({}, undefined), /account context/);
   assert.equal(await tool.execute({}, { accountId: "genor", admin: true }), 1);

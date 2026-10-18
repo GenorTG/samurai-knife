@@ -5,6 +5,7 @@ import { createDoc, DocError, getDoc, getLiveDoc, listVersions, moveDoc, readDoc
 import { extractOfficeText } from "@/lib/office/extract";
 import { buildDocument, OFFICE_FORMATS } from "@/lib/office/templates";
 import { QuotaExceededError } from "@/lib/storage/quota";
+import { wrapUntrustedOptional } from "@/lib/security/untrusted";
 
 /**
  * Office document tools (group `docs`). The editor itself is a cross-origin iframe the UI tools cannot see into, so the
@@ -34,6 +35,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_list",
     scope: "account",
+    effect: "read",
     description:
       "List the user's office library (Office documents tool): folders (id, name, parentId, path) and documents (id, name, format docx/xlsx/pptx/odt/ods/odp, folderId, folder path, size, version, kept versions, last update), newest first. Optional `folderId` (null = top level) limits documents to one folder; `query` filters names. Trashed items are not listed.",
     schema: z.object({ folderId: ID.nullable().optional(), query: z.string().max(200).optional() }).strict(),
@@ -64,6 +66,8 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_read",
     scope: "account",
+    effect: "read",
+    untrustedOutput: true,
     description:
       "Read one office document as plain text: paragraphs for docx/odt, '# Sheet: name' blocks of tab-separated rows for xlsx/ods, '# Slide N' blocks for pptx/odp. Formatting, images and formulas are not included (cell values are). `version` reads an earlier kept version (knife_doc_versions). Use knife_doc_list for ids.",
     schema: z.object({ id: z.string().min(1).max(40), maxChars: z.number().int().min(100).max(200_000).optional(), version: z.number().int().min(1).optional() }).strict(),
@@ -77,12 +81,13 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
       // Parsed in the isolate pool (extract.ts), stopping at `limit`: `chars` is the length returned, not the document's.
       const limit = maxChars ?? 20_000;
       const { text, truncated } = await extractOfficeText(format, bytes, { maxChars: limit, owner: accountId });
-      return { id, name: meta.name, format, version: source?.version.version ?? meta.version, current: !source, chars: text.length, truncated, text };
+      return { id, name: meta.name, format, version: source?.version.version ?? meta.version, current: !source, chars: text.length, truncated, text: wrapUntrustedOptional(`office document ${meta.name}`, text) };
     },
   }),
   defineTool({
     name: "knife_doc_create",
     scope: "account",
+    effect: "write",
     description:
       "Create a new office document in the user's library and return its id and the page that opens it in the editor. format docx/odt take `paragraphs` (one string per paragraph); xlsx/ods take `rows` (array of rows of cell strings; numbers become numeric cells); pptx/odp take `slides` [{title, bullets[]}]. Plain content only (no styling). Omit the content for a blank file. `folderId` puts it in a folder (knife_doc_list / knife_doc_folder_create). Fails with a clear message when the user's storage is full.",
     schema: z.object({
@@ -109,6 +114,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_folder_create",
     scope: "account",
+    effect: "write",
     description: "Create a folder in the user's office library (`parentId` null/omitted = top level). Sibling names must be unique. Returns the folder id for knife_doc_create / knife_doc_move.",
     schema: z.object({ name: z.string().min(1).max(120), parentId: ID.nullable().optional() }).strict(),
     run({ name, parentId }, ctx) {
@@ -122,6 +128,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_move",
     scope: "account",
+    effect: "write",
     description: "Move one document into a folder (`folderId` null = top level). Only moves; never renames or deletes.",
     schema: z.object({ id: ID, folderId: ID.nullable() }).strict(),
     run({ id, folderId }, ctx) {
@@ -136,6 +143,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_versions",
     scope: "account",
+    effect: "read",
     description: "List a document's versions: the current one and every kept earlier version (number, format, size, when, who saved it, how it was made: editor save, upload, restore…), newest first. Every save from the editor keeps the previous version.",
     schema: z.object({ id: ID }).strict(),
     run({ id }, ctx) {
@@ -154,6 +162,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_doc_restore_version",
     scope: "account",
+    effect: "write",
     description:
       "Restore an earlier version of a document (knife_doc_versions): its content becomes a NEW current version, and the content it replaces is kept as a version too, so nothing is lost. Tell the user what you restored. A document open in the editor at that moment keeps editing the old session; its next save becomes a separate '(edited copy)'.",
     schema: z.object({ id: ID, version: z.number().int().min(1) }).strict(),
