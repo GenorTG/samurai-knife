@@ -4,7 +4,8 @@ import { connect } from "node:net";
 import { onlyofficeFilterEnv, renderCompose } from "./compose";
 import { syncAssets } from "./assets";
 import { PullTracker, type PullProgress } from "./pull-progress";
-import { detectRuntime, run, type RunResult, type RuntimeInfo, type RuntimeKind } from "./runtime";
+import type { RunOptions, RunResult, RuntimeInfo } from "./runtime";
+import { sidecarBackend, type BackendAction, type SidecarBackend } from "./backend";
 import {
   acquireLock,
   composeFile,
@@ -14,7 +15,6 @@ import {
   readState,
   releaseLock,
   removeState,
-  serviceDir,
   writeState,
   type OpLock,
   type SidecarState,
@@ -62,14 +62,30 @@ function definition(id: string): SidecarDefinition {
   return def;
 }
 
-async function requireRuntime(fresh = false): Promise<RuntimeKind> {
-  const info = await detectRuntime(fresh);
+/** The configured backend (KNIFE_SIDECAR_BACKEND, backend.ts), once its runtime answered. */
+async function requireBackend(fresh = false): Promise<SidecarBackend> {
+  let backend: SidecarBackend;
+  try {
+    backend = sidecarBackend();
+  } catch (error) {
+    throw new SidecarError(error instanceof Error ? error.message : String(error), 500);
+  }
+  const info = await backend.detect(fresh);
   if (!info.ok) throw new SidecarError(info.message, 503, info.hint);
-  return info.kind;
+  return backend;
 }
 
-function compose(kind: RuntimeKind, id: string, args: string[], options: Parameters<typeof run>[2] = {}): Promise<RunResult> {
-  return run(kind, ["compose", "-p", composeProject(id), "-f", composeFile(id), ...args], { cwd: serviceDir(id), ...options });
+function compose(backend: SidecarBackend, def: SidecarDefinition, action: BackendAction, options: RunOptions = {}): Promise<RunResult> {
+  return backend.exec(def, action, options);
+}
+
+/**
+ * Helper backend: root's installed bundle must be exactly what this release staged (writeCompose), or `up` would run
+ * other settings than the app believes. The owner syncs it once per change (`sudo knife-sidecar sync <id>`).
+ */
+async function requireBundle(backend: SidecarBackend, def: SidecarDefinition): Promise<void> {
+  const check = await backend.checkBundle(def);
+  if (!check.ok) throw new SidecarError(check.message, 409, check.hint);
 }
 
 function failed(what: string, result: RunResult): SidecarError {
@@ -120,8 +136,8 @@ export function parsePs(stdout: string): PsRow[] {
   return rows;
 }
 
-async function containerInfo(kind: RuntimeKind, def: SidecarDefinition): Promise<ContainerInfo> {
-  const result = await compose(kind, def.id, ["ps", "-a", "--format", "json"], { timeoutMs: 20_000 });
+async function containerInfo(backend: SidecarBackend, def: SidecarDefinition): Promise<ContainerInfo> {
+  const result = await compose(backend, def, { verb: "ps" }, { timeoutMs: 20_000 });
   if (result.code !== 0) return { state: "absent" };
   const row = parsePs(result.stdout).find((r) => r.Service === def.serviceName);
   if (!row) return { state: "absent" };
@@ -172,7 +188,7 @@ export async function probeHealth(def: SidecarDefinition, state: SidecarState, t
   }
 }
 
-async function waitHealthy(kind: RuntimeKind, def: SidecarDefinition, state: SidecarState, reporter: OpReporter): Promise<number> {
+async function waitHealthy(backend: SidecarBackend, def: SidecarDefinition, state: SidecarState, reporter: OpReporter): Promise<number> {
   const started = Date.now();
   const deadline = started + def.startTimeoutSec * 1000;
   let lastNote = 0;
@@ -180,9 +196,9 @@ async function waitHealthy(kind: RuntimeKind, def: SidecarDefinition, state: Sid
     if (await probeHealth(def, state)) return Date.now() - started;
     if (Date.now() - lastNote > 10_000) {
       lastNote = Date.now();
-      const info = await containerInfo(kind, def);
+      const info = await containerInfo(backend, def);
       if (info.state === "exited" || info.state === "dead") {
-        const logs = await compose(kind, def.id, ["logs", "--tail", "30", def.serviceName], { timeoutMs: 20_000 });
+        const logs = await compose(backend, def, { verb: "logs" }, { timeoutMs: 20_000 });
         throw new SidecarError(`the container exited while starting: ${(logs.stdout + logs.stderr).trim().split("\n").slice(-8).join("\n")}`, 502);
       }
       reporter.phase(`Waiting for ${def.name} to answer (${healthTarget(def, state)}, ${Math.round((Date.now() - started) / 1000)} s)`);
@@ -193,9 +209,10 @@ async function waitHealthy(kind: RuntimeKind, def: SidecarDefinition, state: Sid
 }
 
 /** Can the container call back into this app? (Non-fatal: reported as a warning.) */
-async function checkAppReachable(kind: RuntimeKind, def: SidecarDefinition, choice: AppUrlChoice): Promise<string | null> {
-  const target = `${choice.url}/api/services/ping`;
-  const result = await compose(kind, def.id, ["exec", "-T", def.serviceName, "sh", "-c", `curl -s -m 5 "${target}" || wget -q -T 5 -O - "${target}"`], { timeoutMs: 20_000 });
+async function checkAppReachable(backend: SidecarBackend, def: SidecarDefinition, choice: AppUrlChoice): Promise<string | null> {
+  // The helper never execs ad-hoc commands in a container: the check is skipped there (the save callback shows it).
+  if (!backend.canPingApp) return null;
+  const result = await compose(backend, def, { verb: "ping-app", url: choice.url }, { timeoutMs: 20_000 });
   if (result.code === 0 && /"ok"\s*:\s*true/.test(result.stdout)) return null;
   return `The container cannot reach this app at ${choice.url} (GET /api/services/ping failed). Documents will not open or save until the app URL is reachable from the container.`;
 }
@@ -262,13 +279,11 @@ export function needsRecreate(def: SidecarDefinition, state: SidecarState): bool
   return state.composeHash !== composeHashOf(def, state) && sessions(def.id).size === 0;
 }
 
-async function pull(kind: RuntimeKind, def: SidecarDefinition, reporter: OpReporter): Promise<void> {
+async function pull(backend: SidecarBackend, def: SidecarDefinition, reporter: OpReporter): Promise<void> {
   reporter.phase(`Pulling ${def.image}`, 0);
   const tracker = new PullTracker();
   let lastEmit = 0;
-  // `--progress` is a global compose flag (before the subcommand).
-  const result = await run(kind, ["compose", "--progress", "json", "-p", composeProject(def.id), "-f", composeFile(def.id), "pull"], {
-    cwd: serviceDir(def.id),
+  const result = await compose(backend, def, { verb: "pull" }, {
     onLine: (line) => {
       if (tracker.feed(line)) {
         if (Date.now() - lastEmit > 400) {
@@ -286,30 +301,30 @@ async function pull(kind: RuntimeKind, def: SidecarDefinition, reporter: OpRepor
   reporter.phase(`Pulled ${def.image}`, 100);
 }
 
-async function upAndWait(kind: RuntimeKind, def: SidecarDefinition, state: SidecarState, reporter: OpReporter): Promise<SidecarState> {
+async function upAndWait(backend: SidecarBackend, def: SidecarDefinition, state: SidecarState, reporter: OpReporter): Promise<SidecarState> {
   if (!(await probeHealth(def, state, 1000))) {
-    const info = await containerInfo(kind, def);
+    const info = await containerInfo(backend, def);
     if (info.state !== "running" && !(await portFree(state.bindHost, state.hostPort))) {
       throw new SidecarError(`port ${state.bindHost}:${state.hostPort} is taken by another program; pick another port (configure) and start again`, 409);
     }
   }
   reporter.phase("Starting the container");
   const t0 = Date.now();
-  const up = await compose(kind, def.id, ["up", "-d", "--remove-orphans"], { onLine: (line) => reporter.log(line), timeoutMs: 300_000 });
+  const up = await compose(backend, def, { verb: "up" }, { onLine: (line) => reporter.log(line), timeoutMs: 300_000 });
   if (up.code !== 0) throw failed("compose up", up);
   reporter.phase("Waiting for the service to become healthy");
-  await waitHealthy(kind, def, state, reporter);
+  await waitHealthy(backend, def, state, reporter);
   reporter.log(`healthy ${Math.round((Date.now() - t0) / 100) / 10} s after compose up`);
   let prepared: string | undefined;
   if (def.prepare) {
-    const info = await containerInfo(kind, def);
+    const info = await containerInfo(backend, def);
     if (info.id && info.id !== readState(def.id)?.preparedContainer) {
       reporter.phase(def.prepare.label);
       const t1 = Date.now();
-      const result = await compose(kind, def.id, ["exec", "-T", def.serviceName, ...def.prepare.command], { onLine: (line) => reporter.log(line), timeoutMs: def.prepare.timeoutSec * 1000 });
+      const result = await compose(backend, def, { verb: "prepare" }, { onLine: (line) => reporter.log(line), timeoutMs: def.prepare.timeoutSec * 1000 });
       if (result.code !== 0) throw failed(def.prepare.label, result);
       reporter.log(`${def.prepare.label}: ${Math.round((Date.now() - t1) / 100) / 10} s`);
-      await waitHealthy(kind, def, state, reporter);
+      await waitHealthy(backend, def, state, reporter);
       prepared = info.id;
     }
   }
@@ -321,7 +336,7 @@ async function upAndWait(kind: RuntimeKind, def: SidecarDefinition, state: Sidec
     ...(prepared ? { preparedContainer: prepared } : {}),
     composeHash: composeHashOf(def, state),
   }) ?? state;
-  const warning = def.callsBack ? await checkAppReachable(kind, def, appUrl(next)) : null;
+  const warning = def.callsBack ? await checkAppReachable(backend, def, appUrl(next)) : null;
   if (warning) reporter.log(`WARNING: ${warning}`);
   return next;
 }
@@ -357,7 +372,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
   checkUrls(options);
   return withLock(id, "install", async () => {
     reporter.phase("Checking the container runtime");
-    const kind = await requireRuntime(true);
+    const backend = await requireBackend(true);
     const previous = readState(id);
     const bindHost = bindHostFor(def);
     let hostPort = options.port ?? previous?.hostPort;
@@ -365,7 +380,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
       hostPort = await pickPort(bindHost, appPort(), claimedPorts(id));
     } else if (!(await portFree(bindHost, hostPort))) {
       // Busy because our own container (a reinstall over a running one) holds it is fine.
-      const ours = previous?.hostPort === hostPort && (await containerInfo(kind, def)).state === "running";
+      const ours = previous?.hostPort === hostPort && (await containerInfo(backend, def)).state === "running";
       if (!ours) {
         if (options.port !== undefined) throw new SidecarError(`port ${bindHost}:${options.port} is not free`, 409);
         hostPort = await pickPort(bindHost, appPort(), claimedPorts(id));
@@ -386,8 +401,9 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
     });
     writeCompose(def, state, reporter);
     reporter.log(`compose project ${composeProject(id)}, published on ${state.bindHost}:${state.hostPort}`);
-    await pull(kind, def, reporter);
-    const ready = await upAndWait(kind, def, state, reporter);
+    await requireBundle(backend, def);
+    await pull(backend, def, reporter);
+    const ready = await upAndWait(backend, def, state, reporter);
     reporter.phase("Installed and running", 100);
     return ready;
   });
@@ -410,10 +426,11 @@ function movedToBindHost(def: SidecarDefinition, state: SidecarState, reporter?:
 export function start(id: string, reporter: OpReporter): Promise<SidecarState> {
   const def = definition(id);
   return withLock(id, "start", async () => {
-    const kind = await requireRuntime();
+    const backend = await requireBackend();
     const state = movedToBindHost(def, requireState(id), reporter);
     writeCompose(def, state, reporter);
-    const ready = await upAndWait(kind, def, state, reporter);
+    await requireBundle(backend, def);
+    const ready = await upAndWait(backend, def, state, reporter);
     reporter.phase("Running", 100);
     return ready;
   });
@@ -422,10 +439,10 @@ export function start(id: string, reporter: OpReporter): Promise<SidecarState> {
 export function stop(id: string, reporter: OpReporter, kindOfOp: "stop" | "idle-stop" = "stop"): Promise<void> {
   const def = definition(id);
   return withLock(id, kindOfOp, async () => {
-    const kind = await requireRuntime();
+    const backend = await requireBackend();
     requireState(id);
     reporter.phase("Stopping the container");
-    const result = await compose(kind, def.id, ["stop"], { onLine: (line) => reporter.log(line), timeoutMs: 120_000 });
+    const result = await compose(backend, def, { verb: "stop" }, { onLine: (line) => reporter.log(line), timeoutMs: 120_000 });
     if (result.code !== 0) throw failed("compose stop", result);
     sessions(id).clear();
     reporter.phase("Stopped", 100);
@@ -435,15 +452,13 @@ export function stop(id: string, reporter: OpReporter, kindOfOp: "stop" | "idle-
 export function remove(id: string, options: { purge?: boolean; removeImage?: boolean }, reporter: OpReporter): Promise<void> {
   const def = definition(id);
   return withLock(id, "remove", async () => {
-    const kind = await requireRuntime();
+    const backend = await requireBackend();
     const state = readState(id);
     if (!state && !options.purge) throw new SidecarError(`${id} is not installed`, 409);
     if (state) writeCompose(def, state);
     reporter.phase(options.purge ? "Removing the container and its data volumes" : "Removing the container (data volumes kept)");
-    const args = ["down", "--remove-orphans"];
-    if (options.purge) args.push("--volumes");
-    if (options.removeImage) args.push("--rmi", "all");
-    const result = await compose(kind, def.id, args, { onLine: (line) => reporter.log(line), timeoutMs: 180_000 });
+    const action: BackendAction = { verb: "down", volumes: Boolean(options.purge), removeImages: Boolean(options.removeImage) };
+    const result = await compose(backend, def, action, { onLine: (line) => reporter.log(line), timeoutMs: 180_000 });
     if (result.code !== 0 && state) throw failed("compose down", result);
     removeState(id, Boolean(options.purge));
     sessions(id).clear();
@@ -451,24 +466,25 @@ export function remove(id: string, options: { purge?: boolean; removeImage?: boo
   });
 }
 
-async function imageId(kind: RuntimeKind, image: string): Promise<string | null> {
-  const result = await run(kind, ["image", "inspect", "--format", "{{.Id}}", image], { timeoutMs: 20_000 });
+async function imageId(backend: SidecarBackend, def: SidecarDefinition, image: string): Promise<string | null> {
+  const result = await compose(backend, def, { verb: "image-id", image }, { timeoutMs: 20_000 });
   return result.code === 0 ? result.stdout.trim() : null;
 }
 
 export function update(id: string, reporter: OpReporter): Promise<SidecarState & { imageChanged: boolean }> {
   const def = definition(id);
   return withLock(id, "update", async () => {
-    const kind = await requireRuntime(true);
+    const backend = await requireBackend(true);
     const previous = movedToBindHost(def, requireState(id), reporter);
-    const before = await imageId(kind, previous.image);
+    const before = await imageId(backend, def, previous.image);
     const state = writeState({ ...previous, image: def.image });
     writeCompose(def, state, reporter);
-    await pull(kind, def, reporter);
-    const after = await imageId(kind, def.image);
+    await requireBundle(backend, def);
+    await pull(backend, def, reporter);
+    const after = await imageId(backend, def, def.image);
     const imageChanged = before !== after;
     reporter.log(imageChanged ? `image changed: ${before ?? "none"} -> ${after}` : "image unchanged");
-    const ready = await upAndWait(kind, def, state, reporter);
+    const ready = await upAndWait(backend, def, state, reporter);
     reporter.phase(imageChanged ? "Updated and running" : "Already up to date; running", 100);
     return { ...ready, imageChanged };
   });
@@ -543,8 +559,8 @@ function parseBytes(text: string): number {
   return Math.round(Number.parseFloat(match[1]) * (scale[unit] ?? 1));
 }
 
-export async function containerMemory(kind: RuntimeKind, name: string): Promise<{ usedBytes: number; text: string } | null> {
-  const result = await run(kind, ["stats", "--no-stream", "--format", "{{.MemUsage}}", name], { timeoutMs: 20_000 });
+export async function containerMemory(backend: SidecarBackend, def: SidecarDefinition, name: string): Promise<{ usedBytes: number; text: string } | null> {
+  const result = await compose(backend, def, { verb: "memory", container: name }, { timeoutMs: 20_000 });
   if (result.code !== 0) return null;
   const text = result.stdout.trim();
   return { usedBytes: parseBytes(text.split("/")[0] ?? ""), text };
@@ -552,16 +568,19 @@ export async function containerMemory(kind: RuntimeKind, name: string): Promise<
 
 export async function status(id: string, options: { memory?: boolean } = {}): Promise<SidecarStatus> {
   const def = definition(id);
-  const runtime = await detectRuntime();
+  const backend = sidecarBackend();
+  const runtime = await backend.detect();
   const state = readState(id);
   const warnings: string[] = [];
   let container: ContainerInfo = { state: "absent" };
   let ready = false;
   let memory: SidecarStatus["memory"];
   if (runtime.ok && state) {
-    container = await containerInfo(runtime.kind, def);
+    container = await containerInfo(backend, def);
     ready = container.state === "running" && (await probeHealth(def, state, 1500));
-    if (options.memory && container.name && container.state === "running") memory = await containerMemory(runtime.kind, container.name);
+    if (options.memory && container.name && container.state === "running") memory = await containerMemory(backend, def, container.name);
+    const bundle = await backend.checkBundle(def);
+    if (!bundle.ok) warnings.push(`${bundle.message} ${bundle.hint}`);
   }
   const app = appUrl(state);
   if (app.warning && def.callsBack) warnings.push(app.warning);
@@ -643,15 +662,15 @@ const silent: OpReporter = { phase: () => {}, log: () => {} };
 /** One pass of the idle reaper; exported for tests and the CLI. Returns the ids it stopped. */
 export async function reapIdle(now = Date.now()): Promise<string[]> {
   const stopped: string[] = [];
-  const runtime = await detectRuntime();
-  if (!runtime.ok) return stopped;
+  const backend = sidecarBackend();
+  if (!(await backend.detect()).ok) return stopped;
   for (const def of SIDECARS) {
     const state = readState(def.id);
     if (!state || state.idleStopMinutes <= 0 || readLock(def.id)) continue;
     if (sessions(def.id).size > 0) continue;
     const last = Date.parse(state.lastUsedAt ?? state.lastStartedAt ?? state.updatedAt);
     if (Number.isFinite(last) && now - last < state.idleStopMinutes * 60_000) continue;
-    const info = await containerInfo(runtime.kind, def);
+    const info = await containerInfo(backend, def);
     if (info.state !== "running") continue;
     try {
       await stop(def.id, silent, "idle-stop");
