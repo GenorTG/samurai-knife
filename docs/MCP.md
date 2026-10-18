@@ -73,7 +73,8 @@ the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
 - In memory per account on `globalThis` (the MCP and UI routes may be bundled separately in dev); a restart forgets
   tabs until they report again.
 - Bounded: at most 32 tabs per account (the oldest report is evicted). A poll from a client id with no presence is
-  answered empty and not recorded (a tab's first poll may race its first report; the next poll counts), and removing
+  answered `{known: false, events: []}` and not recorded (the tab then reports at once and polls again: covers a first
+  poll that raced the first report and a server restart), and removing
   a presence entry (TTL or the cap) removes its poll and pending request; stale polls are swept, empty accounts dropped.
 - No server-sent events on purpose: a per-tab stream kept Chrome's `load` from firing, broke "network idle" for every
   Playwright suite and the assistant, and would hold one of HTTP/1.1's 6 connections per site per tab.
