@@ -258,23 +258,44 @@ nodemailer. `KNIFE_MAIL_TRANSPORT=smtp` (default in public mode): `KNIFE_SMTP_HO
 header. Sending never blocks a response; failures go to the server log and `$KNIFE_DATA_DIR/mail-errors.log`.
 Templates (`templates.ts`): English, plain text + minimal HTML, every value escaped.
 
-## Rate limits (`src/lib/accounts/rate-limit.ts`, in memory, per server process)
+## Rate limits (`src/lib/accounts/rate-limit.ts`, per server process)
+
+"Address" below is the client prefix (IPv4 /32, IPv6 /64); every per-address bucket has an IPv6 /48 companion at 5x the
+limit (one subscriber owns a whole /64, often a /48), registration also an IPv4 /24 companion at 3x.
 
 | Action | Buckets |
 | --- | --- |
-| login (failures only) | 5/min per identifier + client address; public unknown devices are hard-limited by 5/min per identifier+address and 50/15 min per address; 20/15 min and 200/day identifier buckets, and 3-failure signals, raise proof-of-work instead of locking the account; a known-device cookie uses its own 10/15 min failure bucket |
-| register | 10/h per address, 3/h per email |
+| login (failures only) | 5/min per identifier + client address; public unknown devices are hard-limited by 5/min per identifier+address and 50/15 min per address; 20/15 min and 200/day identifier buckets, 3-failure signals and the server-wide failed-login budget (`KNIFE_LOGIN_GLOBAL_FAILS` per 15 min, default 600) raise proof-of-work instead of locking anyone out; a known-device cookie uses its own 10/15 min failure bucket |
+| register | 10/h per address (30/h per IPv4 /24), 3/h per email |
 | resend | 10/h per address, 3/15 min per email |
 | verify | 20/10 min per address, 5/10 min per token hash |
 | reset | 20/10 min per address, 5/10 min per token hash |
 | successful login | 30/h per account |
 | forgot | 10/h per address, 3/15 min per email |
+| GitHub sign-in start (`/api/github/start` without a session) | 20/10 min per address |
+| MCP requests with a wrong key | 30/15 min per address |
 | password/email change, delete (wrong password) | 10/15 min per account |
 | provider rounds (`/api/agent/chat`), public mode, non-admins | 300/10 min per account |
 | provider Test, public mode, non-admins | 20/10 min per account |
 | job posting / company page fetches, public mode, non-admins | 30/10 min per account |
 
 Refusals are 429 with `retryAfterSeconds` and `Retry-After`. Unknown addresses count the same as known ones.
+
+Bounded by construction (bucket keys are attacker-chosen): one store per namespace (the key's first segment; the 24 h
+identifier buckets have their own, `login-day`), expired buckets swept every minute and whenever a namespace is full, and
+a bucket that is limiting someone is never evicted. Pre-login namespaces (login, register, resend, forgot, verify,
+reset, GitHub start, MCP auth) never evict: past their cap (100,000 keys for login, 50,000 for the others) a new key is
+refused only for the client /48 or /24 that already created more than its fair share in 15 minutes (`max(20, cap/2000)`),
+and past 1.25x the cap for everyone except a known device, which makes room instead. So filling the table locks out
+the filler, not other users. Signed-in namespaces (successful logins, known devices, sensitive actions, MCP keys,
+outbound) evict their least recently used bucket that is not limiting.
+
+Security-relevant buckets (login pressure, every register/resend/forgot/verify/reset bucket, MCP auth, sensitive) are
+saved every minute and on exit to `$KNIFE_DATA_DIR/security/rate-limits.json` (0600; at most 50,000 rows, limiting ones
+first; written asynchronously), so a restart does not reset them. Bucket names there are HMAC'd with a key derived from
+`auth.key`, so the file holds no email, identifier or address and a guessed email cannot be checked against it. It is
+loaded asynchronously at startup (files over 16 MB are ignored). Each refusal is a `rate_block` security event (once per
+bucket and window) naming only the bucket kind (`forgot:email`), never the email or identifier.
 
 ## Security events (`src/lib/security/events.ts`)
 
@@ -294,7 +315,9 @@ Public register, forgot, resend, reset, and login after failures require a brows
 store lookups, scrypt, or mail. `GET /api/account/challenge?form=...` issues an HMAC-signed ten-minute challenge bound to
 the form and client IP prefix. The client solves SHA-256 in a Web Worker and reports progress as “Checking your browser…”.
 Challenges are single-use and the replay set is bounded. Difficulty defaults to 18 bits (~2^18 hashes), increases under
-prefix/register pressure, and is capped at 24 bits. Browser e2e uses the Worker-backed forms; direct API probes fetch
+prefix/register pressure and while an identifier or the server-wide failed-login budget is under attack (+3), and is capped
+at 24 bits. A 428 names the difficulty; the browser asks for a challenge at it (`GET /api/account/challenge?form=login&bits=N`,
+never below the server's own requirement). Browser e2e uses the Worker-backed forms; direct API probes fetch
 and solve the challenge too (see `Api.call` in `tests/functional/accounts_public_e2e.py`). Isolated e2e servers set a
 lower `KNIFE_POW_BITS`, never disable the check. The signing key is `auth.key` (0600).
 

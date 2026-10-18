@@ -32,9 +32,13 @@ export async function solveChallenge(c: string, bits: number, signal?: AbortSign
   }
 }
 
-/** A fresh challenge for `form`, solved. Throws on network errors (callers show a message). */
-export async function fetchSolution(form: PowForm, signal?: AbortSignal): Promise<PowSolution> {
-  const response = await fetch(`/api/account/challenge?form=${form}`, { credentials: "same-origin", cache: "no-store", signal });
+/**
+ * A fresh challenge for `form`, solved. `bits`: the difficulty a 428 asked for (the server never issues less than its own
+ * requirement). Throws on network errors (callers show a message).
+ */
+export async function fetchSolution(form: PowForm, signal?: AbortSignal, bits?: number): Promise<PowSolution> {
+  const hint = typeof bits === "number" && Number.isInteger(bits) ? `&bits=${bits}` : "";
+  const response = await fetch(`/api/account/challenge?form=${form}${hint}`, { credentials: "same-origin", cache: "no-store", signal });
   const body = (await response.json().catch(() => null)) as PowChallenge | null;
   if (!response.ok || !body || typeof body.c !== "string" || typeof body.bits !== "number") throw new Error(`challenge request failed (${response.status})`);
   return { c: body.c, nonce: await solveChallenge(body.c, body.bits, signal) };

@@ -4,7 +4,8 @@ import { safeReturnPath } from "@/lib/safe-return";
 
 /** Browser helpers for the account pages: same-origin JSON, never throw, readable messages for every API error code. */
 
-export type Reply<T> = { ok: true; status: number; body: T } | { ok: false; status: number; message: string; code: string };
+/** `bits`: on a 428 `challenge_required`, the proof-of-work difficulty the server asked for. */
+export type Reply<T> = { ok: true; status: number; body: T } | { ok: false; status: number; message: string; code: string; bits?: number };
 
 const MESSAGES: Record<string, string> = {
   invalid_credentials: "Wrong username, email or password.",
@@ -48,7 +49,10 @@ export async function call<T>(method: "GET" | "POST", path: string, body?: unkno
   } catch {
     parsed = null;
   }
-  if (!response.ok) return { ok: false, status: response.status, ...messageFor(response.status, parsed) };
+  if (!response.ok) {
+    const bits = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).bits : undefined;
+    return { ok: false, status: response.status, ...messageFor(response.status, parsed), ...(typeof bits === "number" ? { bits } : {}) };
+  }
   return { ok: true, status: response.status, body: parsed as T };
 }
 

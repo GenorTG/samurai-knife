@@ -16,10 +16,10 @@ export async function withChallenge<T>(
   options: { upfront: boolean; onChecking: () => void },
 ): Promise<Reply<T>> {
   let pow: PowSolution | null = null;
-  const solve = async (): Promise<Reply<T> | null> => {
+  const solve = async (bits?: number): Promise<Reply<T> | null> => {
     options.onChecking();
     try {
-      pow = await fetchSolution(form);
+      pow = await fetchSolution(form, undefined, bits);
       return null;
     } catch (error) {
       return { ok: false, status: 0, code: "challenge_failed", message: `The browser check could not finish: ${error instanceof Error ? error.message : String(error)}. Try again.` };
@@ -32,7 +32,8 @@ export async function withChallenge<T>(
   for (let attempt = 0; ; attempt += 1) {
     const reply = await send(pow);
     if (reply.ok || reply.status !== 428 || attempt >= 2) return reply;
-    const failed = await solve();
+    // The 428 names the difficulty (raised while an identifier or the server is under attack): ask for a challenge at it.
+    const failed = await solve(reply.bits);
     if (failed) return failed;
   }
 }
