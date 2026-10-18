@@ -18,6 +18,18 @@ export interface SidecarVolume {
  */
 export type SidecarHealth = { kind: "http"; path: string; body?: RegExp } | { kind: "postgres" };
 
+/**
+ * Container privileges (docs/SIDECARS.md "Hardening"). Every sidecar runs with ALL capabilities dropped,
+ * `no-new-privileges` and a pids cap; `capAdd` lists only what the image was verified to need (a real container under a
+ * test prefix: starts, gets healthy, does its job). Defaults live in compose.ts (`DEFAULT_PIDS_LIMIT`).
+ */
+export interface SidecarSecurity {
+  /** Capabilities given back after `cap_drop: [ALL]` (names without `CAP_`). */
+  capAdd: string[];
+  /** Compose `pids_limit`; unset = compose.ts DEFAULT_PIDS_LIMIT. */
+  pidsLimit?: number;
+}
+
 export interface SidecarDefinition {
   id: string;
   name: string;
@@ -55,6 +67,8 @@ export interface SidecarDefinition {
   memLimit?: string;
   /** Optional CPU cap (compose `cpus`, e.g. "2"). */
   cpus?: string;
+  /** Capabilities and process cap; required so a new sidecar has to state what it needs. */
+  security: SidecarSecurity;
   /**
    * Where the port is published. `app-host` (default): KNIFE_HOST, for sidecars the browser loads (the editor).
    * `loopback`: 127.0.0.1 only, for sidecars only this app talks to (a database): never reachable from the LAN/tailnet.
@@ -124,6 +138,12 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     // Measured 1.1-1.5 GiB in use; conversions of big files peak higher.
     memLimit: "3g",
     cpus: "2",
+    // Verified on v9.3.5 with every other capability dropped (start, /healthcheck, font prepare, stop, restart): the
+    // entrypoint chowns and chmods its dirs as root (CHOWN, FOWNER, DAC_OVERRIDE), supervisord/gosu switch to ds,
+    // postgres, rabbitmq, redis, www-data (SETUID, SETGID) and supervisord signals the ds processes on stop and restart
+    // (KILL; without it "PermissionError" and a hard kill). Port 80 binds without NET_BIND_SERVICE (docker sets
+    // ip_unprivileged_port_start=0). ~150 tasks when idle; conversions add x2t processes.
+    security: { capAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID"], pidsLimit: 1024 },
     requestFilter: "onlyoffice",
     // Without it a new container answers /healthcheck but the editor never finishes loading (no AllFonts.js).
     prepare: { command: ["documentserver-generate-allfonts.sh"], label: "Generating the font cache (once per new container)", timeoutSec: 300 },
@@ -162,6 +182,10 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     idleStopMinutes: 30,
     memLimit: "1g",
     cpus: "1",
+    // Verified on 16-3.4 (fresh volume: initdb + PostGIS; restart on an existing volume): the entrypoint chowns/chmods the
+    // data and socket dirs as root and gosu switches to postgres. FOWNER without DAC_OVERRIDE fails (root cannot enter
+    // the 0700 data dir it no longer owns).
+    security: { capAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"], pidsLimit: 256 },
     // Only this app connects (the browser never does): Postgres is published on loopback, not on KNIFE_HOST.
     publish: "loopback",
   },

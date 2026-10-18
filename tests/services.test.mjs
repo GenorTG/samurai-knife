@@ -15,8 +15,8 @@ process.env.KNIFE_PORT = "3210";
 delete process.env.KNIFE_SIDECAR_APP_URL;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
-const { findSidecar, composeProject } = await import("../src/lib/services/definitions.ts");
-const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError, onlyofficeFilterEnv } = await import("../src/lib/services/compose.ts");
+const { findSidecar, composeProject, SIDECARS } = await import("../src/lib/services/definitions.ts");
+const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError, onlyofficeFilterEnv, securityOptions, DEFAULT_PIDS_LIMIT } = await import("../src/lib/services/compose.ts");
 const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
 const state = await import("../src/lib/services/state.ts");
 const urls = await import("../src/lib/services/urls.ts");
@@ -53,6 +53,38 @@ test("office hardening: request filter on with exactly the app's IP allowed, sec
   }
   const filter = JSON.parse(parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211, extraEnv: onlyofficeFilterEnv(["100.64.0.7", "100.64.0.7"]) })).services.documentserver.environment.NODE_CONFIG);
   assert.deepEqual(filter.services.CoAuthoring["request-filtering-agent"], { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: ["100.64.0.7"] });
+});
+
+test("container hardening (host audit M2): every sidecar drops ALL capabilities, adds only its verified set, no-new-privileges, pids cap", () => {
+  const learn = findSidecar("learn-db");
+  const svcOf = (def, bindHost) => Object.values(parse(renderCompose(def, { bindHost, hostPort: 3211 })).services)[0];
+  const ds = svcOf(office, "100.64.0.7");
+  assert.deepEqual(ds.cap_drop, ["ALL"]);
+  // Verified on a real container (docs/SIDECARS.md "Hardening"): one cap fewer and the image does not start or stop cleanly.
+  assert.deepEqual(ds.cap_add, ["CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID"]);
+  assert.deepEqual(ds.security_opt, ["no-new-privileges:true"]);
+  assert.equal(ds.pids_limit, 1024);
+  const pg = svcOf(learn, "127.0.0.1");
+  assert.deepEqual(pg.cap_drop, ["ALL"]);
+  assert.deepEqual(pg.cap_add, ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]);
+  assert.deepEqual(pg.security_opt, ["no-new-privileges:true"]);
+  assert.equal(pg.pids_limit, 256);
+  for (const def of SIDECARS) {
+    const svc = svcOf(def, "127.0.0.1");
+    assert.deepEqual([svc.cap_drop, svc.security_opt], [["ALL"], ["no-new-privileges:true"]], def.id);
+    assert.ok(!(svc.cap_add ?? []).some((cap) => ["SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE", "NET_RAW", "ALL"].includes(cap)), `${def.id}: no broad capability`);
+    assert.equal(svc.privileged, undefined, def.id);
+  }
+  // Defaults and refusals: no capAdd = no cap_add key, the default pids cap, malformed names refused.
+  const bare = { ...learn, id: "bare", security: { capAdd: [] } };
+  const svc = svcOf(bare, "127.0.0.1");
+  assert.equal(svc.cap_add, undefined);
+  assert.equal(svc.pids_limit, DEFAULT_PIDS_LIMIT);
+  assert.deepEqual(securityOptions({ ...learn, security: { capAdd: ["cap_chown", "CHOWN"] } }).cap_add, ["CHOWN"], "normalised and de-duplicated");
+  for (const capAdd of [["ALL"], ["CHOWN; rm -rf /"], [""], ["chown\nprivileged: true"]]) {
+    assert.throws(() => securityOptions({ ...learn, security: { capAdd } }), ComposeError, JSON.stringify(capAdd));
+  }
+  assert.throws(() => securityOptions({ ...learn, security: { capAdd: [], pidsLimit: 0 } }), ComposeError);
 });
 
 test("learn-db is published on loopback only (the app is its only client) and CPU-capped", () => {
