@@ -1,7 +1,8 @@
 /**
  * Bounded, abortable, observable work queue with named lanes.
  *
- * Self-contained on purpose (node builtins only, no `@/` imports) so `node --test` can load it directly.
+ * Self-contained on purpose (node builtins only, no `@/` imports; `./accounts/mode` has no imports) so `node --test` can
+ * load it directly.
  * The queue does not spawn anything itself: a task receives an AbortSignal and must stop (and clean up after)
  * itself when it fires. The slot is held until the task has actually settled, so a lane cap is a cap on live
  * work, not on promises. A task that ignores the signal is force-released after `abortGraceMs`.
@@ -11,7 +12,14 @@
  * Fairness between accounts: a job may carry an `owner`. A lane can cap one owner's jobs (`perOwner`, running + queued),
  * and a free slot goes to the queued job whose owner has the fewest jobs running in that lane (FIFO among equals), so one
  * account submitting many jobs never makes another account's single job wait behind all of them.
+ *
+ * Privileged submitters (administrators, `SubmitOptions.privileged`): a lane can keep `reserved` of its places (running +
+ * queued) for them, so ordinary accounts filling the lane never lock the administrator out, and a queued privileged job
+ * is started before ordinary ones. A submit can also carry its own per-owner cap (`ownerLimit`, e.g. a smaller one for a
+ * new account); who is privileged and which cap applies is decided by the caller (src/lib/python-admission.ts).
  */
+
+import { isPublicMode } from "./accounts/mode";
 
 export type JobState = "queued" | "running" | "done" | "failed" | "cancelled";
 
@@ -22,6 +30,16 @@ export interface LaneConfig {
   maxDepth: number;
   /** Jobs (running + queued) one owner may have in this lane; unset = no per-owner cap. */
   perOwner?: number;
+  /** Places (running + queued) only privileged jobs may take; ordinary jobs share `concurrency + maxDepth - reserved`. */
+  reserved?: number;
+}
+
+/** Who is asking, beyond the owner id: decided by the caller's policy. */
+export interface Admission {
+  /** May use the lane's reserved places and starts before ordinary queued jobs. */
+  privileged?: boolean;
+  /** Per-owner cap for this submit, instead of the lane's `perOwner`. */
+  ownerLimit?: number;
 }
 
 export interface TaskContext {
@@ -31,7 +49,7 @@ export interface TaskContext {
 
 export type Task<T> = (context: TaskContext) => Promise<T>;
 
-export interface SubmitOptions {
+export interface SubmitOptions extends Admission {
   /** Caller abort: removes a queued job, kills a running one. */
   signal?: AbortSignal;
   /** Run-time limit in ms (queue wait does not count). Aborts the task's signal with a JobTimeoutError. */
@@ -46,12 +64,17 @@ export class QueueFullError extends Error {
   readonly lane: string;
   readonly depth: number;
   readonly retryAfterSec: number;
-  /** `owner`: the caller's own jobs fill its share of the lane; `lane`: the lane itself is full. */
-  readonly scope: "lane" | "owner";
-  constructor(lane: string, depth: number, retryAfterSec: number, scope: "lane" | "owner" = "lane") {
+  /**
+   * `owner`: the caller's own jobs fill its share of the lane; `rate`: the caller started too many jobs recently (`depth` =
+   * the allowance); `lane`: the lane itself is full. `owner` and `rate` are the caller's doing (429), `lane` is load (503).
+   */
+  readonly scope: "lane" | "owner" | "rate";
+  constructor(lane: string, depth: number, retryAfterSec: number, scope: "lane" | "owner" | "rate" = "lane") {
     super(scope === "owner"
       ? `You already have ${depth} jobs in the ${lane} work queue. Wait for one to finish, then try again.`
-      : `The ${lane} work queue is full (${depth} waiting). Try again shortly.`);
+      : scope === "rate"
+        ? `You started ${depth} ${lane} jobs in the last 10 minutes, the most allowed. Try again in ${retryAfterSec} s.`
+        : `The ${lane} work queue is full (${depth} waiting). Try again shortly.`);
     this.name = "QueueFullError";
     this.lane = lane;
     this.depth = depth;
@@ -121,6 +144,7 @@ interface Entry<T> {
   id: string;
   lane: string;
   owner: string;
+  privileged: boolean;
   label?: string;
   task: Task<T>;
   timeoutMs?: number;
@@ -190,6 +214,9 @@ export class WorkQueue<L extends string = string> {
       if (!Number.isInteger(config.maxDepth) || config.maxDepth < 0) {
         throw new RangeError(`Lane ${name}: maxDepth must be an integer >= 0.`);
       }
+      if (config.reserved !== undefined && (!Number.isInteger(config.reserved) || config.reserved < 0 || config.reserved >= config.concurrency + config.maxDepth)) {
+        throw new RangeError(`Lane ${name}: reserved must be an integer >= 0 and below concurrency + maxDepth.`);
+      }
       this.lanes.set(name, {
         config: { ...config },
         queue: [],
@@ -213,19 +240,28 @@ export class WorkQueue<L extends string = string> {
   }
 
   /** True when a submit to this lane would be accepted right now (lets a route refuse before buffering an upload). */
-  hasCapacity(laneName: string, owner?: string): boolean {
-    const lane = this.lane(laneName);
-    if (owner !== undefined && lane.config.perOwner !== undefined && this.ownerJobs(lane, owner) >= lane.config.perOwner) return false;
-    return lane.running.size < lane.config.concurrency || lane.queue.length < lane.config.maxDepth;
+  hasCapacity(laneName: string, owner?: string, admission: Admission = {}): boolean {
+    return this.refusal(laneName, owner, admission) === null;
   }
 
   /** Throws QueueFullError when the lane (or the owner's share of it) cannot take another job. */
-  assertCapacity(laneName: string, owner?: string): void {
+  assertCapacity(laneName: string, owner?: string, admission: Admission = {}): void {
+    const scope = this.refusal(laneName, owner, admission);
+    if (scope) throw this.fullError(laneName, scope, admission);
+  }
+
+  private refusal(laneName: string, owner: string | undefined, admission: Admission): "lane" | "owner" | null {
     const lane = this.lane(laneName);
-    if (owner !== undefined && lane.config.perOwner !== undefined && this.ownerJobs(lane, owner) >= lane.config.perOwner) {
-      throw this.fullError(laneName, "owner");
+    const limit = admission.ownerLimit ?? lane.config.perOwner;
+    if (owner !== undefined && limit !== undefined && this.ownerJobs(lane, owner) >= limit) return "owner";
+    if (lane.running.size >= lane.config.concurrency && lane.queue.length >= lane.config.maxDepth) return "lane";
+    if (!admission.privileged && lane.config.reserved) {
+      let ordinary = 0;
+      for (const entry of lane.running) if (!entry.privileged) ordinary += 1;
+      for (const entry of lane.queue) if (!entry.privileged) ordinary += 1;
+      if (ordinary >= lane.config.concurrency + lane.config.maxDepth - lane.config.reserved) return "lane";
     }
-    if (!this.hasCapacity(laneName)) throw this.fullError(laneName);
+    return null;
   }
 
   /** Running + queued jobs of one owner in a lane. */
@@ -236,12 +272,12 @@ export class WorkQueue<L extends string = string> {
     return count;
   }
 
-  private fullError(laneName: string, scope: "lane" | "owner" = "lane"): QueueFullError {
+  private fullError(laneName: string, scope: "lane" | "owner" = "lane", admission: Admission = {}): QueueFullError {
     const lane = this.lane(laneName);
     const typical = percentiles(lane.runs).p50 || 2_000;
     const backlog = lane.queue.length + lane.running.size;
     const seconds = Math.ceil((typical * backlog) / lane.config.concurrency / 1000);
-    const depth = scope === "owner" ? lane.config.perOwner ?? 0 : lane.queue.length;
+    const depth = scope === "owner" ? admission.ownerLimit ?? lane.config.perOwner ?? 0 : lane.queue.length;
     return new QueueFullError(laneName, depth, Math.min(60, Math.max(1, seconds)), scope);
   }
 
@@ -249,7 +285,8 @@ export class WorkQueue<L extends string = string> {
     const lane = this.lane(laneName);
     // Jobs without an owner share one fairness group but are not capped per owner.
     const owner = options.owner ?? "";
-    this.assertCapacity(laneName, options.owner);
+    const admission: Admission = { privileged: options.privileged, ownerLimit: options.ownerLimit };
+    this.assertCapacity(laneName, options.owner, admission);
 
     let resolve!: (value: T) => void;
     let reject!: (error: unknown) => void;
@@ -263,6 +300,7 @@ export class WorkQueue<L extends string = string> {
       id: `q${++idCounter}`,
       lane: laneName,
       owner,
+      privileged: options.privileged === true,
       label: options.label,
       task,
       timeoutMs: options.timeoutMs,
@@ -317,20 +355,22 @@ export class WorkQueue<L extends string = string> {
   }
 
   /**
-   * The queued job whose owner has the fewest jobs running in the lane; among those, the owner served longest ago
-   * (round-robin); the oldest job of that owner.
+   * A privileged job before any ordinary one; then the queued job whose owner has the fewest jobs running in the lane;
+   * among those, the owner served longest ago (round-robin); the oldest job of that owner.
    */
   private nextIndex(lane: LaneRuntime): number {
     const running = new Map<string, number>();
     for (const entry of lane.running) running.set(entry.owner, (running.get(entry.owner) ?? 0) + 1);
-    let best = 0;
+    const anyPrivileged = lane.queue.some((entry) => entry.privileged);
+    let best = -1;
     let bestRunning = Infinity;
     let bestServed = Infinity;
     for (let index = 0; index < lane.queue.length; index += 1) {
+      if (anyPrivileged && !lane.queue[index].privileged) continue;
       const owner = lane.queue[index].owner;
       const count = running.get(owner) ?? 0;
       const served = lane.lastStart.get(owner) ?? -1;
-      if (count < bestRunning || (count === bestRunning && served < bestServed)) {
+      if (best < 0 || count < bestRunning || (count === bestRunning && served < bestServed)) {
         best = index;
         bestRunning = count;
         bestServed = served;
@@ -443,31 +483,39 @@ export class WorkQueue<L extends string = string> {
 
 export type PyLane = "light" | "heavy";
 
-function intFromEnv(name: string, fallback: number, min: number): number {
-  const parsed = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isInteger(parsed) && parsed >= min ? parsed : fallback;
-}
-
 const GLOBAL_KEY = Symbol.for("samurai-knife.work-queue");
 
 /**
  * The Python lane's queue. Held on globalThis: Next bundles every route into its own module graph (and dev HMR
  * re-evaluates modules), so a plain module-level variable would give each route its own, uncoordinated queue.
- * Lane sizes are read once, when the first caller creates it.
+ * Lane sizes are read once, when the first caller creates it. `perOwner` here is the administrators' (and private
+ * mode's) cap; ordinary public-mode accounts get smaller ones per submit (src/lib/python-admission.ts). Public mode keeps
+ * `KNIFE_PY_LIGHT_RESERVED` (2) / `KNIFE_PY_HEAVY_RESERVED` (1) places for administrators; private mode reserves none.
  */
 export function pythonQueue(): WorkQueue<PyLane> {
   const holder = globalThis as unknown as Record<symbol, WorkQueue<PyLane> | undefined>;
-  holder[GLOBAL_KEY] ??= new WorkQueue<PyLane>({
-    light: {
-      concurrency: intFromEnv("KNIFE_PY_LIGHT", 4, 1),
-      maxDepth: intFromEnv("KNIFE_PY_LIGHT_DEPTH", 64, 0),
-      perOwner: intFromEnv("KNIFE_PY_LIGHT_PER_ACCOUNT", 8, 1),
-    },
-    heavy: {
-      concurrency: intFromEnv("KNIFE_PY_HEAVY", 1, 1),
-      maxDepth: intFromEnv("KNIFE_PY_HEAVY_DEPTH", 16, 0),
-      perOwner: intFromEnv("KNIFE_PY_HEAVY_PER_ACCOUNT", 3, 1),
-    },
-  });
+  holder[GLOBAL_KEY] ??= new WorkQueue<PyLane>(pythonLaneConfig());
   return holder[GLOBAL_KEY];
+}
+
+/** The lane sizes `pythonQueue()` is created with (exported for the unit tests). */
+export function pythonLaneConfig(env: NodeJS.ProcessEnv = process.env): Record<PyLane, LaneConfig> {
+  const read = (name: string, fallback: number, min: number) => {
+    const parsed = Number.parseInt(env[name] ?? "", 10);
+    return Number.isInteger(parsed) && parsed >= min ? parsed : fallback;
+  };
+  const isPublic = isPublicMode(env);
+  const lane = (prefix: "LIGHT" | "HEAVY", concurrency: number, depth: number, perOwner: number, reserved: number): LaneConfig => {
+    const config: LaneConfig = {
+      concurrency: read(`KNIFE_PY_${prefix}`, concurrency, 1),
+      maxDepth: read(`KNIFE_PY_${prefix}_DEPTH`, depth, 0),
+      perOwner: read(`KNIFE_PY_${prefix}_PER_ACCOUNT`, perOwner, 1),
+    };
+    // Never the whole lane: at least one place stays open to everyone.
+    const wanted = isPublic ? read(`KNIFE_PY_${prefix}_RESERVED`, reserved, 0) : 0;
+    const places = Math.min(wanted, config.concurrency + config.maxDepth - 1);
+    if (places > 0) config.reserved = places;
+    return config;
+  };
+  return { light: lane("LIGHT", 4, 64, 8, 2), heavy: lane("HEAVY", 1, 16, 3, 1) };
 }

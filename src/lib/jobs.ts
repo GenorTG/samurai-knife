@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 
+import { isPublicMode } from "./accounts/mode";
 import { isJobCancelled, isJobTimeout, type JobHandle } from "./work-queue";
 
 /**
@@ -69,11 +70,12 @@ function mbFromEnv(name: string, fallbackMb: number): number {
 }
 
 /**
- * Largest request body /api/pdf accepts: KNIFE_PDF_UPLOAD_MAX_MB (default 512), never more than the job store budget
- * (KNIFE_JOBS_MAX_MB, default 2 GB). The body is streamed to disk (`multipart-upload.ts`), so this bounds disk, not RAM.
+ * Largest request body /api/pdf accepts: KNIFE_PDF_UPLOAD_MAX_MB (default 100 in public mode, 512 in private mode), never
+ * more than the job store budget (KNIFE_JOBS_MAX_MB, default 2 GB). The body is streamed to disk (`multipart-upload.ts`),
+ * so this bounds disk, not RAM; how many may stream at once is `upload-budget.ts`.
  */
 export function pdfUploadMaxBytes(): number {
-  return Math.min(mbFromEnv("KNIFE_PDF_UPLOAD_MAX_MB", 512), mbFromEnv("KNIFE_JOBS_MAX_MB", 2048));
+  return Math.min(mbFromEnv("KNIFE_PDF_UPLOAD_MAX_MB", isPublicMode() ? 100 : 512), mbFromEnv("KNIFE_JOBS_MAX_MB", 2048));
 }
 
 function perOwnerJobs(): number {

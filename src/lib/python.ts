@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { admitPythonJob } from "./python-admission";
 import { isJobCancelled, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
 
 /**
@@ -215,7 +216,8 @@ async function execute<T>(scriptName: string, request: unknown, maxBytes: number
 
 /**
  * Enqueue a script run on its lane and return the queue handle (state, position, cancel) — for callers that
- * report progress. `handle.promise` rejects with JobCancelledError / JobTimeoutError; QueueFullError is thrown.
+ * report progress. `handle.promise` rejects with JobCancelledError / JobTimeoutError; QueueFullError is thrown (lane full,
+ * the owner's share full, or its job rate used up: src/lib/python-admission.ts decides the owner's share).
  */
 export function startPythonScript<T = unknown>(
   scriptName: string,
@@ -223,12 +225,15 @@ export function startPythonScript<T = unknown>(
   { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   const limits = laneLimits(lane, timeoutMs);
-  return pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal), {
-    signal,
-    timeoutMs,
-    label: label ?? scriptName,
-    owner,
-  });
+  return admitPythonJob(lane, owner, (admission) =>
+    pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal), {
+      signal,
+      timeoutMs,
+      label: label ?? scriptName,
+      owner,
+      ...admission,
+    }),
+  );
 }
 
 /** Result contract unchanged; a timeout or caller abort comes back as `{ ok: false, error, cancelled? }`. */

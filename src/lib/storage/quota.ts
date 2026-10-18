@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { isPublicMode } from "@/lib/accounts/mode";
-import { getAccount, writePrivateFile } from "@/lib/accounts/store";
+import { dataDir, getAccount, writePrivateFile } from "@/lib/accounts/store";
+import { admitDiskBytes } from "./disk-floor";
 import { sealAccountBytes } from "./sealed";
 import { formatBytes } from "@/lib/format";
 import { jobStore } from "@/lib/jobs";
@@ -19,6 +20,12 @@ import { accountScope, parentDir } from "./scope";
  * readable message). Bookkeeping writes (token ledger, course progress, the assistant's continuation state, document
  * metadata) pass `enforce: false`: they are tiny and refusing them would break the feature instead of the upload.
  * Deleting is never refused.
+ *
+ * Global floor (abuse audit #14): quotas bound one account, not many accounts together, so a non-admin write that would
+ * leave the data dir's filesystem under the free-space floor (`./disk-floor.ts`: max of 10 GB and 10 % by default) is
+ * refused with `StorageFullError` (a QuotaExceededError subclass, so every caller already maps it to 507). Admins and
+ * private mode are never refused by the floor. `canStore` answers for the account's quota only: the office save's
+ * "drop the oldest versions to make room" loop must not delete a user's history because the server's disk is low.
  */
 
 /** KNIFE_STORAGE_RECOUNT_SEC (default 600): how long a counted total is trusted before the disk is walked again. */
@@ -41,7 +48,7 @@ export interface StorageUsage {
 
 export class QuotaExceededError extends Error {
   readonly status = 507;
-  readonly code = "storage_quota_exceeded";
+  readonly code: string = "storage_quota_exceeded";
   readonly usedBytes: number;
   readonly quotaBytes: number;
   readonly neededBytes: number;
@@ -60,6 +67,21 @@ export class QuotaExceededError extends Error {
   /** Body for `jsonError(message, 507, extra)`. */
   details(): Record<string, unknown> {
     return { code: this.code, usedBytes: this.usedBytes, quotaBytes: this.quotaBytes, neededBytes: this.neededBytes };
+  }
+}
+
+/** The server's filesystem is under the free-space floor (not the account's quota). Generic message on purpose. */
+export class StorageFullError extends QuotaExceededError {
+  override readonly code = "storage_full";
+  readonly retryAfterSec = 300;
+  constructor(neededBytes: number) {
+    super(0, 0, neededBytes);
+    this.message = "The server is low on storage right now, so this cannot be saved. Try again later.";
+    this.name = "StorageFullError";
+  }
+
+  override details(): Record<string, unknown> {
+    return { code: this.code, neededBytes: this.neededBytes, retryAfterSec: this.retryAfterSec };
   }
 }
 
@@ -172,19 +194,35 @@ export function storageUsage(accountId: string): StorageUsage {
   };
 }
 
-/** Throws QuotaExceededError when `addBytes` more would not fit. No-op for unlimited accounts and for `addBytes <= 0`. */
+/** Public-mode non-admin with an account record: the accounts the global floor applies to (same rule as `quotaFor`). */
+function floorApplies(accountId: string): boolean {
+  if (!isPublicMode()) return false;
+  const account = getAccount(accountId);
+  return account !== undefined && account.role !== "admin";
+}
+
+/**
+ * Throws QuotaExceededError when `addBytes` more would not fit the account's quota, StorageFullError when it would take
+ * the data dir's filesystem under the floor. No-op for `addBytes <= 0`; admins and private mode skip both.
+ */
 export function assertCanStore(accountId: string, addBytes: number): void {
   if (addBytes <= 0) return;
+  assertQuota(accountId, addBytes);
+  if (floorApplies(accountId) && !admitDiskBytes(dataDir(), addBytes)) throw new StorageFullError(addBytes);
+}
+
+function assertQuota(accountId: string, addBytes: number): void {
   const quota = quotaFor(accountId);
   if (quota === null) return;
   const { usedBytes } = storageUsage(accountId);
   if (usedBytes + addBytes > quota) throw new QuotaExceededError(usedBytes, quota, addBytes);
 }
 
-/** assertCanStore as a boolean. */
+/** Would `addBytes` more fit the account's QUOTA (the disk floor is not consulted; see the header). */
 export function canStore(accountId: string, addBytes: number): boolean {
+  if (addBytes <= 0) return true;
   try {
-    assertCanStore(accountId, addBytes);
+    assertQuota(accountId, addBytes);
     return true;
   } catch (error) {
     if (error instanceof QuotaExceededError) return false;

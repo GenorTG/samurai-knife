@@ -159,7 +159,12 @@ servers it starts never inherit the lock). Keep a separate `next dev` for develo
 - [ ] Owner account: password, verified email, admin; `set-network private` only if needed.
 - [ ] `KNIFE_PUBLIC_URL` (https), `KNIFE_TRUSTED_PROXIES`, SMTP, `KNIFE_SSRF_DENY_CIDRS` set.
 - [ ] Proxy: HTTPS, forced; body size and streaming as above; the office name on the app's port with websockets, and
-      `KNIFE_OFFICE_PUBLIC_URL` set.
+      `KNIFE_OFFICE_PUBLIC_URL` set (https); the startup log has no `[security-headers]` warning and `curl -sI` shows no
+      private address in the CSP.
+- [ ] Load budgets left at their public defaults or set on purpose (docs/ACCOUNTS.md "Fair share", "Storage quota"):
+      `KNIFE_PDF_UPLOAD_MAX_MB` unset (100) or explicit, the disk floor (`KNIFE_DISK_FLOOR_GB` / `_PERCENT`) below the free
+      space you keep on the data and `/tmp` filesystems; sidecars reinstalled or restarted once so their containers get the
+      dropped capabilities (`docker inspect -f '{{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}} {{.HostConfig.PidsLimit}}'`).
 - [ ] `tests/prod_smoke.py` against a scratch copy of this setup passes; `curl -sI` shows the CSP and HSTS.
 - [ ] Data directory and `provider-keys.key` in the backup (the key opens the sealed provider keys in accounts.json).
 - [ ] GitHub App created (Users page) with the public domain among its callback URLs and as its setup URL; the

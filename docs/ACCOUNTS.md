@@ -164,7 +164,8 @@ in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new pe
 
 ## Storage quota (`src/lib/storage/quota.ts`)
 
-- Limit: the account's `storageQuotaBytes` (registration sets 1 GiB; the admin page changes it, 0 in the field = unlimited);
+- Limit: the account's `storageQuotaBytes` (registration and GitHub sign-up set `KNIFE_USER_QUOTA_MB`, default 1024 =
+  1 GiB, read at startup; changing it never touches existing accounts; the admin page changes one, 0 in the field = unlimited);
   administrators are always unlimited, and so is every account in private mode. Accounts made with the CLI start without
   a quota until an admin sets one.
 - Usage: every byte under the account's locations above (apparent file sizes, symlinks not followed) plus the scratch
@@ -177,6 +178,15 @@ in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new pe
   page shows "The last save was refused"), CV saves (incl. its snapshot) and the photo, assistant transcript PUTs,
   async PDF jobs. A refusal is HTTP 507 `{error, code: "storage_quota_exceeded", usedBytes, quotaBytes, neededBytes}`;
   the message names what is needed, what is free and how to free space. MCP / assistant tools return the same message.
+- Global free-space floor (`src/lib/storage/disk-floor.ts`): quotas bound one account, not many accounts together, so a
+  non-admin write (the same checks as above, unlimited quotas included) that would leave the data dir's filesystem with
+  less than max(`KNIFE_DISK_FLOOR_GB` 10, `KNIFE_DISK_FLOOR_PERCENT` 10 % of the filesystem) free is refused: HTTP 507
+  `{error, code: "storage_full", neededBytes, retryAfterSec}` with a generic message (nothing about the server's disk).
+  Administrators and private mode are never refused by it; 0 disables a part. statfs is cached
+  `KNIFE_DISK_FLOOR_CACHE_SEC` (10) and bytes admitted inside a window are subtracted; an unreadable filesystem counts as
+  full. The same floor guards the upload scratch dir (`os.tmpdir()`, docs/ARCHITECTURE.md "Server work": 503 there, for
+  every account). The office save's "drop the oldest versions" step looks at the quota only (`canStore`): low disk never
+  deletes a user's history.
 - Never refused (bookkeeping, still counted): document metadata, folder list, CV snapshots of an accepted save, the
   token ledger, course progress, the assistant's continuation state. Deleting is never refused.
 - Retention caps so nothing grows without bound: CV snapshots 40 and 20 MB per account, 5 conversation files (one per
@@ -201,7 +211,20 @@ office) and that an administrator has to run the GitHub showcase (CV studio). A 
 
 - Python lanes (`src/lib/work-queue.ts`): every job carries its account; one account may hold at most
   `KNIFE_PY_LIGHT_PER_ACCOUNT` (8) light and `KNIFE_PY_HEAVY_PER_ACCOUNT` (3) heavy jobs (running + queued; 429 beyond),
-  and a free slot goes to the account with the fewest jobs running there, round-robin among equals.
+  and a free slot goes to the account with the fewest jobs running there, round-robin among equals. Those are the
+  administrators' (and private mode's) caps. Public mode (`src/lib/python-admission.ts`): an ordinary account may hold
+  `KNIFE_PY_LIGHT_PER_USER` (3) / `KNIFE_PY_HEAVY_PER_USER` (1), an account younger than `KNIFE_PY_NEW_ACCOUNT_HOURS` (24)
+  at most 2 light; it may start `KNIFE_PY_LIGHT_PER_10MIN` (120) / `KNIFE_PY_HEAVY_PER_10MIN` (30) jobs per 10 minutes,
+  a new account `..._PER_10MIN_NEW` (40 / 10) (429 + Retry-After "You started N … jobs in the last 10 minutes"; checked
+  before an upload is read, counted only when the queue accepts the job). `KNIFE_PY_LIGHT_RESERVED` (2) /
+  `KNIFE_PY_HEAVY_RESERVED` (1) places of each lane are kept for administrators, whose queued jobs start first and who
+  have no job rate.
+- Uploads streamed to disk (`/api/pdf`, `src/lib/upload-budget.ts`): public mode 2 in flight per account
+  (`KNIFE_UPLOADS_PER_ACCOUNT`, 429), 6 on the server (`KNIFE_UPLOADS_MAX`, one kept for administrators, 503) and 512 MB
+  reserved in flight (`KNIFE_UPLOADS_INFLIGHT_MAX_MB`, 503); private mode 8 / 16 / 4096 MB. The slot is taken before the
+  first body byte and held until a synchronous run ends (an async job's files then count against the job store);
+  `KNIFE_UPLOAD_IDLE_SEC` (30) without a byte answers 408 and frees it. `KNIFE_PDF_UPLOAD_MAX_MB` is 100 by default in
+  public mode (512 private).
 - Async jobs (`src/lib/jobs.ts`): per account at most `KNIFE_JOBS_PER_ACCOUNT` (50) live jobs and
   `KNIFE_JOBS_ACCOUNT_MAX_MB` (a quarter of `KNIFE_JOBS_MAX_MB`) of scratch (429); job ids are random.
 - Website studio: 6 audits per hour and 600 GitHub API calls per 10 minutes per account (`outboundAudit`, `outboundGithub`); page reads of `knife_site_page` count against the page budget.

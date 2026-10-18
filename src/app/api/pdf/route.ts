@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import { authenticate } from "@/lib/accounts/http";
+import { isPublicMode } from "@/lib/accounts/mode";
 import { jobResultMaxBytes, jobStore, JobStorageFullError, pdfUploadMaxBytes, type JobResult } from "@/lib/jobs";
 import { receiveMultipart, UploadError, type StreamedForm } from "@/lib/multipart-upload";
 import {
@@ -19,9 +20,10 @@ import {
 } from "@/lib/pdf-run";
 import { disposeDir, PY_BIN, runPythonScript, startPythonScript, type PythonRunResult } from "@/lib/python";
 import { queueFullOrNull } from "@/lib/queue-http";
+import { assertPythonCapacity } from "@/lib/python-admission";
 import { assertCanStore } from "@/lib/storage/quota";
 import { quotaErrorResponse } from "@/lib/storage/http";
-import { pythonQueue } from "@/lib/work-queue";
+import { isUploadBudgetError, reserveUpload, uploadIdleTimeoutMs, type UploadReservation } from "@/lib/upload-budget";
 
 /**
  * POST /api/pdf — multipart in, JSON or a file out.
@@ -33,6 +35,10 @@ import { pythonQueue } from "@/lib/work-queue";
  * Synchronous by default and the request's abort signal is wired through, so a client that goes away takes the
  * running process group with it. With `?async=1` (or `Prefer: respond-async`) it answers 202 { jobId } after
  * enqueueing; poll `GET /api/jobs/<id>`, fetch the file from `/api/jobs/<id>/file`, cancel with `DELETE`.
+ *
+ * Before a body byte is read: the lane must take the job (`python-admission.ts`: share, job rate) and the upload must get
+ * a slot (`upload-budget.ts`: per account, server-wide, in-flight bytes, scratch-disk floor). The slot is held while the
+ * upload sits in the scratch dir (a synchronous run) and handed over to the job store's own budget for an async job.
  */
 
 function wantsAsync(request: Request): boolean {
@@ -53,28 +59,40 @@ export async function POST(request: Request) {
   // A declared length over the request cap is refused before reading anything; the streamed reader below enforces the
   // same cap (and the per-file caps) on chunked bodies while they arrive, writing file parts straight to disk.
   const maxBytes = pdfUploadMaxBytes();
-  const declared = request.headers.get("content-length");
-  if (declared !== null && /^\d+$/.test(declared.trim()) && Number(declared) > maxBytes) {
+  const declaredHeader = request.headers.get("content-length");
+  const declared = declaredHeader !== null && /^\d+$/.test(declaredHeader.trim()) ? Number(declaredHeader) : null;
+  if (declared !== null && declared > maxBytes) {
     return NextResponse.json({ ok: false, error: `Upload is over ${Math.round(maxBytes / 1024 / 1024)} MB.` }, { status: 413 });
   }
 
-  // Refuse before reading a (possibly huge) upload when the lane cannot take the job anyway.
+  // Refuse before reading a (possibly huge) upload when the lane cannot take the job anyway, or the upload has no slot.
+  let reservation: UploadReservation;
   try {
-    pythonQueue().assertCapacity("heavy", owner);
+    assertPythonCapacity("heavy", owner);
+    reservation = reserveUpload({ owner, declaredBytes: declared, maxBytes, privileged: isPublicMode() && auth.account.role === "admin" });
   } catch (error) {
     const full = queueFullOrNull(error);
     if (full) return full;
+    if (isUploadBudgetError(error)) {
+      return NextResponse.json(
+        { ok: false, error: error.message, retryAfterSec: error.retryAfterSec },
+        { status: error.status, headers: { "Retry-After": String(error.retryAfterSec), "Cache-Control": "no-store" } },
+      );
+    }
     throw error;
   }
 
-  const workDir = await makeUploadDir();
+  let workDir: string | null = null;
   let staged: StagedPdf | null = null;
   let handedToJob = false;
   try {
+    workDir = await makeUploadDir();
     let form: StreamedForm;
     try {
+      // The reservation is the body cap: a chunked upload can never take more than its slot holds.
       form = await receiveMultipart(request, workDir, {
-        maxTotalBytes: maxBytes,
+        maxTotalBytes: reservation.bytes,
+        idleTimeoutMs: uploadIdleTimeoutMs(),
         maxFileBytes: PDF_MAX_FILE_BYTES,
         maxFiles: PDF_MAX_FILES,
         fileTooLarge: (name) => `${name} is over ${Math.round(PDF_MAX_FILE_BYTES / 1024 / 1024)} MB.`,
@@ -88,6 +106,7 @@ export async function POST(request: Request) {
     const { input } = parsed;
 
     staged = await stagePdfInputs(workDir, input.uploads);
+    reservation.shrinkTo(staged.bytes);
     const script = pdfScriptRequest(input, staged);
     const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}`, owner };
 
@@ -157,9 +176,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   } finally {
     if (!handedToJob) {
-      await disposeDir(workDir);
+      if (workDir) await disposeDir(workDir);
       if (staged) await disposeDir(staged.outDir);
     }
+    // An async job's files now count against the job store's budget (jobs.ts); a synchronous run is over.
+    reservation.release();
   }
 }
 
