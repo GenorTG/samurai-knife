@@ -45,12 +45,15 @@ console.log(`[serve] next ${mode} on ${host}:${port} (auth mode ${authMode})`);
 
 // Preload (one: Next re-serialises NODE_OPTIONS for its child and mangles a second quoted --import): the socket peer, for
 // trusting forwarded headers only from KNIFE_TRUSTED_PROXIES (src/lib/accounts/network.ts); in public mode (or with
-// KNIFE_SECURITY_HEADERS=1) it also loads the security headers (CSP, frame-ancestors, HSTS...: scripts/security-headers.mjs).
+// KNIFE_SECURITY_HEADERS=1) it also loads the security headers (CSP, frame-ancestors, HSTS...: scripts/security-headers.mjs);
+// always the abuse guard and the server timeouts (scripts/abuse-guard.mjs).
 const preload = new URL("./peer-address.mjs", import.meta.url).href;
 const headers = authMode === "public" || process.env.KNIFE_SECURITY_HEADERS?.trim() === "1";
 const nodeOptions = [process.env.NODE_OPTIONS ?? "", `--import ${JSON.stringify(preload)}`].join(" ").trim();
 const bin = new URL("../node_modules/next/dist/bin/next", import.meta.url).pathname;
-const env = { ...process.env, NODE_OPTIONS: nodeOptions, KNIFE_SERVE_MODE: mode, ...(headers ? { KNIFE_SECURITY_HEADERS_INSTALL: "1" } : {}) };
+// UV_THREADPOOL_SIZE: libuv's pool (fs.promises, dns.lookup, zlib, scrypt) is 4 threads by default, which a burst of
+// password hashing fills; it must be set before the child starts.
+const env = { ...process.env, NODE_OPTIONS: nodeOptions, KNIFE_SERVE_MODE: mode, UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE?.trim() || "16", ...(headers ? { KNIFE_SECURITY_HEADERS_INSTALL: "1" } : {}) };
 const child = spawn(process.execPath, [bin, mode, "-H", host, "-p", port], { stdio: "inherit", env });
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));
 child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

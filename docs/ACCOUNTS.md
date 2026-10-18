@@ -297,6 +297,42 @@ first; written asynchronously), so a restart does not reset them. Bucket names t
 loaded asynchronously at startup (files over 16 MB are ignored). Each refusal is a `rate_block` security event (once per
 bucket and window) naming only the bucket kind (`forgot:email`), never the email or identifier.
 
+## Abuse guard (`src/lib/security/guard.mjs`, installed by `scripts/abuse-guard.mjs`)
+
+A preload (last in the `scripts/peer-address.mjs` chain, so it wraps the office proxy, the security headers and Next)
+decides every request before Next routes it; a refusal costs microseconds: 429 + `Retry-After` + a one-line body,
+connection closed. It identifies the client by prefix (`src/lib/net/client-ip.mjs`, same rules as the app) and the
+credential by an opaque hash of the session cookie or `Authorization` header (never stored or logged raw).
+
+| Budget (public mode; private x10) | Scope | Limit |
+| --- | --- | --- |
+| all `/api/*` | client prefix | 600/min, burst 150 per 10 s |
+| `/api/account/{register,forgot,resend,reset,verify,login}` | client prefix | 30 per 10 min |
+| `/api/github/start` | client prefix | 20 per 10 min |
+| pages and `/_next/*` | client prefix | 1,200/min, burst 400 per 10 s |
+| `/api/office/ds/*` (the Document Server container; JWT-checked) | client prefix | 3,000/min, never scored |
+| `/api/*` | credential | 400/min |
+| `/api/mcp`, `/api/agent/tool` | credential | 120/min |
+
+Every per-prefix budget also applies to the IPv6 /48 at 5x. Scanner scoring (decays after 60 s): known probe paths
+(`/.env`, `/.git`, `/wp-*`, `*.php`, ...; answered 404 at once) +10; a failed sign-in-flow request +1; a route-level 429
++1; a distinct 4xx on an API path +1 (a signed-out tab polling the same route never adds up; `GET /api/account` 401 is
+free). 30 points block the prefix for 15 min, repeat blocks 1 h, then 24 h (strikes remembered 7 days); four blocked /64s
+in one /48 block the /48. Blocks (10,000 max, `$KNIFE_DATA_DIR/security/blocks.json`, 0600) survive restarts; an admin
+lifts one on the Users page. Signed-in administrators are never blocked (budgets 4x). Private mode never blocks.
+
+Bounded: the client and credential tables hold 100,000 entries each; idle entries (10 min without a request, no live
+score) are swept, and a full table evicts its least recently seen entry (preferring one without a live score) instead
+of refusing anyone, so filling it never locks out new visitors and never lifts a block.
+
+The preload also hardens the Node server: `headersTimeout` 20 s, `requestTimeout` 330 s, `keepAliveTimeout` 10 s,
+`maxConnections` 1,024, and a request body must arrive within 30 s (300 s for the upload routes: PDF, office upload, CV
+import/photo, drafts, transcripts, MCP) or the request ends with 408. `UV_THREADPOOL_SIZE` defaults to 16. Environment:
+`KNIFE_ABUSE_GUARD=off` (private mode only; the timeouts stay), `KNIFE_GUARD_SCALE` (multiplies budgets and the block
+threshold; scratch test servers use 20), `KNIFE_HEADERS_TIMEOUT_MS`, `KNIFE_REQUEST_TIMEOUT_MS`,
+`KNIFE_KEEPALIVE_TIMEOUT_MS`, `KNIFE_MAX_CONNECTIONS`, `KNIFE_BODY_TIMEOUT_MS`, `KNIFE_SLOW_BODY_TIMEOUT_MS`. A server
+started without `serve.mjs` has no guard.
+
 ## Security events (`src/lib/security/events.ts`)
 
 One API for every module that refuses or notices abuse: `recordSecurityEvent({ kind, ipPrefix?, account?, path?, status?,

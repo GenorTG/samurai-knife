@@ -122,6 +122,9 @@ class ScratchServer:
         port = int((env or {}).get("KNIFE_PORT") or free_port(self.host))
         child_env = os.environ.copy()
         child_env.update({"KNIFE_HOST": self.host, "KNIFE_PORT": str(port), "KNIFE_DATA_DIR": str(self.data_dir), **(env or {})})
+        # The abuse guard (scripts/abuse-guard.mjs) sees a whole suite (many simulated users, deliberate 4xx probes) as
+        # one client: scale its budgets and block threshold. tests/abuse_guard.test.mjs covers the real numbers.
+        child_env.setdefault("KNIFE_GUARD_SCALE", "20")
         self._log = (scratch / f"server-{self._runs}.log").open("w+")
         self._proc = subprocess.Popen(
             ["npm", "run", "dev"], cwd=self._worktree or ROOT, env=child_env, stdout=self._log, stderr=subprocess.STDOUT,
