@@ -127,6 +127,103 @@ Upgrading an existing install: if its environment sets `KNIFE_PUBLIC_URL` withou
 explicitly before restarting, or the new build refuses to start (an updater that preflights the new release keeps the
 old one running).
 
+## Dedicated service account and systemd
+
+For an internet-facing installation, run the app as a dedicated `knife` system user, not the operator or a Docker-group
+user. The reviewed template is `deploy/systemd/samurai-knife.service`; replace its `@NODE@` and `@APP_ROOT@`
+placeholders with absolute paths outside `/home`. Keep releases root-owned/read-only and readable by `knife`; put the
+Python venv under `@APP_ROOT@/py/venv` or set `KNIFE_PYTHON` and the sandbox's read-only roots accordingly.
+
+Migration is host-specific. Make and verify a backup first, then adapt these root-only commands with actual source paths:
+
+```bash
+useradd --system --home-dir /var/lib/samurai-knife --shell /usr/sbin/nologin knife
+install -d -o knife -g knife -m 0700 /var/lib/samurai-knife /var/lib/samurai-knife-secrets
+install -d -o root -g knife -m 0750 /etc/samurai-knife
+install -o root -g knife -m 0640 <old-data-dir>/storage.key /etc/samurai-knife/storage.key
+install -o root -g knife -m 0640 <old-live-env> /etc/samurai-knife/live.env
+rsync -a --exclude=storage.key --chown=knife:knife <old-data-dir>/ /var/lib/samurai-knife/
+install -o root -g root -m 0644 deploy/systemd/samurai-knife.service /etc/systemd/system/samurai-knife.service
+systemctl daemon-reload
+```
+
+Preserve the existing storage key bytes exactly; Node needs it read-only as `root:knife`, but the bubblewrap parser does
+not bind the key or data directory into its namespace. Move GitHub App credentials to the configured
+`KNIFE_GITHUB_APP_FILE` in the separate secrets state directory, owned by `knife:knife`, mode 0600. The app needs writable
+data, secret-state and systemd cache directories only. Do not copy the old key into the new data dir; retain the old
+source only until the new service has been verified, then remove the duplicate securely according to the host's storage
+policy. Ensure old copies in backups remain protected too.
+
+For helper sidecars, install `deploy/sidecar-helper/knife-sidecar-helper` root-owned mode 0755 at a fixed path; install
+`deploy/systemd/knife-sidecar.socket` and `knife-sidecar@.service`, substituting the absolute helper path. Enable the
+socket before setting `KNIFE_SIDECAR_BACKEND=helper`; `docker` stays the default for existing installations. Never add
+`knife` to the docker group. The root helper serves a strict verb/id allow-list and validates root-owned compose bundles.
+
+Example helper installation (run from this repository root as root; set the helper path identically in the unit):
+
+```bash
+install -d -o root -g root -m 0755 /usr/local/libexec/samurai-knife
+install -o root -g root -m 0755 deploy/sidecar-helper/knife-sidecar-helper /usr/local/libexec/samurai-knife/knife-sidecar-helper
+ln -s /usr/local/libexec/samurai-knife/knife-sidecar-helper /usr/local/sbin/knife-sidecar
+install -o root -g root -m 0644 deploy/systemd/knife-sidecar.socket /etc/systemd/system/knife-sidecar.socket
+sed 's|@HELPER@|/usr/local/libexec/samurai-knife/knife-sidecar-helper|g' deploy/systemd/knife-sidecar@.service > /etc/systemd/system/knife-sidecar@.service
+chown root:root /etc/systemd/system/knife-sidecar@.service && chmod 0644 /etc/systemd/system/knife-sidecar@.service
+systemctl daemon-reload
+systemctl enable --now knife-sidecar.socket
+```
+
+After copying the existing data into `/var/lib/samurai-knife`, install each sidecar bundle the app currently has staged
+before enabling the helper backend (skip an uninstalled service):
+
+```bash
+knife-sidecar sync office
+knife-sidecar sync learn-db
+```
+
+The helper compares root's installed bundle hash with the app's staged compose/secrets/assets; if a later release changes
+a definition, secret, image or plugin asset, the app reports the mismatch and the corresponding `knife-sidecar sync <id>`
+must be run again as root before the helper will operate that sidecar.
+
+Install firewall artifacts and root-only configs before enabling their units. The examples intentionally contain
+placeholders and must not be enabled as-is:
+
+```bash
+install -o root -g root -m 0755 deploy/sbin/knife-firewall /usr/local/sbin/knife-firewall
+install -o root -g root -m 0755 deploy/sbin/knife-docker-user /usr/local/sbin/knife-docker-user
+install -o root -g root -m 0600 deploy/firewall/firewall.conf.example /etc/samurai-knife/firewall.conf
+install -o root -g root -m 0600 deploy/firewall/docker-user.conf.example /etc/samurai-knife/docker-user.conf
+install -o root -g root -m 0644 deploy/systemd/knife-firewall.service /etc/systemd/system/knife-firewall.service
+install -o root -g root -m 0644 deploy/systemd/knife-docker-user.service /etc/systemd/system/knife-docker-user.service
+```
+
+Edit the two configs to replace placeholders, run `knife-firewall preflight` and `knife-firewall check`, then use the
+timed `knife-firewall apply` / fresh-session `confirm` flow described below. Only after successful confirmation run
+`systemctl daemon-reload && systemctl enable --now knife-firewall.service knife-docker-user.service`.
+
+At cutover, stage and preflight the new app first, stop PM2, then `systemctl enable --now samurai-knife.service`; verify
+health and logs before deleting the old PM2 entry. Keep the previous release and PM2 config for rollback. Rollback by
+stopping systemd, restoring the old environment/release symlink, then starting PM2. Never run both against one data dir.
+
+Run `scripts/update-live.sh` as a separate `knife-deploy` account with access to release staging and symlink activation,
+but no Docker socket or app data. The current operations script assumes the existing user-service/PM2 layout; review and
+adapt its restart/install locations in the deployment checkout. Do not run it as `knife` unless release-write access is
+intentional, and do not change operations files as part of this repo change.
+
+### Python parser sandbox
+
+`KNIFE_PY_SANDBOX=auto` (default) requires a successful real bubblewrap probe in public mode and refuses startup if it
+fails. Private mode remains unsandboxed by default for compatibility. `bwrap` requires sandboxing in either mode; `off`
+explicitly disables it and warns in public mode. `KNIFE_PY_SANDBOX_RO` adds colon-separated read-only roots for tools
+installed outside `/usr`. Prefer installing Tesseract/qpdf/ghostscript in `/usr` on the production host; `ProtectHome=yes`
+in the systemd unit intentionally makes a Homebrew tree under `/home` unavailable. If using a separate tool tree, place it
+outside `/home`, include it in `KNIFE_PY_SANDBOX_RO`, and ensure the service can read it. The sandbox unshares networking and user/PID/IPC namespaces; mounts the interpreter/venv,
+scripts and required system libraries read-only; exposes staged uploads read-only and only job-owned output/scratch
+directories writable. It does not mount `KNIFE_DATA_DIR`, `KNIFE_STORAGE_KEY_FILE`, GitHub credentials, host `/proc`, or
+other jobs' directories. Tesseract, qpdf, ghostscript and OCR assets must be beneath `/usr` or an explicit read-only root.
+The systemd unit retains only the namespace and syscall permissions bwrap needs inside its unprivileged user namespace.
+Do not tighten it to `RestrictNamespaces=yes` or remove mount/capability syscalls without re-running the sandbox probe.
+`run_limited.py` rlimits and process-group cancellation remain active.
+
 ## 4. Reverse proxy with HTTPS (nginx-proxy-manager)
 
 One Proxy Host per name:
@@ -208,11 +305,18 @@ Only 443 (and 80 for the certificate challenge) should be reachable from outside
 - Only admins install, start, stop, update or configure them (docs/ACCOUNTS.md "Roles"); users may use a running one.
 - The course database is published on 127.0.0.1 only, and so is the office editor when the app proxies it
   (`KNIFE_OFFICE_PUBLIC_URL`, above); browsers never reach a sidecar port directly.
-- The editor's request filter is on (docs/SIDECARS.md "Request filter"). Add network egress filtering for the sidecar
-  networks, which compose cannot express: in `DOCKER-USER`, allow established traffic, DNS and the internet from the
-  sidecar network, and drop its traffic to the host's own addresses, the LAN, the Tailscale range (100.64.0.0/10,
-  fd7a:115c:a1e0::/48), other docker networks and 169.254.169.254, except the app's own port on the address in its app
-  URL. Keep the rules in a script that runs after docker starts.
+- Install `deploy/sbin/knife-firewall` and `knife-docker-user` root-owned under `/usr/local/sbin`. Configure
+  `/etc/samurai-knife/firewall.conf` from `deploy/firewall/firewall.conf.example` and
+  `/etc/samurai-knife/docker-user.conf` from `deploy/firewall/docker-user.conf.example`; replace placeholders and set
+  actual proxy, interface, DNS, and network details. The nftables `inet knife_host` input table permits the app port only
+  from the fixed proxy address and declared callback sidecar networks. The `DOCKER-USER` chain restricts published ports
+  and egress by definition: office may reach DNS/public internet, learn-db has no new egress, and neither may reach host,
+  LAN, Tailscale, other Docker networks, link-local or metadata ranges. Run `knife-firewall preflight` and
+  `knife-firewall check`; use its timed rollback apply and confirm only from a new SSH session before persisting.
+- Install `deploy/systemd/knife-firewall.service` and `knife-docker-user.service` root-owned. Enable the firewall unit
+  only after confirming a timed apply; enable the Docker policy unit after Docker. The Docker watcher refreshes policy
+  after network changes and synchronizes active callback-sidecar subnets into the nftables set. These scripts manage
+  only their dedicated table/chains and never flush the full ruleset.
 - Memory/CPU caps are in the definitions (office 3 GB / 2 CPUs, course DB 1 GB / 1 CPU).
 
 ## 6. Releases and automatic updates

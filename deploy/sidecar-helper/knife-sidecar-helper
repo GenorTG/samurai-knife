@@ -1,0 +1,860 @@
+#!/usr/bin/python3 -I
+# knife-sidecar-helper: the ONLY way the Smart Knife app user starts, stops and inspects its docker sidecars on a
+# hardened host. The app user is not in the docker group (docker access = root on the host).
+#
+# Threat model: the app (user `knife`) may be fully compromised. Through this helper it can then only run a fixed set of
+# `docker compose` verbs on the fixed sidecar ids below, against compose bundles that ROOT installed under
+# /etc/samurai-knife/sidecars/<id>/ after validating them (`sync`, run by the owner with sudo). Nothing the app sends is
+# ever interpolated into argv, a path or a compose file: the request is parsed against allow-lists and mapped to argv
+# built from constants. Root's copy of the bundle is the only one docker reads.
+#
+# Modes
+#   serve                 socket-activated (systemd knife-sidecar.socket, Accept=yes): fd 0/1 = one client connection
+#   sync <id> [--yes] [--dry-run]
+#                         root CLI: validate the app's staged bundle ($STAGING_DIR/<id>/: compose.yaml, secrets.env,
+#                         assets/) and install it under $BUNDLE_ROOT/<id>/ (root-owned)
+#   check <id>            root CLI: sync --dry-run
+#   uninstall <id> [--force]
+#                         root CLI: remove an installed bundle (refuses while its containers exist, unless --force)
+#   hash <id>             print the installed bundle hash (same value the app compares against)
+#
+# Wire protocol (serve): the client sends ONE line `<verb> [<id> [<flag>...]]\n` (ASCII, <= 200 bytes, tokens
+# [a-z][a-z0-9-]*). The helper answers with lines `o <text>` (docker stdout), `e <text>` (docker stderr / helper
+# messages) and finally `x <exit code>`. Closing the connection aborts the running docker command (process group killed).
+# Exit codes: 64 bad request, 69 bundle not installed / runtime unavailable, 75 busy (another op holds the id's lock),
+# 77 peer not allowed, 124 timeout; anything else is docker's own exit code.
+#
+# Configuration: /etc/samurai-knife/sidecar-helper.conf (KEY=VALUE, root-owned, not group/world-writable). When NOT
+# running as root (tests), KNIFE_SIDECAR_HELPER_CONF may point at another file; root ignores the variable.
+#
+# Contract: docs/DEPLOY.md "Sidecars without the docker group". Tests: tests/sidecar_helper.test.mjs.
+
+import errno
+import fcntl
+import hashlib
+import json
+import os
+import pwd
+import re
+import selectors
+import shutil
+import signal
+import socket
+import stat
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+
+# ------------------------------------------------------------------------------------------------ fixed allow-lists
+
+# Must match src/lib/services/definitions.ts (tests/sidecar_helper.test.mjs checks service names, images, prepare and
+# the hardening below). Every bundle MUST carry the hardening (host audit M2): cap_drop [ALL], no-new-privileges,
+# a pids_limit no higher than `pids_max`, a mem_limit no higher than `mem_max` and exactly the `cap_add` set the
+# definition states (security.capAdd). A bundle that lacks any of them is refused, not merely tolerated.
+SIDECARS = {
+    "office": {
+        "service": "documentserver",
+        "image_prefix": "ghcr.io/euro-office/documentserver:",
+        "prepare": ["documentserver-generate-allfonts.sh"],
+        "assets_target": "/var/www/euro-office/documentserver/sdkjs-plugins",
+        "cap_add": frozenset({"CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID"}),
+        "pids_max": 1024,
+        "mem_max": 3 * 1024 ** 3,
+    },
+    "learn-db": {
+        "service": "postgres",
+        "image_prefix": "postgis/postgis:",
+        "prepare": None,
+        "assets_target": None,
+        "cap_add": frozenset({"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"}),
+        "pids_max": 256,
+        "mem_max": 1024 ** 3,
+    },
+}
+
+# verb -> (needs id, allowed flags, timeout seconds, takes the per-id lock)
+VERBS = {
+    "version": (False, (), 30, False),
+    "hash": (True, (), 10, False),
+    "ps": (True, (), 30, False),
+    "logs": (True, (), 30, False),
+    "image-id": (True, (), 30, False),
+    "memory": (True, (), 30, False),
+    "pull": (True, (), 1800, True),
+    "up": (True, (), 600, True),
+    "stop": (True, (), 180, True),
+    "down": (True, ("volumes", "rmi"), 300, True),
+    "prepare": (True, (), 600, True),
+}
+
+TOKEN = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+MAX_REQUEST = 200
+MAX_LINE = 8192
+MAX_OUTPUT = 4 * 1024 * 1024
+
+# Docker's default capability set: a sidecar may re-add these after cap_drop ALL, never anything beyond.
+DEFAULT_CAPS = {
+    "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL", "SETGID", "SETUID", "SETPCAP", "NET_BIND_SERVICE",
+    "NET_RAW", "SYS_CHROOT", "MKNOD", "AUDIT_WRITE", "SETFCAP",
+}
+SERVICE_KEYS = {
+    "image", "restart", "ports", "env_file", "environment", "extra_hosts", "volumes", "labels", "mem_limit",
+    "memswap_limit", "mem_reservation", "cpus", "networks", "cap_drop", "cap_add", "security_opt", "pids_limit",
+    "read_only", "tmpfs", "healthcheck", "logging", "ulimits", "user", "stop_grace_period", "stop_signal", "shm_size",
+    "init", "working_dir", "command", "entrypoint", "runtime", "hostname",
+}
+NO_NEW_PRIVS = {"no-new-privileges:true", "no-new-privileges=true", "no-new-privileges"}
+EXTRA_HOSTS = {"host.docker.internal:host-gateway", "host.docker.internal=host-gateway"}
+LABEL_PREFIX = "dev.samurai-knife"
+
+CONF_DEFAULTS = {
+    "CLIENT_USER": "knife",
+    "PROJECT_PREFIX": "samurai-knife",
+    "BUNDLE_ROOT": "/etc/samurai-knife/sidecars",
+    "STAGING_DIR": "/var/lib/samurai-knife/services",
+    "RUNTIME_DIR": "/run/knife-sidecar",
+    "DOCKER": "/usr/bin/docker",
+    "SETPRIV": "/usr/bin/setpriv",
+    "ALLOW_BIND_HOSTS": "127.0.0.1",
+    "MAX_ASSET_BYTES": str(64 * 1024 * 1024),
+}
+CONF_PATH = "/etc/samurai-knife/sidecar-helper.conf"
+
+
+class HelperError(Exception):
+    def __init__(self, message, code=64):
+        super().__init__(message)
+        self.code = code
+
+
+def is_root():
+    return os.geteuid() == 0
+
+
+def load_conf():
+    path = CONF_PATH
+    override = os.environ.get("KNIFE_SIDECAR_HELPER_CONF")
+    if override and not is_root():
+        path = override
+    conf = dict(CONF_DEFAULTS)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return conf
+    with os.fdopen(fd, "r", encoding="utf-8") as handle:
+        info = os.fstat(handle.fileno())
+        if is_root() and (info.st_uid != 0 or info.st_mode & 0o022):
+            raise HelperError(f"{path} must be owned by root and not group/world-writable", 69)
+        for raw in handle.read(65536).splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, sep, value = line.partition("=")
+            key, value = key.strip(), value.strip().strip('"')
+            if sep and key in CONF_DEFAULTS:
+                conf[key] = value
+    if not re.match(r"^[a-z0-9][a-z0-9_-]{0,40}$", conf["PROJECT_PREFIX"]):
+        raise HelperError("PROJECT_PREFIX is invalid", 69)
+    for key in ("BUNDLE_ROOT", "STAGING_DIR", "RUNTIME_DIR", "DOCKER", "SETPRIV"):
+        if not os.path.isabs(conf[key]):
+            raise HelperError(f"{key} must be an absolute path", 69)
+    return conf
+
+
+def project(conf, sidecar_id):
+    return f"{conf['PROJECT_PREFIX']}-{sidecar_id}"
+
+
+def bundle_dir(conf, sidecar_id):
+    return os.path.join(conf["BUNDLE_ROOT"], sidecar_id)
+
+
+def docker_env(conf):
+    home = conf["RUNTIME_DIR"]
+    return {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "HOME": home, "DOCKER_CONFIG": os.path.join(home, "docker"), "LANG": "C.UTF-8"}
+
+
+# ------------------------------------------------------------------------------------------------ request parsing
+
+
+def parse_request(line):
+    """`<verb> [<id> [<flag>...]]` -> (verb, id|None, frozenset(flags)). Raises HelperError(64) on anything else."""
+    if len(line) > MAX_REQUEST:
+        raise HelperError("request too long")
+    if not re.fullmatch(r"[a-z0-9 -]*", line):
+        raise HelperError("request contains characters outside [a-z0-9 -]")
+    tokens = line.split(" ")
+    if any(not TOKEN.match(token) for token in tokens):
+        raise HelperError("malformed request")
+    verb, rest = tokens[0], tokens[1:]
+    if verb not in VERBS:
+        raise HelperError(f"unknown verb {verb}")
+    needs_id, allowed_flags, _timeout, _lock = VERBS[verb]
+    if not needs_id:
+        if rest:
+            raise HelperError(f"{verb} takes no arguments")
+        return verb, None, frozenset()
+    if not rest:
+        raise HelperError(f"{verb} needs a sidecar id")
+    sidecar_id, flags = rest[0], rest[1:]
+    if sidecar_id not in SIDECARS:
+        raise HelperError(f"unknown sidecar {sidecar_id}")
+    if len(set(flags)) != len(flags) or any(flag not in allowed_flags for flag in flags):
+        raise HelperError(f"flags not allowed for {verb}: {' '.join(flags)}")
+    return verb, sidecar_id, frozenset(flags)
+
+
+def compose_base(conf, sidecar_id):
+    directory = bundle_dir(conf, sidecar_id)
+    return [conf["DOCKER"], "compose", "--project-directory", directory, "-p", project(conf, sidecar_id), "-f", os.path.join(directory, "compose.yaml")]
+
+
+def compose_argv(conf, verb, sidecar_id, flags):
+    """argv for a single-step verb, built only from constants and the installed bundle path."""
+    spec = SIDECARS[sidecar_id]
+    base = compose_base(conf, sidecar_id)
+    if verb == "ps":
+        return base + ["ps", "-a", "--format", "json"]
+    if verb == "logs":
+        return base + ["logs", "--no-color", "--tail", "30", spec["service"]]
+    if verb == "pull":
+        # `--progress` is a global compose flag (before the subcommand).
+        return base[:2] + ["--progress", "json"] + base[2:] + ["pull"]
+    if verb == "up":
+        return base + ["up", "-d", "--remove-orphans"]
+    if verb == "stop":
+        return base + ["stop"]
+    if verb == "down":
+        argv = base + ["down", "--remove-orphans"]
+        if "volumes" in flags:
+            argv.append("--volumes")
+        if "rmi" in flags:
+            argv += ["--rmi", "all"]
+        return argv
+    if verb == "prepare":
+        if not spec["prepare"]:
+            raise HelperError(f"{sidecar_id} has no prepare step")
+        return base + ["exec", "-T", spec["service"]] + list(spec["prepare"])
+    raise HelperError(f"{verb} is not a single compose step")
+
+
+# ------------------------------------------------------------------------------------------------ bundle hash
+
+
+def bundle_hash_of(directory):
+    """sha256 over compose.yaml, secrets.env and the asset folder names (they carry a content hash). Must match
+    bundleHash() in src/lib/services/helper-backend.ts."""
+    digest = hashlib.sha256(b"knife-sidecar-bundle-v1\0")
+    for name in ("compose.yaml", "secrets.env"):
+        fd = os.open(os.path.join(directory, name), os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as handle:
+            digest.update(handle.read(1024 * 1024))
+        digest.update(b"\0")
+    assets = os.path.join(directory, "assets")
+    folders = []
+    if os.path.isdir(assets) and not os.path.islink(assets):
+        folders = sorted(entry.name for entry in os.scandir(assets) if entry.is_dir(follow_symlinks=False))
+    digest.update("\n".join(folders).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def installed_hash(conf, sidecar_id):
+    directory = bundle_dir(conf, sidecar_id)
+    if not os.path.isfile(os.path.join(directory, "compose.yaml")):
+        return None
+    return bundle_hash_of(directory)
+
+
+# ------------------------------------------------------------------------------------------------ serve
+
+
+def clean(text):
+    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text)
+    return text[:MAX_LINE]
+
+
+class Connection:
+    """fd 0 (read) / fd 1 (write) of the accepted socket."""
+
+    def __init__(self, rfd=0, wfd=1):
+        self.rfd, self.wfd = rfd, wfd
+        self.sent = 0
+        self.closed = False
+
+    def send(self, kind, text=""):
+        if self.closed:
+            return
+        payload = f"{kind} {clean(text)}\n".encode("utf-8", "replace")
+        if kind in ("o", "e"):
+            if self.sent > MAX_OUTPUT:
+                return
+            self.sent += len(payload)
+            if self.sent > MAX_OUTPUT:
+                payload = b"e [output truncated]\n"
+        try:
+            view = memoryview(payload)
+            while view:
+                written = os.write(self.wfd, view)
+                view = view[written:]
+        except OSError:
+            self.closed = True
+
+    def finish(self, code):
+        self.send("x", str(code))
+
+    def read_request(self, timeout=10.0):
+        data = b""
+        deadline = time.monotonic() + timeout
+        with selectors.DefaultSelector() as sel:
+            sel.register(self.rfd, selectors.EVENT_READ)
+            while b"\n" not in data:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not sel.select(remaining):
+                    raise HelperError("request timeout")
+                chunk = os.read(self.rfd, MAX_REQUEST + 2 - len(data))
+                if not chunk:
+                    raise HelperError("connection closed before a request")
+                data += chunk
+                if len(data) > MAX_REQUEST + 1 and b"\n" not in data:
+                    raise HelperError("request too long")
+        line, _sep, _rest = data.partition(b"\n")
+        try:
+            return line.decode("ascii")
+        except UnicodeDecodeError:
+            raise HelperError("request is not ASCII")
+
+
+def peer_uid(fd):
+    sock = socket.socket(fileno=os.dup(fd))
+    try:
+        if sock.family != socket.AF_UNIX:
+            raise HelperError("not a unix socket", 77)
+        creds = sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
+    finally:
+        sock.close()
+    _pid, uid, _gid = struct.unpack("3i", creds)
+    return uid
+
+
+def allowed_uids(conf):
+    uids = {0}
+    try:
+        uids.add(pwd.getpwnam(conf["CLIENT_USER"]).pw_uid)
+    except KeyError:
+        pass
+    return uids
+
+
+def run_streamed(conn, argv, cwd, env, timeout, stdout_sink=None):
+    """Runs argv; streams its lines to the client (or to stdout_sink). Returns the exit code."""
+    try:
+        child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, start_new_session=True)
+    except OSError as error:
+        conn.send("e", f"cannot run {os.path.basename(argv[0])}: {error.strerror}")
+        return 69
+    partial = {"o": b"", "e": b""}
+    deadline = time.monotonic() + timeout
+    aborted = None
+    with selectors.DefaultSelector() as sel:
+        sel.register(child.stdout, selectors.EVENT_READ, "o")
+        sel.register(child.stderr, selectors.EVENT_READ, "e")
+        sel.register(conn.rfd, selectors.EVENT_READ, "client")
+        open_streams = 2
+        while open_streams:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                aborted = "timeout"
+                break
+            for key, _events in sel.select(min(remaining, 1.0)):
+                if key.data == "client":
+                    try:
+                        gone = not os.read(conn.rfd, 64)
+                    except OSError:
+                        gone = True
+                    if gone:
+                        aborted = "client"
+                        sel.unregister(conn.rfd)
+                    continue
+                chunk = os.read(key.fileobj.fileno(), 65536)
+                if not chunk:
+                    sel.unregister(key.fileobj)
+                    open_streams -= 1
+                    continue
+                partial[key.data] += chunk
+                *lines, partial[key.data] = partial[key.data].split(b"\n")
+                for line in lines:
+                    text = line.decode("utf-8", "replace").rstrip("\r")
+                    if not text.strip():
+                        continue
+                    if key.data == "o" and stdout_sink is not None:
+                        stdout_sink.append(text)
+                    else:
+                        conn.send(key.data, text)
+            if aborted or conn.closed:
+                aborted = aborted or "client"
+                break
+    if aborted:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(child.pid, sig)
+            except ProcessLookupError:
+                break
+            try:
+                child.wait(10)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        child.wait()
+        conn.send("e", "timed out" if aborted == "timeout" else "aborted: client disconnected")
+        return 124 if aborted == "timeout" else 125
+    for kind, rest in partial.items():
+        text = rest.decode("utf-8", "replace").strip()
+        if text:
+            if kind == "o" and stdout_sink is not None:
+                stdout_sink.append(text)
+            else:
+                conn.send(kind, text)
+    return child.wait()
+
+
+class IdLock:
+    def __init__(self, conf, sidecar_id):
+        self.path = os.path.join(conf["RUNTIME_DIR"], f"{sidecar_id}.lock")
+        self.fd = None
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self.path), mode=0o700, exist_ok=True)
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            os.close(self.fd)
+            self.fd = None
+            if error.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                raise HelperError("another operation is running on this sidecar", 75)
+            raise
+        return self
+
+    def __exit__(self, *_exc):
+        if self.fd is not None:
+            os.close(self.fd)
+
+
+IMAGE_RE = re.compile(r"^[a-z0-9][a-z0-9./:_@-]{0,254}$")
+CONTAINER_RE = re.compile(r"^[0-9a-f]{12,64}$")
+
+
+def handle(conn, conf, verb, sidecar_id, flags):
+    env = docker_env(conf)
+    os.makedirs(env["DOCKER_CONFIG"], mode=0o700, exist_ok=True)
+    timeout = VERBS[verb][2]
+    if verb == "version":
+        out = []
+        code = run_streamed(conn, [conf["DOCKER"], "compose", "version", "--short"], "/", env, timeout, out)
+        if code != 0:
+            return code
+        compose_version = (out or [""])[-1]
+        out = []
+        code = run_streamed(conn, [conf["DOCKER"], "info", "--format", "{{.ServerVersion}}"], "/", env, timeout, out)
+        if code != 0:
+            return code
+        conn.send("o", json.dumps({"engine": (out or [""])[-1], "compose": compose_version}))
+        return 0
+    if verb == "hash":
+        value = installed_hash(conf, sidecar_id)
+        conn.send("o", value or "absent")
+        return 0
+    directory = bundle_dir(conf, sidecar_id)
+    if installed_hash(conf, sidecar_id) is None:
+        conn.send("e", f"{sidecar_id}: no installed compose bundle; run `sudo knife-sidecar sync {sidecar_id}` on the host")
+        return 69
+    if verb == "image-id":
+        out = []
+        code = run_streamed(conn, compose_base(conf, sidecar_id) + ["config", "--images"], directory, env, timeout, out)
+        if code != 0:
+            return code
+        images = [line.strip() for line in out if line.strip()]
+        if len(images) != 1 or not IMAGE_RE.match(images[0]):
+            conn.send("e", "unexpected image list")
+            return 69
+        return run_streamed(conn, [conf["DOCKER"], "image", "inspect", "--format", "{{.Id}}", images[0]], directory, env, timeout)
+    if verb == "memory":
+        out = []
+        code = run_streamed(conn, compose_base(conf, sidecar_id) + ["ps", "-q", SIDECARS[sidecar_id]["service"]], directory, env, timeout, out)
+        if code != 0:
+            return code
+        ids = [line.strip() for line in out if line.strip()]
+        if len(ids) != 1 or not CONTAINER_RE.match(ids[0]):
+            conn.send("e", "container not running")
+            return 1
+        return run_streamed(conn, [conf["DOCKER"], "stats", "--no-stream", "--format", "{{.MemUsage}}", ids[0]], directory, env, timeout)
+    argv = compose_argv(conf, verb, sidecar_id, flags)
+    if VERBS[verb][3]:
+        with IdLock(conf, sidecar_id):
+            return run_streamed(conn, argv, directory, env, timeout)
+    return run_streamed(conn, argv, directory, env, timeout)
+
+
+def serve():
+    conn = Connection()
+    try:
+        conf = load_conf()
+        uid = peer_uid(conn.rfd)
+        if uid not in allowed_uids(conf):
+            raise HelperError("peer not allowed", 77)
+        line = conn.read_request()
+        verb, sidecar_id, flags = parse_request(line)
+        code = handle(conn, conf, verb, sidecar_id, flags)
+    except HelperError as error:
+        conn.send("e", str(error))
+        code = error.code
+    except Exception as error:  # noqa: BLE001 - never leak a traceback to the client
+        print(f"knife-sidecar-helper: internal error: {error!r}", file=sys.stderr)
+        conn.send("e", "internal error (see the journal)")
+        code = 70
+    conn.finish(code)
+    return 0
+
+
+# ------------------------------------------------------------------------------------------------ sync (root CLI)
+
+
+SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([kmgt]?)b?$", re.IGNORECASE)
+SIZE_SCALE = {"": 1, "k": 1024, "m": 1024 ** 2, "g": 1024 ** 3, "t": 1024 ** 4}
+
+
+def parse_size(value):
+    """Compose memory sizes ("3g", "512m", 1073741824) -> bytes, or None when unreadable."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    match = SIZE_RE.match(str(value).strip())
+    if not match:
+        return None
+    return int(float(match.group(1)) * SIZE_SCALE[match.group(2).lower()])
+
+
+def hardening_problems(spec, svc):
+    """The REQUIRED container hardening (host audit M2). Missing is refused exactly like too much."""
+    problems = []
+    drop = svc.get("cap_drop")
+    if not isinstance(drop, list) or [str(cap).upper().removeprefix("CAP_") for cap in drop] != ["ALL"]:
+        problems.append("cap_drop must be exactly [ALL]")
+    caps = {str(cap).upper().removeprefix("CAP_") for cap in svc.get("cap_add") or []}
+    if caps - DEFAULT_CAPS:
+        problems.append(f"cap_add beyond docker's default set: {sorted(caps - DEFAULT_CAPS)}")
+    elif caps != spec["cap_add"]:
+        problems.append(f"cap_add must be exactly the definition's set {sorted(spec['cap_add'])}, not {sorted(caps)}")
+    opts = svc.get("security_opt") or []
+    for opt in opts:
+        if opt not in NO_NEW_PRIVS:
+            problems.append(f"security_opt not allowed: {opt}")
+    if not any(opt in NO_NEW_PRIVS for opt in opts):
+        problems.append("security_opt must set no-new-privileges:true")
+    pids = svc.get("pids_limit")
+    if isinstance(pids, bool) or not isinstance(pids, int) or not 16 <= pids <= spec["pids_max"]:
+        problems.append(f"pids_limit must be set, between 16 and {spec['pids_max']}")
+    mem = parse_size(svc.get("mem_limit")) if svc.get("mem_limit") is not None else None
+    if mem is None or not 0 < mem <= spec["mem_max"]:
+        problems.append(f"mem_limit must be set, at most {spec['mem_max'] // 1024 ** 2} MiB")
+    if svc.get("privileged"):
+        problems.append("privileged is not allowed")
+    return problems
+
+
+def validate_config(sidecar_id, cfg, conf, directory):
+    """Problems in a normalized `docker compose config --format json` document (empty list = acceptable)."""
+    spec = SIDECARS[sidecar_id]
+    name = project(conf, sidecar_id)
+    problems = []
+
+    def bad(message):
+        problems.append(message)
+
+    if not isinstance(cfg, dict):
+        return ["not a compose document"]
+    extra = set(cfg) - {"name", "services", "volumes", "networks"}
+    if extra:
+        bad(f"top-level keys not allowed: {sorted(extra)}")
+    if cfg.get("name") != name:
+        bad(f"project name must be {name}")
+    for net_name, net in (cfg.get("networks") or {}).items():
+        if net_name != "default" or not isinstance(net, dict) or set(net) - {"name"} or net.get("name", f"{name}_default") != f"{name}_default":
+            bad(f"network {net_name}: only the project's default network is allowed")
+    volumes = cfg.get("volumes") or {}
+    for vol_name, vol in volumes.items():
+        if not re.match(r"^[a-z][a-z0-9_-]{0,31}$", vol_name) or not isinstance(vol, dict):
+            bad(f"volume {vol_name}: invalid")
+            continue
+        if set(vol) - {"name", "labels"} or vol.get("name", f"{name}_{vol_name}") != f"{name}_{vol_name}":
+            bad(f"volume {vol_name}: only plain named volumes of this project (no driver, driver_opts, external)")
+    services = cfg.get("services") or {}
+    if set(services) != {spec["service"]}:
+        return problems + [f"exactly one service named {spec['service']} is allowed"]
+    svc = services[spec["service"]]
+    extra = set(svc) - SERVICE_KEYS
+    if extra:
+        bad(f"service keys not allowed: {sorted(extra)}")
+    image = svc.get("image", "")
+    if not isinstance(image, str) or not IMAGE_RE.match(image) or not image.startswith(spec["image_prefix"]):
+        bad(f"image must start with {spec['image_prefix']}")
+    if svc.get("restart", "no") != "no":
+        bad("restart must be \"no\" (the app owns the lifecycle)")
+    if "runtime" in svc and svc["runtime"] != "runc":
+        bad("runtime may only be runc")
+    allowed_bind = {host.strip() for host in conf["ALLOW_BIND_HOSTS"].split(",") if host.strip()}
+    for port in svc.get("ports") or []:
+        if not isinstance(port, dict):
+            bad("port entries must be normalized objects")
+            continue
+        host_ip = port.get("host_ip", "")
+        try:
+            published = int(str(port.get("published", "")))
+        except ValueError:
+            published = 0
+        if host_ip not in allowed_bind:
+            bad(f"port published on {host_ip or 'every address'}; allowed: {sorted(allowed_bind)}")
+        if not 1024 <= published <= 65535 or "-" in str(port.get("published", "")):
+            bad(f"published port {port.get('published')} must be one port in 1024-65535")
+        if port.get("protocol", "tcp") != "tcp" or port.get("mode", "ingress") != "ingress":
+            bad("only tcp ingress ports")
+    env_files = svc.get("env_file") or []
+    paths = [entry.get("path") if isinstance(entry, dict) else entry for entry in env_files]
+    if paths not in ([], [os.path.join(directory, "secrets.env")]):
+        bad("env_file may only be the bundle's secrets.env")
+    environment = svc.get("environment") or {}
+    if not isinstance(environment, dict) or any(not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key) for key in environment):
+        bad("environment must be a map of plain variable names")
+    for host in svc.get("extra_hosts") or []:
+        if host not in EXTRA_HOSTS:
+            bad(f"extra_hosts entry not allowed: {host}")
+    for mount in svc.get("volumes") or []:
+        if not isinstance(mount, dict):
+            bad("volume entries must be normalized objects")
+            continue
+        kind = mount.get("type")
+        if kind == "volume":
+            if mount.get("source") not in volumes:
+                bad(f"volume mount {mount.get('source')} is not a declared named volume")
+        elif kind == "bind":
+            if (spec["assets_target"] is None or mount.get("source") != os.path.join(directory, "assets")
+                    or mount.get("target") != spec["assets_target"] or mount.get("read_only") is not True):
+                bad(f"bind mount {mount.get('source')} -> {mount.get('target')}: only the bundle's assets, read-only, at the fixed target")
+        elif kind != "tmpfs":
+            bad(f"mount type {kind} not allowed")
+    labels = svc.get("labels") or {}
+    if labels.get(f"{LABEL_PREFIX}.service") != sidecar_id or labels.get(f"{LABEL_PREFIX}.managed") != "true":
+        bad("the managed/service labels are missing")
+    problems.extend(hardening_problems(spec, svc))
+    for net_name in (svc.get("networks") or {}):
+        if net_name != "default":
+            bad(f"service network {net_name} not allowed")
+    logging = svc.get("logging") or {}
+    if logging and logging.get("driver", "json-file") not in ("json-file", "local"):
+        bad("logging driver must be json-file or local")
+    return problems
+
+
+def read_staged(path, limit, owner_uid):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise HelperError(f"{path} is not a regular file")
+        if owner_uid is not None and info.st_uid not in (owner_uid, 0):
+            raise HelperError(f"{path} is not owned by the app user")
+        data = handle.read(limit + 1)
+    if len(data) > limit:
+        raise HelperError(f"{path} is larger than {limit} bytes")
+    return data
+
+
+SECRET_LINE = re.compile(r"^[A-Z][A-Z0-9_]*=[A-Za-z0-9_-]+$")
+
+
+def copy_assets(source, target, max_bytes):
+    """Copies regular files and dirs only (no symlinks, devices, fifos); bounded in depth, count and size."""
+    total, count = 0, 0
+    os.mkdir(target, 0o755)
+    if not os.path.isdir(source) or os.path.islink(source):
+        return
+    for root, dirs, files in os.walk(source, followlinks=False):
+        rel = os.path.relpath(root, source)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
+        if depth > 8:
+            raise HelperError("assets nested too deep")
+        for name in dirs + files:
+            if not re.match(r"^[A-Za-z0-9._-]{1,128}$", name) or name in (".", ".."):
+                raise HelperError(f"asset name not allowed: {name!r}")
+        for name in dirs:
+            full = os.path.join(root, name)
+            if os.path.islink(full):
+                raise HelperError(f"asset {full} is a symlink")
+            os.mkdir(os.path.join(target, rel, name), 0o755)
+        for name in files:
+            full = os.path.join(root, name)
+            fd = os.open(full, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as handle:
+                info = os.fstat(handle.fileno())
+                if not stat.S_ISREG(info.st_mode):
+                    raise HelperError(f"asset {full} is not a regular file")
+                count += 1
+                total += info.st_size
+                if count > 5000 or total > max_bytes:
+                    raise HelperError("assets exceed the size/count cap")
+                out_fd = os.open(os.path.join(target, rel, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+                with os.fdopen(out_fd, "wb") as out:
+                    shutil.copyfileobj(handle, out)
+
+
+def normalized_config(conf, compose_text, secret_keys, sidecar_id):
+    """Runs `docker compose config` on a copy with DUMMY secrets, as nobody when root, without interpolation."""
+    scratch = tempfile.mkdtemp(prefix="knife-sidecar-check-")
+    try:
+        os.chmod(scratch, 0o755)
+        with open(os.path.join(scratch, "compose.yaml"), "wb") as handle:
+            handle.write(compose_text)
+        with open(os.path.join(scratch, "secrets.env"), "w", encoding="ascii") as handle:
+            handle.write("".join(f"{key}=x\n" for key in secret_keys))
+        os.mkdir(os.path.join(scratch, "assets"), 0o755)
+        for name in ("compose.yaml", "secrets.env"):
+            os.chmod(os.path.join(scratch, name), 0o644)
+        env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "HOME": scratch, "DOCKER_CONFIG": scratch, "LANG": "C.UTF-8"}
+        argv = [conf["DOCKER"], "compose", "--project-directory", scratch, "-p", project(conf, sidecar_id), "-f",
+                os.path.join(scratch, "compose.yaml"), "config", "--format", "json", "--no-interpolate"]
+        if is_root():
+            argv = [conf["SETPRIV"], "--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs", "--"] + argv
+        result = subprocess.run(argv, cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+        if result.returncode != 0:
+            raise HelperError("docker compose config refused the file: " + result.stderr.decode("utf-8", "replace").strip()[-500:])
+        return json.loads(result.stdout.decode("utf-8")), scratch
+    except BaseException:
+        shutil.rmtree(scratch, ignore_errors=True)
+        raise
+
+
+def sync(conf, sidecar_id, assume_yes, dry_run):
+    if sidecar_id not in SIDECARS:
+        raise HelperError(f"unknown sidecar {sidecar_id}")
+    if not is_root() and not os.environ.get("KNIFE_SIDECAR_HELPER_CONF"):
+        raise HelperError("sync installs root-owned files: run it with sudo", 77)
+    staging = os.path.join(conf["STAGING_DIR"], sidecar_id)
+    try:
+        owner = pwd.getpwnam(conf["CLIENT_USER"]).pw_uid
+    except KeyError:
+        owner = None
+    compose_text = read_staged(os.path.join(staging, "compose.yaml"), 64 * 1024, owner)
+    secrets_text = read_staged(os.path.join(staging, "secrets.env"), 4096, owner)
+    if b"$" in compose_text or b"\0" in compose_text:
+        raise HelperError("compose.yaml contains `$` or NUL (the app's renderer never writes either)")
+    try:
+        compose_text.decode("utf-8")
+        secret_lines = [line for line in secrets_text.decode("ascii").splitlines() if line.strip()]
+    except UnicodeDecodeError:
+        raise HelperError("staged files are not valid text")
+    if not secret_lines or any(not SECRET_LINE.match(line) for line in secret_lines):
+        raise HelperError("secrets.env must hold KEY=value lines (values [A-Za-z0-9_-])")
+    cfg, scratch = normalized_config(conf, compose_text, [line.split("=", 1)[0] for line in secret_lines], sidecar_id)
+    try:
+        problems = validate_config(sidecar_id, cfg, conf, scratch)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if problems:
+        raise HelperError("refused:\n  - " + "\n  - ".join(problems))
+    service = cfg["services"][SIDECARS[sidecar_id]["service"]]
+    ports = ", ".join(f"{p.get('host_ip')}:{p.get('published')}->{p.get('target')}" for p in service.get("ports") or [])
+    print(f"{sidecar_id}: valid. image {service.get('image')}, ports {ports or 'none'}")
+    final = bundle_dir(conf, sidecar_id)
+    old_hash = installed_hash(conf, sidecar_id)
+    os.makedirs(conf["BUNDLE_ROOT"], mode=0o755, exist_ok=True)
+    fresh = tempfile.mkdtemp(prefix=f".{sidecar_id}.new-", dir=conf["BUNDLE_ROOT"])
+    try:
+        os.chmod(fresh, 0o755)
+        for name, data, mode in (("compose.yaml", compose_text, 0o644), ("secrets.env", secrets_text, 0o600)):
+            fd = os.open(os.path.join(fresh, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(data)
+        copy_assets(os.path.join(staging, "assets"), os.path.join(fresh, "assets"), int(conf["MAX_ASSET_BYTES"]))
+        new_hash = bundle_hash_of(fresh)
+        if new_hash == old_hash:
+            print(f"{sidecar_id}: already installed (bundle {new_hash[:12]})")
+            return 0
+        print(f"{sidecar_id}: bundle {old_hash[:12] if old_hash else 'absent'} -> {new_hash[:12]}")
+        if dry_run:
+            print("dry run: nothing installed")
+            return 0
+        if not assume_yes:
+            if not sys.stdin.isatty():
+                raise HelperError("not a terminal: pass --yes to install")
+            if input("install it? [y/N] ").strip().lower() not in ("y", "yes"):
+                print("not installed")
+                return 1
+        if os.path.exists(final):
+            retired = f"{final}.old-{int(time.time())}"
+            os.rename(final, retired)
+            os.rename(fresh, final)
+            shutil.rmtree(retired, ignore_errors=True)
+        else:
+            os.rename(fresh, final)
+        fresh = None
+        print(f"{sidecar_id}: installed in {final}; the app picks it up at the next start (or restart the sidecar from the Sidecars page)")
+        return 0
+    finally:
+        if fresh:
+            shutil.rmtree(fresh, ignore_errors=True)
+
+
+def uninstall(conf, sidecar_id, force):
+    if sidecar_id not in SIDECARS:
+        raise HelperError(f"unknown sidecar {sidecar_id}")
+    final = bundle_dir(conf, sidecar_id)
+    if not os.path.isdir(final):
+        print(f"{sidecar_id}: nothing installed")
+        return 0
+    result = subprocess.run(compose_base(conf, sidecar_id) + ["ps", "-a", "-q"], cwd=final, env=docker_env(conf),
+                            stdin=subprocess.DEVNULL, capture_output=True, timeout=60)
+    if result.returncode == 0 and result.stdout.strip() and not force:
+        raise HelperError(f"{sidecar_id} still has containers: remove the sidecar in the app first (or pass --force)")
+    shutil.rmtree(final)
+    print(f"{sidecar_id}: bundle removed")
+    return 0
+
+
+def main(argv):
+    if not argv:
+        print(__doc__ or "usage: knife-sidecar-helper serve | sync <id> [--yes] [--dry-run] | check <id> | uninstall <id> [--force] | hash <id>", file=sys.stderr)
+        return 64
+    mode, rest = argv[0], argv[1:]
+    if mode == "serve":
+        return serve()
+    try:
+        conf = load_conf()
+        options = {arg for arg in rest if arg.startswith("--")}
+        positional = [arg for arg in rest if not arg.startswith("--")]
+        if len(positional) != 1:
+            raise HelperError(f"{mode} needs exactly one sidecar id")
+        sidecar_id = positional[0]
+        if mode in ("sync", "check"):
+            unknown = options - {"--yes", "--dry-run"}
+            if unknown:
+                raise HelperError(f"unknown options {sorted(unknown)}")
+            return sync(conf, sidecar_id, "--yes" in options, mode == "check" or "--dry-run" in options)
+        if mode == "uninstall":
+            return uninstall(conf, sidecar_id, "--force" in options)
+        if mode == "hash":
+            if sidecar_id not in SIDECARS:
+                raise HelperError(f"unknown sidecar {sidecar_id}")
+            print(installed_hash(conf, sidecar_id) or "absent")
+            return 0
+        raise HelperError(f"unknown mode {mode}")
+    except HelperError as error:
+        print(f"knife-sidecar: {error}", file=sys.stderr)
+        return error.code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

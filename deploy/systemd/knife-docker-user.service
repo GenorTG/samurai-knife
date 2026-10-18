@@ -1,0 +1,33 @@
+# Rebuild DOCKER-USER on docker network changes; the helper also syncs the nft sidecar callback set.
+# Install as /etc/systemd/system/knife-docker-user.service.
+[Unit]
+Description=Smart Knife Docker forwarding and sidecar egress policy
+After=docker.service nftables.service
+Requires=docker.service
+Wants=nftables.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/knife-docker-user watch
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+ReadOnlyPaths=/etc/samurai-knife/docker-user.conf
+RuntimeDirectory=knife-docker-user
+RuntimeDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

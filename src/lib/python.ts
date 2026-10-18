@@ -3,9 +3,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { authMode } from "./accounts/mode";
 import { admitPythonJob } from "./python-admission";
-import { isJobCancelled, isJobTimeout, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
 import { recordSecurityEvent } from "./security/events";
+import { bwrapArgs, bwrapBin, probeSandbox, pythonBinFrom, sandboxChildEnv, sandboxLayout, sandboxPolicy, sandboxRequired, type JobBinds, type SandboxLayout } from "./python-sandbox.mjs";
+import { isJobCancelled, isJobTimeout, isQueueFull, pythonQueue, type JobHandle, type PyLane } from "./work-queue";
 
 /**
  * The Python lane. Server tools run as a one-shot script inside
@@ -13,6 +15,10 @@ import { recordSecurityEvent } from "./security/events";
  *
  * Contract: the script gets a JSON request on stdin and prints exactly one
  * JSON object on stdout. Anything on stderr is treated as a log line.
+ *
+ * Isolation: every run goes through the bubblewrap parser sandbox when it is on (src/lib/python-sandbox.mjs,
+ * KNIFE_PY_SANDBOX): no network, read-only system files and venv, and write access to the job's own scratch dirs only
+ * (`binds`). Callers declare every job dir the script touches; nothing else of the host is visible.
  */
 
 /**
@@ -23,14 +29,7 @@ import { recordSecurityEvent } from "./security/events";
  * from `os.homedir()`/env keeps it a plain runtime string, and the venv lives
  * beside the repo (`../samurai-knife-py`) rather than inside it.
  */
-function pythonBin(): string {
-  const fromEnv = process.env.KNIFE_PYTHON?.trim();
-  if (fromEnv) return fromEnv;
-  const pyHome = process.env.KNIFE_PY_HOME?.trim() || path.join(os.homedir(), "work", "samurai-knife-py");
-  return path.join(pyHome, "venv", "bin", "python");
-}
-
-export const PY_BIN = pythonBin();
+export const PY_BIN = pythonBinFrom(process.env);
 export const PY_SCRIPTS_DIR = path.join(process.cwd(), "server", "py", "scripts");
 
 /**
@@ -51,6 +50,11 @@ export type PythonRunOptions = {
   label?: string;
   /** The account the work is for: its share of the lane is capped and slots are handed out fairly (work-queue.ts). */
   owner?: string;
+  /**
+   * Job dirs (under the OS temp dir) the script may read (uploads) or write (out_dir), besides its own request dir. In
+   * the sandbox nothing else is visible, so a path in the request outside these dirs does not exist for the script.
+   */
+  binds?: { readOnly?: string[]; writable?: string[] };
 };
 
 export interface PythonRunResult<T> {
@@ -103,7 +107,8 @@ export function childEnv(scratch: string, limits: Record<string, string>): NodeJ
   return {
     ...env,
     HOME: scratch,
-    TMPDIR: os.tmpdir(),
+    // The job's own temp dir (ocrmypdf/tesseract intermediates), removed with the scratch dir; never a shared /tmp.
+    TMPDIR: path.join(scratch, "tmp"),
     LANG: "C.UTF-8",
     LC_ALL: "C.UTF-8",
     PYTHONDONTWRITEBYTECODE: "1",
@@ -124,11 +129,61 @@ interface ChildOutcome {
  * Run the interpreter in its own process group (`detached`) so an abort/timeout can take down the whole tree, not
  * just the direct child. Resolves only once the child has exited: the caller may delete the scratch dir afterwards.
  */
-function runChild(args: string[], env: NodeJS.ProcessEnv, maxBytes: number, signal: AbortSignal): Promise<ChildOutcome> {
+export type SandboxState = { use: "off" } | { use: "bwrap"; bwrap: string; layout: SandboxLayout } | { use: "broken"; error: string };
+
+let sandboxState: Promise<SandboxState> | null = null;
+
+/**
+ * The sandbox this process uses, decided once (src/lib/python-sandbox.mjs `sandboxPolicy`): a required sandbox that does
+ * not work makes every job fail closed instead of running unsandboxed.
+ */
+export function pythonSandbox(): Promise<SandboxState> {
+  sandboxState ??= (async (): Promise<SandboxState> => {
+    const env = process.env;
+    const layout = sandboxLayout(env, process.cwd());
+    const mode = authMode(env);
+    const probe = sandboxRequired(env, mode) ? await probeSandbox(layout, env) : { ok: false, detail: "not required" };
+    const policy = sandboxPolicy(env, mode, probe);
+    for (const warning of policy.warnings) console.warn(`[python] ${warning}`);
+    if (policy.errors.length) {
+      console.error(`[python] ${policy.errors[0]}`);
+      return { use: "broken", error: "The document sandbox is unavailable on this server, so the file was not processed." };
+    }
+    return policy.use === "bwrap" ? { use: "bwrap", bwrap: bwrapBin(env), layout } : { use: "off" };
+  })();
+  return sandboxState;
+}
+
+/** Tests only: decide again on the next job (after changing the environment). */
+export function resetPythonSandbox(): void {
+  sandboxState = null;
+}
+
+/** Job dirs must be the job's own scratch dirs: absolute, under the OS temp dir, never the temp dir itself. */
+function jobDir(dir: string): string {
+  const resolved = path.resolve(dir);
+  const tmp = path.resolve(os.tmpdir());
+  if (path.dirname(resolved) !== tmp) throw new Error(`job dir ${dir} is not a scratch dir directly under ${tmp}`);
+  return resolved;
+}
+
+function runChild(args: string[], env: NodeJS.ProcessEnv, maxBytes: number, signal: AbortSignal, sandbox: SandboxState, binds: JobBinds): Promise<ChildOutcome> {
   return new Promise((resolve) => {
-    const child = spawn(PY_BIN, [path.join(PY_SCRIPTS_DIR, LIMITED_RUNNER), ...args], {
+    const argv = [PY_BIN, path.join(PY_SCRIPTS_DIR, LIMITED_RUNNER), ...args];
+    let command = PY_BIN;
+    let commandArgs = argv.slice(1);
+    let spawnEnv = env;
+    if (sandbox.use === "bwrap") {
+      // bwrap is the process-group leader: killing the group kills bwrap, --die-with-parent then SIGKILLs the sandbox's
+      // init and the kernel tears down its whole pid namespace (the script and everything it started).
+      const inner = sandboxChildEnv(env, sandbox.layout);
+      command = sandbox.bwrap;
+      commandArgs = [...bwrapArgs(sandbox.layout, binds, inner), "--", ...argv];
+      spawnEnv = { NODE_ENV: env.NODE_ENV, PATH: "/usr/bin:/bin" };
+    }
+    const child = spawn(command, commandArgs, {
       cwd: PY_SCRIPTS_DIR,
-      env,
+      env: spawnEnv,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
@@ -179,19 +234,30 @@ function runChild(args: string[], env: NodeJS.ProcessEnv, maxBytes: number, sign
   });
 }
 
-async function execute<T>(scriptName: string, request: unknown, maxBytes: number, limits: Record<string, string>, signal: AbortSignal): Promise<PythonRunResult<T>> {
+async function execute<T>(
+  scriptName: string,
+  request: unknown,
+  maxBytes: number,
+  limits: Record<string, string>,
+  signal: AbortSignal,
+  binds: PythonRunOptions["binds"] = {},
+): Promise<PythonRunResult<T>> {
   const script = path.join(PY_SCRIPTS_DIR, scriptName);
   const started = Date.now();
   const logs: string[] = [];
   let dir: string | null = null;
   try {
+    const sandbox = await pythonSandbox();
+    if (sandbox.use === "broken") return { ok: false, error: sandbox.error, logs, ms: Date.now() - started };
     dir = await fs.mkdtemp(path.join(os.tmpdir(), "knife-"));
+    await fs.mkdir(path.join(dir, "tmp"), { mode: 0o700 });
     const inPath = path.join(dir, "request.json");
     const outPath = path.join(dir, "response.json");
     await fs.writeFile(inPath, JSON.stringify(request), "utf8");
     if (signal.aborted) throw signal.reason;
 
-    const run = await runChild([script, inPath, outPath], childEnv(dir, limits), maxBytes, signal);
+    const jobBinds: JobBinds = { scratch: dir, readOnly: (binds.readOnly ?? []).map(jobDir), writable: (binds.writable ?? []).map(jobDir) };
+    const run = await runChild([script, inPath, outPath], childEnv(dir, limits), maxBytes, signal, sandbox, jobBinds);
     if (signal.aborted) throw signal.reason;
     if (run.stderr.trim()) logs.push(...run.stderr.trim().split("\n"));
     if (run.spawnError) throw run.spawnError;
@@ -223,11 +289,11 @@ async function execute<T>(scriptName: string, request: unknown, maxBytes: number
 export function startPythonScript<T = unknown>(
   scriptName: string,
   request: unknown,
-  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner }: PythonRunOptions = {},
+  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner, binds }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   const limits = laneLimits(lane, timeoutMs);
   const handle = admitPythonJob(lane, owner, (admission) =>
-    pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal), {
+    pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal, binds), {
       signal,
       timeoutMs,
       label: label ?? scriptName,

@@ -108,7 +108,9 @@ export async function POST(request: Request) {
     staged = await stagePdfInputs(workDir, input.uploads);
     reservation.shrinkTo(staged.bytes);
     const script = pdfScriptRequest(input, staged);
-    const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}`, owner };
+    // The sandbox shows the script its uploads (read-only) and its output dir, nothing else (src/lib/python.ts `binds`).
+    const binds = { readOnly: [staged.workDir], writable: [staged.outDir] };
+    const options = { timeoutMs: PDF_TIMEOUT_MS, lane: "heavy" as const, label: `pdf:${input.action}`, owner, binds };
 
     if (asyncMode) {
       const stagedDirs = staged;

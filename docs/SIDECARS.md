@@ -24,6 +24,18 @@ The compose project is `samurai-knife-<id>` (env `KNIFE_SIDECAR_PREFIX` override
 server never takes over the live project). Every container, network and volume carries that project label; the app never
 touches anything else on the host.
 
+## Backend and host privilege boundary
+
+`KNIFE_SIDECAR_BACKEND=docker` is the default for existing installs and development. It invokes the docker/compose CLI
+as the app user, which therefore has Docker's host-root-equivalent authority; do not use this backend for an internet-
+facing app unless that trade-off is deliberate. Public deployments should install the fixed-verb helper shipped under
+`deploy/sidecar-helper/` and the socket/service units under `deploy/systemd/`, then set
+`KNIFE_SIDECAR_BACKEND=helper` and `KNIFE_SIDECAR_HELPER_SOCKET=/run/knife-sidecar.sock`. The root helper accepts only
+known sidecar ids and lifecycle verbs, reads root-owned compose bundles, and rejects any bundle that does not require
+`cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, the definition's exact `cap_add`, and its bounded
+`pids_limit`. Do not give the app account membership in the docker group. Installation and privilege separation are in
+`docs/DEPLOY.md`.
+
 ## Lifecycle
 
 - **Install** (`POST /api/services/<id> {action:"install"}` → 202 `{op}`): runtime check → pick a free port near KNIFE_PORT
@@ -203,8 +215,12 @@ fetched (with the app's IP listed, that fetch went through: the list is per IP, 
 the compose hash, so the next idle `ensure` recreates the container.
 
 What compose cannot do: filter the container's egress by destination. The request filter covers the user-URL paths the
-Document Server knows about; for defence in depth on a public host, put the sidecar's network behind `DOCKER-USER`
-iptables rules (allow DNS and the internet, drop the host, the LAN, Tailscale and other docker networks) (docs/DEPLOY.md).
+Document Server knows about; for defence in depth on a public host, use the per-definition `DOCKER-USER` policy in
+`deploy/sbin/knife-docker-user`: office gets DNS and public internet, learn-db has no new egress, and both are blocked
+from host, LAN, Tailscale, other Docker networks, link-local and metadata ranges. `KNIFE_SIDECAR_ALLOW_IPS` entries
+matching the app host's interface addresses, `KNIFE_HOST`, or loopback are ignored and reported in logs and Sidecars
+status. This is deliberate: the list is IP-wide, not port-specific, and would let user-controlled editor URLs probe
+every port on that host. Signed document/callback URLs do not need this exception.
 
 ## Course database (`learn-db`, slug `db-course`)
 

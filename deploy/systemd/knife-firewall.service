@@ -1,0 +1,23 @@
+# Load only the dedicated inet knife_host table saved by `knife-firewall confirm`.
+# Install as /etc/systemd/system/knife-firewall.service.
+[Unit]
+Description=Smart Knife host input firewall
+After=local-fs.target nftables.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/knife-firewall load
+RemainAfterExit=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+ReadOnlyPaths=/etc/samurai-knife/firewall.conf /etc/nftables.d/knife-host.nft
+
+[Install]
+WantedBy=multi-user.target

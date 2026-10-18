@@ -20,7 +20,7 @@ const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError, o
 const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
 const state = await import("../src/lib/services/state.ts");
 const urls = await import("../src/lib/services/urls.ts");
-const { parsePs, bindHostFor, filterAllowIps, composeHashOf } = await import("../src/lib/services/manager.ts");
+const { parsePs, bindHostFor, filterAllowIps, allowIpsCheck, hostAddresses, composeHashOf } = await import("../src/lib/services/manager.ts");
 const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 const { signJwt, verifyJwt, JwtError, bearerToken } = await import("../src/lib/jwt-hs256.ts");
 const { buildDocument, OFFICE_FORMATS } = await import("../src/lib/office/templates.ts");
@@ -44,15 +44,29 @@ test("office hardening: request filter on with exactly the app's IP allowed, sec
   assert.ok(office.secrets.some((secret) => secret.name === "SECURE_LINK_SECRET"));
   const base = { id: "office", image: office.image, bindHost: "100.64.0.7", hostPort: 3211, idleStopMinutes: 30, installedAt: "x", updatedAt: "x" };
   assert.deepEqual(filterAllowIps(), [], "the app's own address is not opened to user URLs");
-  process.env.KNIFE_SIDECAR_ALLOW_IPS = "172.17.0.1, junk";
+  process.env.KNIFE_SIDECAR_ALLOW_IPS = "192.0.2.10, junk";
   try {
-    assert.deepEqual(filterAllowIps(), ["172.17.0.1"]);
+    assert.deepEqual(filterAllowIps(), ["192.0.2.10"]);
     assert.notEqual(composeHashOf(office, base), (delete process.env.KNIFE_SIDECAR_ALLOW_IPS, composeHashOf(office, base)), "a changed allow list recreates the container");
   } finally {
     delete process.env.KNIFE_SIDECAR_ALLOW_IPS;
   }
   const filter = JSON.parse(parse(renderCompose(office, { bindHost: "100.64.0.7", hostPort: 3211, extraEnv: onlyofficeFilterEnv(["100.64.0.7", "100.64.0.7"]) })).services.documentserver.environment.NODE_CONFIG);
   assert.deepEqual(filter.services.CoAuthoring["request-filtering-agent"], { allowPrivateIPAddress: false, allowMetaIPAddress: false, allowIPAddressList: ["100.64.0.7"] });
+});
+
+test("allow list (audit injection #6): this machine's own addresses are refused, other IPs pass", () => {
+  const own = new Set(["100.64.0.7", "172.17.0.1", "192.168.1.20", "fd7a:115c:a1e0::7"]);
+  const check = (list) => allowIpsCheck({ KNIFE_SIDECAR_ALLOW_IPS: list }, own);
+  assert.deepEqual(check("100.64.0.7"), { allowed: [], refused: ["100.64.0.7"] }, "the app host's Tailscale IP");
+  assert.deepEqual(check("172.17.0.1,192.168.1.20"), { allowed: [], refused: ["172.17.0.1", "192.168.1.20"] }, "docker gateway and LAN address");
+  assert.deepEqual(check("::ffff:100.64.0.7 FD7A:115C:A1E0::7"), { allowed: [], refused: ["::ffff:100.64.0.7", "FD7A:115C:A1E0::7"] }, "mapped and upper-case forms");
+  assert.deepEqual(check("127.0.0.1, ::1, 127.1.2.3, 0.0.0.0"), { allowed: [], refused: ["127.0.0.1", "::1", "127.1.2.3", "0.0.0.0"] }, "loopback reaches the container's own internal services");
+  assert.deepEqual(check("192.0.2.10, 10.9.8.7, junk"), { allowed: ["192.0.2.10", "10.9.8.7"], refused: [] });
+  // The real host list: every interface address (here: loopback at least) and KNIFE_HOST literals.
+  const real = hostAddresses({ KNIFE_HOST: "100.64.0.99" });
+  assert.ok(real.has("127.0.0.1") && real.has("100.64.0.99"));
+  assert.deepEqual(allowIpsCheck({ KNIFE_SIDECAR_ALLOW_IPS: "100.64.0.99", KNIFE_HOST: "100.64.0.99" }).refused, ["100.64.0.99"]);
 });
 
 test("container hardening (host audit M2): every sidecar drops ALL capabilities, adds only its verified set, no-new-privileges, pids cap", () => {
