@@ -331,9 +331,16 @@ def main() -> int:
             check("after reload: counter still 1 done", page.get_by_text(f"1 of {len(lessons)} lessons done").is_visible())
             check("after reload: lesson 1 is current and its last query is back", editor(page).input_value() == "SELECT * FROM categories;", editor(page).input_value())
             files = list((Path(server.data_dir) / "learn").glob("*.json"))
-            saved = json.loads(files[0].read_text()) if files else {}
-            entry = saved.get("courses", {}).get("sql", {}).get("lessons", {}).get("select-all", {})
-            check("progress file in the data dir (600) records completion, attempts, hints", bool(files) and oct(files[0].stat().st_mode & 0o777) == "0o600" and entry.get("completedAt") and entry.get("hintsShown") == 1 and entry.get("failedChecks") == 1, json.dumps(entry)[:200])
+            raw = files[0].read_bytes() if files else b""
+            try:
+                saved = json.loads(raw)
+            except ValueError:
+                saved = None  # sealed at rest (docs/ACCOUNTS.md "At rest"): the content is checked through knife_learn_lesson below
+            if saved is None:
+                check("progress file in the data dir (600) is sealed at rest", bool(files) and oct(files[0].stat().st_mode & 0o777) == "0o600" and b"select-all" not in raw)
+            else:
+                entry = saved.get("courses", {}).get("sql", {}).get("lessons", {}).get("select-all", {})
+                check("progress file in the data dir (600) records completion, attempts, hints", bool(files) and oct(files[0].stat().st_mode & 0o777) == "0o600" and entry.get("completedAt") and entry.get("hintsShown") == 1 and entry.get("failedChecks") == 1, json.dumps(entry)[:200])
 
             # error position in the page
             page.get_by_role("button", name="Pick columns and rename them").click()
