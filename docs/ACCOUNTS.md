@@ -276,6 +276,18 @@ Templates (`templates.ts`): English, plain text + minimal HTML, every value esca
 
 Refusals are 429 with `retryAfterSeconds` and `Retry-After`. Unknown addresses count the same as known ones.
 
+## Security events (`src/lib/security/events.ts`)
+
+One API for every module that refuses or notices abuse: `recordSecurityEvent({ kind, ipPrefix?, account?, path?, status?,
+count?, detail? })` or positionally `recordSecurityEvent(kind, detail?, extra?)`. The kinds, fields and aliases are
+documented at the top of `events.ts`; `detail` is a short string or a flat record of at most 8 short scalars. Never put a
+secret, token, password, full email or full client address in an event (`ipPrefix` is reduced to the /64 or /32 anyway).
+Recording never blocks or throws: identical events are coalesced into one line with a `count`, buffered (2,000 lines,
+then dropped and the drop itself logged) and appended asynchronously once a second to
+`$KNIFE_DATA_DIR/security/events-<UTC day>.jsonl` (dir 0700, files 0600, 30 days kept; the single `events.jsonl` of
+older builds is renamed `events-<day>.legacy.jsonl` and ages out the same way). The abuse-guard preload writes through
+the same buffer (`events-core.mjs`).
+
 ## Proof-of-work and password-hash budget
 
 Public register, forgot, resend, reset, and login after failures require a browser-bound proof before rate-limit work,

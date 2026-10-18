@@ -35,6 +35,7 @@ const device = await import("../src/lib/accounts/known-device.ts");
 const ipPrefix = await import("../src/lib/accounts/ip-prefix.ts");
 const pending = await import("../src/lib/accounts/pending.ts");
 const gaccounts = await import("../src/lib/github-app/accounts.ts");
+const securityEvents = await import("../src/lib/security/events.ts");
 const accountsFile = join(dataDir, "accounts.json");
 const outbox = join(dataDir, "mail-outbox");
 
@@ -577,10 +578,11 @@ test("lockout DoS (#9): strangers hammering an identifier cannot lock out its kn
   assert.equal(codes.slice(0, 10).every((r) => r === "invalid_credentials"), true);
   assert.equal(codes[10], "rate_limited");
   // The lockout was recorded and the owner told once.
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  const events = readFileSync(join(dataDir, "security", "events.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  await securityEvents.flushSecurityEvents();
+  const eventsFile = join(dataDir, "security", `events-${new Date().toISOString().slice(0, 10)}.jsonl`);
+  const events = readFileSync(eventsFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   assert.ok(events.some((e) => e.kind === "login_lockout" && e.account === "target"));
-  assert.equal(statSync(join(dataDir, "security", "events.jsonl")).mode & 0o777, 0o600);
+  assert.equal(statSync(eventsFile).mode & 0o777, 0o600);
   const notices = (await mails("target@example.com", 1)).filter((m) => m.includes("Many failed logins"));
   assert.equal(notices.length, 1, "one notice per day");
 });

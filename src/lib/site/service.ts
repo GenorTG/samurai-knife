@@ -86,7 +86,7 @@ function dropAppConnection(accountId: string, why: string): never {
     s.work = null;
     s.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: why };
   });
-  recordSecurityEvent({ type: "github-app-access-lost", accountId, detail: { reason: why.slice(0, 120) } });
+  recordSecurityEvent({ kind: "github_app_access_lost", account: accountId, detail: { reason: why.slice(0, 120) } });
   throw new SiteError(`the website connection was removed: ${why}. Connect again (Connect tab) if you still have access.`, 403);
 }
 
@@ -428,7 +428,7 @@ export async function linkInstallations(accountId: string, login: string, userTo
       dropped = true;
     }
   });
-  if (dropped) recordSecurityEvent({ type: "github-app-access-lost", accountId, detail: { reason: "relink" } });
+  if (dropped) recordSecurityEvent({ kind: "github_app_access_lost", account: accountId, detail: { reason: "relink" } });
 }
 
 /** GitHub unlinked: the installation list goes, and so does a connection that used the app (it was this user's right). */
