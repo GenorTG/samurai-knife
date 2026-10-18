@@ -286,6 +286,30 @@ nodemailer. `KNIFE_MAIL_TRANSPORT=smtp` (default in public mode): `KNIFE_SMTP_HO
 header. Sending never blocks a response; failures go to the server log and `$KNIFE_DATA_DIR/mail-errors.log`.
 Templates (`templates.ts`): English, plain text + minimal HTML, every value escaped.
 
+Public sign-up, resend and password-reset mail pass through a bounded queue (`src/lib/mail/queue.ts`). Queue classes
+reserve capacity for account-security notices; verification mail is lower priority and collision notices are lowest.
+Defaults: 30 messages/minute paced, 300/hour and 1,500/day globally, 20/hour and 60/day per ordinary domain, 300/day
+for major webmail providers, 5/hour for a newly seen or DNS-risky domain, 3/hour and 6/day per canonical mailbox,
+and one collision notice/day per mailbox. Queue depth defaults to 500, messages expire after 30 minutes, SMTP uses a
+pool of 2 connections (maximum 5), and temporary failures are retried twice. `KNIFE_MAIL_*_LIMITS` accept forms such as
+`30/m,300/h,1500/d`; malformed values retain the safe defaults. Budgets and suppression state survive restarts in
+`$KNIFE_DATA_DIR/mail/`; mailbox/domain identifiers are HMAC'd with the mail-purpose key derived from `auth.key`, never
+stored in plaintext. Bounces can suppress a mailbox for 30 days (bounded at 100,000 entries).
+
+In public mode, email policy defaults to enforced (`KNIFE_EMAIL_POLICY=enforce`; private mode defaults off). It refuses
+special-use/reserved addresses, the app's own domains, static or operator-denied addresses, and disposable domains
+(including subdomains); owner allow entries override disposable/deny domain rules except an exact denied mailbox.
+MX checks reject nonexistent domains, null MX, and mail hosts resolving only to private addresses. DNS failures are
+accepted only under stricter mail budgets. `KNIFE_EMAIL_DNS=off` skips MX checks for controlled test/air-gapped setups;
+`KNIFE_EMAIL_OWN_DOMAINS` adds comma-separated domains. The verified primary address supplied by GitHub is checked
+against static/list rules; GitHub's completed email verification substitutes for a second DNS check. The outbound mail
+relay should additionally enforce provider-side recipient/rate limits (see docs/DEPLOY.md).
+
+The email canonical key is used only for abuse budgets and suppression, not as the account's displayed/stored address.
+It folds case, strips `+tag`, applies Gmail dot/googlemail equivalence, so variants share limits. Pending registrations
+are capped by client prefix and total; major webmail domains are exempt from the per-domain cap to prevent a small number
+of fake Gmail sign-ups blocking all Gmail registrations.
+
 ## Rate limits (`src/lib/accounts/rate-limit.ts`, per server process)
 
 "Address" below is the client prefix (IPv4 /32, IPv6 /64); every per-address bucket has an IPv6 /48 companion at 5x the

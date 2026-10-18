@@ -1,6 +1,7 @@
 import { isPublicMode } from "@/lib/accounts/mode";
 import { consumeLimits, LIMITS } from "@/lib/accounts/rate-limit";
 import { RESERVED } from "@/lib/accounts/flows";
+import { checkEmailPolicySync, EMAIL_POLICY_MESSAGE } from "@/lib/accounts/email-policy";
 import { ACCOUNT_ID_PATTERN, DEFAULT_USER_QUOTA_BYTES, getAccount, mutateStore, newAccountRecord, readStore, type Account } from "@/lib/accounts/store";
 import type { GithubIdentity } from "./oauth";
 
@@ -54,9 +55,13 @@ export function usernameFor(login: string, taken: (id: string) => boolean): stri
 export type GithubSignIn =
   | { kind: "login"; account: Account }
   | { kind: "registered"; account: Account }
-  | { kind: "refused"; code: "disabled" | "email_in_use" | "no_email" | "registration_closed" | "rate_limited"; message: string };
+  | { kind: "refused"; code: "disabled" | "email_in_use" | "no_email" | "registration_closed" | "rate_limited" | "email_refused"; message: string };
 
-/** Sign-in or registration with a GitHub identity (public mode). */
+/**
+ * Sign-in or registration with a GitHub identity (public mode). A registration's verified address meets the email policy
+ * (static rules, owner lists, disposable domains; email-policy.ts `checkEmailPolicySync`). The DNS part is skipped: GitHub
+ * has just delivered a verification mail to that mailbox, and the mail queue re-checks the domain before every send.
+ */
 export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister: boolean): GithubSignIn {
   const linked = findByGithub(who.id);
   if (linked) {
@@ -79,6 +84,7 @@ export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister:
   }
   if (!allowRegister || !isPublicMode()) return { kind: "refused", code: "registration_closed", message: "No account is linked to this GitHub user. Sign in with your password and link GitHub in Account settings." };
   if (!who.verifiedEmail) return { kind: "refused", code: "no_email", message: "GitHub has no verified primary email for this user: verify one on GitHub (Settings → Emails), then try again." };
+  if (!checkEmailPolicySync(who.verifiedEmail).ok) return { kind: "refused", code: "email_refused", message: EMAIL_POLICY_MESSAGE };
   const blocked = consumeLimits([LIMITS.registerIp(ip), LIMITS.registerEmail(who.verifiedEmail)]);
   if (!blocked.ok) return { kind: "refused", code: "rate_limited", message: `Too many sign-ups from here; try again in ${blocked.retryAfterSeconds} s.` };
   const result = mutateStore((store): GithubSignIn => {

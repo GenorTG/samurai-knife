@@ -14,6 +14,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "knife-accounts-hardening-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_MAIL_TRANSPORT = "outbox";
 process.env.KNIFE_AUTH_MODE = "public";
+process.env.KNIFE_EMAIL_POLICY = "off"; // the addresses use reserved .example names; email_policy.test.mjs covers the policy
 process.env.KNIFE_POW_BITS = "6";
 process.env.KNIFE_POW_MAX_BITS = "12";
 delete process.env.KNIFE_TRUSTED_PROXIES;
@@ -367,14 +368,20 @@ test("pending accounts: per client prefix cap, per domain cap, total cap, timed 
   const stored = store.getAccount("squat0");
   assert.equal(stored.pendingIpp, ipPrefix.prefixTag(ip));
   assert.ok(!readFileSync(accountsFile, "utf8").includes(ip), "no client address in accounts.json");
+  // Domain and total caps press on prefixes first: at the soft cap a prefix without a pending sign-up still gets in, up to
+  // the hard cap (1.25x, rounded up); a prefix that already holds one is refused at the soft cap.
   process.env.KNIFE_PENDING_PER_DOMAIN = "5";
-  const otherIp = "198.51.100.78";
-  const domainFull = await flows.register({ username: "squat-d", email: "another@squat.example", password: "squat password 1" }, otherIp, solved("register", otherIp));
-  assert.equal(domainFull.error, "pending_full", "the domain already has 5 pending");
+  const fresh = [];
+  for (const [i, otherIp] of ["198.51.100.78", "198.51.100.80", "198.51.100.81"].entries()) {
+    fresh.push((await flows.register({ username: `squat-d${i}`, email: `another${i}@squat.example`, password: "squat password 1" }, otherIp, solved("register", otherIp))).error ?? "ok");
+  }
+  assert.deepEqual(fresh, ["ok", "ok", "pending_full"], "5 pending: fresh prefixes get in until 7, then the domain is full");
+  const sameAgain = await flows.register({ username: "squat-d9", email: "again@squat.example", password: "squat password 1" }, "198.51.100.78", solved("register", "198.51.100.78"));
+  assert.equal(sameAgain.error, "pending_full", "a prefix that already waits is refused at the soft cap");
   delete process.env.KNIFE_PENDING_PER_DOMAIN;
   process.env.KNIFE_PENDING_MAX = "5";
   const totalFull = await flows.register({ username: "squat-t", email: "t@elsewhere.example", password: "squat password 1" }, "198.51.100.79", solved("register", "198.51.100.79"));
-  assert.equal(totalFull.error, "pending_full");
+  assert.equal(totalFull.error, "pending_full", "7 pending is past the hard total cap (ceil(5 x 1.25))");
   delete process.env.KNIFE_PENDING_MAX;
   // Expire them: the sweep frees names and addresses without a registration.
   store.mutateStore((s) => {
@@ -385,11 +392,52 @@ test("pending accounts: per client prefix cap, per domain cap, total cap, timed 
       }
     }
   });
-  assert.equal(pending.sweepPending(), 5);
+  assert.equal(pending.sweepPending(), 7);
   assert.equal(store.getAccount("squat0"), undefined);
   assert.equal(pending.sweepPending(), 0, "nothing left: no write");
   pending.ensurePendingSweeper();
   pending.ensurePendingSweeper();
+});
+
+test("pending caps cannot be used to block a big webmail domain: 60 fake gmail sign-ups, a real one still gets in (fix-mail #6)", async () => {
+  process.env.KNIFE_PENDING_PER_DOMAIN = "50";
+  const fakes = Array.from({ length: 60 }, (_, i) => store.newAccountRecord({
+    id: `gfake${i}`, displayName: `gfake${i}`, passwordHash: "x", email: `fake${i}@gmail.com`, role: "user", status: "pending",
+    storageQuotaBytes: 1, verifyToken: { hash: createHash("sha256").update(`g${i}`).digest("hex"), expiresAt: new Date(Date.now() + 3_600_000).toISOString() }, pendingIpp: `ipp${i % 12}`,
+  }));
+  store.mutateStore((s) => { s.accounts.push(...fakes); });
+  const ip = "198.51.100.120";
+  const real = await flows.register({ username: "realgmail", email: "Real.Person@googlemail.com", password: "real password 12" }, ip, solved("register", ip));
+  assert.equal(real.ok, true, "gmail.com (and googlemail.com) has no per-domain pending cap");
+  // An ordinary domain still has its cap (canonical domain, soft/hard by prefix).
+  store.mutateStore((s) => {
+    s.accounts.push(...Array.from({ length: 63 }, (_, i) => store.newAccountRecord({
+      id: `cfake${i}`, displayName: `cfake${i}`, passwordHash: "x", email: `f${i}@corp.example`, role: "user", status: "pending",
+      storageQuotaBytes: 1, verifyToken: { hash: createHash("sha256").update(`c${i}`).digest("hex"), expiresAt: new Date(Date.now() + 3_600_000).toISOString() }, pendingIpp: `cipp${i % 13}`,
+    })));
+  });
+  assert.equal(pending.pendingRoomNow("someone@corp.example", "fresh-prefix"), "pending_full", "63 >= ceil(50 x 1.25): full even for a fresh prefix");
+  assert.equal(pending.pendingRoomNow("someone@gmail.com", "fresh-prefix"), "ok");
+  // The total cap presses on prefixes that already wait before refusing everyone.
+  process.env.KNIFE_PENDING_MAX = String(store.readStore().accounts.filter((a) => a.status === "pending").length);
+  assert.equal(pending.pendingRoomNow("x@gmail.com", "ipp1"), "pending_full", "at the soft total, a waiting prefix is refused");
+  assert.equal(pending.pendingRoomNow("x@gmail.com", "brand-new"), "ok", "a fresh prefix still gets in below the hard total");
+  delete process.env.KNIFE_PENDING_MAX;
+  delete process.env.KNIFE_PENDING_PER_DOMAIN;
+  store.mutateStore((s) => { s.accounts = s.accounts.filter((a) => !/^(gfake|cfake|realgmail)/.test(a.id)); });
+});
+
+test("per-email flow limits key on the canonical mailbox: +tag, dot and googlemail variants share one bucket (fix-mail #5)", async () => {
+  const variants = ["Victim@gmail.com", "victim+1@gmail.com", "v.i.c.t.i.m@googlemail.com", "VIC.TIM+zz@gmail.com"];
+  const answers = [];
+  for (const [i, email] of variants.entries()) {
+    const ip = `198.51.100.${130 + i}`;
+    answers.push(flows.forgotPassword(email, ip, solved("forgot", ip)).status ?? 200);
+  }
+  assert.deepEqual(answers, [200, 200, 200, 429], "3 per 15 min for the mailbox, whatever the spelling");
+  assert.equal(limits.LIMITS.registerEmail("a.b+x@googlemail.com").key, limits.LIMITS.registerEmail("ab@gmail.com").key);
+  assert.equal(limits.LIMITS.resendEmail("Ann+x@Example.org").key, limits.LIMITS.resendEmail("ann@example.org").key);
+  assert.notEqual(limits.LIMITS.forgotEmail("a.b@example.org").key, limits.LIMITS.forgotEmail("ab@example.org").key, "dots only fold for gmail");
 });
 
 /* ----------------------------------------------------------------------- M3 pre-registration hijack */

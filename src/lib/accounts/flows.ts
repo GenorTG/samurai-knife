@@ -19,6 +19,7 @@ import { checkPow, type PowForm, type PowSolution } from "@/lib/accounts/pow";
 import { dropExpiredPending, ensurePendingSweeper, pendingRoom, pendingRoomNow, VERIFY_TTL_MS } from "@/lib/accounts/pending";
 import { clientPrefix, prefixTag } from "@/lib/accounts/ip-prefix";
 import { recordSecurityEvent } from "@/lib/security/events";
+import { checkEmailPolicy, checkEmailPolicySync, EMAIL_POLICY_MESSAGE } from "@/lib/accounts/email-policy";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
 import {
   accountDeletedMail,
@@ -40,7 +41,10 @@ import {
  *
  * Cost order for every unauthenticated flow (audit abuse #4, #6): input syntax, proof-of-work (`pow.ts`), rate limits,
  * read-only lookups on the cached store, and only then password hashing (inside the global hash budget, busy -> 503),
- * store writes and mail. A made-up verify/reset token never writes the store or hashes a password.
+ * store writes and mail. A made-up verify/reset token never writes the store or hashes a password. Registration and
+ * email change also meet the email address policy (`email-policy.ts`, audit abuse #5, design A): static/list rules after
+ * syntax and before proof-of-work; the DNS part (an outbound lookup, cached and bounded) only after proof-of-work. Both
+ * precede limits/hash/mail. Per-email limits key on the canonical mailbox (`rate-limit.ts` `emailLimitKey`).
  */
 
 const RESET_TTL_MS = 60 * 60_000;
@@ -121,10 +125,12 @@ export async function register(input: { username: string; email: string; passwor
   if (!email) return fail(400, "That does not look like an email address.");
   const problem = passwordProblem(input.password);
   if (problem) return fail(400, problem);
-  // Email policy hook (register): an async address policy check (`checkEmailPolicy`) belongs here, after the syntax
-  // check and before proof-of-work, limits, hashing and mail.
+  // Static address rules and cached lists follow syntax validation and precede proof-of-work. DNS is outbound work an
+  // outsider could trigger with made-up domains, so it waits for paid proof-of-work; both precede limits, hash and mail.
+  if (!checkEmailPolicySync(email).ok) return fail(400, EMAIL_POLICY_MESSAGE);
   const unpaid = powGate("register", ip, pow);
   if (unpaid) return unpaid;
+  if (!(await checkEmailPolicy(email)).ok) return fail(400, EMAIL_POLICY_MESSAGE);
   const blocked = limited(consumeLimits([LIMITS.registerIp(ip), LIMITS.registerEmail(email)]));
   if (blocked) return blocked;
   ensurePendingSweeper();
@@ -363,8 +369,8 @@ export async function changeEmail(account: Account, password: string, emailInput
   const email = validateEmail(emailInput);
   if (!email) return fail(400, "That does not look like an email address.");
   if (email === account.email) return fail(400, "That is already your address.");
-  // Email policy hook (email change): an async address policy check (`checkEmailPolicy`) belongs here, before the
-  // password check and the mail.
+  // Email policy (signed-in caller, so the DNS part needs no proof-of-work): before the password check and the mail.
+  if (!(await checkEmailPolicy(email)).ok) return fail(400, EMAIL_POLICY_MESSAGE);
   const wrong = await confirmPassword(account, password);
   if (wrong) return wrong;
   const token = newToken(VERIFY_TTL_MS);

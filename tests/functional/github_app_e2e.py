@@ -79,8 +79,8 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
     assert data is not None
     api = Api(base)
     check("CLI: admin password + email", cli(data, "set-password", "genor", stdin=ADMIN_PW + "\n").returncode == 0 and cli(data, "set-email", "genor", "admin@knife.example.com").returncode == 0)
-    r = cli(data, "add", "bob", "--name", "Bob", "--password-prompt", "--email", "bob@example.test", "--role", "user", stdin="bob password 12\n")
-    check("CLI: bob has a password account with bob@example.test", r.returncode == 0, r.stderr)
+    r = cli(data, "add", "bob", "--name", "Bob", "--password-prompt", "--email", "bob@example.org", "--role", "user", stdin="bob password 12\n")
+    check("CLI: bob has a password account with bob@example.org", r.returncode == 0, r.stderr)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=not HEADED)
@@ -110,7 +110,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         expect(page_a.get_by_text("Linked to GitHub user")).to_be_visible(timeout=20_000)
         status, me, _ = api.call("GET", "/api/account", cookie="knife_session=" + {c["name"]: c for c in ctx_a.cookies()}["knife_session"]["value"])
         acc = me.get("account", me) if isinstance(me, dict) else {}
-        check("Continue with GitHub registers alice: verified email, user role, no password", status == 200 and acc.get("id") == "alice" and acc.get("email") == "alice@example.test" and acc.get("role") == "user" and acc.get("requiresPassword") is False and acc.get("github") == "alice", acc)
+        check("Continue with GitHub registers alice: verified email, user role, no password", status == 200 and acc.get("id") == "alice" and acc.get("email") == "alice@example.org" and acc.get("role") == "user" and acc.get("requiresPassword") is False and acc.get("github") == "alice", acc)
         check("the account page says she signs in with GitHub", page_a.get_by_text("You sign in with GitHub.").is_visible())
         page_a.get_by_role("button", name="Unlink GitHub").click()
         expect(page_a.get_by_text("Set a password first")).to_be_visible(timeout=10_000)
@@ -161,7 +161,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         page_b.goto("/login", wait_until="networkidle")
         page_b.get_by_role("link", name="Continue with GitHub").click()
         page_b.wait_for_url("**/login?github_error=email_in_use**", timeout=30_000)
-        expect(page_b.get_by_text("An account with bob@example.test already exists")).to_be_visible(timeout=10_000)
+        expect(page_b.get_by_text("An account with bob@example.org already exists")).to_be_visible(timeout=10_000)
         check("GitHub sign-in with bob's email does not take over his password account", "knife_session" not in {c["name"] for c in ctx_b.cookies()})
         page_b.goto("/api/github/callback?code=x&state=forged")
         page_b.wait_for_url("**/login?github_error=expired**", timeout=10_000)

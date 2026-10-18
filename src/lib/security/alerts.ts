@@ -7,7 +7,8 @@ import { describeSecurityEvent, onSecurityEvent, recordSecurityEvent, type Secur
 
 /**
  * Admin alert digest (public mode). Watches the security events (src/lib/security/events.ts) for the ones an administrator
- * must hear about at once: a 24 h block, a mail budget hit (any `mail_budget`), a registration surge, low disk, a tool
+ * must hear about at once: a 24 h block, a mail budget hit (any `mail_budget`), a suppressed mailbox (`mail_suppressed`,
+ * the mail server refused it for good), a registration surge, low disk, a tool
  * timeout, a full limiter table or quota, or the global failed-login budget. They are mailed as one digest to every active
  * administrator with a confirmed email, at most once per 15 minutes (KNIFE_ALERT_INTERVAL_MIN), through the mail module's
  * public `sendMail`. Threat model: an attacker can cause events at any rate, so alerts are batched, capped (50 lines a
@@ -51,6 +52,7 @@ export function isAlertWorthy(event: Pick<SecurityEvent, "kind" | "detail">): bo
     case "login_lockout":
       return detail.startsWith("login-global");
     case "mail_budget":
+    case "mail_suppressed":
     case "register_surge":
     case "disk_low":
     case "tool_timeout":
@@ -70,6 +72,7 @@ export function digestMail(events: SecurityEvent[], skipped = 0, adminUrl = ""):
   const intro = `Security events on Smart Knife that need an administrator (times in UTC):`;
   const outro = adminUrl ? `Blocks, events and the unblock button: ${adminUrl}` : "Blocks, events and the unblock button are on the Users page.";
   return {
+    kind: "admin_alert",
     subject: `Smart Knife security alert: ${events.length + skipped} event(s)`,
     text: `${intro}\n\n${lines.join("\n")}\n\n${outro}\n`,
     html: `<!doctype html><html><body style="font-family:system-ui,sans-serif;font-size:14px"><p>${escapeHtml(intro)}</p><pre>${escapeHtml(lines.join("\n"))}</pre><p>${escapeHtml(outro)}</p></body></html>`,

@@ -31,6 +31,8 @@ KNIFE_TRUSTED_PROXIES=127.0.0.1,::1 # the proxy's address as the app sees it (a 
 KNIFE_MAIL_TRANSPORT=smtp
 KNIFE_SMTP_HOST=...                 # see docs/ACCOUNTS.md "Mail"
 KNIFE_SMTP_FROM="Smart Knife <no-reply@knife.example.org>"
+KNIFE_EMAIL_POLICY=enforce          # default in public mode; see docs/ACCOUNTS.md "Mail"
+KNIFE_EMAIL_OWN_DOMAINS=knife.example.org,office.example.org
 KNIFE_SSRF_DENY_CIDRS=<this server's public IPv4>/32,<the LAN's delegated IPv6 prefix>/56
 KNIFE_STORAGE_KEY_FILE=/home/<user>/.config/samurai-knife/storage.key   # outside the data dir (docs/ACCOUNTS.md "At rest")
 KNIFE_GITHUB_APP_FILE=/home/<user>/.config/samurai-knife/github-app.json # GitHub App credentials (docs/GITHUB.md)
@@ -52,6 +54,24 @@ What public mode turns on besides accounts: SSRF-safe outbound requests with per
 "Outbound requests"), the security headers (CSP with `frame-ancestors 'self'`, HSTS when `KNIFE_PUBLIC_URL` is https,
 nosniff, Referrer-Policy, Permissions-Policy: `scripts/security-headers.mjs`), the stricter extra-header rules. Always
 on: streamed body limits, sealed provider keys, sealed per-account files, Python-lane rlimits and minimal child env.
+
+### Mail policy and mail-server controls
+
+Public mode enforces the address policy by default and uses the bounded SMTP queue. Keep `KNIFE_MAIL_TRANSPORT=smtp`;
+set the SMTP host, port/TLS server name, credentials and From address as described in [ACCOUNTS.md](ACCOUNTS.md#mail-src-libmail).
+The app caps queue depth/concurrency and applies per-minute/hour/day, domain/provider and canonical-mailbox budgets;
+recipient 5xx responses are suppressed for 30 days. Public-safe defaults are used when optional limits are omitted.
+Never expose a queue inspection endpoint publicly.
+
+Update the disposable-domain snapshot weekly with `npm run email-lists -- update` (for example, a systemd timer or cron
+job running as the app user). The command validates the download and preserves the prior list on failure. Owner overrides
+are `$KNIFE_DATA_DIR/email-policy/allow.txt` and `deny.txt`; keep changes reviewed and protected as operational data.
+
+On the mail server, verify SPF, DKIM and DMARC alignment for the app's visible From and envelope sender. For a Stalwart
+relay, use a dedicated authenticated submission credential, configure an outbound throttle per authenticated sender
+(for example, 100 messages/hour) and a finite queue quota, independent of app-side limits. Require TLS and keep submission
+private to the app's network. Treat the relay as the final containment layer: it must cap a compromised app credential
+or another misbehaving SMTP client.
 
 ## 3. Process manager (PM2 example)
 

@@ -17,6 +17,7 @@ import { REPO } from "./mock_site_world.mjs";
 const dir = mkdtempSync(join(tmpdir(), "knife-ghapp-"));
 process.env.KNIFE_DATA_DIR = join(dir, "data");
 process.env.KNIFE_AUTH_MODE = "public";
+process.env.KNIFE_EMAIL_POLICY = "enforce"; // GitHub's verified address uses the same static/list policy; GitHub itself verified delivery
 process.env.KNIFE_HOST = "127.0.0.1";
 process.env.KNIFE_GITHUB_APP_FILE = join(dir, "ops", "github-app.json");
 const world = createAppWorld();
@@ -43,7 +44,7 @@ const BASE = "http://127.0.0.1:3999";
 process.env.KNIFE_PUBLIC_URL = BASE;
 accounts.mutateStore((s) => {
   s.accounts.push(accounts.newAccountRecord({ id: "owner", displayName: "Owner", role: "admin", status: "active", email: "owner@example.test", emailVerifiedAt: new Date().toISOString(), passwordHash: "x" }));
-  s.accounts.push(accounts.newAccountRecord({ id: "bob", displayName: "Bob", role: "user", status: "active", email: "bob@example.test", emailVerifiedAt: new Date().toISOString(), passwordHash: "x" }));
+  s.accounts.push(accounts.newAccountRecord({ id: "bob", displayName: "Bob", role: "user", status: "active", email: "bob@example.org", emailVerifiedAt: new Date().toISOString(), passwordHash: "x" }));
   s.defaultAccountId = "owner";
 });
 
@@ -158,7 +159,7 @@ test("PKCE: a wrong verifier is refused by GitHub", async () => {
 
 test("sign-in: a new GitHub user registers (verified email, user role, no password); signing in again logs in", async () => {
   const { who } = await oauthAs("alice", { purpose: "login", accountId: null });
-  assert.deepEqual({ login: who.login, email: who.verifiedEmail }, { login: "alice", email: "alice@example.test" });
+  assert.deepEqual({ login: who.login, email: who.verifiedEmail }, { login: "alice", email: "alice@example.org" });
   const first = gaccounts.signInWithGithub(who, "203.0.113.5", true);
   assert.equal(first.kind, "registered");
   assert.deepEqual({ id: first.account.id, role: first.account.role, status: first.account.status, pw: first.account.passwordHash, gh: first.account.github.id }, { id: "alice", role: "user", status: "active", pw: undefined, gh: 1001 });

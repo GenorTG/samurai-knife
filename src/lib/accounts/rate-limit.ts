@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { authMac } from "@/lib/accounts/auth-secret";
+import { emailLimitKey } from "@/lib/accounts/email-address";
 import { wideKeyOf } from "@/lib/net/client-ip.mjs";
 import { securityDir } from "@/lib/security/events-core.mjs";
 import { recordSecurityEvent, type SecurityEventKind } from "@/lib/security/events";
@@ -499,7 +500,8 @@ function addressLimit(prefix: string, ip: string, max: number, windowMs: number,
 
 /**
  * The policy, in one place (docs/ACCOUNTS.md "Rate limits"). Login counts failures only; the others count every request.
- * Every per-address limit goes through `addressLimit` (the /64 plus its /48 companion).
+ * Every per-address limit goes through `addressLimit` (the /64 plus its /48 companion). Per-email limits key on the
+ * canonical mailbox (`emailLimitKey`: `+tag`, gmail dots and googlemail share one bucket; audit abuse #5a).
  */
 export const LIMITS = {
   /** Private mode keeps the old rule exactly: 5 failures per minute per account and client address. */
@@ -514,11 +516,11 @@ export const LIMITS = {
    */
   loginGlobal: (): Limit => ({ key: "login-global:all", max: envInt("KNIFE_LOGIN_GLOBAL_FAILS", 600), windowMs: 15 * MINUTE, event: "login_lockout" }),
   registerIp: (ip: string): Limit => addressLimit("register", ip, 10, HOUR, { v4Wide: 3 }),
-  registerEmail: (email: string): Limit => ({ key: `register:email:${email}`, max: 3, windowMs: HOUR }),
+  registerEmail: (email: string): Limit => ({ key: `register:email:${emailLimitKey(email)}`, max: 3, windowMs: HOUR }),
   resendIp: (ip: string): Limit => addressLimit("resend", ip, 10, HOUR),
-  resendEmail: (email: string): Limit => ({ key: `resend:email:${email}`, max: 3, windowMs: 15 * MINUTE }),
+  resendEmail: (email: string): Limit => ({ key: `resend:email:${emailLimitKey(email)}`, max: 3, windowMs: 15 * MINUTE }),
   forgotIp: (ip: string): Limit => addressLimit("forgot", ip, 10, HOUR),
-  forgotEmail: (email: string): Limit => ({ key: `forgot:email:${email}`, max: 3, windowMs: 15 * MINUTE }),
+  forgotEmail: (email: string): Limit => ({ key: `forgot:email:${emailLimitKey(email)}`, max: 3, windowMs: 15 * MINUTE }),
   /** Change email / password / delete with a wrong password: per account. */
   sensitive: (id: string): Limit => ({ key: `sensitive:${id}`, max: 10, windowMs: 15 * MINUTE, account: id }),
   /** MCP requests with a wrong or revoked key: per client address (a key is 256 random bits; this stops log spam). */

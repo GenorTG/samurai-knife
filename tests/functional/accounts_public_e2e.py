@@ -49,6 +49,8 @@ CONSOLE: list[str] = []
 GENERIC_REGISTER = "If the details can be used, a message is on its way to that address. Open the link in it to finish."
 GENERIC_RESEND = "If that address has an account waiting for confirmation, a new link is on its way."
 GENERIC_FORGOT = "If that address belongs to an account, a link to set a new password is on its way."
+EMAIL_POLICY = "We can't send mail to that address."
+MAILBOX_PER_HOUR = 6
 ADMIN_PW = "admin password 12"
 
 
@@ -159,6 +161,39 @@ class Outbox:
     @staticmethod
     def token(link: str | None) -> str:
         return link.split("token=", 1)[1] if link else ""
+
+
+def canonical(address: str) -> str:
+    """Python twin of email-address.ts canonicalEmailKey for the providers used here."""
+    local, _, domain = address.strip().lower().rpartition("@")
+    domain = {"googlemail.com": "gmail.com"}.get(domain, domain)
+    local = local.split("+", 1)[0]
+    if domain == "gmail.com":
+        local = local.replace(".", "")
+    return f"{local}@{domain}"
+
+
+def outbox_by_mailbox(data_dir: Path, mailbox: str) -> list[str]:
+    """Every .eml whose recipient is a variant of `mailbox`."""
+    found = []
+    for path in sorted((data_dir / "mail-outbox").glob("*.eml")):
+        msg = email.message_from_bytes(path.read_bytes(), policy=email.policy.default)
+        if canonical(str(msg["To"])) == mailbox:
+            found.append(path.name)
+    return found
+
+
+def mail_idle(api: Api, cookie: str, timeout: float = 20.0) -> dict:
+    """The mail queue's stats once nothing is queued or in flight (GET /api/system/queue, admin)."""
+    deadline = time.monotonic() + timeout
+    mail: dict = {}
+    while time.monotonic() < deadline:
+        status, body, _ = api.call("GET", "/api/system/queue", cookie=cookie)
+        mail = body.get("mail", {}) if status == 200 and isinstance(body, dict) else {}
+        if mail and mail.get("queued") == 0 and mail.get("inFlight") == 0:
+            return mail
+        time.sleep(0.2)
+    return mail
 
 
 def accounts(data_dir: Path) -> dict[str, dict]:
@@ -424,6 +459,41 @@ def run(server: ScratchServer, browser: Browser) -> None:
     acc = accounts(data)
     check("no account was created for the collisions", "carol" not in acc and "admin" not in acc and acc["alice"]["email"] == "alice@example.com", sorted(acc))
 
+    # ------------------------------------------------------------------------- 8b. email policy and mailbox budget
+    before_files = set(p.name for p in (data / "mail-outbox").glob("*.eml"))
+    refused = {}
+    for i, address in enumerate(["temp@mailinator.com", "temp@inbox.sub.mailinator.com", "x@yopmail.com", "postmaster@example.org", "temp@host.invalid"]):
+        refused[address] = api.call("POST", "/api/account/register", {"username": f"tmp{i}", "email": address, "password": "temp password 1"}, ip=f"198.51.100.{140 + i}")[:2]
+    check("register: disposable (and every parent-domain match), role and reserved-TLD addresses -> 400 with one generic message",
+          all(status == 400 and isinstance(body, dict) and body.get("error") == EMAIL_POLICY for status, body in refused.values()), refused)
+    check("no account was created for them", not any(f"tmp{i}" in accounts(data) for i in range(5)))
+    go(page_b, "/register")
+    page_b.locator("input[autocomplete=username]").fill("tempui")
+    page_b.locator("input[type=email]").fill("tempui@guerrillamail.com")
+    page_b.locator("input[autocomplete=new-password]").nth(0).fill("temp password 1")
+    page_b.locator("input[autocomplete=new-password]").nth(1).fill("temp password 1")
+    page_b.get_by_role("button", name="Create account").click()
+    expect(page_b.get_by_text(EMAIL_POLICY)).to_be_visible(timeout=15_000)
+    check("the register page shows the generic refusal for a disposable address", True)
+    shot(page_b, "register-disposable")
+    status, body, _ = api.call("POST", "/api/account/email", {"password": "alice password 3", "email": "alice@10minutemail.com"}, cookie=alice_cookie)
+    check("email change to a disposable address -> 400, nothing pending", status == 400 and body.get("error") == EMAIL_POLICY and "emailChange" not in accounts(data)["alice"], (status, body))
+
+    variants = ["victim.e2e+1@gmail.com", "v.i.c.t.i.m.e2e@gmail.com", "VictimE2E@googlemail.com", "victim.e2e+shop@googlemail.com",
+                "victime2e+2@gmail.com", "v.ictime2e@gmail.com"]
+    codes = [api.call("POST", "/api/account/register", {"username": f"var{i}", "email": address, "password": "variant pw 123"}, ip=f"198.51.100.{160 + i}")[0]
+             for i, address in enumerate(variants)]
+    check("register: +tag / dot / googlemail variants share the per-address limit (3 per hour, then 429)", codes == [202] * 3 + [429] * 3, codes)
+    status, _, admin = api.login("genor", ADMIN_PW, "198.51.100.150")
+    stats = mail_idle(api, admin or "")
+    delivered = outbox_by_mailbox(data, "victime2e@gmail.com")
+    check(f"one mailbox got 3 mails for {len(variants)} sign-up attempts (and never more than its {MAILBOX_PER_HOUR}/h mail budget)", len(delivered) == 3, delivered)
+    new_files = set(p.name for p in (data / "mail-outbox").glob("*.eml")) - before_files
+    check("nothing was mailed to a refused address", not any(re.search(r"mailinator|yopmail|guerrilla|10minutemail|postmaster|invalid", n) for n in new_files), sorted(new_files)[:10])
+    policy = stats.get("policy", {})
+    check("the admin queue stats show the policy and the queue", policy.get("enforced") is True and policy.get("disposable", {}).get("domains", 0) > 5000
+          and stats.get("transport") == "outbox" and policy.get("rejects", {}).get("disposable", 0) >= 4 and "budget" in stats, stats)
+
     # ---------------------------------------------------------------------------------------------- 9. rate limits
     codes = [api.login("alice", "wrong password", "198.51.100.51")[0] for _ in range(6)]
     check("login: 5 failures then 429", codes == [401] * 5 + [429], codes)
@@ -649,6 +719,8 @@ def main() -> int:
         "KNIFE_POW_MAX_BITS": "16",
         # Keep this suite's register-IP test independent of the separately tested pending-prefix cap.
         "KNIFE_PENDING_PER_PREFIX": "100",
+        # Production per-mailbox budget is 3/h,6/d; alice gets more than 3 links in this suite's first hour.
+        "KNIFE_MAIL_MAILBOX_LIMITS": f"{MAILBOX_PER_HOUR}/h,12/d",
     }
     with ScratchServer() as server:
         server.start(env=env)

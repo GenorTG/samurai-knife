@@ -13,6 +13,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "knife-accounts-store-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_MAIL_TRANSPORT = "outbox";
 process.env.KNIFE_POW_BITS = "4"; // the forms' proof-of-work, solved below at a test difficulty
+process.env.KNIFE_EMAIL_DNS = "off"; // example.com publishes a null MX; the DNS check has its own suite (email_policy.test.mjs)
 delete process.env.KNIFE_AUTH_MODE;
 delete process.env.KNIFE_TRUSTED_PROXIES;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
