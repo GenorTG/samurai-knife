@@ -455,3 +455,38 @@ test("security headers: CSP allows exactly what the app needs, frames only the e
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("CSP office origin in public mode (host audit M3): only an https KNIFE_OFFICE_PUBLIC_URL on a public name, never the state file", async () => {
+  const { officeOrigins, sidecarOrigins, extraFrameOrigins, isPrivateHost, publicOriginVerdict } = await import("../scripts/security-headers.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "knife-safenet-csp-public-"));
+  try {
+    const services = join(dir, "services", "office");
+    (await import("node:fs")).mkdirSync(services, { recursive: true });
+    // The live incident: the state file named the dev server's Tailscale address and port.
+    writeFileSync(join(services, "state.json"), JSON.stringify({ bindHost: "100.64.0.7", hostPort: 3212, publicUrl: "http://100.64.0.7:3212" }));
+    const pub = { KNIFE_AUTH_MODE: "public" };
+    assert.deepEqual(officeOrigins(dir, pub), { origins: [], warning: null }, "no office URL configured: no origin at all (fail closed)");
+    assert.deepEqual(sidecarOrigins(dir, pub), []);
+    assert.deepEqual(sidecarOrigins(dir, { KNIFE_AUTH_MODE: "Public " }), [], "any non-private mode value is public");
+    assert.deepEqual(sidecarOrigins(dir, { ...pub, KNIFE_OFFICE_PUBLIC_URL: "https://office.example.org/editor" }), ["https://office.example.org"]);
+    for (const bad of ["http://office.example.org", "https://100.64.0.7:3212", "https://10.1.2.3", "https://[::1]:8443", "https://[fd12::1]", "https://[::ffff:192.168.1.5]",
+      "https://localhost", "https://box.local", "https://office.tailnet-x.ts.net", "https://intranet", "https://user:pw@office.example.org", "javascript:alert(1)", "not a url"]) {
+      const result = officeOrigins(dir, { ...pub, KNIFE_OFFICE_PUBLIC_URL: bad });
+      assert.deepEqual(result.origins, [], bad);
+      assert.match(result.warning, /KNIFE_OFFICE_PUBLIC_URL .*left out of the CSP/, bad);
+    }
+    // KNIFE_CSP_FRAME_ORIGINS gets the same rule in public mode; private mode keeps every http(s) origin.
+    const extra = "https://embed.example.org, http://plain.example.org https://192.168.1.9 javascript:x";
+    assert.deepEqual(extraFrameOrigins({ ...pub, KNIFE_CSP_FRAME_ORIGINS: extra }), { origins: ["https://embed.example.org"], dropped: ["http://plain.example.org", "https://192.168.1.9", "javascript:x"] });
+    assert.deepEqual(extraFrameOrigins({ KNIFE_CSP_FRAME_ORIGINS: extra }).origins, ["https://embed.example.org", "http://plain.example.org", "https://192.168.1.9"]);
+    // Private mode is unchanged: the state file's publicUrl, else bind:port.
+    assert.deepEqual(sidecarOrigins(dir, {}), ["http://100.64.0.7:3212"]);
+    assert.deepEqual(sidecarOrigins(dir, { KNIFE_AUTH_MODE: "private", KNIFE_OFFICE_PUBLIC_URL: "http://100.64.0.7:3299" }), ["http://100.64.0.7:3299"]);
+    for (const [host, expected] of [["8.8.8.8", false], ["office.example.org", false], ["[2001:db8::1]", false], ["172.20.0.1", true], ["169.254.169.254", true], ["0.0.0.0", true], ["", true]]) {
+      assert.equal(isPrivateHost(host), expected, host);
+    }
+    assert.equal(publicOriginVerdict("https://office.example.org:8443/x").origin, "https://office.example.org:8443");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

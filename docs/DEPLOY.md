@@ -106,8 +106,12 @@ One Proxy Host per name:
   SSL as above, **Websockets Support on**, the same advanced config with `client_max_body_size 110m`. Set
   `KNIFE_OFFICE_PUBLIC_URL=https://office.knife.example.org` in the app's environment: the app proxies the editor itself
   (docs/SIDECARS.md "Office editor behind the app"), the sidecar is published on loopback only, and the CSP picks the
-  origin up. The name must be on the same registrable domain as the app (the editor's cookie is SameSite=Strict). Without
-  the variable the sidecar is published on `KNIFE_HOST` and needs its own proxy host and Public URL instead.
+  origin up. The name must be on the same registrable domain as the app (the editor's cookie is SameSite=Strict). In public
+  mode the variable is required for the editor: the CSP trusts only an https `KNIFE_OFFICE_PUBLIC_URL` on a public host
+  name, never the sidecar's state file (its `publicUrl` or `bindHost:hostPort` once put a dev server's Tailscale address
+  into the live CSP), so without it the editor cannot load and the server logs `[security-headers] public mode without
+  KNIFE_OFFICE_PUBLIC_URL` at startup. `KNIFE_CSP_FRAME_ORIGINS` entries that are not https on a public name are dropped
+  with a warning too. Private mode keeps the state-file fallback.
 
 Only 443 (and 80 for the certificate challenge) should be reachable from outside; check from another network with
 `curl -sI https://knife.example.org` and a port scan of the public address.
