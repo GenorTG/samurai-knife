@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
-import { signJwt, verifyJwt, JwtError, bearerToken, type JwtPayload } from "@/lib/jwt-hs256";
+import { signJwt } from "@/lib/jwt-hs256";
 import { appUrl, internalUrl, publicUrl } from "@/lib/services/urls";
-import { readSecret, readState } from "@/lib/services/state";
+import { readState } from "@/lib/services/state";
 import type { Account } from "@/lib/accounts/store";
 import { documentTypeOf } from "./templates";
 import type { DocMeta } from "./store";
 import { LIVE_PLUGIN_GUID, type LivePluginOptions } from "./live-protocol";
 import { proxiedApiUrl } from "./proxy";
+import { capabilityToken, editorConfigToken, OFFICE_SERVICE, OfficeUnavailableError, officeSecret, type DsPurpose } from "./ds-auth";
 
 /**
  * Document Server (DocsAPI) glue. The browser gets a config signed with the sidecar's JWT secret (it never sees the
@@ -14,54 +15,20 @@ import { proxiedApiUrl } from "./proxy";
  *   GET  /api/office/ds/file?t=<jwt>      document bytes
  *   POST /api/office/ds/callback?t=<jwt>  status/save notifications
  * Those two are the only routes without the Origin/Host guard: they authenticate by JWT instead (the `t` capability
- * token naming account + document + purpose, AND the Document Server's own `Authorization: Bearer` token), both signed
- * with the same per-install secret.
+ * token naming account + document + purpose, AND the Document Server's own token). Every token kind and its key is
+ * owned by ds-auth.ts.
  */
 
-export const OFFICE_SERVICE = "office";
-const FILE_TOKEN_TTL_SEC = 24 * 3600;
-const CALLBACK_TOKEN_TTL_SEC = 30 * 24 * 3600;
-
-export class OfficeUnavailableError extends Error {}
-
-export function officeSecret(): string {
-  const secret = readSecret(OFFICE_SERVICE, "JWT_SECRET");
-  if (!secret) throw new OfficeUnavailableError("the office sidecar is not installed");
-  return secret;
-}
-
-export type DsPurpose = "file" | "callback";
-
-export interface DsCapability {
-  acc: string;
-  doc: string;
-  use: DsPurpose;
-}
-
-export function capabilityToken(cap: DsCapability): string {
-  return signJwt({ ...cap }, officeSecret(), { expiresInSec: cap.use === "file" ? FILE_TOKEN_TTL_SEC : CALLBACK_TOKEN_TTL_SEC });
-}
-
-export function readCapability(token: string | null, use: DsPurpose): DsCapability {
-  if (!token) throw new JwtError("missing capability token");
-  const claims = verifyJwt(token, officeSecret());
-  if (claims.use !== use || typeof claims.acc !== "string" || typeof claims.doc !== "string") throw new JwtError("wrong capability token");
-  return { acc: claims.acc, doc: claims.doc, use };
-}
-
-/**
- * The Document Server's outgoing token (JWT_ENABLED outbox): `Authorization: Bearer <jwt>` whose claims wrap the request
- * in `payload` (callbacks may also carry it in the body as `token`). Returns the signed claims.
- */
-export function readServerToken(request: Request, bodyToken?: unknown): JwtPayload {
-  const secret = officeSecret();
-  if (typeof bodyToken === "string" && bodyToken) return verifyJwt(bodyToken, secret);
-  const header = bearerToken(request.headers.get("authorization"));
-  if (!header) throw new JwtError("missing Document Server token");
-  const claims = verifyJwt(header, secret);
-  const payload = claims.payload;
-  return typeof payload === "object" && payload !== null && !Array.isArray(payload) ? (payload as JwtPayload) : claims;
-}
+export {
+  OFFICE_SERVICE,
+  OfficeUnavailableError,
+  officeSecret,
+  capabilityToken,
+  readCapability,
+  readServerToken,
+  type DsCapability,
+  type DsPurpose,
+} from "./ds-auth";
 
 export interface EditorConfig {
   /** Where the browser loads DocsAPI from. */
@@ -82,7 +49,7 @@ export function editorConfig(
   const state = readState(OFFICE_SERVICE);
   if (!state) throw new OfficeUnavailableError("the office sidecar is not installed");
   const app = appUrl(state).url;
-  const q = (cap: DsCapability) => encodeURIComponent(capabilityToken(cap));
+  const q = (use: DsPurpose) => encodeURIComponent(capabilityToken(account, meta.id, use));
   const sidecarOrigin = new URL(publicUrl(state)).origin;
   // One random token per editor session; it reaches the plugin only through this signed config.
   const live = options.appOrigin ? { token: randomBytes(24).toString("base64url"), sidecarOrigin, guid: LIVE_PLUGIN_GUID } : null;
@@ -92,12 +59,12 @@ export function editorConfig(
       fileType: meta.format,
       key: meta.key,
       title: meta.name,
-      url: `${app}/api/office/ds/file?t=${q({ acc: account.id, doc: meta.id, use: "file" })}`,
+      url: `${app}/api/office/ds/file?t=${q("file")}`,
       permissions: { edit: options.mode === "edit", download: true, print: true, comment: true, review: true },
     },
     documentType: documentTypeOf(meta.format),
     editorConfig: {
-      callbackUrl: `${app}/api/office/ds/callback?t=${q({ acc: account.id, doc: meta.id, use: "callback" })}`,
+      callbackUrl: `${app}/api/office/ds/callback?t=${q("callback")}`,
       mode: options.mode,
       lang: options.lang ?? "en",
       user: { id: account.id, name: account.displayName },
@@ -106,7 +73,7 @@ export function editorConfig(
       plugins: { options: pluginOptions },
     },
   };
-  const token = signJwt(base, officeSecret());
+  const token = editorConfigToken(base);
   return {
     apiUrl: proxiedApiUrl(account.id) ?? `${publicUrl(state)}/web-apps/apps/api/documents/api.js`,
     config: { ...base, token, width: "100%", height: "100%", type: "desktop" },

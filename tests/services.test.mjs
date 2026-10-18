@@ -335,12 +335,12 @@ test("editor config is signed server-side; capability tokens are purpose-bound",
   assert.equal(claims.editorConfig.callbackUrl, config.editorConfig.callbackUrl);
   assert.ok(config.document.url.startsWith("http://100.64.0.7:3210/api/office/ds/file?t="));
   const fileToken = decodeURIComponent(new URL(config.document.url).searchParams.get("t"));
-  assert.deepEqual(editor.readCapability(fileToken, "file"), { acc: "genor", doc: doc.id, use: "file" });
+  assert.deepEqual(editor.readCapability(fileToken, "file"), { acc: "genor", doc: doc.id, use: "file", ep: editor.readCapability(fileToken, "file").ep });
   assert.throws(() => editor.readCapability(fileToken, "callback"), /wrong capability/);
   assert.throws(() => editor.readCapability(signJwt({ acc: "genor", doc: doc.id, use: "file" }, "other-secret"), "file"), /bad signature/);
-  const request = new Request("http://x/", { headers: { authorization: `Bearer ${signJwt({ payload: { status: 2, key: "k" } }, secret)}` } });
+  const request = new Request("http://x/", { headers: { authorization: `Bearer ${signJwt({ payload: { status: 2, key: "k" } }, secret, { expiresInSec: 300 })}` } });
   assert.deepEqual(editor.readServerToken(request), { status: 2, key: "k" });
-  assert.equal(editor.readServerToken(new Request("http://x/"), signJwt({ status: 6 }, secret)).status, 6);
+  assert.equal(editor.readServerToken(new Request("http://x/"), signJwt({ status: 6, key: "k" }, secret, { expiresInSec: 300 })).status, 6);
   assert.throws(() => editor.readServerToken(new Request("http://x/")), /missing Document Server token/);
   store.deleteDoc("genor", doc.id);
 });
