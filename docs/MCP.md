@@ -41,8 +41,9 @@ second time. The matching routes (`/api/cv/showcase/*`) are admin-only too, and 
 administrator has to run the GitHub showcase.
 
 ## Office documents (`knife_doc_*`, group `docs`)
-`knife_doc_list {folderId?, query?}` (folders with paths + documents), `knife_doc_read {id, version?}` (plain text; an
-earlier kept version too), `knife_doc_create {format, name, folderId?, paragraphs|rows|slides}`,
+`knife_doc_list {folderId?, query?}` (folders with paths + documents), `knife_doc_read {id, version?, maxChars?}` (plain text, at most
+`maxChars` (default 20,000; `chars` is the length returned, `truncated` says there is more), parsed in the server's isolate
+pool; an earlier kept version too), `knife_doc_create {format, name, folderId?, paragraphs|rows|slides}`,
 `knife_doc_folder_create {name, parentId?}`, `knife_doc_move {id, folderId|null}`, `knife_doc_versions {id}`,
 `knife_doc_restore_version {id, version}` (the old content becomes a NEW version; nothing is lost). Nothing deletes:
 trash and permanent deletion stay with the user in the file browser. Every tool acts on the calling account only (another
