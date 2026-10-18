@@ -5,7 +5,7 @@
 //
 //   npm run accounts -- list
 //   npm run accounts -- add <id> --name "Display Name" [--password-prompt] [--email a@b.c] [--role admin|user]
-//   npm run accounts -- set-password <id>
+//   npm run accounts -- set-password <id>                (also revokes the account's MCP keys)
 //   npm run accounts -- set-email <id> <address>        (marked as verified: you vouch for it)
 //   npm run accounts -- set-role <id> admin|user
 //   npm run accounts -- set-status <id> active|disabled
@@ -155,6 +155,31 @@ function writeStore(store) {
   } finally {
     unlock();
   }
+}
+
+/**
+ * Revokes every MCP key of an account in `mcp-keys.json` (same file and format as src/lib/accounts/mcp-keys.ts, whose
+ * revokeAllMcpKeys the web password reset/change uses): a new password must end an attacker's agent access too, and a
+ * removed id registered again must not inherit the old keys. Returns how many were revoked.
+ */
+function revokeMcpKeys(accountId) {
+  const keysFile = join(dir, "mcp-keys.json");
+  if (!existsSync(keysFile)) return 0;
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(keysFile, "utf8"));
+  } catch {
+    console.error(`warning: ${keysFile} is damaged; the app already refuses every key in it (fail closed)`);
+    return 0;
+  }
+  const keys = Array.isArray(raw.keys) ? raw.keys : [];
+  const kept = keys.filter((k) => k?.accountId !== accountId);
+  if (kept.length === keys.length) return 0;
+  const temp = `${keysFile}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  writeFileSync(temp, `${JSON.stringify({ version: 1, keys: kept })}\n`, { mode: 0o600 });
+  chmodSync(temp, 0o600);
+  renameSync(temp, keysFile);
+  return keys.length - kept.length;
 }
 
 function readStore() {
@@ -326,7 +351,8 @@ const commands = {
     const account = requireAccount(store, positional[0]);
     account.passwordHash = await newPassword();
     writeStore(store);
-    console.log(`password set for ${account.id}; existing sessions are invalidated`);
+    const keys = revokeMcpKeys(account.id);
+    console.log(`password set for ${account.id}; existing sessions are invalidated; ${keys} MCP key(s) revoked${keys ? " (create new ones for the agents)" : ""}`);
   },
 
   "set-email"(store, { positional }) {
@@ -407,7 +433,8 @@ const commands = {
     if (account.id === store.defaultAccountId) fail("refusing to remove the default account; run set-default first");
     store.accounts = store.accounts.filter((a) => a.id !== account.id);
     writeStore(store);
-    console.log(`removed ${account.id}`);
+    const keys = revokeMcpKeys(account.id);
+    console.log(`removed ${account.id}${keys ? `; ${keys} MCP key(s) revoked` : ""}`);
   },
 
   "set-default"(store, { positional }) {

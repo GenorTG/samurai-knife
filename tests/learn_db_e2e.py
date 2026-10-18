@@ -60,6 +60,18 @@ def default_host() -> str | None:
     return None
 
 
+def read_sealed(data_dir: Path, path: Path) -> str:
+    """A per-account file as the app reads it: sealed at rest (src/lib/storage/sealed.ts), the account id is its name."""
+    script = "const { readAccountText } = await import('./src/lib/storage/sealed.ts'); process.stdout.write(readAccountText(process.argv[1], process.argv[2]));"
+    env = {k: v for k, v in os.environ.items() if k != "KNIFE_STORAGE_KEY_FILE"}
+    env["KNIFE_DATA_DIR"] = str(data_dir)
+    out = subprocess.run(["node", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--import", "./tests/ts-resolve.mjs", "--input-type=module", "-e", script, path.stem, str(path)],
+                         cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr[-500:])
+    return out.stdout
+
+
 class Api:
     def __init__(self, base: str) -> None:
         self.base = base
@@ -267,6 +279,11 @@ def main() -> int:
                 ("SELECT query FROM pg_stat_activity", "42501"),
                 ("SELECT * FROM pg_stat_get_activity(NULL)", "42501"),
                 ("SELECT pg_stat_get_backend_activity(1)", "42501"),
+                # ...nor abort another learner's run, nor list their backends (SEED_VERSION 3).
+                ("SELECT pg_terminate_backend(g) FROM generate_series(1, 5) g", "42501"),
+                ("SELECT pg_cancel_backend(1)", "42501"),
+                ("SELECT pid FROM pg_locks", "42501"),
+                ("SELECT pg_stat_get_backend_idset()", "42501"),
             ]:
                 run = api.run(sql)
                 check(f"privileges: {sql[:40]} -> {expect}", (run["error"] or {}).get("code") == expect, str(run["error"]))
@@ -290,6 +307,20 @@ def main() -> int:
             check("a learner who switches the limit off is still stopped (backend terminated)", run["error"] is not None and took < 10, f"{took:.1f} s {run['error']}")
             run = api.run("SELECT g FROM generate_series(1, 2000000) AS g")
             check("row cap: first 500 rows, flagged truncated", len(run["results"][0]["rows"]) == 500 and run["results"][0]["truncated"], str(len(run["results"][0]["rows"])))
+            # Result limits (src/lib/learn/sql/limits.ts): huge values and huge RETURNING sets never reach the app whole.
+            t1 = time.monotonic()
+            run = api.run("SELECT repeat('x', 100000000)")
+            check("a 100 MB value stops the run with knife_result_limit (the app stays up)",
+                  (run["error"] or {}).get("code") == "knife_result_limit" and time.monotonic() - t1 < 10, str(run["error"])[:200])
+            check("...and the next run works", not api.run("SELECT 1")["error"])
+            run = api.run("SELECT repeat('y', 50000) AS long, 1 AS n")
+            cell = (run["results"] or [{}])[0].get("rows", [[""]])[0][0] if not run["error"] else ""
+            check("a 50 000-character cell is cut with a marker, flagged clipped",
+                  not run["error"] and cell.endswith("… [truncated: 50000 characters]") and run["results"][0].get("clipped") is True, str(run["error"])[:200])
+            run = api.run("CREATE TEMP TABLE t AS SELECT 1 AS id WITH NO DATA; INSERT INTO t SELECT g FROM generate_series(1, 300000) g RETURNING id")
+            res = run["results"][-1] if run["results"] else {}
+            check("INSERT ... RETURNING 300 000 rows: 500 kept, all counted, flagged truncated",
+                  not run["error"] and len(res.get("rows", [])) == 500 and res.get("rowCount") == 300000 and res.get("truncated"), str(run["error"] or {k: res.get(k) for k in ("rowCount", "truncated")}))
             run = api.run("SELECT 1;\nSELECT nme FROM products")
             check("error position is mapped to line/column of the learner's text", (run["error"] or {}).get("position", {}).get("line") == 2 and run["error"]["position"]["column"] == 8, str(run["error"]))
             status, body = api.call("GET", "/api/learn/sql/schema")
@@ -331,7 +362,7 @@ def main() -> int:
             check("after reload: counter still 1 done", page.get_by_text(f"1 of {len(lessons)} lessons done").is_visible())
             check("after reload: lesson 1 is current and its last query is back", editor(page).input_value() == "SELECT * FROM categories;", editor(page).input_value())
             files = list((Path(server.data_dir) / "learn").glob("*.json"))
-            saved = json.loads(files[0].read_text()) if files else {}
+            saved = json.loads(read_sealed(server.data_dir, files[0])) if files else {}
             entry = saved.get("courses", {}).get("sql", {}).get("lessons", {}).get("select-all", {})
             check("progress file in the data dir (600) records completion, attempts, hints", bool(files) and oct(files[0].stat().st_mode & 0o777) == "0o600" and entry.get("completedAt") and entry.get("hintsShown") == 1 and entry.get("failedChecks") == 1, json.dumps(entry)[:200])
 

@@ -46,10 +46,30 @@ async function download(url: string): Promise<Buffer> {
   const response = await fetch(target, { signal: AbortSignal.timeout(60_000), redirect: "error" });
   if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`);
   const declared = Number(response.headers.get("content-length") ?? 0);
-  if (declared > MAX_DOC_BYTES) throw new Error("saved document exceeds the size limit");
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > MAX_DOC_BYTES) throw new Error("saved document exceeds the size limit");
-  return bytes;
+  if (declared > MAX_DOC_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error("saved document exceeds the size limit");
+  }
+  return readCapped(response, MAX_DOC_BYTES);
+}
+
+/** The body, read chunk by chunk and abandoned as soon as it passes `max` (a missing or false Content-Length is no help). */
+export async function readCapped(response: Response, max: number): Promise<Buffer> {
+  if (!response.body) return Buffer.alloc(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error("saved document exceeds the size limit");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function savedBy(users: unknown): string | undefined {

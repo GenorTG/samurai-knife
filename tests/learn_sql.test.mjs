@@ -209,6 +209,22 @@ test("seed script: versioned, deterministic (no random()), learner password must
   assert.doesNotMatch(script, /\$\{/, "no unrendered template");
 });
 
+test("seed script: one learner cannot signal, or find, another learner's backend (SEED_VERSION >= 3)", () => {
+  assert.ok(SEED_VERSION >= 3, "the revokes need a rebuild of existing installs");
+  const script = seedScript("abcdef0123456789abcd");
+  for (const revoke of [
+    "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_terminate_backend(integer, bigint) FROM PUBLIC, knife_learner;",
+    "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_cancel_backend(integer) FROM PUBLIC, knife_learner;",
+    "REVOKE SELECT ON pg_catalog.pg_locks FROM PUBLIC;",
+    "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_lock_status() FROM PUBLIC;",
+    "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_idset() FROM PUBLIC;",
+    "REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_pid(integer) FROM PUBLIC;",
+    "REVOKE SELECT ON pg_catalog.pg_stat_activity FROM PUBLIC;",
+  ]) {
+    assert.ok(script.includes(revoke), revoke);
+  }
+});
+
 /* ------------------------------------------------------------------------------------------ progress */
 
 test("progress: per account and course, private file, attempts/hints/completion, reset", () => {

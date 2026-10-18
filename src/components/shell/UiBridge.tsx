@@ -40,14 +40,15 @@ export function UiBridge() {
   const id = useRef("");
   const where = `${pathname}${search.toString() ? `?${search.toString()}` : ""}`;
   const whereRef = useRef(where);
+  const reportRef = useRef<() => Promise<void>>(async () => {});
 
   // presence: on every navigation, focus / visibility change and on a slow heartbeat
   useEffect(() => {
     whereRef.current = where;
     if (!id.current) id.current = tabId();
-    const report = () => {
+    const report = (): Promise<void> => {
       const visible = document.visibilityState === "visible";
-      void fetch("/api/ui/presence", {
+      return fetch("/api/ui/presence", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
@@ -55,9 +56,11 @@ export function UiBridge() {
       })
         // read the (tiny) body: an unread response stays "in flight" and the page's network never goes idle
         .then((res) => res.text())
+        .then(() => undefined)
         .catch(() => {});
     };
-    report();
+    reportRef.current = report;
+    void report();
     const timer = setInterval(report, PRESENCE_MS);
     document.addEventListener("visibilitychange", report);
     window.addEventListener("focus", report);
@@ -74,7 +77,7 @@ export function UiBridge() {
     if (!id.current) id.current = tabId();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
-    const poll = async () => {
+    const poll = async (retry = true) => {
       let delay = POLL_MS;
       if (document.visibilityState === "visible") {
         try {
@@ -83,7 +86,13 @@ export function UiBridge() {
           const text = await res.text();
           // Signed out (public mode visitors): nothing can be shown to this tab, so ask far less often.
           if (res.status === 401) delay = SIGNED_OUT_POLL_MS;
-          const body = res.ok ? (JSON.parse(text) as { events?: ShowEvent[] }) : { events: [] };
+          const body = res.ok ? (JSON.parse(text) as { known?: boolean; events?: ShowEvent[] }) : { events: [] };
+          // The server does not know this tab yet (first poll raced the first report, or it restarted): report, poll again.
+          if (res.ok && body.known === false && retry) {
+            await reportRef.current();
+            if (!stopped) void poll(false);
+            return;
+          }
           const event = body.events?.at(-1);
           // only paths inside the app; the server builds them from the registry, this is belt and braces
           if (event && event.target === id.current && event.path.startsWith("/tools/")) {

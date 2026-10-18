@@ -153,6 +153,15 @@ websockets on (docs/DEPLOY.md §4).
   routes without the Origin/Host guard** (the container sends no Origin and its Host may be `host.docker.internal`). They
   authenticate with JWT twice: the `t` capability token (account + document + purpose, 24 h / 30 d) and the server's own
   `Authorization: Bearer` token (or `token` in the callback body); the status fields are read from the signed token only.
+  Token kinds (`src/lib/office/ds-auth.ts`, one check `authorizeDsRequest` for both routes): capabilities are signed
+  with HMAC(JWT secret, capability context), never the raw secret, so no Document Server token is a capability and no
+  capability is a Document Server token; they carry an account epoch (id + creation time) and are refused, with a
+  generic 403, once the account is disabled, unusable (`accountUsable`), deleted or registered again. The editor
+  config (the one token the browser sees that is signed with the raw secret, because the Document Server verifies it)
+  expires after 24 h (a session left open longer reloads) and is refused as either Document Server form: the header
+  token must wrap the request in `payload` and carry `exp`, the body token must carry `key`, `status` and `exp` (the
+  shapes the 9.3.5 image signs). The save download is read chunk by chunk and dropped past `MAX_DOC_BYTES` even when
+  `Content-Length` is missing.
 - **Closing**: the editor batches a single user's changes for ~2 s before sending them (autosave gap), and destroying it
   drops what is unsent. "Close editor" therefore waits for `onDocumentStateChange(false)` ("all changes sent", max 15 s)
   before destroying it; leaving the page another way (navigation) does not wait.

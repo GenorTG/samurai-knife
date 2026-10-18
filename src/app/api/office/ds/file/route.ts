@@ -1,7 +1,6 @@
 import { JwtError } from "@/lib/jwt-hs256";
 import { jsonError } from "@/lib/accounts/http";
-import { getAccount } from "@/lib/accounts/store";
-import { OfficeUnavailableError, readCapability, readServerToken } from "@/lib/office/editor";
+import { authorizeDsRequest, OfficeUnavailableError } from "@/lib/office/ds-auth";
 import { DocError, getDoc, readDocBytes } from "@/lib/office/store";
 import { MIME } from "@/lib/office/templates";
 
@@ -12,13 +11,12 @@ export const dynamic = "force-dynamic";
  * GET /api/office/ds/file?t=<capability jwt> — called by the Document Server CONTAINER, never the browser.
  * Exception to the Origin/Host guard (documented in docs/SIDECARS.md): the container's Host header is the
  * app URL it was given (maybe host.docker.internal) and it sends no Origin. Authenticated by JWT twice: the `t` token
- * (account + document + purpose, signed by this app) and the server's own `Authorization: Bearer` token.
+ * (account + document + purpose, signed by this app; the account must still be usable) and the server's own
+ * `Authorization: Bearer` token (src/lib/office/ds-auth.ts).
  */
 export async function GET(request: Request): Promise<Response> {
   try {
-    readServerToken(request);
-    const cap = readCapability(new URL(request.url).searchParams.get("t"), "file");
-    if (!getAccount(cap.acc)) return jsonError("unknown account", 404);
+    const { cap } = authorizeDsRequest(request, "file");
     const meta = getDoc(cap.acc, cap.doc);
     const bytes = readDocBytes(cap.acc, meta);
     return new Response(new Uint8Array(bytes), {

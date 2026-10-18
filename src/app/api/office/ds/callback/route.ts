@@ -1,8 +1,7 @@
 import { JwtError } from "@/lib/jwt-hs256";
 import { json, jsonError, readJsonBody } from "@/lib/accounts/http";
-import { getAccount } from "@/lib/accounts/store";
 import { handleCallback, type CallbackBody } from "@/lib/office/callback";
-import { OfficeUnavailableError, readCapability, readServerToken } from "@/lib/office/editor";
+import { authorizeDsRequest, OfficeUnavailableError } from "@/lib/office/ds-auth";
 import { DocError } from "@/lib/office/store";
 
 export const runtime = "nodejs";
@@ -18,10 +17,8 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in read) return read.response;
   const raw = (typeof read.body === "object" && read.body !== null ? read.body : {}) as Record<string, unknown>;
   try {
-    const signed = readServerToken(request, raw.token) as CallbackBody;
-    const cap = readCapability(new URL(request.url).searchParams.get("t"), "callback");
-    if (!getAccount(cap.acc)) return jsonError("unknown account", 404);
-    const outcome = await handleCallback(cap.acc, cap.doc, signed);
+    const { cap, signed } = authorizeDsRequest(request, "callback", raw.token);
+    const outcome = await handleCallback(cap.acc, cap.doc, signed as CallbackBody);
     if (outcome.action === "failed" || (outcome.action === "ignored" && outcome.message)) {
       console.warn(`[office] callback ${cap.doc}: ${outcome.action}${outcome.message ? ` (${outcome.message})` : ""}`);
     }
