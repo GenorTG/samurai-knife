@@ -111,7 +111,8 @@ websockets on (docs/DEPLOY.md §4).
   release tags carry a `v`. Env: `JWT_ENABLED=true`, `JWT_SECRET` (generated, 64 hex), `SECURE_LINK_SECRET` (generated,
   48 hex: signs the `/cache/files/...` links; without it the image makes one per data volume),
   `ALLOW_PRIVATE_IP_ADDRESS=false`, `ALLOW_META_IP_ADDRESS=false` and a `NODE_CONFIG` override of the request filter
-  (see "Request filter"), example/admin panel/WOPI off, `GENERATE_FONTS=false`; `mem_limit: 3g`, `cpus: 2`. The font cache lives in the
+  (see "Request filter"), example/admin panel/WOPI off, `GENERATE_FONTS=false`; `mem_limit: 3g`, `cpus: 2`, capabilities and
+  pids as in "Hardening". The font cache lives in the
   container filesystem (not a volume) and the editor never finishes loading without it, although `/healthcheck` answers
   `true`; so the definition's `prepare` step runs `documentserver-generate-allfonts.sh` once per new container (recorded as
   `preparedContainer` in state.json). Measured: new container 53 s to ready, stopped -> ready 11.7 s (was 45 s when every
@@ -209,7 +210,8 @@ iptables rules (allow DNS and the internet, drop the host, the LAN, Tailscale an
 
 - **Image**: `postgis/postgis:16-3.4` (PostgreSQL 16 + PostGIS 3.4, Debian), port 5432 published on **127.0.0.1** only
   (`publish: "loopback"`: the app is the only client; an install from before moves there at its next start/update), volume
-  `pgdata` (`/var/lib/postgresql/data`), `mem_limit: 1g`, `cpus: 1`, `POSTGRES_DB=learn`. Secrets: `POSTGRES_PASSWORD`
+  `pgdata` (`/var/lib/postgresql/data`), `mem_limit: 1g`, `cpus: 1`, capabilities and pids as in "Hardening",
+  `POSTGRES_DB=learn`. Secrets: `POSTGRES_PASSWORD`
   (superuser, used by the app to seed) and `LEARNER_PASSWORD` (set on the low-privilege `knife_learner` role by the seed).
   Health `postgres`, `callsBack: false`. Measured: install with a cached image -> healthy + seeded in ~10 s; stopped ->
   ready ~3 s; RAM ~100 MiB after the seed and a lesson sweep.
@@ -287,10 +289,27 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   added as plain text boxes, not layout placeholders; one live editor per page (the active bridge); an editor opened
   outside Smart Knife never connects (no options).
 
+## Hardening (container privileges)
+
+Every sidecar container runs with `cap_drop: [ALL]`, only its definition's `security.capAdd` given back,
+`security_opt: [no-new-privileges:true]` and `pids_limit` (`security.pidsLimit`, default 512; `src/lib/services/compose.ts`
+`securityOptions`, malformed or `ALL` capability names refused). The sets were verified on real containers with every
+other capability dropped (2026-10-18):
+
+| Sidecar | `cap_add` | `pids_limit` | Why |
+| --- | --- | --- | --- |
+| `office` (Euro-Office 9.3.5) | CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID | 1024 (~150 tasks idle) | the entrypoint chowns/chmods its dirs as root; supervisord/gosu switch to ds, postgres, rabbitmq, redis, www-data; supervisord signals the ds processes on stop and restart (without KILL: `PermissionError`, then a hard kill). Port 80 binds without NET_BIND_SERVICE (docker sets `ip_unprivileged_port_start=0`); FSETID is not needed. Checked: start, `/healthcheck`, the font `prepare`, graceful stop, restart, and `tests/office_e2e.py` (editor load, both saves, every blank format, idle stop, lazy start). |
+| `learn-db` (postgis 16-3.4) | CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID | 256 | initdb on a fresh volume, chmod of the data and socket dirs, gosu to postgres. FOWNER without DAC_OVERRIDE fails (root cannot enter the 0700 data dir it no longer owns). Checked: fresh volume, restart on an existing one, `tests/learn_db_e2e.py`. |
+
+The compose hash covers these keys, so an existing install is recreated with them at its next start or `ensure` (when no
+editor session is open). An image bump or a new sidecar repeats the check: drop one capability at a time and look for
+`Operation not permitted` / `Permission denied` in `docker logs`, a container that exits, or a service missing from `ps`.
+
 ## Adding a sidecar
 
 1. Add a `SIDECARS` entry (pin the image by tag; check the registry, not a blog post). Pick `health` (`http` or
-   `postgres`; add a kind to `probeHealth` for another protocol) and `callsBack`.
+   `postgres`; add a kind to `probeHealth` for another protocol) and `callsBack`. State `security.capAdd` (see
+   "Hardening": verified, minimal) and `pidsLimit`.
 2. Build the tool; put `sidecar: "<id>"` on its registry entry and show `SidecarCard compact` until it is installed.
 3. Anything the container calls back into must authenticate without the Origin guard: give it a signed token, document the
    exception here and in docs/ARCHITECTURE.md.
@@ -299,7 +318,8 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
 ## Tests
 
 - Unit: `tests/services.test.mjs` (compose, secrets, state/lock, pull progress, ps parsing, URLs, JWT, templates/text, store,
-  editor config, callback incl. SSRF and stale keys, office hardening: filter env, allow list, caps; learn-db on loopback).
+  editor config, callback incl. SSRF and stale keys, office hardening: filter env, allow list, caps; learn-db on loopback;
+  container hardening: cap_drop ALL + the verified cap_add per sidecar, no-new-privileges, pids_limit, refused cap names).
 - Unit: `tests/office_live.test.mjs` (protocol + argument checks, the browser bridge against a fake plugin frame, the
   real `bridge.js` in a sandbox with a fake editor `Api`, trust verdicts, tool visibility, asset sync + mount, editor
   config options).

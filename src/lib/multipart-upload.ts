@@ -32,11 +32,13 @@ export interface UploadLimits {
   maxFieldBytes?: number;
   /** Message for a file over `maxFileBytes`. */
   fileTooLarge?: (name: string) => string;
+  /** No body bytes for this long: the upload is abandoned (408). Unset = wait as long as the HTTP server lets it. */
+  idleTimeoutMs?: number;
 }
 
 export class UploadError extends Error {
-  readonly status: 400 | 413 | 415;
-  constructor(status: 400 | 413 | 415, message: string) {
+  readonly status: 400 | 408 | 413 | 415;
+  constructor(status: 400 | 408 | 413 | 415, message: string) {
     super(message);
     this.status = status;
   }
@@ -85,7 +87,8 @@ function close(stream: WriteStream): Promise<void> {
 
 /**
  * Parses the body of `request` into text fields and files written under `dir` (which the caller owns and removes).
- * Throws UploadError: 415 not multipart, 413 over a cap (the rest of the body is not read), 400 malformed.
+ * Throws UploadError: 415 not multipart, 413 over a cap (the rest of the body is not read), 400 malformed, 408 stalled
+ * (`idleTimeoutMs` without a byte: a client cannot keep an upload slot by sending nothing).
  */
 export async function receiveMultipart(request: Request, dir: string, limits: UploadLimits): Promise<StreamedForm> {
   const boundary = boundaryOf(request.headers.get("content-type") ?? "");
@@ -149,9 +152,18 @@ export async function receiveMultipart(request: Request, dir: string, limits: Up
   };
 
   const reader = request.body.getReader();
+  const idle = limits.idleTimeoutMs;
+  const nextChunk = (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    if (!idle || idle <= 0) return reader.read();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stalled = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new UploadError(408, "The upload stalled; try again.")), idle);
+    });
+    return Promise.race([reader.read(), stalled]).finally(() => clearTimeout(timer));
+  };
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await nextChunk();
       if (done) break;
       total += value.byteLength;
       if (total > limits.maxTotalBytes) throw tooBig();

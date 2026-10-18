@@ -42,7 +42,14 @@ import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/a
 
 export const ACCOUNT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 export const STORE_VERSION = 2;
-export const DEFAULT_USER_QUOTA_BYTES = 1024 ** 3;
+/**
+ * Storage quota a NEW registered account gets (registration, GitHub sign-up): KNIFE_USER_QUOTA_MB, default 1024 (1 GiB).
+ * Read once at startup; stored per account, so changing it never touches existing accounts (the admin page does).
+ */
+export const DEFAULT_USER_QUOTA_BYTES = (() => {
+  const parsed = Number.parseInt(process.env.KNIFE_USER_QUOTA_MB ?? "", 10);
+  return (Number.isInteger(parsed) && parsed > 0 ? parsed : 1024) * 1024 ** 2;
+})();
 
 const providerSchema = z.object({
   baseUrl: z.string().min(1),

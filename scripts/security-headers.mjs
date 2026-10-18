@@ -61,26 +61,115 @@ export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = []
   return headers;
 }
 
-/** The office sidecar's browser-facing origin: KNIFE_OFFICE_PUBLIC_URL, else its state file (`publicUrl`, else bind:port). */
-export function sidecarOrigins(dataDir) {
+/** KNIFE_AUTH_MODE the way src/lib/accounts/mode.ts reads it: anything but empty/`private` is public (fails closed). */
+export function isPublicAuthMode(env = process.env) {
+  const value = String(env.KNIFE_AUTH_MODE ?? "").trim().toLowerCase();
+  return Boolean(value) && value !== "private";
+}
+
+function ipv4Private(text) {
+  const parts = text.split(".");
+  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return null;
+  const [a, b] = parts.map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+}
+
+/**
+ * Host names a public page must never trust: private, loopback, link-local, CGNAT/Tailscale, multicast and reserved IPv4,
+ * every IPv6 literal that is not global unicast (loopback, ULA, link-local, mapped), and names that only resolve inside a
+ * network (single label, localhost, .local, .internal, .lan, .home.arpa, Tailscale's .ts.net).
+ */
+export function isPrivateHost(hostname) {
+  const host = String(hostname).trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!host) return true;
+  const v4 = ipv4Private(host);
+  if (v4 !== null) return v4;
+  if (host.includes(":")) {
+    // Only global unicast (2000::/3) passes; ::ffff:a.b.c.d and friends never do.
+    return !/^[23][0-9a-f]{0,3}:/.test(host) || host.includes(".");
+  }
+  if (!host.includes(".")) return true;
+  return /(^|\.)(localhost|local|internal|lan|home\.arpa|ts\.net)$/.test(host);
+}
+
+/**
+ * The office sidecar's browser-facing origin(s) for the CSP.
+ *
+ * Public mode (host audit M3: the dev server's Tailscale address once landed in the live CSP through the state file's
+ * `bindHost:hostPort` fallback): KNIFE_OFFICE_PUBLIC_URL only, and only when it is https on a public host name; else none
+ * at all (fails closed: the editor does not load until it is configured; `install()` warns at startup). The state file
+ * is never consulted. Private mode is unchanged: KNIFE_OFFICE_PUBLIC_URL, else the state file (`publicUrl`, else
+ * bind:port). Returns `{ origins, warning }`; `sidecarOrigins()` keeps the old array shape.
+ */
+export function officeOrigins(dataDir, env = process.env) {
+  const configured = String(env.KNIFE_OFFICE_PUBLIC_URL ?? "").trim();
+  if (isPublicAuthMode(env)) {
+    if (!configured) return { origins: [], warning: null };
+    const verdict = publicOriginVerdict(configured);
+    return verdict.origin ? { origins: [verdict.origin], warning: null } : { origins: [], warning: `KNIFE_OFFICE_PUBLIC_URL ${verdict.reason}; the office editor origin is left out of the CSP.` };
+  }
   // Proxied by the app on its own host name (scripts/office-proxy.mjs): that origin, whatever the state says.
-  const proxied = originOf(process.env.KNIFE_OFFICE_PUBLIC_URL ?? "");
-  if (proxied) return [proxied];
+  const proxied = originOf(configured);
+  if (proxied) return { origins: [proxied], warning: null };
   try {
     const state = JSON.parse(readFileSync(join(dataDir, "services", "office", "state.json"), "utf8"));
     const host = String(state.bindHost ?? "");
     const fallback = host && state.hostPort ? `http://${host.includes(":") ? `[${host}]` : host}:${state.hostPort}` : null;
     const origin = originOf(state.publicUrl || fallback || "");
-    return origin ? [origin] : [];
+    return { origins: origin ? [origin] : [], warning: null };
   } catch {
-    return [];
+    return { origins: [], warning: null };
   }
+}
+
+/** `{ origin }` when `value` is an https URL on a public host name, else `{ origin: null, reason }`. */
+export function publicOriginVerdict(value) {
+  let url;
+  try {
+    url = new URL(String(value).trim());
+  } catch {
+    return { origin: null, reason: "is not a URL" };
+  }
+  if (url.protocol !== "https:") return { origin: null, reason: "is not https" };
+  if (url.username || url.password) return { origin: null, reason: "carries credentials" };
+  if (isPrivateHost(url.hostname)) return { origin: null, reason: "names a private or local address" };
+  return { origin: url.origin, reason: "" };
+}
+
+/** Back-compatible: the office origins only. */
+export function sidecarOrigins(dataDir, env = process.env) {
+  return officeOrigins(dataDir, env).origins;
+}
+
+/**
+ * KNIFE_CSP_FRAME_ORIGINS entries. Public mode keeps only https origins on public host names (the same rule as the office
+ * origin) and names the ones it drops; private mode keeps every http(s) origin.
+ */
+export function extraFrameOrigins(env = process.env) {
+  const entries = String(env.KNIFE_CSP_FRAME_ORIGINS ?? "").split(/[\s,]+/).filter(Boolean);
+  if (!isPublicAuthMode(env)) return { origins: entries.map(originOf).filter(Boolean), dropped: [] };
+  const origins = [];
+  const dropped = [];
+  for (const entry of entries) {
+    const verdict = publicOriginVerdict(entry);
+    if (verdict.origin) origins.push(verdict.origin);
+    else dropped.push(entry);
+  }
+  return { origins, dropped };
 }
 
 function install() {
   const dev = process.env.KNIFE_SERVE_MODE === "dev";
   const dataDir = process.env.KNIFE_DATA_DIR?.trim() || join(homedir(), ".local", "share", "samurai-knife");
-  const extra = (process.env.KNIFE_CSP_FRAME_ORIGINS ?? "").split(/[\s,]+/).map(originOf).filter(Boolean);
+  const extras = extraFrameOrigins();
+  const extra = extras.origins;
+  if (extras.dropped.length) console.warn(`[security-headers] KNIFE_CSP_FRAME_ORIGINS: dropped ${extras.dropped.length} entr${extras.dropped.length === 1 ? "y" : "ies"} that are not https on a public host name.`);
+  if (isPublicAuthMode()) {
+    const office = officeOrigins(dataDir);
+    if (office.warning) console.warn(`[security-headers] ${office.warning}`);
+    else if (office.origins.length === 0) console.warn("[security-headers] public mode without KNIFE_OFFICE_PUBLIC_URL (https): no office editor origin in the CSP, so the editor cannot load.");
+  }
   const stateFile = join(dataDir, "services", "office", "state.json");
   // Two variants: requests on the public host (https through the proxy) get HSTS and upgrade-insecure-requests; requests
   // on any other address (the owner's plain-http Tailscale/LAN URL) get the same policy without both, or the browser
@@ -105,7 +194,7 @@ function install() {
     if (mtime !== cached.mtime || cached.headers.length === 0) {
       const options = {
         dev,
-        frameOrigins: [...sidecarOrigins(dataDir), ...extra],
+        frameOrigins: [...officeOrigins(dataDir).origins, ...extra],
         formOrigins: [originOf(process.env.KNIFE_GITHUB_WEB_URL ?? "") ?? "https://github.com"],
       };
       cached.headers = securityHeaders({ ...options, publicUrl: process.env.KNIFE_PUBLIC_URL ?? "" });
