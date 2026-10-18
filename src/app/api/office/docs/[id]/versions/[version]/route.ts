@@ -2,7 +2,8 @@ import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { attachment, officeError } from "@/lib/office/http";
 import { getDoc, readVersionBytes } from "@/lib/office/store";
 import { MIME } from "@/lib/office/templates";
-import { extractText } from "@/lib/office/text";
+import { extractOfficeText } from "@/lib/office/extract";
+import { queueFullOrNull } from "@/lib/queue-http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +34,15 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string;
         },
       });
     }
-    let text: string;
+    let preview: { text: string; truncated: boolean };
     try {
-      text = extractText(found.format, bytes);
-    } catch {
-      text = "";
+      preview = await extractOfficeText(found.format, bytes, { maxChars: PREVIEW_CHARS, owner: auth.account.id, signal: request.signal });
+    } catch (error) {
+      const full = queueFullOrNull(error);
+      if (full) return full;
+      preview = { text: "", truncated: false }; // unreadable file, or stopped by the isolate limits: no preview
     }
-    return json({ version: found, text: text.slice(0, PREVIEW_CHARS), truncated: text.length > PREVIEW_CHARS });
+    return json({ version: found, text: preview.text, truncated: preview.truncated });
   } catch (error) {
     return officeError(error);
   }

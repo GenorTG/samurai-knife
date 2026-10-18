@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { defineTool, type KnifeToolContext, type KnifeToolDefinition } from "./define";
 import { assertFolder, createFolder, folderPath, readFolders, readLibrary } from "@/lib/office/folders";
 import { createDoc, DocError, getDoc, getLiveDoc, listVersions, moveDoc, readDocBytes, readVersionBytes, restoreVersion } from "@/lib/office/store";
-import { extractText } from "@/lib/office/text";
+import { extractOfficeText } from "@/lib/office/extract";
 import { buildDocument, OFFICE_FORMATS } from "@/lib/office/templates";
 import { QuotaExceededError } from "@/lib/storage/quota";
 
@@ -67,15 +67,17 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
     description:
       "Read one office document as plain text: paragraphs for docx/odt, '# Sheet: name' blocks of tab-separated rows for xlsx/ods, '# Slide N' blocks for pptx/odp. Formatting, images and formulas are not included (cell values are). `version` reads an earlier kept version (knife_doc_versions). Use knife_doc_list for ids.",
     schema: z.object({ id: z.string().min(1).max(40), maxChars: z.number().int().min(100).max(200_000).optional(), version: z.number().int().min(1).optional() }).strict(),
-    run({ id, maxChars, version }, ctx) {
-      return guarded(() => {
-        const accountId = account(ctx);
+    async run({ id, maxChars, version }, ctx) {
+      const accountId = account(ctx);
+      const { meta, source, format, bytes } = guarded(() => {
         const meta = getDoc(accountId, id);
         const source = version && version !== meta.version ? readVersionBytes(accountId, meta, version) : null;
-        const text = source ? extractText(source.version.format, source.bytes) : extractText(meta.format, readDocBytes(accountId, meta));
-        const limit = maxChars ?? 20_000;
-        return { id, name: meta.name, format: source?.version.format ?? meta.format, version: source?.version.version ?? meta.version, current: !source, chars: text.length, truncated: text.length > limit, text: text.slice(0, limit) };
+        return source ? { meta, source, format: source.version.format, bytes: source.bytes } : { meta, source, format: meta.format, bytes: readDocBytes(accountId, meta) };
       });
+      // Parsed in the isolate pool (extract.ts), stopping at `limit`: `chars` is the length returned, not the document's.
+      const limit = maxChars ?? 20_000;
+      const { text, truncated } = await extractOfficeText(format, bytes, { maxChars: limit, owner: accountId });
+      return { id, name: meta.name, format, version: source?.version.version ?? meta.version, current: !source, chars: text.length, truncated, text };
     },
   }),
   defineTool({

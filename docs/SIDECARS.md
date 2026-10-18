@@ -127,7 +127,9 @@ websockets on (docs/DEPLOY.md §4).
   - Versions: every save (editor callback 2 and 6, a restore) keeps the previous bytes as a version with when, who and
     how (`editor`, `upload`, `restore` from vN, `copy`…); at most 25 per document (oldest dropped). Restore = the old bytes
     become a NEW version (nothing lost; the key rotates, so an editor still open on the old session saves its next change
-    as "(edited copy)"). Prune keeps the newest N. Preview = plain text (`knife_doc_read`'s extraction).
+    as "(edited copy)"). Prune keeps the newest N. Preview = plain text (`knife_doc_read`'s extraction,
+    `src/lib/office/extract.ts`: run in the isolate pool with a timeout, output capped while it is built; a full pool
+    answers 503/429 + Retry-After).
   - Trash: `trashedAt` + `trashedWith` (the item the user trashed: a document, or a folder with its whole subtree).
     Restore puts things back (root when the parent folder is gone); only the trashed item itself can be restored or deleted
     for good; purged 30 days after trashing. A trashed document cannot be opened, moved or copied (409).

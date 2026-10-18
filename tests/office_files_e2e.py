@@ -129,6 +129,19 @@ def docx_bytes(text: str) -> bytes:
     return buf.getvalue()
 
 
+def crafted_xlsx() -> bytes:
+    """A few-KB xlsx whose cell references would expand to hundreds of MB of tabs (columns past XFD, rows padded to XFD)."""
+    buf = io.BytesIO()
+    x = '<?xml version="1.0" encoding="UTF-8"?>'
+    rows = '<row r="1">' + '<c r="ZZZ1"><v>1</v></c>' * 20_000 + "</row>" + '<row><c r="XFD2"><v>2</v></c></row>' * 20_000
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", f'{x}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>')
+        z.writestr("xl/workbook.xml", f'{x}<workbook xmlns:r="r"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        z.writestr("xl/_rels/workbook.xml.rels", f'{x}<Relationships><Relationship Id="rId1" Type="t" Target="worksheets/sheet1.xml"/></Relationships>')
+        z.writestr("xl/worksheets/sheet1.xml", f"{x}<worksheet><sheetData>{rows}</sheetData></worksheet>")
+    return buf.getvalue()
+
+
 def docx_text(raw: bytes) -> str:
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         xml = z.read("word/document.xml").decode()
@@ -254,6 +267,27 @@ def isolation(base: str, alice: Api, bob: Api) -> None:
     check("bob's knife_doc_list (agent + MCP) shows none of alice's", status == 200 and aid not in json.dumps(body) and fid not in json.dumps(body) and aid not in mcp_list, "")
     alice_list = json.dumps(alice.mcp("knife_doc_list", {}))
     check("alice's knife_doc_list over MCP shows her document with its folder path", aid in alice_list and "Alice private" in alice_list, alice_list[:200])
+
+    # Text extraction runs in the isolate pool (src/lib/office/extract.ts): the owner reads her text, bounded. (The version
+    # preview route uses the same extraction; it needs a kept version, i.e. an editor save: section 5.)
+    status, body = alice.call("POST", "/api/agent/tool", {"name": "knife_doc_read", "args": {"id": aid}})
+    read = json.loads(body.get("content", "{}")) if isinstance(body, dict) and body.get("ok") else {}
+    check("alice's knife_doc_read (agent route) returns her text", read.get("text") == "alice only" and read.get("truncated") is False, str(body)[:200])
+    res = alice.mcp("knife_doc_read", {"id": aid, "maxChars": 100}).get("result", {})
+    check("alice's knife_doc_read over MCP returns her text", not res.get("isError") and "alice only" in json.dumps(res), str(res)[:200])
+    # Crafted xlsx from the 2026-10-17 audit: one row of 20000 cells at column ZZZ (past XFD) used to take ~4 s and build
+    # a 365 MB string on the main thread; plus 20000 rows each padded to XFD. Both must answer fast with bounded text.
+    status, body = alice.call("POST", "/api/office/docs", {"action": "upload", "name": "crafted.xlsx", "data": b64(crafted_xlsx())})
+    cid = body.get("doc", {}).get("id") if isinstance(body, dict) else None
+    check("crafted xlsx uploads (it is a valid zip)", status == 201 and bool(cid), str(body)[:200])
+    start = time.monotonic()
+    status, body = alice.call("POST", "/api/agent/tool", {"name": "knife_doc_read", "args": {"id": cid, "maxChars": 5000}})
+    secs = time.monotonic() - start
+    read = json.loads(body.get("content", "{}")) if isinstance(body, dict) and body.get("ok") else {}
+    check(f"crafted xlsx: knife_doc_read answers fast with capped text ({secs:.2f} s)",
+          secs < 5 and read.get("truncated") is True and 0 < len(read.get("text", "")) <= 5000, str(body)[:200])
+    if cid:
+        alice.call("DELETE", f"/api/office/docs/{cid}?permanent=1")  # later sections count alice's documents
 
 
 # --------------------------------------------------------------------------------------------------------- 3. quota

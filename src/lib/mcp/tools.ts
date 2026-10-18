@@ -7,10 +7,10 @@ import { SITE_KNIFE_TOOLS } from "./tools-site";
 import { NOSQL_KNIFE_TOOLS } from "./tools-nosql";
 import { SQL_KNIFE_TOOLS } from "./tools-sql";
 import { computeDiff, MAX_DIFF_LINES } from "@/lib/diff";
-import { buildGeneration, type AnchorMode } from "@/lib/regexgen";
+import type { AnchorMode } from "@/lib/regexgen";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { searchToolsLoose } from "@/lib/registry";
-import { validateJsonSchema } from "@/lib/json-schema";
+import { runIsolated } from "@/lib/isolate/server";
 import { resolveJsonPointer } from "@/lib/json-pointer";
 
 export type { KnifeToolContext, KnifeToolDefinition } from "./define";
@@ -56,9 +56,10 @@ const textSchema = z.object({
   text: z.string().max(100_000),
 }).strict();
 
+// Sized for hand-written schemas and documents; validation runs in the isolate pool, these caps bound the copy and Ajv's compile.
 const jsonSchemaValidationSchema = z.object({
-  schema: z.string().min(1).max(100_000),
-  value: z.string().min(1).max(200_000),
+  schema: z.string().min(1).max(32_000),
+  value: z.string().min(1).max(64_000),
 }).strict();
 
 const jsonPointerSchema = z.object({
@@ -112,11 +113,12 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
     scope: "pure",
     description: "Generate and verify a regular expression from positive and negative examples.",
     schema: regexSchema,
-    run: ({ positiveExamples, negativeExamples, anchorMode }) => {
-      const result = buildGeneration(
-        positiveExamples,
-        negativeExamples ?? "",
-        (anchorMode ?? "line") as AnchorMode,
+    // Verifies a pattern shaped by the examples against them: user-shaped regex work, so in the isolate pool.
+    run: async ({ positiveExamples, negativeExamples, anchorMode }, ctx) => {
+      const result = await runIsolated(
+        "generateRegex",
+        { positiveExamples, negativeExamples: negativeExamples ?? "", anchorMode: (anchorMode ?? "line") as AnchorMode },
+        { owner: ctx?.accountId },
       );
       if (!result) throw new Error("At least one positive example is required.");
       return result;
@@ -244,21 +246,8 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
     scope: "pure",
     description: "Validate a JSON value against a JSON Schema Draft 2020-12 schema, including common format checks.",
     schema: jsonSchemaValidationSchema,
-    run: ({ schema, value }) => {
-      let parsedSchema: unknown;
-      let parsedValue: unknown;
-      try {
-        parsedSchema = JSON.parse(schema) as unknown;
-      } catch (error) {
-        throw new Error(`Invalid JSON Schema text: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      try {
-        parsedValue = JSON.parse(value) as unknown;
-      } catch (error) {
-        throw new Error(`Invalid JSON value text: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return validateJsonSchema(parsedSchema, parsedValue);
-    },
+    // Ajv runs the schema's `pattern`s with the backtracking RegExp engine: only ever in the isolate pool (2 s limit).
+    run: ({ schema, value }, ctx) => runIsolated("validateJsonSchema", { schema, value }, { owner: ctx?.accountId }),
   }),
   defineTool({
     name: "knife_get_json_pointer",
