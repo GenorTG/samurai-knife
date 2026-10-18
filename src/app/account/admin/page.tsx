@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { requireSignIn } from "@/lib/accounts/viewer";
+import { AdminSecurity } from "@/components/account/AdminSecurity";
 import { AdminUsers } from "@/components/account/AdminUsers";
 import { GithubAppAdmin } from "@/components/account/GithubAppAdmin";
 
 export const metadata: Metadata = { title: "Users" };
 export const dynamic = "force-dynamic";
 
-/** User management and the GitHub App (admins only: the APIs answer 403 to everyone else, the page shows that message). */
+/** User management, security (abuse-guard blocks and events) and the GitHub App (admins only: the APIs answer 403 to everyone else, the page shows that message). */
 export default async function AdminPage({ searchParams }: PageProps<"/account/admin">) {
   await requireSignIn("/account/admin");
   const params = await searchParams;
@@ -19,6 +20,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/account/ad
           <p className="text-[15px] text-muted">Every account on this server. Disabling or deleting an account ends its sessions at once.</p>
         </header>
         <AdminUsers />
+        <AdminSecurity />
         <GithubAppAdmin created={params.github === "created"} errorCode={one(params.github_error)} errorMessage={one(params.github_message)} />
       </div>
     </main>

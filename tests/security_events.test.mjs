@@ -1,7 +1,8 @@
 // Security event log (src/lib/security/events-core.mjs + events.ts), the one API for every module: both call shapes and
 // the older aliases, coalescing, 0600 daily files in a 0700 dir, 30-day retention (also of the old single events.jsonl),
 // drop-on-overflow, sanitising (no query strings, no full IPv6 address, flat short details), the ring reloaded after a
-// restart.
+// restart, and the admin alert digest (alerts.ts): mailed (outbox transport) to active confirmed admins only, at most once
+// per interval, escaped.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/security_events.test.mjs
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -17,6 +18,8 @@ test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const core = await import("../src/lib/security/events-core.mjs");
 const events = await import("../src/lib/security/events.ts");
+const alerts = await import("../src/lib/security/alerts.ts");
+const store = await import("../src/lib/accounts/store.ts");
 const secDir = join(dataDir, "security");
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -111,4 +114,40 @@ test("recording is cheap: 100k events take well under a second and never throw o
   for (const junk of [null, undefined, 42, "x", { kind: { toString: () => { throw new Error("boom"); } } }]) events.recordSecurityEvent(junk);
   assert.ok(performance.now() - start < 1_500, `${Math.round(performance.now() - start)} ms`);
   core.resetSecurityEventsForTests();
+});
+
+test("alerts: only serious events page, the digest goes to active confirmed admins once per interval", async () => {
+  core.resetSecurityEventsForTests();
+  assert.equal(alerts.isAlertWorthy({ kind: "scanner_block", detail: "scanner: blocked 24h (level 3)" }), true);
+  assert.equal(alerts.isAlertWorthy({ kind: "scanner_block", detail: "scanner: blocked 15m (level 1)" }), false);
+  assert.equal(alerts.isAlertWorthy({ kind: "login_lockout", detail: "login-global:all" }), true);
+  assert.equal(alerts.isAlertWorthy({ kind: "mail_budget", detail: { domain: "example.com" } }), true, "record details too");
+  assert.equal(alerts.isAlertWorthy({ kind: "login_lockout", detail: "login:account" }), false);
+  assert.equal(alerts.isAlertWorthy({ kind: "rate_block" }), false);
+  const html = alerts.digestMail([{ ts: new Date().toISOString(), kind: "other", detail: "<script>", count: 1 }]).html;
+  assert.equal(html.includes("<script>"), false);
+
+  const now = new Date().toISOString();
+  store.mutateStore((s) => {
+    s.accounts.push(store.newAccountRecord({ id: "boss", displayName: "Boss", role: "admin", status: "active", email: "boss@example.com", emailVerifiedAt: now }));
+    s.accounts.push(store.newAccountRecord({ id: "ghost", displayName: "Ghost", role: "admin", status: "disabled", email: "ghost@example.com", emailVerifiedAt: now }));
+    s.accounts.push(store.newAccountRecord({ id: "user", displayName: "User", role: "user", status: "active", email: "user@example.com", emailVerifiedAt: now }));
+  });
+  alerts.startSecurityAlerts();
+  events.recordSecurityEvent({ kind: "rate_block", detail: "not alert-worthy" });
+  events.recordSecurityEvent({ kind: "scanner_block", ipPrefix: "2001:0db8:0001::/48", detail: "scanner: blocked 24h (level 3)" });
+  events.recordSecurityEvent({ kind: "mail_budget", detail: "global hourly mail budget" });
+  assert.equal(alerts.alertStatus().pending, 2);
+  assert.equal(alerts.flushSecurityAlerts(Date.now(), true), 1, "one recipient: the active, confirmed admin");
+  events.recordSecurityEvent({ kind: "disk_low", detail: "100 MB free" });
+  assert.equal(alerts.flushSecurityAlerts(Date.now()), 0, "not again within the interval");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const outbox = join(dataDir, "mail-outbox");
+  const mails = readdirSync(outbox);
+  assert.equal(mails.length, 1, mails.join(","));
+  assert.ok(mails[0].includes("boss"));
+  const text = readFileSync(join(outbox, mails[0]), "utf8");
+  assert.match(text, /security alert/i);
+  assert.match(text, /2001:0db8:0001::\/48/);
+  assert.equal(/not alert-worthy/.test(text), false);
 });

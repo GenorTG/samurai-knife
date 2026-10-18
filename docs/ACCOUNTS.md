@@ -103,6 +103,7 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 
 | `/account/admin` (both modes) | `POST /api/admin/users/<id> {action:"network", privateNetwork}` | Admins only; `true` is refused for a non-admin (409). |
+| `/account/admin` (both modes) | `GET /api/admin/security`, `POST /api/admin/security {action:"unblock", key}` | Admins only. The abuse guard's blocks (Unblock), table sizes and counters, the last 500 security events, rate-limit namespace sizes, alert status. |
 
 Answers that never depend on whether a username or address exists: register, resend, forgot (and the email change). What
 differs goes to the mailbox of the address concerned.
@@ -344,6 +345,12 @@ then dropped and the drop itself logged) and appended asynchronously once a seco
 `$KNIFE_DATA_DIR/security/events-<UTC day>.jsonl` (dir 0700, files 0600, 30 days kept; the single `events.jsonl` of
 older builds is renamed `events-<day>.legacy.jsonl` and ages out the same way). The abuse-guard preload writes through
 the same buffer (`events-core.mjs`).
+
+Admins see the last 500 events (including the tail of the last two day files after a restart) on the Users page. In public
+mode `src/lib/security/alerts.ts` (started by `src/instrumentation.ts`) mails one digest to every active admin with a
+confirmed email, at most every `KNIFE_ALERT_INTERVAL_MIN` (15) minutes and 50 lines, for: a 24 h block, a `mail_budget`
+event, a registration surge (more than 50 an hour), a `tool_timeout`, a full table or quota (`quota_full`), the global
+failed-login budget, and free disk on the data dir under `KNIFE_DISK_FLOOR_MB` (2048, checked every minute).
 
 ## Proof-of-work and password-hash budget
 
