@@ -10,7 +10,8 @@ production until the user clicks Publish.
 1. **Connect** a GitHub repository: through the server's **GitHub App** (no token: the user installs the app on the
    repositories they choose, docs/GITHUB.md), or with a personal token; admins may use the server's own `gh` login. Plus
    the production URL and up to 9 more page paths.
-2. **Score** (audit) the production site, the pull request's preview, or any URL.
+2. **Score** (audit) the connected production site. In private mode and for admins, a pull-request preview or another
+   URL may be audited too; public non-admin accounts are restricted to their connected production origin.
 3. **Change**: the assistant or an MCP agent edits on a work branch `knife/<yyyymmdd>-<id>` (created from the base branch
    on the first change) and opens a pull request. Hosts like Vercel build a preview of it; the studio finds the
    preview URL in the commit's deployments and can score it.
@@ -57,6 +58,12 @@ One run per account at a time; progress is readable while it runs (`GET /api/sit
 Where audits may go: private mode any address (a dev server on the LAN); public mode public addresses only (an admin
 with `privateNetwork` excepted), every hop re-checked, 20 s and 4 MB per page. Budgets (public mode, non-admins): 6
 audits an hour, 600 GitHub calls per 10 minutes, page reads count against the page budget.
+
+In public mode, server-wide outbound-purpose and destination-host budgets additionally cap aggregate use across all
+non-admin accounts (`src/lib/net/outbound.ts`, `KNIFE_OUTBOUND_BUDGETS`). A server-configured `KNIFE_PSI_API_KEY` is
+admin-only; a non-admin can use PageSpeed only with the key saved on their own site connection. Anonymous PageSpeed is
+disabled for non-admins. Their audits are restricted to the connected site's production URL. GitHub App operations
+must still pass the linked user's current repository-with-push authorization check.
 
 ## Storage
 

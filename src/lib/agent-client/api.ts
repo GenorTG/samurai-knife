@@ -1,4 +1,5 @@
 import { parseUsage, type UsageSummary } from "@/lib/usage";
+import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
 import type {
   AccountChoice,
   AccountInfo,
@@ -248,11 +249,38 @@ export async function chat(request: ChatRequest, signal?: AbortSignal): Promise<
   };
 }
 
+export interface ServerToolCatalog {
+  defs: FunctionToolDef[];
+  /** Declared effect per tool (src/lib/mcp/define.ts) for the approval policy; never sent to the model. */
+  effects: Record<string, KnifeToolEffectInfo>;
+}
+
+const EFFECTS = new Set(["read", "write", "destructive", "outbound"]);
+
+function parseEffects(value: unknown): Record<string, KnifeToolEffectInfo> {
+  const out: Record<string, KnifeToolEffectInfo> = {};
+  if (!isRecord(value)) return out;
+  for (const [name, info] of Object.entries(value)) {
+    if (!isRecord(info) || typeof info.effect !== "string" || !EFFECTS.has(info.effect)) continue;
+    const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    const when = Array.isArray(info.destructiveWhen)
+      ? info.destructiveWhen.flatMap((d) => (isRecord(d) && typeof d.arg === "string" && (d.when === "true" || d.when === "nonEmpty") ? [{ arg: d.arg, when: d.when as "true" | "nonEmpty" }] : []))
+      : [];
+    out[name] = { effect: info.effect as KnifeToolEffectInfo["effect"], urlArgs: strings(info.urlArgs), destructiveWhen: when, untrustedOutput: info.untrustedOutput === true };
+  }
+  return out;
+}
+
 export async function fetchServerTools(): Promise<FunctionToolDef[]> {
+  return (await fetchServerToolCatalog()).defs;
+}
+
+export async function fetchServerToolCatalog(): Promise<ServerToolCatalog> {
   const r = await call("/api/agent/tools");
-  if ("failure" in r || !r.res.ok) return [];
+  if ("failure" in r || !r.res.ok) return { defs: [], effects: {} };
   const raw = isRecord(r.body) && Array.isArray(r.body.tools) ? r.body.tools : r.body;
-  if (!Array.isArray(raw)) return [];
+  const effects = isRecord(r.body) ? parseEffects(r.body.effects) : {};
+  if (!Array.isArray(raw)) return { defs: [], effects };
   const out: FunctionToolDef[] = [];
   for (const item of raw) {
     if (!isRecord(item) || !isRecord(item.function)) continue;
@@ -267,7 +295,7 @@ export async function fetchServerTools(): Promise<FunctionToolDef[]> {
       },
     });
   }
-  return out;
+  return { defs: out, effects };
 }
 
 export async function runServerTool(

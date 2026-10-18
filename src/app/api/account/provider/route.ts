@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
 import { baseUrlProblem, normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
-import { providerPolicy, strictHeaders } from "@/lib/net/outbound";
+import { providerPolicy, providerUrlProblem, strictHeaders } from "@/lib/net/outbound";
 import { getAccount, setProvider, toPublicAccount } from "@/lib/accounts/store";
 import { authMode } from "@/lib/accounts/mode";
 
@@ -40,6 +40,9 @@ export async function PUT(request: Request): Promise<Response> {
     const headerProblem = validateExtraHeaders(parsed.data.extraHeaders, strictHeaders(auth.account));
     if (headerProblem) return jsonError(headerProblem, 400);
   }
+  // Public mode: known provider hosts only for non-admins, or the base URL an admin approved for this account.
+  const hostProblem = providerUrlProblem(auth.account, baseUrl);
+  if (hostProblem) return jsonError(`baseUrl: ${hostProblem}`, 400, { code: "provider_not_allowed" });
   // Checked again on every request (DNS can change); refusing here gives the user the reason at once.
   const addressProblem = await baseUrlProblem(baseUrl, providerPolicy(auth.account));
   if (addressProblem) return jsonError(`baseUrl: ${addressProblem}`, 400, { code: "address_not_allowed" });

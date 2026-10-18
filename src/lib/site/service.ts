@@ -35,7 +35,7 @@ function account(accountId: string): Account {
 }
 
 function spend(a: Account): void {
-  const budget = consumeOutbound(a, "github");
+  const budget = consumeOutbound(a, "github", github.GITHUB_API());
   if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);
 }
 

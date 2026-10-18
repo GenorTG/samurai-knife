@@ -42,6 +42,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_format",
     scope: "pure",
+    effect: "read",
     description: "Pretty-print SQL for one dialect (sqlglot). Deterministic; use it to tidy a query before showing it. Fails with the line/column of a syntax error.",
     schema: z.object({ sql: sqlText, dialect }).strict(),
     run: async ({ sql, dialect: d }, ctx) => unwrap(await runSql("format", { sql, dialect: d }, undefined, ctx?.accountId)),
@@ -49,6 +50,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_transpile",
     scope: "pure",
+    effect: "read",
     description: "Convert SQL from one dialect to another (sqlglot). Use this for every dialect move instead of rewriting by hand. ALWAYS read `issues`: level 'error' means the converted SQL will not run on the target (no RETURNING, upsert without MERGE, arrays...), 'warning' means it runs but is an approximation (emulated ILIKE, FULL JOIN, DATEDIFF semantics). Several statements are separated by `;`.",
     schema: z.object({
       sql: sqlText,
@@ -61,6 +63,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_validate",
     scope: "pure",
+    effect: "read",
     description: "Parse SQL in a dialect. Returns syntax errors with line/column plus, per statement, its kind (select, insert, create_table...), the tables and the columns it references. Checks syntax only; to verify names against the user's schema use knife_sql_check.",
     schema: z.object({ sql: sqlText, dialect }).strict(),
     run: async ({ sql, dialect: d }, ctx) => unwrap(await runSql("validate", { sql, dialect: d }, undefined, ctx?.accountId)),
@@ -68,6 +71,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_schema",
     scope: "pure",
+    effect: "read",
     description: "Turn CREATE TABLE / CREATE INDEX / ALTER TABLE statements into a structured schema (tables, columns, types, nullability, defaults, primary and foreign keys, indexes) plus a Mermaid erDiagram. Pass the result's `schema` to knife_sql_check. `dialect` defaults to postgres.",
     schema: z.object({ ddl: sqlText, dialect: sqlDialectSchema.optional() }).strict(),
     run: async ({ ddl, dialect: d }, ctx) => unwrap(await runSql("schema", { ddl, dialect: d ?? "postgres" }, undefined, ctx?.accountId)),
@@ -75,6 +79,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_compile",
     scope: "pure",
+    effect: "read",
     description: [
       "Compile a JSON query spec into dialect-correct SQL (no database is contacted). PREFER THIS over hand-writing SQL: it gets LIMIT vs TOP/FETCH, identifier quoting, ILIKE, upsert (ON CONFLICT vs ON DUPLICATE KEY), booleans, identity columns and placeholders right per dialect. Then run knife_sql_check on the result against the user's schema.",
       "spec.op = select | insert | update | delete | create_table.",
@@ -92,6 +97,7 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_sql_check",
     scope: "pure",
+    effect: "read",
     description: "Verify SQL against a schema: every table and column must exist; reports unknown tables/columns with a did-you-mean, ambiguous columns, unknown aliases and wrong value counts in INSERT. ALWAYS call this after writing or editing SQL from natural language, with the user's real schema (`schema` from knife_sql_schema, or `ddl`), and fix every issue with level 'error' before presenting the query. Never invent column names to make a query look plausible: ask or inspect the schema instead.",
     schema: checkSchema,
     run: async ({ sql, dialect: d, schema, ddl }, ctx) => {

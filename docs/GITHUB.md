@@ -66,3 +66,11 @@ state rules, sign-in/registration rules, linking, installation tokens, studio on
 refused) and `tests/functional/github_app_e2e.py` (Chromium + Firefox: the admin creates the app, alice registers with
 GitHub and connects a repository, an agent edits through the installation, mallory's claim of alice's installation is
 refused, bob's account is not taken over by email, a forged state is refused, a GitHub-only account deletes itself).
+
+GitHub App repo authorization is scoped to the linked GitHub USER, not merely the installation: link/refresh fetches
+`GET /user/installations/{id}/repositories` with the user's OAuth token and retains only repositories whose
+installation permissions include `push`. Connect, listings and every site operation require that exact repo to remain
+in this list. The server revalidates against GitHub with a short TTL; unlinking or losing access drops the connection.
+An organization's installation may contain repos the linking user cannot access; those repos are not connectable.
+The server-held host `gh` login and GitHub App private key are never used to broaden a non-admin user's repository
+authorization; personal-token connections use only the user's token and connected repo.

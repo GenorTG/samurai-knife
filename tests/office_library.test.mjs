@@ -192,7 +192,8 @@ test("knife_doc_* tools: folders, move, versions, restore; scoped to the calling
   assert.equal(versions.current.version, 2);
   assert.equal(versions.kept[0].version, 1);
   const old = await tool("knife_doc_read").execute({ id: created.id, version: 1 }, { accountId: "alice" });
-  assert.equal(old.text, "one");
+  assert.match(old.text, /one/);
+  assert.match(old.text, /UNTRUSTED_CONTENT/);
   const restored = await tool("knife_doc_restore_version").execute({ id: created.id, version: 1 }, { accountId: "alice" });
   assert.equal(restored.version, 3);
   const moved = await tool("knife_doc_move").execute({ id: created.id, folderId: null }, { accountId: "alice" });

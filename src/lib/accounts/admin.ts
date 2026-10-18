@@ -4,6 +4,7 @@ import { revokeAllSessions, sessionCount } from "@/lib/accounts/session";
 import { issueVerification, isLastAdmin, purgeAccount } from "@/lib/accounts/flows";
 import { sendMail } from "@/lib/mail";
 import { accountDeletedMail } from "@/lib/mail/templates";
+import { normalizeBaseUrl } from "@/lib/accounts/provider";
 
 /** User management for the admin page (/account/admin, API /api/admin/users). Every caller has passed requireAdmin. */
 
@@ -21,6 +22,8 @@ export interface AdminUserRow {
   sessions: number;
   /** Provider requests may reach private addresses (public mode, honoured for admins only). */
   privateNetwork: boolean;
+  /** Public mode: the custom provider base URL an admin approved for this account (null = known providers only). */
+  approvedProviderUrl: string | null;
 }
 
 export function listUsers(): AdminUserRow[] {
@@ -37,6 +40,7 @@ export function listUsers(): AdminUserRow[] {
     storageQuotaBytes: account.storageQuotaBytes,
     sessions: sessionCount(account.id),
     privateNetwork: account.privateNetwork,
+    approvedProviderUrl: account.approvedProviderUrl,
   }));
 }
 
@@ -47,7 +51,8 @@ export type AdminAction =
   | { action: "quota"; bytes: number | null }
   | { action: "role"; role: AccountRole }
   | { action: "resend-verification" }
-  | { action: "network"; privateNetwork: boolean };
+  | { action: "network"; privateNetwork: boolean }
+  | { action: "provider-url"; baseUrl: string | null };
 
 export type AdminResult = { ok: true; detail?: string; removed?: string[] } | { ok: false; status: number; error: string };
 
@@ -108,6 +113,15 @@ export function adminAct(actorId: string, targetId: string, body: AdminAction): 
         if (account) account.privateNetwork = body.privateNetwork;
       });
       return { ok: true };
+    case "provider-url": {
+      const url = body.baseUrl === null ? null : normalizeBaseUrl(body.baseUrl);
+      if (body.baseUrl !== null && !url) return { ok: false, status: 400, error: "baseUrl must be an http(s) URL without credentials, query or fragment." };
+      mutateStore((s) => {
+        const account = s.accounts.find((a) => a.id === targetId);
+        if (account) account.approvedProviderUrl = url;
+      });
+      return { ok: true, detail: url ? `${targetId} may use ${url}` : `${targetId} may use the known providers only` };
+    }
     case "resend-verification":
       return issueVerification((account) => account.id === targetId)
         ? { ok: true, detail: "A new confirmation link was sent." }

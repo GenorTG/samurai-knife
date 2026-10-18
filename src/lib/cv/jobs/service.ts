@@ -10,12 +10,15 @@ import { suggestVariant, type Suggestion } from "./tailor";
 import { atsCheck, printedText, type AtsReport } from "./ats";
 import { resolveVariant } from "../variant";
 import { getAccount } from "@/lib/accounts/store";
-import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
+import { admitOutbound, hostGate, OutboundRefused, outboundLimitMessage, type OutboundPurpose } from "@/lib/net/outbound";
+import type { FetchDeps } from "./fetch";
 
 /** A domain failure with the HTTP status a route should answer (the tools just surface the message). */
 export class CvJobError extends Error {
-  constructor(message: string, readonly status: 404 | 422 | 429) {
+  readonly status: 404 | 422 | 429;
+  constructor(message: string, status: 404 | 422 | 429) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -29,12 +32,33 @@ export interface SavedPosting {
   companyNote: string;
 }
 
-/** Every page fetch counts against the account's outbound budget (public mode, non-admins: `src/lib/net/outbound.ts`). */
-function spendFetch(accountId: string): void {
+/**
+ * Every page fetch is admitted by the outbound budgets first (public mode, non-admins: `src/lib/net/outbound.ts`): the
+ * account, the purpose server-wide and the destination host; every further host it reaches (redirects, a board's API)
+ * is counted per hop through `admitHop`.
+ */
+function spendFetch(accountId: string, purpose: OutboundPurpose, destination: string): Pick<FetchDeps, "admitHop"> {
   const account = getAccount(accountId);
   if (!account) throw new CvJobError("unknown account", 404);
-  const budget = consumeOutbound(account, "page");
+  let target: URL | null = null;
+  try {
+    target = new URL(destination.trim());
+  } catch {
+    target = null; // fetchPosting / fetchPageText report the bad URL
+  }
+  const budget = admitOutbound(account, purpose, target);
   if (!budget.ok) throw new CvJobError(outboundLimitMessage(budget.retryAfterSeconds), 429);
+  return { admitHop: hostGate(account, purpose, target) };
+}
+
+/** A host over its budget in the middle of a fetch (a redirect, the board API) answers like the up-front refusal. */
+async function budgeted<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof OutboundRefused) throw new CvJobError(error.message, 429);
+    throw error;
+  }
 }
 
 function isUrlInput(urlOrText: string): boolean {
@@ -46,9 +70,9 @@ function isUrlInput(urlOrText: string): boolean {
 }
 
 /** Read a company website for context; a failure is a note, not an error (the offer still saves). */
-async function companyContext(url: string): Promise<{ text?: string; note: string }> {
+async function companyContext(url: string, deps: FetchDeps): Promise<{ text?: string; note: string }> {
   try {
-    const page = await fetchPageText(url);
+    const page = await fetchPageText(url, deps);
     if (!page.text.trim()) return { text: "", note: `${page.url} has no readable text (a JavaScript-only site?).` };
     return { text: [page.title, page.text].filter(Boolean).join("\n\n"), note: "" };
   } catch (error) {
@@ -57,10 +81,10 @@ async function companyContext(url: string): Promise<{ text?: string; note: strin
 }
 
 export async function fetchAndSaveJob(accountId: string, urlOrText: string, hints: JobHints): Promise<SavedPosting> {
-  if (isUrlInput(urlOrText)) spendFetch(accountId);
+  const deps = isUrlInput(urlOrText) ? spendFetch(accountId, "page", urlOrText) : {};
   let got;
   try {
-    got = await fetchPosting(urlOrText);
+    got = await budgeted(() => fetchPosting(urlOrText, deps));
   } catch (error) {
     if (error instanceof FetchError) throw new CvJobError(error.message, 422);
     throw error;
@@ -70,8 +94,7 @@ export async function fetchAndSaveJob(accountId: string, urlOrText: string, hint
   const companyUrl = hints.companyUrl?.trim() || existing?.companyUrl || got.extra?.companyUrl || "";
   let companyNote = "";
   if (companyUrl && (hints.companyUrl?.trim() || !existing?.companyText)) {
-    spendFetch(accountId);
-    const ctx = await companyContext(companyUrl);
+    const ctx = await companyContext(companyUrl, spendFetch(accountId, "company", companyUrl));
     companyNote = ctx.note;
     if (ctx.text !== undefined) hints = { ...hints, companyText: ctx.text };
   }
@@ -114,8 +137,7 @@ export async function refreshCompany(accountId: string, jobId: string, url?: str
   if (!job) throw new CvJobError(`no job '${jobId}'`, 404);
   const target = url?.trim() || job.companyUrl;
   if (!target) throw new CvJobError("this offer has no company website: pass one.", 422);
-  spendFetch(accountId);
-  const ctx = await companyContext(target);
+  const ctx = await companyContext(target, spendFetch(accountId, "company", target));
   const { data, result } = mutateCv(accountId, (current) => {
     const next = current.jobs.map((j) => (j.id === jobId ? { ...j, companyUrl: target.slice(0, 2_000), companyText: (ctx.text ?? j.companyText).slice(0, 20_000) } : j));
     return { data: { ...current, jobs: next }, result: next.find((j) => j.id === jobId)! };

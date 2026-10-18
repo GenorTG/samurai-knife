@@ -33,7 +33,7 @@ const { parsePsi } = await import("../src/lib/site/audit/lighthouse.ts");
 const github = await import("../src/lib/site/github.ts");
 const service = await import("../src/lib/site/service.ts");
 const store = await import("../src/lib/site/store.ts");
-const { runAudit, normalizePaths } = await import("../src/lib/site/audit/run.ts");
+const { runAudit, normalizePaths, siteTargetProblem } = await import("../src/lib/site/audit/run.ts");
 const cvStore = await import("../src/lib/cv/store.ts");
 const { emptyCvData } = await import("../src/lib/cv/schema.ts");
 const { accountScope } = await import("../src/lib/storage/scope.ts");
@@ -190,6 +190,20 @@ test("discard closes the pull request and deletes the branch, main untouched", a
   assert.equal(gh.pulls.at(-1).state, "closed");
   assert.match(gh.fileAt("main", "lib/site-data.ts"), /Finetune Studio/);
   await assert.rejects(service.openPull("genor", "x", ""), /no changes yet/);
+});
+
+test("public non-admin site fetches are restricted to the connected production origin, including preview requests", () => {
+  process.env.KNIFE_AUTH_MODE = "public";
+  try {
+    const user = { role: "user" };
+    const connection = { productionUrl: "https://portfolio.example/" };
+    assert.equal(siteTargetProblem(user, connection, "https://portfolio.example/about"), null);
+    assert.match(siteTargetProblem(user, connection, "https://preview-123.vercel.app/") ?? "", /production site only/);
+    assert.match(siteTargetProblem(user, connection, "https://attacker.example/") ?? "", /production site only/);
+    assert.equal(siteTargetProblem({ role: "admin" }, connection, "https://attacker.example/"), null);
+  } finally {
+    delete process.env.KNIFE_AUTH_MODE;
+  }
 });
 
 test("audit run: pages, site checks, Lighthouse, CV alignment, scores, history; one at a time", async () => {

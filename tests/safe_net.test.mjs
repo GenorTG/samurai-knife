@@ -19,6 +19,8 @@ test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 const policyMod = await import("../src/lib/net/address-policy.ts");
 const net = await import("../src/lib/net/safe-fetch.ts");
 const outbound = await import("../src/lib/net/outbound.ts");
+const outboundBudgets = await import("../src/lib/net/budgets.ts");
+const securityEvents = await import("../src/lib/security/events.ts");
 const provider = await import("../src/lib/accounts/provider.ts");
 const httpMod = await import("../src/lib/accounts/http.ts");
 const upload = await import("../src/lib/multipart-upload.ts");
@@ -184,6 +186,41 @@ test("outbound budget: public-mode users are rate limited per purpose, admins an
     delete process.env.KNIFE_AUTH_MODE;
   }
   for (let i = 0; i < 50; i += 1) assert.equal(outbound.consumeOutbound({ id: "budget-user", role: "user" }, "provider-test").ok, true);
+});
+
+test("aggregate outbound purpose and host budgets are shared across non-admin accounts; server PSI key is admin-only", () => {
+  process.env.KNIFE_AUTH_MODE = "public";
+  process.env.KNIFE_OUTBOUND_BUDGETS = "page=1/10m,host=1/10m";
+  process.env.KNIFE_PSI_API_KEY = "server-test-key";
+  outboundBudgets.resetBudgets();
+  try {
+    assert.equal(outbound.admitOutbound({ id: "agg-a", role: "user" }, "page", "https://one.example").ok, true);
+    const purpose = outbound.admitOutbound({ id: "agg-b", role: "user" }, "page", "https://two.example");
+    assert.equal(purpose.ok, false, "purpose cap spans accounts");
+    assert.equal(purpose.reason, "purpose");
+    assert.ok(securityEvents.recentSecurityEvents().some((event) => event.kind === "outbound_budget" && event.account === "agg-b"));
+    outboundBudgets.resetBudgets();
+    assert.equal(outbound.admitOutbound({ id: "host-a", role: "user" }, "page", "https://shared.example").ok, true);
+    const host = outbound.admitOutbound({ id: "host-b", role: "user" }, "company", "https://shared.example/other");
+    assert.equal(host.ok, false, "destination cap spans accounts and purposes");
+    assert.equal(host.reason, "host");
+    process.env.KNIFE_OUTBOUND_BUDGETS = "page=10/10m,host=2/10m";
+    outboundBudgets.resetBudgets();
+    const target = "https://pages.example/about";
+    assert.equal(outbound.admitOutbound({ id: "hops", role: "user" }, "page", target).ok, true);
+    const gate = outbound.hostGate({ id: "hops", role: "user" }, "page", target);
+    gate(new URL(target)); // first URL was already counted by admitOutbound
+    gate(new URL("https://pages.example/contact")); // repeated host, separate request: count it
+    assert.throws(() => gate(new URL("https://pages.example/projects")), outbound.OutboundRefused);
+    assert.deepEqual(outbound.pageSpeedKey({ role: "user" }, ""), { key: "", source: "none" });
+    assert.deepEqual(outbound.pageSpeedKey({ role: "admin" }, ""), { key: "server-test-key", source: "server" });
+    assert.deepEqual(outbound.pageSpeedKey({ role: "user" }, "own-key"), { key: "own-key", source: "account" });
+  } finally {
+    outboundBudgets.resetBudgets();
+    delete process.env.KNIFE_AUTH_MODE;
+    delete process.env.KNIFE_OUTBOUND_BUDGETS;
+    delete process.env.KNIFE_PSI_API_KEY;
+  }
 });
 
 test("extra headers: the strict (public user) list refuses proxy, client-address, hop-by-hop and gateway headers", () => {

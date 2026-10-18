@@ -85,6 +85,11 @@ const accountSchema = z.object({
    * Honoured for admins only (`src/lib/net/outbound.ts`); set with `npm run accounts -- set-network` or the admin API.
    */
   privateNetwork: z.boolean().default(false),
+  /**
+   * Public mode: a provider base URL outside the known provider hosts that an administrator approved for this account
+   * (exact, normalized). null = known providers only. `src/lib/net/outbound.ts`; CLI `approve-provider`, admin API.
+   */
+  approvedProviderUrl: z.string().max(2_048).nullable().default(null),
   /** The GitHub identity linked to this account ("Sign in with GitHub", docs/GITHUB.md); one account per GitHub user. */
   github: z.object({ id: z.number().int().positive(), login: z.string().max(100), linkedAt: z.string() }).nullable().default(null),
   /** Pending accounts only: keyed hash of the client address prefix that registered it (`ip-prefix.ts`), for the caps. */

@@ -4,20 +4,15 @@ import { describeActionTarget, fieldWouldBeCleared, fieldWouldBeOverwritten, fil
 import type { TrustMode } from "./interaction";
 import { activeLiveBridge } from "@/lib/office/live-bridge";
 import { assessLiveCall, isLiveTool } from "./office-live-tools";
+import type { Assessment } from "./server-tool-policy";
 
 /**
  * Decides whether a tool call needs the user's OK under the active trust mode.
- * Only calls that act on the page are considered; reads, waits, wait_for_user and the
- * server-side knife_* computations never prompt in any mode.
+ * This file covers the page tools; reads, waits and wait_for_user never prompt. The server-side knife_* tools are
+ * judged by their declared effect in server-tool-policy.ts (deletes confirmed, writes and outbound requests acting).
  */
 
-export interface Assessment {
-  ask: boolean;
-  /** Throws away the user's work; shown as a warning and never covered by "allow this run". */
-  destructive: boolean;
-  title: string;
-  detail: string;
-}
+export type { Assessment } from "./server-tool-policy";
 
 type Args = Record<string, unknown>;
 const NO: Assessment = { ask: false, destructive: false, title: "", detail: "" };

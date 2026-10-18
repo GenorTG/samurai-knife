@@ -19,6 +19,8 @@ Usage: python3 tests/functional/site_studio_e2e.py [--headed]
 from __future__ import annotations
 
 import json
+import os
+import socket
 import subprocess
 import sys
 import time
@@ -31,7 +33,7 @@ sys.path.insert(0, str(ROOT))
 
 from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
 
-from tests.scratch_server import ScratchServer, free_port  # noqa: E402
+from tests.scratch_server import ScratchServer  # noqa: E402
 
 HEADED = "--headed" in sys.argv
 FAILS: list[str] = []
@@ -201,14 +203,33 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
 
 
 def main() -> int:
-    gh_port, site_port, psi_port = free_port(), free_port(), free_port()
+    # Multiple free_port() calls before starting listeners can return the same first available port.
+    span = os.environ.get("KNIFE_SCRATCH_PORTS", "").strip()
+    if span:
+        low, _, high = span.partition("-")
+        candidates = range(int(low), int(high or low) + 1)
+    else:
+        candidates = range(20_000, 60_000)
+    ports: list[int] = []
+    for port in candidates:
+        with socket.socket() as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+        ports.append(port)
+        if len(ports) == 4:  # three mock listeners + the app's scratch port
+            break
+    if len(ports) != 4:
+        raise RuntimeError("could not allocate four distinct ports from KNIFE_SCRATCH_PORTS")
+    gh_port, site_port, psi_port, _app_port = ports
     site_url = f"http://127.0.0.1:{site_port}"
     world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url})
     try:
         assert world.stdout is not None and world.stdout.readline().strip() == "READY", "mock world did not start"
         env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run"}
         with ScratchServer() as server:
-            server.start(env=env)
+            server.start(env=env, overlay=["src/lib/agent-client/server-tool-policy.ts", "src/lib/net/budgets.ts", "src/lib/security/"])
             print(f"scratch server {server.url} data {server.data_dir}", flush=True)
             try:
                 run(server, f"http://127.0.0.1:{gh_port}", site_url)

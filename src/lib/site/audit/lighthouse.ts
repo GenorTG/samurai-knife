@@ -3,8 +3,9 @@ import type { Issue, LighthouseResult } from "./types";
 
 /**
  * Lighthouse scores through Google PageSpeed Insights (Google runs Lighthouse on its own machines against the public
- * URL: nothing heavy runs here). Without an API key PSI allows a small anonymous quota; `KNIFE_PSI_API_KEY` (server) or
- * the account's own key raises it. A failure is reported in the result, never thrown: the rest of the audit still runs.
+ * URL: nothing heavy runs here). The caller picks the key (`pageSpeedKey`, src/lib/net/outbound.ts: the account's own,
+ * the server's `KNIFE_PSI_API_KEY` for admins only, or none = PSI's small anonymous quota, admins only in public mode).
+ * A failure is reported in the result, never thrown: the rest of the audit still runs.
  */
 
 export const PSI_API = (): string => process.env.KNIFE_PSI_API_URL?.trim() || "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
@@ -47,8 +48,7 @@ export function parsePsi(body: unknown, strategy: LighthouseResult["strategy"]):
 export async function runLighthouse(url: string, strategy: LighthouseResult["strategy"], key: string, deps: NetDeps = {}): Promise<LighthouseResult> {
   const params = new URLSearchParams({ url, strategy, locale: "en" });
   for (const c of CATEGORIES) params.append("category", c.toUpperCase().replace("-", "_"));
-  const apiKey = key || process.env.KNIFE_PSI_API_KEY?.trim() || "";
-  if (apiKey) params.set("key", apiKey);
+  if (key) params.set("key", key);
   try {
     const res = await apiJson(`${PSI_API()}?${params}`, { timeoutMs: 120_000, maxBytes: 25_000_000 }, deps);
     if (res.status !== 200) {
