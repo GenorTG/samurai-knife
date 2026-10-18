@@ -6,6 +6,7 @@ import { installationToken, repoAccessOf, userInstallationRepos, type UserRepoAc
 import { recordSecurityEvent } from "@/lib/security/events";
 import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
 import * as github from "./github";
+import { verifyProductionUrl } from "./ownership";
 import { SiteError } from "./net";
 import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
@@ -182,7 +183,9 @@ export async function connect(accountId: string, input: ConnectInput) {
   const pages = normalizePaths(input.pages ?? current?.pages ?? []);
   const psiKey = input.psiKey === undefined ? current?.psiKey ?? "" : input.psiKey.trim();
   if (psiKey && !/^[A-Za-z0-9_-]{20,100}$/.test(psiKey)) throw new SiteError("that does not look like a Google API key");
-  const connection: SiteConnection = { repo: info.fullName, baseBranch, productionUrl, pages, token: stored, psiKey, connectedAt: current?.connectedAt ?? new Date().toISOString() };
+  // Proof that the production URL is this repository's site (ownership.ts), checked with the same token.
+  const verifiedOrigin = await verifyProductionUrl(token, info.fullName, productionUrl, info.homepage);
+  const connection: SiteConnection = { repo: info.fullName, baseBranch, productionUrl, pages, token: stored, psiKey, verifiedOrigin, connectedAt: current?.connectedAt ?? new Date().toISOString() };
   mutateSite(accountId, (s) => {
     // A different repository or base branch: the old work branch belongs to the old target.
     if (s.connection && (s.connection.repo !== connection.repo || s.connection.baseBranch !== connection.baseBranch)) s.work = null;

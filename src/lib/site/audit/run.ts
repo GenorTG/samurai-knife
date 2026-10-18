@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { getAccount } from "@/lib/accounts/store";
 import { loadCv } from "@/lib/cv/store";
-import type { Account } from "@/lib/accounts/store";
-import { admitOutbound, hostGate, mayUseAnonymousPageSpeed, outboundBudgeted, outboundLimitMessage, pageSpeedKey } from "@/lib/net/outbound";
-import type { SiteConnection } from "../store";
+import { admitOutbound, hostGate, mayUseAnonymousPageSpeed, outboundLimitMessage, pageSpeedKey } from "@/lib/net/outbound";
 import { fetchPage, sitePolicy, SiteError, type FetchedPage, type NetDeps } from "../net";
 import { loadSite, mutateSite } from "../store";
+import { siteTargetProblem } from "../ownership";
 import { alignCvWithSite, alignmentIssues } from "./align";
 import { analyzeCopy, copyIssues } from "./copy";
 import { lighthouseIssues, PSI_API, runLighthouse } from "./lighthouse";
@@ -21,24 +20,8 @@ import type { AuditRun, Issue, LighthouseResult, ScoreKey } from "./types";
 
 export const MAX_PAGES = 10;
 
-/**
- * Where a site fetch (an audit, `knife_site_page`) may go. Admins and private mode: anywhere the network policy allows.
- * Public mode, non-admins: only the connected site's production origin, even when `target=preview` is requested.
- * Threat: the audit as a free crawler/scanner of third-party sites. null = allowed.
- */
-export function siteTargetProblem(account: Pick<Account, "role">, connection: Pick<SiteConnection, "productionUrl"> | null, url: string): string | null {
-  if (!outboundBudgeted(account)) return null;
-  let target: URL;
-  try {
-    target = new URL(url);
-  } catch {
-    return `'${url.slice(0, 200)}' is not a valid URL`;
-  }
-  const production = connection?.productionUrl ? new URL(connection.productionUrl) : null;
-  if (production && target.origin === production.origin) return null;
-  if (!production) return "connect your website first and set its production URL (Connect tab): audits run on your own site only";
-  return `audits and page reads run on your connected production site only (${production.origin})`;
-}
+/** Where a site fetch may go (verified production origin for public non-admins): src/lib/site/ownership.ts. */
+export { siteTargetProblem };
 
 export interface AuditOptions {
   /** Absolute base URL; default: the connection's production URL. */

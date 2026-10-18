@@ -42,6 +42,8 @@ export const connectionSchema = z.object({
   pages: z.array(z.string().max(300)).max(10),
   token: tokenSchema,
   psiKey: z.string().max(200).default(""),
+  /** The production origin as verified at Connect (ownership.ts: repository homepage or Pages host); "" = not verified. */
+  verifiedOrigin: z.string().max(500).default(""),
   connectedAt: z.string(),
 });
 export type SiteConnection = z.infer<typeof connectionSchema>;
@@ -131,6 +133,7 @@ export function siteView(site: SiteFile) {
           pages: c.pages,
           token: { source: c.token.source, login: c.token.login, installationId: c.token.source === "app" ? c.token.installationId : null, hint: c.token.source === "pat" ? hint(c.token.value) : c.token.source === "app" ? `GitHub App installation ${c.token.installationId}` : "server gh login" },
           hasPsiKey: !!c.psiKey,
+          productionVerified: !!c.productionUrl && c.verifiedOrigin === new URL(c.productionUrl).origin,
           connectedAt: c.connectedAt,
         }
       : null,

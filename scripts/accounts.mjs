@@ -17,6 +17,7 @@
 //        [--backend-model provider/model] [--gateway-url URL] [--allow-main] [--key-prompt | --key-env VAR | --key-stdin]
 //   npm run accounts -- set-network <id> private|public   (public mode: may an ADMIN's provider reach loopback/LAN?)
 //   npm run accounts -- approve-provider <id> <baseUrl>|none   (public mode: a non-admin may use this custom provider URL)
+//   npm run accounts -- approve-site <id> <url>|none   (public mode: a non-admin may audit this site without GitHub proof)
 //   npm run accounts -- set-github <id> <github-login> [--github-id N] | --clear  (link a GitHub user: "Sign in with
 //        GitHub" opens this account; the numeric id is looked up unless given; GITHUB_TOKEN avoids the anonymous limit)
 //   npm run accounts -- provider-json <id>                (prints the provider WITH its key as JSON: for test helpers)
@@ -414,6 +415,28 @@ const commands = {
     account.approvedProviderUrl = url.toString().replace(/\/+$/, "");
     writeStore(store);
     console.log(`${account.id}: may use ${account.approvedProviderUrl} as its model provider (public mode)`);
+  },
+
+  "approve-site"(store, { positional }) {
+    const account = requireAccount(store, positional[0]);
+    const value = positional[1];
+    if (!value) fail("give the site URL to approve, or none");
+    if (value === "none") {
+      account.approvedSiteUrl = null;
+      writeStore(store);
+      console.log(`${account.id}: may audit GitHub-verified sites only`);
+      return;
+    }
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      fail("not a valid URL");
+    }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) fail("the site must be an http(s) URL without credentials");
+    account.approvedSiteUrl = url.origin;
+    writeStore(store);
+    console.log(`${account.id}: may audit ${account.approvedSiteUrl} (public mode)`);
   },
 
   async "set-github"(store, { positional, flags }) {

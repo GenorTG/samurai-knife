@@ -63,7 +63,13 @@ In public mode, server-wide outbound-purpose and destination-host budgets additi
 non-admin accounts, fair-share (`src/lib/net/outbound.ts`, `src/lib/net/budgets.ts`, `KNIFE_OUTBOUND_BUDGETS`); GitHub
 and PageSpeed calls have no destination-host bucket (fixed services), the audited site has one. A server-configured `KNIFE_PSI_API_KEY` is
 admin-only; a non-admin can use PageSpeed only with the key saved on their own site connection. Anonymous PageSpeed is
-disabled for non-admins. Their audits are restricted to the connected site's production URL. GitHub App operations
+disabled for non-admins. Their audits and page reads are restricted to the connected site's production origin, and
+only once it is VERIFIED (`src/lib/site/ownership.ts`): at Connect, with the user's own token or the app installation,
+the production URL's host must be the repository's GitHub Website (`homepage`, editable by repository admins only) or
+its GitHub Pages domain (`GET /repos/{repo}/pages`: custom CNAME or `<owner>.github.io`), `www.` ignored. Otherwise an
+administrator approves the site for the account (`npm run accounts -- approve-site <id> <url>|none`, admin API
+`POST /api/admin/users/<id> {action:"site-url", url}`). Verification is re-checked on every Connect; the view reports
+`connection.productionVerified`. The production URL is user-typed: without this proof the audit would scan any site. GitHub App operations
 must still pass the linked user's current repository-with-push authorization check.
 
 ## Storage

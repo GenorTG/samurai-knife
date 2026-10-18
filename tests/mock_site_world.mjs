@@ -22,6 +22,8 @@ export function createGithub(initialFiles) {
   const pulls = [];
   const deployments = []; // { id, sha, statuses: [] }
   const calls = [];
+  // Repository "Website" and GitHub Pages domain (site ownership proof, src/lib/site/ownership.ts); tests may change them.
+  const meta = { homepage: process.env.MOCK_REPO_HOMEPAGE ?? "", pagesCname: process.env.MOCK_PAGES_CNAME ?? "" };
   let seq = 0;
   const mkCommit = (files, parents, message) => {
     const treeSha = sha(`tree${seq++}${JSON.stringify([...files])}`);
@@ -67,7 +69,8 @@ export function createGithub(initialFiles) {
     }
     if (!p.startsWith(base)) return [404, { message: "Not Found" }];
     const rest = p.slice(base.length);
-    if (rest === "") return [200, { full_name: REPO, default_branch: "main", private: true, permissions: { push: true }, html_url: `https://github.com/${REPO}`, homepage: "", description: "my site", pushed_at: new Date().toISOString() }];
+    if (rest === "") return [200, { full_name: REPO, default_branch: "main", private: true, permissions: { push: true }, html_url: `https://github.com/${REPO}`, homepage: meta.homepage, description: "my site", pushed_at: new Date().toISOString() }];
+    if (rest === "/pages" && method === "GET") return meta.pagesCname ? [200, { cname: meta.pagesCname, html_url: `https://${meta.pagesCname}/` }] : [404, { message: "Not Found" }];
     let m;
     if ((m = /^\/git\/ref\/heads\/(.+)$/.exec(rest)) && method === "GET") {
       const s = branches.get(decodeURIComponent(m[1]));
@@ -173,7 +176,7 @@ export function createGithub(initialFiles) {
     if ((m = /^\/deployments\/(\d+)\/statuses$/.exec(rest))) return [200, deployments[Number(m[1]) - 1]?.statuses ?? []];
     return [404, { message: `mock: no route ${method} ${rest}` }];
   }
-  return { handle, branches, commits, pulls, calls, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
+  return { handle, branches, commits, pulls, calls, meta, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
 }
 
 export const SITE_PAGES = {

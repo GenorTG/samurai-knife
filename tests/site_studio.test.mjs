@@ -192,17 +192,49 @@ test("discard closes the pull request and deletes the branch, main untouched", a
   await assert.rejects(service.openPull("genor", "x", ""), /no changes yet/);
 });
 
-test("public non-admin site fetches are restricted to the connected production origin, including preview requests", () => {
+test("public non-admin site fetches are restricted to the connected, verified production origin, including preview requests", () => {
   process.env.KNIFE_AUTH_MODE = "public";
   try {
     const user = { role: "user" };
-    const connection = { productionUrl: "https://portfolio.example/" };
+    const connection = { productionUrl: "https://portfolio.example/", verifiedOrigin: "https://portfolio.example" };
     assert.equal(siteTargetProblem(user, connection, "https://portfolio.example/about"), null);
     assert.match(siteTargetProblem(user, connection, "https://preview-123.vercel.app/") ?? "", /production site only/);
     assert.match(siteTargetProblem(user, connection, "https://attacker.example/") ?? "", /production site only/);
     assert.equal(siteTargetProblem({ role: "admin" }, connection, "https://attacker.example/"), null);
+    // Regression (review fix 5): the production URL is user-typed; unverified, it does not turn the audit into a scanner.
+    const typed = { productionUrl: "https://victim.example", verifiedOrigin: "" };
+    assert.match(siteTargetProblem(user, typed, "https://victim.example/") ?? "", /not verified/);
+    assert.match(siteTargetProblem(user, { ...typed, verifiedOrigin: "https://other.example" }, "https://victim.example/") ?? "", /not verified/, "a stale proof for another origin does not count");
+    assert.equal(siteTargetProblem({ role: "user", approvedSiteUrl: "https://www.victim.example" }, typed, "https://victim.example/"), null, "an admin-approved site is allowed");
+    assert.equal(siteTargetProblem({ role: "admin" }, typed, "https://victim.example/"), null);
   } finally {
     delete process.env.KNIFE_AUTH_MODE;
+  }
+});
+
+test("production URL verification at Connect: repository homepage or GitHub Pages host, else unverified", async () => {
+  const { verifyProductionUrl, sameSiteHost } = await import("../src/lib/site/ownership.ts");
+  assert.equal(sameSiteHost("https://www.Example.com/x", "http://example.com"), true);
+  assert.equal(sameSiteHost("https://example.com", "https://evil-example.com"), false);
+  assert.equal(await verifyProductionUrl(TOKEN, REPO, "https://me.example", "https://www.me.example/"), "https://me.example", "homepage match");
+  assert.equal(await verifyProductionUrl(TOKEN, REPO, "https://victim.example", ""), "", "no homepage, no Pages site");
+  gh.meta.pagesCname = "victim.example";
+  try {
+    assert.equal(await verifyProductionUrl(TOKEN, REPO, "https://victim.example", "https://elsewhere.example"), "https://victim.example", "Pages custom domain");
+  } finally {
+    gh.meta.pagesCname = "";
+  }
+  assert.equal(await verifyProductionUrl("wrong-token", REPO, "https://victim.example", ""), "", "a refused Pages lookup never verifies (and never throws)");
+  const before = gh.meta.homepage;
+  gh.meta.homepage = SITE;
+  try {
+    const { view } = await service.connect("genor", { repo: REPO, productionUrl: SITE, pages: ["/projekty"] });
+    assert.equal(view.connection.productionVerified, true);
+    gh.meta.homepage = "";
+    const again = await service.connect("genor", { repo: REPO, productionUrl: SITE, pages: ["/projekty"] });
+    assert.equal(again.view.connection.productionVerified, false, "verification is re-checked on every Connect");
+  } finally {
+    gh.meta.homepage = before;
   }
 });
 
