@@ -1,0 +1,19 @@
+# Smart Knife sidecar helper socket: the app user (group knife) connects; one root helper instance per connection.
+# Install: /etc/systemd/system/knife-sidecar.socket, then `systemctl enable --now knife-sidecar.socket`.
+# docs/DEPLOY.md "Sidecars without the docker group".
+
+[Unit]
+Description=Smart Knife sidecar helper socket
+
+[Socket]
+ListenStream=/run/knife-sidecar.sock
+SocketUser=root
+SocketGroup=knife
+SocketMode=0660
+Accept=yes
+# Bounded: the app runs one op per sidecar plus status polls; more connections wait in the backlog.
+MaxConnections=8
+Backlog=16
+
+[Install]
+WantedBy=sockets.target

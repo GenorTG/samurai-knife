@@ -75,7 +75,7 @@ export async function POST(request: Request): Promise<Response> {
     const result = await runPythonScript<Record<string, unknown>>(
       "cv_docx.py",
       { view, theme, photo, photo_shape: photoShape, out_dir: outDir, filename },
-      { lane: "light", timeoutMs: DOCX_TIMEOUT_MS, label: "cv:docx", signal: request.signal, owner: auth.account.id },
+      { lane: "light", timeoutMs: DOCX_TIMEOUT_MS, label: "cv:docx", signal: request.signal, owner: auth.account.id, binds: { writable: [outDir] } },
     );
     if (result.cancelled) return new Response(null, { status: 499 });
     const file = typeof result.payload?.file === "string" ? path.basename(result.payload.file) : "";

@@ -1,6 +1,7 @@
 import { composeProject, findSidecar, SIDECARS, type SidecarDefinition } from "./definitions";
 import { createHash } from "node:crypto";
 import { connect } from "node:net";
+import { networkInterfaces } from "node:os";
 import { onlyofficeFilterEnv, renderCompose } from "./compose";
 import { syncAssets } from "./assets";
 import { PullTracker, type PullProgress } from "./pull-progress";
@@ -22,6 +23,8 @@ import {
 import { appHost, appPort, appUrl, internalUrl, officeProxyUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
 import { writePrivateFile } from "@/lib/accounts/store";
 import { isIpAddress } from "@/lib/net/address-policy";
+import { addressScope, normalizeIp } from "@/lib/net/client-ip.mjs";
+import { knifeHosts } from "@/lib/hosts";
 
 /**
  * Sidecar lifecycle shared by the HTTP API (src/app/api/services) and the CLI (scripts/services.ts): install, start,
@@ -248,9 +251,45 @@ function loopbackOnly(def: SidecarDefinition): boolean {
  * callback), so those reach the app with the filter on, while a URL a user types into the editor ("image from URL")
  * stays filtered. Allowing the app's IP would open every port on that address to such URLs (the list is per IP).
  * Verified against the 9.3.5 image: docs/SIDECARS.md "Request filter".
+ *
+ * Audit injection #6: an operator who lists this host's own address (its LAN/Tailscale IP, a docker gateway, loopback)
+ * hands every editor user a blind GET to every port on it (the dev server, other sidecars, admin UIs). Such entries are
+ * REFUSED (dropped, with a warning in the log and on the Sidecars page); there is no override.
  */
+export function allowIpsCheck(env: NodeJS.ProcessEnv = process.env, own: ReadonlySet<string> = hostAddresses(env)): { allowed: string[]; refused: string[] } {
+  const allowed: string[] = [];
+  const refused: string[] = [];
+  for (const entry of (env.KNIFE_SIDECAR_ALLOW_IPS ?? "").split(/[\s,]+/)) {
+    if (!entry || !isIpAddress(entry)) continue;
+    const ip = normalizeIp(entry);
+    if (own.has(ip) || addressScope(ip) === "loopback" || ip === "0.0.0.0" || ip === "::") refused.push(entry);
+    else allowed.push(entry);
+  }
+  return { allowed, refused };
+}
+
+/** Every address of this machine: its interfaces (docker bridges included), KNIFE_HOST and IP literals in the host list. */
+export function hostAddresses(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const own = new Set<string>();
+  for (const list of Object.values(networkInterfaces())) for (const info of list ?? []) own.add(normalizeIp(info.address));
+  for (const host of knifeHosts(env)) if (isIpAddress(host)) own.add(normalizeIp(host));
+  return own;
+}
+
+let warnedAllowIps = "";
+
 export function filterAllowIps(): string[] {
-  return (process.env.KNIFE_SIDECAR_ALLOW_IPS ?? "").split(/[\s,]+/).filter((entry) => entry && isIpAddress(entry));
+  const { allowed, refused } = allowIpsCheck();
+  const key = refused.join(",");
+  if (key && key !== warnedAllowIps) {
+    warnedAllowIps = key;
+    console.warn(`[sidecars] ${refusedAllowIpsMessage(refused)}`);
+  }
+  return allowed;
+}
+
+function refusedAllowIpsMessage(refused: string[]): string {
+  return `KNIFE_SIDECAR_ALLOW_IPS lists this machine's own address (${refused.join(", ")}): ignored, since the editor would fetch any user-typed URL on every port of it. The app's signed document and callback URLs do not need it (docs/SIDECARS.md "Request filter").`;
 }
 
 function composeText(def: SidecarDefinition, state: SidecarState): string {
@@ -584,6 +623,10 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
   }
   const app = appUrl(state);
   if (app.warning && def.callsBack) warnings.push(app.warning);
+  if (def.requestFilter) {
+    const { refused } = allowIpsCheck();
+    if (refused.length) warnings.push(refusedAllowIpsMessage(refused));
+  }
   if (state && container.state === "running" && state.composeHash !== composeHashOf(def, state)) {
     warnings.push("The running container was created with older settings (for example without the assistant's editor plugin); it is recreated at the next start when no document is open, or restart it now.");
   }

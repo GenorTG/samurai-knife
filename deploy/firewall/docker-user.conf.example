@@ -1,0 +1,15 @@
+# Copy to /etc/samurai-knife/docker-user.conf (root:root 0600). Names are examples; configure to match site policy.
+WAN_IF=<wan-interface>
+LAN_CIDR4=<lan-ipv4-cidr>
+# Published ports reachable from WAN, expressed as ORIGINAL host ports (before Docker DNAT).
+INTERNET_TCP=80 443
+# Ports reachable from the WAN interface but only from LAN_CIDR4.
+LAN_TCP=
+# Docker DNS resolver addresses for internet-enabled sidecars. Empty denies DNS as well as internet access.
+SIDECAR_DNS4=
+# Example site networks plus all special-purpose / loopback / metadata ranges; never remove a private/host range without
+# independently proving it cannot route to host services.
+SIDECAR_DENY_CIDRS4="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4"
+SIDECAR_PROJECT_PREFIX=samurai-knife-
+SIDECAR_EGRESS="office=internet learn-db=none"
+SIDECAR_CALLBACK_IDS=office

@@ -1,0 +1,106 @@
+# Smart Knife: the public app as a hardened system service (replaces the PM2 app). docs/DEPLOY.md "Production".
+# Install: /etc/systemd/system/samurai-knife.service (root:root 0644), then `systemctl daemon-reload`.
+# Placeholders: @NODE@ (absolute node binary OUTSIDE /home, e.g. /opt/node/bin/node), @APP_ROOT@ (e.g. /opt/samurai-knife).
+#
+# Threat model: the app parses untrusted uploads and runs third-party libraries; assume code execution is possible.
+# It runs as `knife` (no login, no sudo, no docker group, no SSH agent), can write only its state/cache dirs, reads its
+# code (owned by knife-deploy) and secrets (root:knife 0640) read-only, and reaches docker only through the
+# knife-sidecar helper socket (fixed verbs). Directives are chosen for what Node, Next and the Python lane need; the
+# reasons for the non-obvious ones are next to them.
+
+[Unit]
+Description=Smart Knife (public app)
+Documentation=file://@APP_ROOT@/current/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+# Sidecar control (KNIFE_SIDECAR_BACKEND=helper); the socket is root's, the app only connects.
+Wants=knife-sidecar.socket
+After=knife-sidecar.socket
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=knife
+Group=knife
+WorkingDirectory=@APP_ROOT@/current
+# Secrets and settings (KNIFE_*): root:knife 0640. No .env.local in release dirs on this model.
+EnvironmentFile=/etc/samurai-knife/live.env
+Environment=NODE_ENV=production
+Environment=KNIFE_DATA_DIR=/var/lib/samurai-knife
+Environment=KNIFE_STORAGE_KEY_FILE=/etc/samurai-knife/storage.key
+# The app WRITES this one when an admin creates the GitHub App (Users page), so it lives in a knife-writable state dir,
+# apart from the data dir (a data-dir backup alone must not carry it).
+Environment=KNIFE_GITHUB_APP_FILE=/var/lib/samurai-knife-secrets/github-app.json
+Environment=KNIFE_SIDECAR_BACKEND=helper
+Environment=KNIFE_SIDECAR_HELPER_SOCKET=/run/knife-sidecar.sock
+Environment=KNIFE_PYTHON=@APP_ROOT@/py/venv/bin/python
+# Only root-owned system paths: nothing under /home is reachable (ProtectHome) and nothing writable is on PATH.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+Environment=UV_THREADPOOL_SIZE=16
+ExecStart=@NODE@ scripts/serve.mjs start
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
+
+# --- writable places (everything else is read-only or invisible)
+StateDirectory=samurai-knife samurai-knife-secrets
+StateDirectoryMode=0700
+# Next's runtime cache: the release links .next/cache here (deploy/bin/knife-update), the release itself is read-only.
+CacheDirectory=samurai-knife
+CacheDirectoryMode=0700
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=@APP_ROOT@
+
+# --- kernel and devices
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+KeyringMode=private
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Node's JIT needs writable+executable memory: MemoryDenyWriteExecute stays off.
+MemoryDenyWriteExecute=no
+
+# --- namespaces: the Python lane runs its parsers under bubblewrap (unprivileged user namespace), which needs only
+# user/mnt/pid/net/ipc (bwrapArgs unshares those). Without the bwrap sandbox, tighten to RestrictNamespaces=yes.
+# Host prerequisite: kernel.unprivileged_userns_clone=1 (Debian default) and user.max_user_namespaces > 0.
+RestrictNamespaces=user mnt pid net ipc
+
+# --- sockets. AF_NETLINK: libuv's os.networkInterfaces() (the SSRF guard denies this host's own addresses) and bwrap's
+# loopback setup in the sandbox's network namespace both use rtnetlink. AF_UNIX: the sidecar helper socket.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# --- system calls. @system-service minus what nothing here needs. NOT ~@privileged (bwrap needs capset, pivot_root,
+# setgroups inside its namespace) and NOT ~@resources (the Python lane sets rlimits: setrlimit/prlimit64). @mount is
+# added for bwrap's mounts inside its own user namespace (they need CAP_SYS_ADMIN there, never on the host).
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @mount
+SystemCallFilter=~@clock @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
+
+# --- resources (PM2 used max_memory_restart 2G; the heavy PDF lane can peak above it)
+MemoryHigh=2560M
+MemoryMax=3G
+TasksMax=512
+LimitNOFILE=16384
+CPUWeight=80
+IOWeight=80
+
+[Install]
+WantedBy=multi-user.target

@@ -64,7 +64,7 @@ test("serve.mjs exits 2 with the message before starting Next", () => {
   // A copy of serve.mjs and what it imports, in a temp dir without .env.local or a build: a run that passes the checks
   // stops at "no production build" and never starts a server, whatever this checkout has built.
   const cwd = mkdtempSync(join(tmpdir(), "knife-serve-"));
-  for (const rel of ["scripts/serve.mjs", "scripts/deploy-config.mjs", "src/lib/net/client-ip.mjs"]) {
+  for (const rel of ["scripts/serve.mjs", "scripts/deploy-config.mjs", "src/lib/net/client-ip.mjs", "src/lib/python-sandbox.mjs"]) {
     mkdirSync(join(cwd, dirname(rel)), { recursive: true });
     copyFileSync(join(import.meta.dirname, "..", rel), join(cwd, rel));
   }

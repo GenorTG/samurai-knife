@@ -151,11 +151,16 @@ def cancel_all(ids: list[str]) -> None:
 
 # ----------------------------------------------------------------------------------------------- process table oracle
 def our_procs() -> list[tuple[int, str]]:
-    out = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True).stdout.splitlines()
+    # With KNIFE_PY_SANDBOX=bwrap the supervisor appears as a second process whose argv embeds the parser command.
+    # Count only the actual Python interpreter (`comm`), never the bwrap launcher, so the oracle measures lane jobs.
+    out = subprocess.run(["ps", "-eo", "pid,comm,args"], capture_output=True, text=True).stdout.splitlines()
     found = []
     for line in out:
-        if SCRIPTS in line and "bin/python" in line:
-            pid, _, args = line.strip().partition(" ")
+        fields = line.strip().split(None, 2)
+        if len(fields) < 3:
+            continue
+        pid, comm, args = fields
+        if comm.startswith("python") and SCRIPTS in args and "bin/python" in args:
             kind = "pdf" if "pdf_tool.py" in args else "sql" if "sql_tool.py" in args else None
             if kind:
                 found.append((int(pid), kind))

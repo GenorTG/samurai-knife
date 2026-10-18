@@ -1,0 +1,23 @@
+# Copy to /etc/samurai-knife/firewall.conf (root:root 0600), replace every placeholder, then run
+# `knife-firewall preflight` and follow docs/DEPLOY.md "Host firewall". Empty allow lists mean deny.
+# Interface names and addresses are host-specific; no real host/IP values belong in this repository.
+LAN_IF=<lan-interface>
+LAN_CIDR4=<lan-ipv4-cidr>
+LAN_CIDR6=
+TAILSCALE_IF=tailscale0
+TAILSCALE_TCP=22
+TAILSCALE_UDP=41641
+LAN_TCP=22
+LAN_UDP=
+INTERNET_TCP=
+INTERNET_UDP=
+# Proxy's fixed address on its dedicated user-defined Docker network; never use a broad trusted subnet.
+PROXY_IP4=<proxy-network-ipv4>
+PROXY_TCP=3210
+# Smart Knife sidecar callbacks only (office document fetch/save). Keep 3210 reachable only from the proxy AND these
+# callback sidecars. knife-docker-user updates this set from active compose networks.
+SIDECAR_TCP=3210
+DOCKER_IFS=docker0 br-*
+DOCKER_TCP=
+DOCKER_UDP=
+LOG_DROPS=yes

@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { deployProblems } from "./deploy-config.mjs";
+import { probeSandbox, sandboxLayout, sandboxPolicy, sandboxRequired, toolsOutsideSandbox } from "../src/lib/python-sandbox.mjs";
 
 const mode = process.argv[2];
 if (mode !== "dev" && mode !== "start") {
@@ -35,6 +36,20 @@ if (authMode !== "private" && authMode !== "public") {
 }
 // Fail closed on a deployment that would be insecure (scripts/deploy-config.mjs, docs/DEPLOY.md "Startup checks").
 const problems = deployProblems(process.env, authMode);
+// The Python parser sandbox (src/lib/python-sandbox.mjs): probed with the real binds, required in public mode.
+const sandboxBox = sandboxLayout(process.env, process.cwd());
+const sandboxProbe = problems.errors.length === 0 && sandboxRequired(process.env, authMode)
+  ? await probeSandbox(sandboxBox, process.env)
+  : { ok: false, detail: "not required" };
+const sandbox = problems.errors.length === 0
+  ? sandboxPolicy(process.env, authMode, sandboxProbe)
+  : { use: "off", errors: [], warnings: [] };
+problems.errors.push(...sandbox.errors);
+problems.warnings.push(...sandbox.warnings);
+if (sandbox.use === "bwrap" && sandboxProbe.ok) {
+  const hidden = toolsOutsideSandbox(sandboxBox, process.env);
+  if (hidden.length) problems.warnings.push(`the parser sandbox cannot see ${hidden.join(", ")}: OCR will report it missing. Add its install root to KNIFE_PY_SANDBOX_RO (docs/DEPLOY.md "Parser sandbox").`);
+}
 for (const warning of problems.warnings) console.warn(`[serve] ${warning}`);
 if (problems.errors.length) {
   for (const error of problems.errors) console.error(`[serve] refusing to start: ${error}`);
@@ -45,7 +60,7 @@ if (mode === "start" && !existsSync(new URL("../.next/BUILD_ID", import.meta.url
   console.error("[serve] no production build in .next: run `npm run build` first.");
   process.exit(2);
 }
-console.log(`[serve] next ${mode} on ${host}:${port} (auth mode ${authMode})`);
+console.log(`[serve] next ${mode} on ${host}:${port} (auth mode ${authMode}, parser sandbox ${sandbox.use})`);
 
 // Preload (one: Next re-serialises NODE_OPTIONS for its child and mangles a second quoted --import): the socket peer, for
 // trusting forwarded headers only from KNIFE_TRUSTED_PROXIES (src/lib/accounts/network.ts); in public mode (or with

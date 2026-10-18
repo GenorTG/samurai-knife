@@ -1,0 +1,228 @@
+#!/bin/bash
+# knife-docker-user: Docker's forwarding rules that compose cannot express (docs/DEPLOY.md §5, audit H1/M2).
+#
+#   KNIFE-WAN      published container ports reachable from the WAN-facing interface: only the listed ORIGINAL
+#                  destination ports (conntrack --ctorigdstport: DOCKER-USER sees packets after DNAT, so --dport would be
+#                  the container's port), the LAN-only ones only from the LAN; every other NEW connection is dropped.
+#   KNIFE-SIDECAR  egress of the Smart Knife sidecar networks (compose projects <prefix>*), per sidecar as its definition
+#                  needs it (SIDECAR_EGRESS, mirrors src/lib/services/definitions.ts):
+#                    internet  DNS to the configured resolvers and the internet; the LAN, Tailscale, other docker
+#                              networks, link-local/metadata, loopback and multicast are dropped (the office editor:
+#                              "insert image from URL" fetches public URLs only)
+#                    none      no new outbound connection at all (the course database only answers the app)
+#                  Drops log at a limited rate ("knife-sidecar-egress").
+#   Container -> host traffic (the app's port) is INPUT, not FORWARD: the host nftables table handles it
+#   (deploy/firewall/). This script keeps its `sidecar_nets` set equal to the networks of the sidecars that call the app
+#   back (SIDECAR_CALLBACK_IDS: the office editor downloads and saves documents), so only those reach the app port.
+#   IPv4 only: compose creates the sidecar networks without IPv6, and the script refuses one that has it.
+#
+# Both chains are jumped to from DOCKER-USER, which docker creates and never flushes. Idempotent: every run rebuilds the
+# two chains from /etc/samurai-knife/docker-user.conf. Modes:
+#   apply      rebuild once (exit 0 when docker's DOCKER-USER chain is missing: nothing to protect yet)
+#   watch      apply, then re-apply on every docker network create/destroy and every 5 minutes (knife-docker-user.service)
+#   remove     delete the jumps and both chains
+#   status     print the chains
+#   --dry-run  (with apply) print the iptables commands instead of running them
+set -euo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+CONF="${KNIFE_DOCKER_USER_CONF:-/etc/samurai-knife/docker-user.conf}"
+[[ $EUID -eq 0 || -n "${KNIFE_DOCKER_USER_CONF:-}" ]] || { echo "run as root" >&2; exit 77; }
+if [[ $EUID -eq 0 && -n "${KNIFE_DOCKER_USER_CONF:-}" ]]; then CONF=/etc/samurai-knife/docker-user.conf; fi
+
+WAN_IF="" LAN_CIDR4="" INTERNET_TCP="" LAN_TCP="" SIDECAR_PROJECT_PREFIX="samurai-knife-" SIDECAR_DNS4="" SIDECAR_DENY_CIDRS4=""
+SIDECAR_EGRESS="office=internet learn-db=none" SIDECAR_CALLBACK_IDS="office"
+# shellcheck source=/dev/null
+if [[ -r "$CONF" ]]; then
+  if [[ $EUID -eq 0 ]]; then
+    owner="$(stat -c '%u' "$CONF")"
+    mode="$(stat -c '%a' "$CONF")"
+    [[ "$owner" == 0 ]] && (( (8#$mode & 022) == 0 )) || { echo "$CONF must be root-owned and not group/world-writable" >&2; exit 77; }
+  fi
+  source "$CONF"
+fi
+: "${SIDECAR_DENY_CIDRS4:=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4}"
+
+DRY=""
+mode="${1:-apply}"
+[[ "${2:-}" == "--dry-run" || "$mode" == "--dry-run" ]] && { DRY=1; [[ "$mode" == "--dry-run" ]] && mode=apply; }
+
+ipt() {
+  if [[ -n "$DRY" ]]; then echo "iptables -w $*"; else iptables -w "$@"; fi
+}
+valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
+valid_cidr4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$ ]]; }
+
+check_conf() {
+  [[ -z "$WAN_IF" || "$WAN_IF" =~ ^[A-Za-z0-9._-]{1,15}$ ]] || { echo "WAN_IF invalid" >&2; exit 64; }
+  [[ -z "$LAN_CIDR4" ]] || valid_cidr4 "$LAN_CIDR4" || { echo "LAN_CIDR4 invalid" >&2; exit 64; }
+  for p in $INTERNET_TCP $LAN_TCP; do valid_port "$p" || { echo "bad port $p" >&2; exit 64; }; done
+  for c in $SIDECAR_DENY_CIDRS4 $SIDECAR_DNS4; do valid_cidr4 "$c" || { echo "bad address $c" >&2; exit 64; }; done
+  [[ "$SIDECAR_PROJECT_PREFIX" =~ ^[a-z0-9][a-z0-9_-]{0,40}$ ]] || { echo "SIDECAR_PROJECT_PREFIX invalid" >&2; exit 64; }
+  for entry in $SIDECAR_EGRESS; do [[ "$entry" =~ ^[a-z][a-z0-9-]{0,31}=(internet|none)$ ]] || { echo "SIDECAR_EGRESS entry invalid: $entry" >&2; exit 64; }; done
+  for id in $SIDECAR_CALLBACK_IDS; do [[ "$id" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || { echo "SIDECAR_CALLBACK_IDS entry invalid: $id" >&2; exit 64; }; done
+}
+
+# Sidecar id of a compose default network (`<prefix>[<anything>-]<id>_default`), from the configured ids; empty if none.
+network_id() {
+  local net="$1" entry id
+  for entry in $SIDECAR_EGRESS; do
+    id="${entry%%=*}"
+    [[ "$net" == *"-${id}_default" ]] && { echo "$id"; return; }
+  done
+}
+
+egress_of() {  # policy for a sidecar id; unknown sidecars get the strictest one
+  local id="$1" entry
+  for entry in $SIDECAR_EGRESS; do [[ "${entry%%=*}" == "$id" ]] && { echo "${entry#*=}"; return; }; done
+  echo none
+}
+
+# Lines `<network> <sidecar id> <subnet>` for every sidecar network (IPv4 subnets only).
+sidecar_networks() {
+  local nets out="" net ipv6 subnets subnet id
+  nets="$(docker network ls --filter "label=com.docker.compose.network=default" --format '{{.Name}}' 2>/dev/null)" || {
+    echo "cannot enumerate Docker networks; sidecar egress rules were left unchanged" >&2
+    return 1
+  }
+  while read -r net; do
+    [[ "$net" == "$SIDECAR_PROJECT_PREFIX"* ]] || continue
+    ipv6="$(docker network inspect -f '{{.EnableIPv6}}' "$net" 2>/dev/null)" || {
+      echo "cannot inspect sidecar network $net; sidecar egress rules were left unchanged" >&2
+      return 1
+    }
+    if [[ "$ipv6" == "true" ]]; then
+      echo "refusing to manage $net: IPv6 is enabled on it and these rules are IPv4 only" >&2
+      return 1
+    fi
+    id="$(network_id "$net")"
+    subnets="$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$net" 2>/dev/null)" || {
+      echo "cannot inspect sidecar network $net IPAM; sidecar egress rules were left unchanged" >&2
+      return 1
+    }
+    for subnet in $subnets; do
+      valid_cidr4 "$subnet" && out+="$net ${id:-unknown} $subnet"$'\n'
+    done
+  done <<<"$nets"
+  printf '%s\n' "$out" | sed '/^$/d' | sort -u
+}
+
+# Other Docker networks are reachable before Docker's own isolation chains, because DOCKER-USER runs first. Explicitly
+# deny their IPv4 subnets to each internet-enabled sidecar; only public destinations and configured DNS remain reachable.
+other_docker_subnets() {
+  local current="$1" nets out="" net subnets subnet
+  nets="$(docker network ls --format '{{.Name}}' 2>/dev/null)" || {
+    echo "cannot enumerate Docker networks for sidecar egress deny rules" >&2
+    return 1
+  }
+  while read -r net; do
+    [[ -n "$net" && "$net" != "$current" ]] || continue
+    subnets="$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$net" 2>/dev/null)" || {
+      echo "cannot inspect Docker network $net for sidecar egress deny rules" >&2
+      return 1
+    }
+    for subnet in $subnets; do valid_cidr4 "$subnet" && out+="$subnet"$'\n'; done
+  done <<<"$nets"
+  printf '%s\n' "$out" | sed '/^$/d' | sort -u
+}
+
+fresh_chain() {
+  if [[ -n "$DRY" ]]; then echo "iptables -w -N $1 (or flush)"; return; fi
+  iptables -w -N "$1" 2>/dev/null || iptables -w -F "$1"
+}
+
+ensure_jump() {
+  if [[ -n "$DRY" ]]; then echo "iptables -w -I DOCKER-USER 1 -j $1 (once)"; return; fi
+  iptables -w -C DOCKER-USER -j "$1" 2>/dev/null || iptables -w -I DOCKER-USER 1 -j "$1"
+}
+
+sync_nft_set() {  # keeps `inet knife_host sidecar_nets` (deploy/firewall) equal to the callback sidecars' subnets
+  local subnets="$1"
+  command -v nft >/dev/null || return 0
+  nft list set inet knife_host sidecar_nets >/dev/null 2>&1 || return 0
+  local elements
+  elements="$(tr '\n' ',' <<<"$subnets" | sed 's/,$//')"
+  if [[ -n "$DRY" ]]; then echo "nft flush set inet knife_host sidecar_nets; add { $elements }"; return; fi
+  { echo "flush set inet knife_host sidecar_nets"; [[ -n "$elements" ]] && echo "add element inet knife_host sidecar_nets { $elements }"; } | nft -f -
+}
+
+apply() {
+  check_conf
+  if [[ -z "$DRY" ]] && ! iptables -w -n -L DOCKER-USER >/dev/null 2>&1; then
+    echo "DOCKER-USER chain missing (docker not started yet): nothing to do"
+    return 0
+  fi
+  if [[ -n "$WAN_IF" ]]; then
+    fresh_chain KNIFE-WAN
+    ipt -A KNIFE-WAN -i "$WAN_IF" -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+    for p in $INTERNET_TCP; do ipt -A KNIFE-WAN -i "$WAN_IF" -p tcp -m conntrack --ctorigdstport "$p" -j RETURN; done
+    if [[ -n "$LAN_CIDR4" ]]; then
+      for p in $LAN_TCP; do ipt -A KNIFE-WAN -i "$WAN_IF" -s "$LAN_CIDR4" -p tcp -m conntrack --ctorigdstport "$p" -j RETURN; done
+    fi
+    ipt -A KNIFE-WAN -i "$WAN_IF" -m conntrack --ctstate NEW -j DROP
+    ensure_jump KNIFE-WAN
+  fi
+  local networks callback_subnets="" summary="" name id net policy
+  local -A dynamic_denies_by_network=()
+  networks="$(sidecar_networks)" || return 1
+  while read -r name id net; do
+    [[ -n "$net" ]] || continue
+    policy="$(egress_of "$id")"
+    if [[ "$policy" != "none" ]]; then
+      dynamic_denies_by_network["$name"]="$(other_docker_subnets "$name")" || return 1
+    fi
+  done <<<"$networks"
+  fresh_chain KNIFE-SIDECAR
+  while read -r name id net; do
+    [[ -n "$net" ]] || continue
+    policy="$(egress_of "$id")"
+    summary+="$name($id:$policy) "
+    ipt -A KNIFE-SIDECAR -s "$net" -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+    if [[ "$policy" == "none" ]]; then
+      ipt -A KNIFE-SIDECAR -s "$net" -m limit --limit 6/min -j LOG --log-prefix "knife-sidecar-egress " --log-level warning
+      ipt -A KNIFE-SIDECAR -s "$net" -j DROP
+    else
+      for dns in $SIDECAR_DNS4; do
+        ipt -A KNIFE-SIDECAR -s "$net" -d "$dns" -p udp --dport 53 -j RETURN
+        ipt -A KNIFE-SIDECAR -s "$net" -d "$dns" -p tcp --dport 53 -j RETURN
+      done
+      local dynamic_denies="$(printf '%s\n' $SIDECAR_DENY_CIDRS4 "${dynamic_denies_by_network[$name]:-}" | sed '/^$/d' | sort -u)"
+      while read -r deny; do
+        [[ -n "$deny" ]] || continue
+        ipt -A KNIFE-SIDECAR -s "$net" -d "$deny" -m limit --limit 6/min -j LOG --log-prefix "knife-sidecar-egress " --log-level warning
+        ipt -A KNIFE-SIDECAR -s "$net" -d "$deny" -j DROP
+      done <<<"$dynamic_denies"
+    fi
+    for cb in $SIDECAR_CALLBACK_IDS; do [[ "$cb" == "$id" ]] && callback_subnets+="$net"$'\n'; done
+  done <<<"$networks"
+  ensure_jump KNIFE-SIDECAR
+  sync_nft_set "$(sed '/^$/d' <<<"$callback_subnets")"
+  echo "applied: WAN filter on ${WAN_IF:-<none>}, sidecar networks: ${summary:-none}"
+}
+
+remove() {
+  for chain in KNIFE-WAN KNIFE-SIDECAR; do
+    while iptables -w -D DOCKER-USER -j "$chain" 2>/dev/null; do :; done
+    iptables -w -F "$chain" 2>/dev/null || true
+    iptables -w -X "$chain" 2>/dev/null || true
+  done
+  echo "removed"
+}
+
+watch_events() {
+  apply
+  while true; do
+    # One event (or 5 minutes) -> re-apply. Debounced: compose creates a network and its containers in a burst.
+    timeout 300 docker events --filter type=network --filter event=create --filter event=destroy --format '{{.Action}}' 2>/dev/null | head -n 1 >/dev/null || true
+    sleep 1
+    apply || echo "apply failed; retrying at the next event" >&2
+  done
+}
+
+case "$mode" in
+  apply) apply ;;
+  watch) watch_events ;;
+  remove) remove ;;
+  status) iptables -w -n -v -L DOCKER-USER; iptables -w -n -v -L KNIFE-WAN 2>/dev/null || true; iptables -w -n -v -L KNIFE-SIDECAR 2>/dev/null || true ;;
+  *) echo "usage: $0 apply [--dry-run] | watch | remove | status" >&2; exit 64 ;;
+esac
