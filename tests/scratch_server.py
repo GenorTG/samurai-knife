@@ -30,6 +30,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Suites register `<name>@example.com`, whose real DNS publishes a null MX (RFC 7505), and send far more mail to that one
+# domain than a public server allows: scratch servers skip the MX check and lift the global/domain mail budgets. The
+# per-mailbox and collision budgets keep their production defaults; a suite passes its own values to test the others
+# (accounts_public_e2e.py). docs/ACCOUNTS.md "Mail queue".
+MAIL_TEST_DEFAULTS = {
+    "KNIFE_EMAIL_DNS": "off",
+    "KNIFE_MAIL_PER_MINUTE": "600",
+    "KNIFE_MAIL_GLOBAL_LIMITS": "10000/h",
+    "KNIFE_MAIL_DOMAIN_LIMITS": "10000/h",
+    "KNIFE_MAIL_NEW_DOMAIN_LIMITS": "10000/h",
+}
+
 
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
@@ -121,7 +133,7 @@ class ScratchServer:
         # A suite that must know its URL before start (e.g. KNIFE_PUBLIC_URL) passes KNIFE_PORT itself.
         port = int((env or {}).get("KNIFE_PORT") or free_port(self.host))
         child_env = os.environ.copy()
-        child_env.update({"KNIFE_HOST": self.host, "KNIFE_PORT": str(port), "KNIFE_DATA_DIR": str(self.data_dir), **(env or {})})
+        child_env.update({**MAIL_TEST_DEFAULTS, "KNIFE_HOST": self.host, "KNIFE_PORT": str(port), "KNIFE_DATA_DIR": str(self.data_dir), **(env or {})})
         # The abuse guard (scripts/abuse-guard.mjs) sees a whole suite (many simulated users, deliberate 4xx probes) as
         # one client: scale its budgets and block threshold. tests/abuse_guard.test.mjs covers the real numbers.
         child_env.setdefault("KNIFE_GUARD_SCALE", "20")

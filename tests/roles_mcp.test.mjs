@@ -11,6 +11,7 @@ import test from "node:test";
 const dataDir = mkdtempSync(join(tmpdir(), "knife-roles-unit-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_AUTH_MODE = "public";
+process.env.KNIFE_EMAIL_DNS = "off"; // no real DNS in unit tests; email_policy.test.mjs covers it
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const store = await import("../src/lib/accounts/store.ts");

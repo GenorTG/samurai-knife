@@ -12,6 +12,7 @@ import test from "node:test";
 const dataDir = mkdtempSync(join(tmpdir(), "knife-office-library-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_AUTH_MODE = "public";
+process.env.KNIFE_EMAIL_DNS = "off"; // no real DNS in unit tests
 process.env.KNIFE_HOST = "100.64.0.7";
 process.env.KNIFE_PORT = "3210";
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));

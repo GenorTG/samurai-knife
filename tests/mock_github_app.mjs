@@ -17,11 +17,11 @@ import http from "node:http";
 import { createGithub, createSite, INITIAL_FILES, REPO, servePsi, serveSite, TOKEN } from "./mock_site_world.mjs";
 
 export const USERS = {
-  alice: { id: 1001, login: "alice", name: "Alice Nowak", email: "alice@example.test", installations: [7] },
-  mallory: { id: 2002, login: "mallory", name: "Mallory", email: "mallory@example.test", installations: [] },
-  bob: { id: 3003, login: "bobgh", name: "Bob", email: "bob@example.test", installations: [] },
+  alice: { id: 1001, login: "alice", name: "Alice Nowak", email: "alice@example.org", installations: [7] },
+  mallory: { id: 2002, login: "mallory", name: "Mallory", email: "mallory@example.org", installations: [] },
+  bob: { id: 3003, login: "bobgh", name: "Bob", email: "bob@example.org", installations: [] },
   noemail: { id: 4004, login: "ghost", name: "", email: null, installations: [] },
-  carol: { id: 5005, login: "carol", name: "Carol", email: "carol@example.test", installations: [7] },
+  carol: { id: 5005, login: "carol", name: "Carol", email: "carol@example.org", installations: [7] },
 };
 export const PRIVATE_REPO = "genor/private-notes";
 export const INSTALLATIONS = { 7: { id: 7, account: "genor", repos: [REPO, PRIVATE_REPO] } };

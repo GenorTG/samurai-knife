@@ -13,6 +13,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "knife-budgets-unit-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_STORAGE_KEY_FILE = join(dataDir, "storage.key");
 process.env.KNIFE_AUTH_MODE = "public";
+process.env.KNIFE_EMAIL_DNS = "off"; // no real DNS in unit tests; email_policy.test.mjs covers it
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
 const GB = 1024 ** 3;
