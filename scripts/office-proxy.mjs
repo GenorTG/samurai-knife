@@ -17,7 +17,7 @@ import https from "node:https";
 import net from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { clientAddress, requestIsHttps, trustedRules } from "./client-address.mjs";
+import { addressBuckets, clientAddress, requestIsHttps, trustedRules } from "./client-address.mjs";
 
 export const TICKET_PARAM = "knife_ticket";
 export const COOKIE_NAME = "knife_office";
@@ -203,7 +203,8 @@ export function createOfficeProxy({ officeUrl, appOrigin = "", config, trusted =
     const scheme = requestIsHttps(request, trusted) || office.protocol === "https:" ? "https" : "http";
     const path = allowedPath(request.url);
     const refuse = (status, text, why) => {
-      if (!refused.take(client)) return { status: 429, text: "Too many refused requests; slow down." };
+      // Per client prefix (IPv6 /64): one host owns a whole /64, so a per-address budget would be no budget.
+      if (!refused.take(addressBuckets(client).narrow)) return { status: 429, text: "Too many refused requests; slow down." };
       if (why) note(String(request.url).split("?")[0], why);
       return { status, text };
     };

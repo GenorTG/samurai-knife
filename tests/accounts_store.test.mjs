@@ -114,13 +114,13 @@ test("forwarded headers are trusted only from KNIFE_TRUSTED_PROXIES (IP and CIDR
   const env = { KNIFE_TRUSTED_PROXIES: "127.0.0.1, 10.0.0.0/8" };
   const spoof = { "x-forwarded-for": "203.0.113.9", "x-forwarded-proto": "https" };
   assert.equal(network.clientIp(req(spoof), env), "local", "no peer stamp (not started through serve.mjs): never trusted");
-  assert.equal(network.clientIp(req({ ...spoof, "x-knife-peer": "192.0.2.50" }), env), "local", "untrusted peer");
+  assert.equal(network.clientIp(req({ ...spoof, "x-knife-peer": "192.0.2.50" }), env), "192.0.2.50", "untrusted peer: the peer itself, header ignored");
   assert.equal(network.isHttps(req({ ...spoof, "x-knife-peer": "192.0.2.50" }), env), false);
   assert.equal(network.clientIp(req({ ...spoof, "x-knife-peer": "::ffff:127.0.0.1" }), env), "203.0.113.9");
   assert.equal(network.isHttps(req({ ...spoof, "x-knife-peer": "127.0.0.1" }), env), true);
   // Right-most untrusted hop wins: the client cannot pick its own bucket by prepending addresses.
   assert.equal(network.clientIp(req({ "x-forwarded-for": "1.1.1.1, 198.51.100.4, 10.0.0.2", "x-knife-peer": "127.0.0.1" }), env), "198.51.100.4");
-  assert.equal(network.clientIp(req({ "x-knife-peer": "127.0.0.1" }), {}), "local", "no trusted proxies configured");
+  assert.equal(network.clientIp(req({ "x-knife-peer": "127.0.0.1" }), {}), "127.0.0.1", "no trusted proxies configured: the peer");
 });
 
 test("rate limits: sliding window per bucket, any full bucket refuses, retry-after is positive", () => {

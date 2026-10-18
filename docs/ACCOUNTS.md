@@ -73,8 +73,15 @@ Route handlers never see the socket, and Next keeps a client-sent `X-Forwarded-F
 `scripts/peer-address.mjs`, which writes the TCP peer into `x-knife-peer` on every request (overwriting any client value).
 `src/lib/accounts/network.ts` reads `X-Forwarded-For` / `X-Forwarded-Proto` only when that peer matches
 `KNIFE_TRUSTED_PROXIES` (comma-separated IPs or CIDRs, e.g. `127.0.0.1,::1` for a proxy on the same host); the client
-address is the right-most untrusted entry. Without a match every client is `local` (one shared bucket) and cookies are
-not `Secure`. A server started without `serve.mjs` has no peer stamp and never trusts forwarded headers.
+address is the right-most untrusted entry. Without a match the client is the TCP peer itself (forwarded headers are
+ignored, cookies are not `Secure`). A server started without `serve.mjs` has no peer stamp: every client is `local` and
+forwarded headers are never trusted.
+
+One implementation for the app and the preloads: `src/lib/net/client-ip.mjs` (`resolveClient`, `addressBuckets`). Every
+per-client key (rate limits, the proof-of-work binding, pending-account caps, security events, the abuse guard) is the
+client's prefix: IPv4 /32, IPv6 /64 in one zero-padded spelling (`2001:0db8:0001:0002::/64`), with coarser /24 and /48
+companions where a limit asks for them (Rate limits). `network.ts` `clientIp` already returns the prefix and
+`ip-prefix.ts` `clientPrefix` is idempotent, so passing either along is safe.
 
 ## Flows (public mode; 404 in private mode unless noted)
 
