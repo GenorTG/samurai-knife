@@ -59,7 +59,12 @@ revoked), role defaults `search_path = shop, geo, public`, `statement_timeout = 
 `knife_admin` is invisible to it. TEMP tables are the learner's scratch area (they die with the run).
 Every learner shares this one role, and a role sees its own sessions' query text, so the seed revokes `SELECT` on
 `pg_stat_activity` and `EXECUTE` on `pg_stat_get_activity` / `pg_stat_get_backend_activity` from `PUBLIC` in the course
-database (SEED_VERSION 2): nobody reads another learner's SQL.
+database (SEED_VERSION 2): nobody reads another learner's SQL. A role may also signal its own sessions, so the seed
+(SEED_VERSION 3) revokes `EXECUTE` on `pg_terminate_backend(integer, bigint)` and `pg_cancel_backend(integer)` (PIDs
+are guessable, so this is the fix), plus the PID sources `pg_locks` / `pg_lock_status()`, `pg_blocking_pids`,
+`pg_safe_snapshot_blocking_pids`, `pg_stat_get_backend_idset()`, `pg_stat_get_backend_pid` and
+`pg_stat_get_progress_info`: nobody aborts another learner's run. The runner's own time-limit kill runs as the
+superuser, which these grants do not bind.
 
 Fair share (`src/lib/learn/sql/slots.ts`): one run (or check) in flight per account (`KNIFE_LEARN_RUNS_PER_ACCOUNT`,
 default 1; a second one is refused with 429 `run_in_progress`), at most `KNIFE_LEARN_MAX_RUNS` (default 12) on the server,
@@ -79,6 +84,13 @@ Every run (`runLearnerSql`):
 3. Each statement in order. Plain queries go through `DECLARE … CURSOR` + `FETCH 501` inside a savepoint, so at most
    500 rows (5000 for checks) ever leave the server; the rest run directly. The first error stops the run; its
    position is mapped back to line/column of the learner's text.
+   Results are bounded by `limits.ts`, never buffered whole: every statement runs as a streaming query (rows reach
+   the runner one at a time, so `INSERT … RETURNING` over millions of rows keeps only the first 500 and counts the
+   rest); each cell is cut at 10 000 characters with `… [truncated: N characters]` (result flag `clipped`); a run
+   keeps at most 4 MB of cell text (later rows are dropped and the result is flagged `truncated`); error, detail, hint
+   and notice texts are cut at 2 000 characters. Below node-postgres, a guard on the raw socket stops the run (error
+   code `knife_result_limit`, the connection is closed and the server rolls back) when one backend message is over
+   8 MB (`SELECT repeat('x', 500000000)`) or the run received more than 64 MB.
 4. `ROLLBACK`, always. Writes are visible to the later statements of the same run and gone afterwards.
 5. Time: `statement_timeout` 5 s per statement; as a backstop the learner cannot `set_config` away, the backend is
    terminated from a superuser connection 1.5 s after the run's limit.

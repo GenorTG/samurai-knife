@@ -9,7 +9,7 @@
  * Bump SEED_VERSION whenever this file changes: `ensureSeeded` (db.ts) rebuilds both schemas when the stored version differs.
  */
 
-export const SEED_VERSION = 2;
+export const SEED_VERSION = 3;
 
 export const COURSE_SCHEMAS = ["shop", "geo"] as const;
 export const LEARNER_ROLE = "knife_learner";
@@ -429,6 +429,18 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA shop TO ${LEARNER_ROLE};
 REVOKE SELECT ON pg_catalog.pg_stat_activity FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_activity(integer) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_activity(integer) FROM PUBLIC;
+-- The same role may also signal its own sessions: without these, pg_terminate_backend(pid) / pg_cancel_backend(pid)
+-- would let one learner abort everyone else's runs (PIDs are small integers, so hiding them alone is not enough; the
+-- runner's own time-limit kill uses the superuser, which bypasses these grants). The PID sources go too.
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_terminate_backend(integer, bigint) FROM PUBLIC, ${LEARNER_ROLE};
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_cancel_backend(integer) FROM PUBLIC, ${LEARNER_ROLE};
+REVOKE SELECT ON pg_catalog.pg_locks FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_lock_status() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_blocking_pids(integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_safe_snapshot_blocking_pids(integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_idset() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_backend_pid(integer) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_catalog.pg_stat_get_progress_info(text) FROM PUBLIC;
 
 ANALYZE shop.categories, shop.products, shop.employees, shop.customers, shop.orders, shop.order_items, shop.events,
         geo.regions, geo.cities, geo.chains, geo.stores, geo.candidate_sites, geo.population_grid;

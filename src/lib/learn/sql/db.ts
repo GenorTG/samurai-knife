@@ -3,6 +3,7 @@ import { readSecret, readState } from "@/lib/services/state";
 import { COURSE_DATABASE, COURSE_SCHEMAS, LEARNER_ROLE, SEED_VERSION, seedScript } from "./seed";
 import { classifyStatement, lineColumn, splitStatements } from "./statements";
 import type { Cell } from "./compare";
+import { clipText, guardedSocket, RESULT_LIMIT_CODE, ResultBudget, ResultLimitError, RowCollector, WireGuard } from "./limits";
 
 /**
  * The course database from the server side (never the browser): seeding as the superuser, learner queries as the
@@ -11,7 +12,8 @@ import type { Cell } from "./compare";
  * Every learner run: a fresh connection as `knife_learner` (so nothing a run sets survives it), BEGIN, each statement in
  * turn (plain queries through a cursor so at most `rowCap` rows ever leave the server), then ROLLBACK, always. A run
  * past `timeoutMs` is stopped by the server (`statement_timeout`) and, as a backstop the learner cannot SET away, its
- * backend is terminated from a superuser connection.
+ * backend is terminated from a superuser connection. What a run may send back is bounded in `limits.ts`: rows are
+ * streamed (never buffered whole), cells cut, and a run whose result is too large on the wire is stopped.
  */
 
 export const SERVICE_ID = "learn-db";
@@ -68,7 +70,7 @@ const types = {
   },
 } as unknown as pg.CustomTypesConfig;
 
-function client(info: ConnectionInfo, role: "admin" | "learner", timeoutMs = DEFAULT_TIMEOUT_MS): pg.Client {
+function client(info: ConnectionInfo, role: "admin" | "learner", timeoutMs = DEFAULT_TIMEOUT_MS, guard?: WireGuard): pg.Client {
   return new pg.Client({
     host: info.host,
     port: info.port,
@@ -79,6 +81,8 @@ function client(info: ConnectionInfo, role: "admin" | "learner", timeoutMs = DEF
     connectionTimeoutMillis: 5000,
     statement_timeout: role === "learner" ? timeoutMs : undefined,
     types,
+    // The guard reads the plain protocol: never TLS on this socket (the sidecar is bound to this host).
+    ...(guard ? { ssl: false, stream: () => guardedSocket(guard) } : {}),
   });
 }
 
@@ -170,8 +174,10 @@ export interface StatementResult {
   rows: Cell[][];
   /** Rows affected (writes) or returned. */
   rowCount: number;
-  /** More rows existed than `rowCap`. */
+  /** More rows existed than `rowCap`, or rows were dropped because the run's result budget was spent. */
   truncated: boolean;
+  /** At least one cell was cut (it ends with "… [truncated: N characters]"). */
+  clipped?: boolean;
 }
 
 export interface SqlErrorInfo {
@@ -208,14 +214,32 @@ function cellValue(value: unknown): Cell {
   return JSON.stringify(value);
 }
 
-function toResult(result: pg.QueryResult<unknown[]>, rowCap: number, command?: string): StatementResult {
-  const rows = (result.rows ?? []) as unknown[][];
+interface Streamed {
+  command: string;
+  columns: string[];
+  rowCount: number | null;
+}
+
+/** Runs one statement as a streaming query: rows go to the collector one by one, node-postgres never accumulates them. */
+function streamQuery(c: pg.Client, text: string, collector: RowCollector): Promise<Streamed> {
+  return new Promise((resolve, reject) => {
+    const config: pg.QueryArrayConfig = { text, rowMode: "array" };
+    const query = new pg.Query(config);
+    query.on("row", (row: unknown) => collector.add(row as unknown[]));
+    query.on("error", reject);
+    query.on("end", (result) => resolve({ command: result.command ?? "", columns: (result.fields ?? []).map((field) => field.name), rowCount: result.rowCount }));
+    c.query(query);
+  });
+}
+
+function toResult(streamed: Streamed, collector: RowCollector, command?: string): StatementResult {
   return {
-    command: command ?? result.command ?? "",
-    columns: (result.fields ?? []).map((field) => field.name),
-    rows: rows.slice(0, rowCap).map((row) => row.map(cellValue)),
-    rowCount: result.command === "SELECT" || command ? rows.length : (result.rowCount ?? rows.length),
-    truncated: rows.length > rowCap,
+    command: command ?? streamed.command,
+    columns: streamed.columns,
+    rows: collector.rows,
+    rowCount: streamed.command === "SELECT" || command ? collector.seen : (streamed.rowCount ?? collector.seen),
+    truncated: collector.truncated,
+    ...(collector.clipped ? { clipped: true } : {}),
   };
 }
 
@@ -228,7 +252,7 @@ interface PgError extends Error {
 
 function errorInfo(sql: string, error: unknown, statement: number, offsetInSql: number, prefixLength = 0): SqlErrorInfo {
   const err = error as PgError;
-  const info: SqlErrorInfo = { message: err.message, code: err.code, detail: err.detail, hint: err.hint, statement };
+  const info: SqlErrorInfo = { message: clipText(err.message), code: err.code, detail: clipText(err.detail), hint: clipText(err.hint), statement };
   if (err.code === "57014") info.message = "The query ran longer than the time limit and was cancelled. Add a WHERE clause or a LIMIT, or check for a missing join condition.";
   if (err.code === "57P01" || err.code === "57P02") info.message = "The query ran past the time limit and was stopped.";
   if (err.code === "42501") info.hint = info.hint ?? "The course role can read the course tables and write (rolled back) to the shop tables only. Copy data into a TEMP table to experiment.";
@@ -238,6 +262,11 @@ function errorInfo(sql: string, error: unknown, statement: number, offsetInSql: 
     info.position = { offset, ...lineColumn(sql, offset + 1) };
   }
   return info;
+}
+
+/** The run was stopped because its result passed a wire limit (the connection is gone, the server rolled back). */
+function limitInfo(error: ResultLimitError, statement: number): SqlErrorInfo {
+  return { message: error.message, code: RESULT_LIMIT_CODE, statement };
 }
 
 /** Splits, vets and runs learner SQL in one rolled-back transaction. Refusals and SQL errors come back in `error`. */
@@ -269,9 +298,11 @@ export async function runLearnerSql(info: ConnectionInfo, sql: string, options: 
     return done();
   }
 
-  const c = client(info, "learner", timeoutMs);
+  const guard = new WireGuard();
+  const budget = new ResultBudget();
+  const c = client(info, "learner", timeoutMs, guard);
   c.on("notice", (notice) => {
-    if (output.notices.length < 50) output.notices.push(`${notice.severity ?? "NOTICE"}: ${notice.message}`);
+    if (output.notices.length < 50) output.notices.push(clipText(`${notice.severity ?? "NOTICE"}: ${notice.message}`));
   });
   c.on("error", () => {
     /* a terminated backend also surfaces on the pending query */
@@ -298,12 +329,14 @@ export async function runLearnerSql(info: ConnectionInfo, sql: string, options: 
         await c.query("SAVEPOINT knife_run");
         try {
           await c.query(prefix + statement.text);
-          const fetched = await c.query<unknown[]>({ text: `FETCH FORWARD ${rowCap + 1} FROM knife_cursor`, rowMode: "array" });
+          const collector = new RowCollector(rowCap, budget, cellValue);
+          const fetched = await streamQuery(c, `FETCH FORWARD ${rowCap + 1} FROM knife_cursor`, collector);
           await c.query("CLOSE knife_cursor");
           await c.query("RELEASE SAVEPOINT knife_run");
-          output.results.push(toResult(fetched, rowCap, "SELECT"));
+          output.results.push(toResult(fetched, collector, "SELECT"));
           continue;
         } catch (error) {
+          if (guard.tripped) throw guard.tripped;
           await c.query("ROLLBACK TO SAVEPOINT knife_run").catch(() => {});
           // Not every query fits a cursor (e.g. SELECT ... INTO): run it directly, Postgres explains what is wrong.
           if ((error as PgError).code !== "0A000" && (error as PgError).code !== "42601") {
@@ -313,15 +346,15 @@ export async function runLearnerSql(info: ConnectionInfo, sql: string, options: 
         }
       }
       try {
-        const result = await c.query<unknown[]>({ text: statement.text, rowMode: "array" });
-        output.results.push(toResult(result, rowCap));
+        const collector = new RowCollector(rowCap, budget, cellValue);
+        output.results.push(toResult(await streamQuery(c, statement.text, collector), collector));
       } catch (error) {
-        output.error = errorInfo(sql, error, index, statement.start);
+        output.error = guard.tripped ? limitInfo(guard.tripped, index) : errorInfo(sql, error, index, statement.start);
         break;
       }
     }
   } catch (error) {
-    output.error = errorInfo(sql, error, output.results.length, 0);
+    output.error = guard.tripped ? limitInfo(guard.tripped, output.results.length) : errorInfo(sql, error, output.results.length, 0);
   } finally {
     if (killer) clearTimeout(killer);
     await c.query("ROLLBACK").catch(() => {});
