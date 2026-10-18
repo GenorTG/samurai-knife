@@ -188,22 +188,33 @@ test("outbound budget: public-mode users are rate limited per purpose, admins an
   for (let i = 0; i < 50; i += 1) assert.equal(outbound.consumeOutbound({ id: "budget-user", role: "user" }, "provider-test").ok, true);
 });
 
-test("aggregate outbound purpose and host budgets are shared across non-admin accounts; server PSI key is admin-only", () => {
+test("aggregate outbound purpose and host budgets are shared fairly across non-admin accounts; server PSI key is admin-only", () => {
   process.env.KNIFE_AUTH_MODE = "public";
-  process.env.KNIFE_OUTBOUND_BUDGETS = "page=1/10m,host=1/10m";
+  process.env.KNIFE_OUTBOUND_BUDGETS = "page=4/10m,host=1000/10m";
   process.env.KNIFE_PSI_API_KEY = "server-test-key";
   outboundBudgets.resetBudgets();
   try {
-    assert.equal(outbound.admitOutbound({ id: "agg-a", role: "user" }, "page", "https://one.example").ok, true);
-    const purpose = outbound.admitOutbound({ id: "agg-b", role: "user" }, "page", "https://two.example");
-    assert.equal(purpose.ok, false, "purpose cap spans accounts");
+    for (let i = 0; i < 4; i += 1) assert.equal(outbound.admitOutbound({ id: "agg-bot", role: "user" }, "page", `https://one.example/${i}`).ok, true);
+    const purpose = outbound.admitOutbound({ id: "agg-bot", role: "user" }, "page", "https://two.example");
+    assert.equal(purpose.ok, false, "the account that filled the purpose budget waits");
     assert.equal(purpose.reason, "purpose");
-    assert.ok(securityEvents.recentSecurityEvents().some((event) => event.kind === "outbound_budget" && event.account === "agg-b"));
+    assert.ok(securityEvents.recentSecurityEvents().some((event) => event.kind === "outbound_budget" && event.account === "agg-bot"));
+    // A light account still gets its fair share of a full bucket, up to the hard ceiling (2 x max): then nobody does.
+    for (const id of ["agg-l1", "agg-l2", "agg-l3", "agg-l4"]) assert.equal(outbound.admitOutbound({ id, role: "user" }, "page", "https://three.example").ok, true, id);
+    const ceiling = outbound.admitOutbound({ id: "agg-l5", role: "user" }, "page", "https://three.example");
+    assert.equal(ceiling.ok, false, "hard ceiling spans accounts");
+    assert.equal(ceiling.reason, "purpose");
+    assert.equal(outbound.admitOutbound({ id: "agg-admin", role: "admin" }, "page", "https://three.example").ok, true, "admins are never refused");
+
+    process.env.KNIFE_OUTBOUND_BUDGETS = "host=2/10m";
     outboundBudgets.resetBudgets();
     assert.equal(outbound.admitOutbound({ id: "host-a", role: "user" }, "page", "https://shared.example").ok, true);
-    const host = outbound.admitOutbound({ id: "host-b", role: "user" }, "company", "https://shared.example/other");
-    assert.equal(host.ok, false, "destination cap spans accounts and purposes");
+    assert.equal(outbound.admitOutbound({ id: "host-a", role: "user" }, "page", "https://shared.example/2").ok, true);
+    const host = outbound.admitOutbound({ id: "host-a", role: "user" }, "company", "https://shared.example/other");
+    assert.equal(host.ok, false, "destination cap spans purposes");
     assert.equal(host.reason, "host");
+    assert.equal(outbound.admitOutbound({ id: "host-b", role: "user" }, "company", "https://shared.example/other").ok, true, "another account keeps its share of the host");
+
     process.env.KNIFE_OUTBOUND_BUDGETS = "page=10/10m,host=2/10m";
     outboundBudgets.resetBudgets();
     const target = "https://pages.example/about";
@@ -221,6 +232,61 @@ test("aggregate outbound purpose and host budgets are shared across non-admin ac
     delete process.env.KNIFE_OUTBOUND_BUDGETS;
     delete process.env.KNIFE_PSI_API_KEY;
   }
+});
+
+test("provider rounds: no shared host bucket on allow-listed providers, fair shares, custom URLs keep the host bucket", () => {
+  process.env.KNIFE_AUTH_MODE = "public";
+  outboundBudgets.resetBudgets();
+  try {
+    // Regression (review fix 1): the 60/10 min host bucket used to cap api.openai.com for ALL non-admins together.
+    for (let i = 0; i < 300; i += 1) {
+      const verdict = outbound.admitProvider({ id: `chat-${i}`, role: "user" }, "provider", "https://api.openai.com/v1");
+      assert.equal(verdict.ok, true, `account ${i} chats`);
+    }
+    // GitHub and PageSpeed are fixed services: no host bucket either.
+    for (let i = 0; i < 100; i += 1) assert.equal(outbound.consumeOutbound({ id: `gh-${i}`, role: "user" }, "github", "https://api.github.com").ok, true);
+    assert.equal(outbound.userChosenHost("psi", "www.googleapis.com"), false);
+    assert.equal(outbound.userChosenHost("page", "example.com"), true);
+
+    // A few bot accounts fill the server-wide provider budget; a light account and admins still get through.
+    process.env.KNIFE_OUTBOUND_BUDGETS = "provider=50/10m,host=3/10m";
+    outboundBudgets.resetBudgets();
+    for (let b = 0; b < 5; b += 1) for (let i = 0; i < 10; i += 1) assert.equal(outbound.admitProvider({ id: `bot-${b}`, role: "user" }, "provider", "https://api.openai.com/v1").ok, true);
+    const bot = outbound.admitProvider({ id: "bot-0", role: "user" }, "provider", "https://api.openai.com/v1");
+    assert.equal(bot.ok, false, "a bot over its share waits");
+    assert.equal(bot.reason, "purpose");
+    assert.ok(bot.retryAfterSeconds > 0);
+    assert.equal(outbound.admitProvider({ id: "light-user", role: "user" }, "provider", "https://api.anthropic.com/v1").ok, true, "a light account is not locked out");
+    for (let i = 0; i < 200; i += 1) assert.equal(outbound.admitProvider({ id: "the-admin", role: "admin" }, "provider", "https://api.openai.com/v1").ok, true);
+
+    // An admin-approved custom base URL is a user-chosen host: its host bucket applies.
+    outboundBudgets.resetBudgets();
+    const custom = { id: "custom-user", role: "user", approvedProviderUrl: "https://llm.example.org/v1" };
+    for (let i = 0; i < 3; i += 1) assert.equal(outbound.admitProvider(custom, "provider", custom.approvedProviderUrl).ok, true);
+    const hostRefused = outbound.admitProvider(custom, "provider", custom.approvedProviderUrl);
+    assert.equal(hostRefused.ok, false);
+    assert.equal(hostRefused.reason, "host");
+    assert.equal(outbound.admitProvider({ id: "chat-x", role: "user" }, "provider", "https://api.openai.com/v1").ok, true, "known hosts never hit the host bucket");
+  } finally {
+    outboundBudgets.resetBudgets();
+    delete process.env.KNIFE_AUTH_MODE;
+    delete process.env.KNIFE_OUTBOUND_BUDGETS;
+  }
+});
+
+test("outbound budgets: a full host table refuses new hosts and never evicts an active bucket; a 0 budget disables", () => {
+  outboundBudgets.resetBudgets();
+  const budget = { max: 5, windowMs: 60_000 };
+  const now = 1_000_000;
+  for (let i = 0; i < outboundBudgets.MAX_HOSTS; i += 1) assert.equal(outboundBudgets.takeBudget({ account: "a", host: { key: `h${i}.example`, budget } }, now).ok, true);
+  const full = outboundBudgets.takeBudget({ account: "a", host: { key: "new.example", budget } }, now + 1);
+  assert.equal(full.ok, false);
+  assert.equal(full.key, "host-table-full");
+  assert.equal(outboundBudgets.takeBudget({ account: "a", host: { key: "h0.example", budget } }, now + 2).ok, true, "an existing host still works");
+  assert.equal(outboundBudgets.takeBudget({ account: "a", host: { key: "new.example", budget } }, now + 61_000).ok, true, "expired buckets make room");
+  outboundBudgets.resetBudgets();
+  assert.equal(outboundBudgets.takeBudget({ account: "a", purpose: { key: "off", budget: { max: 0, windowMs: 60_000 } } }).ok, false);
+  outboundBudgets.resetBudgets();
 });
 
 test("extra headers: the strict (public user) list refuses proxy, client-address, hop-by-hop and gateway headers", () => {

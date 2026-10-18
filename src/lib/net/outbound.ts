@@ -10,9 +10,12 @@ import type { OutboundPolicy } from "./safe-fetch";
 /**
  * Every request the server sends on a user's behalf is admitted here first. Threat: the server as a free crawler, a
  * stolen-API-key checker or a flood source against one third party, multiplied by cheap accounts. Three budgets, all for
- * NON-ADMINS in PUBLIC mode (private mode and admins are the owner): per account (`rate-limit.ts` LIMITS), per purpose
- * across all accounts, and per destination host across all accounts. Server-held credentials (the PageSpeed key, the
- * host's `gh` login) are spent for admins only; everyone else brings their own key or token.
+ * NON-ADMINS in PUBLIC mode (private mode and admins are the owner, never refused here): per account (`rate-limit.ts`
+ * LIMITS), per purpose across all accounts, and per USER-CHOSEN destination host across all accounts (pages, companies,
+ * audited sites, an admin-approved custom provider URL). The fixed services (allow-listed model providers, the GitHub
+ * API, PageSpeed) have no host bucket: their purpose budget is the cap, and a shared host bucket there would let one bot
+ * account cut everyone off. The shared buckets are fair-share (budgets.ts). Server-held credentials (the PageSpeed key,
+ * the host's `gh` login) are spent for admins only; everyone else brings their own key or token.
  */
 
 export type OutboundPurpose =
@@ -93,9 +96,29 @@ function refuse(account: Pick<Account, "id">, purpose: OutboundPurpose, reason: 
 }
 
 /**
- * Admit one outbound operation (and count it): the account's own limit, the purpose's server-wide budget and, when a
- * user-chosen `destination` is given, that host's budget. A refused attempt costs nothing; an admitted one is counted
- * even when the target then fails, so a refused or failing target costs the same as a good one.
+ * Does `host` get a destination bucket for this purpose? Only hosts a user picked: GitHub and PageSpeed calls go to the
+ * fixed service, and a provider round to an allow-listed provider is the account's own key at a big API (its cap is the
+ * purpose budget); a custom provider URL (admin-approved) is a user-chosen host like any page.
+ */
+export function userChosenHost(purpose: OutboundPurpose, host: string): boolean {
+  switch (purpose) {
+    case "github":
+    case "psi":
+      return false;
+    case "provider":
+    case "provider-test":
+      return !isKnownProviderHost(host);
+    case "page":
+    case "company":
+    case "audit":
+      return true;
+  }
+}
+
+/**
+ * Admit one outbound operation (and count it): the account's own limit, the purpose's server-wide budget and, when
+ * the `destination` is user-chosen (userChosenHost), that host's budget. A refused attempt costs nothing; an admitted
+ * one is counted even when the target then fails, so a refused or failing target costs the same as a good one.
  */
 export function admitOutbound(account: Pick<Account, "id" | "role">, purpose: OutboundPurpose, destination?: string | URL | null): OutboundVerdict {
   if (!outboundBudgeted(account)) return { ok: true };
@@ -105,11 +128,13 @@ export function admitOutbound(account: Pick<Account, "id" | "role">, purpose: Ou
     if (!own.ok) return refuse(account, purpose, "account", own.retryAfterSeconds);
   }
   const host = destination ? hostOf(destination) : null;
+  const hostBucket = host !== null && userChosenHost(purpose, host);
   const verdict = takeBudget({
+    account: account.id,
     purpose: { key: purpose, budget: budgetFor(purpose) },
-    ...(host ? { host: { key: host, budget: budgetFor("host") } } : {}),
+    ...(hostBucket && host ? { host: { key: host, budget: budgetFor("host") } } : {}),
   });
-  if (!verdict.ok) return refuse(account, purpose, verdict.key.startsWith("purpose:") ? "purpose" : "host", verdict.retryAfterSeconds, host);
+  if (!verdict.ok) return refuse(account, purpose, verdict.key.startsWith("purpose:") ? "purpose" : "host", verdict.retryAfterSeconds, hostBucket ? host : null);
   if (limit) hitLimits([limit]);
   return { ok: true };
 }
@@ -144,7 +169,7 @@ export function hostGate(account: Pick<Account, "id" | "role">, purpose: Outboun
       skippedInitial = true;
       return;
     }
-    const verdict = takeBudget({ host: { key: host, budget: budgetFor("host") } });
+    const verdict = takeBudget({ account: account.id, host: { key: host, budget: budgetFor("host") } });
     if (!verdict.ok) {
       refuse(account, purpose, "host", verdict.retryAfterSeconds, host);
       throw new OutboundRefused(verdict.retryAfterSeconds);

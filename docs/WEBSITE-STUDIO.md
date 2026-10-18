@@ -60,7 +60,8 @@ with `privateNetwork` excepted), every hop re-checked, 20 s and 4 MB per page. B
 audits an hour, 600 GitHub calls per 10 minutes, page reads count against the page budget.
 
 In public mode, server-wide outbound-purpose and destination-host budgets additionally cap aggregate use across all
-non-admin accounts (`src/lib/net/outbound.ts`, `KNIFE_OUTBOUND_BUDGETS`). A server-configured `KNIFE_PSI_API_KEY` is
+non-admin accounts, fair-share (`src/lib/net/outbound.ts`, `src/lib/net/budgets.ts`, `KNIFE_OUTBOUND_BUDGETS`); GitHub
+and PageSpeed calls have no destination-host bucket (fixed services), the audited site has one. A server-configured `KNIFE_PSI_API_KEY` is
 admin-only; a non-admin can use PageSpeed only with the key saved on their own site connection. Anonymous PageSpeed is
 disabled for non-admins. Their audits are restricted to the connected site's production URL. GitHub App operations
 must still pass the linked user's current repository-with-push authorization check.
