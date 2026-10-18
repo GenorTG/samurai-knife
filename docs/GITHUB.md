@@ -9,7 +9,10 @@ stay as a fallback; admins may still use the server's `gh` login.
 - Users pick the repositories on GitHub's own install screen and can uninstall at any time (GitHub Settings ->
   Applications). The app can only touch those repositories.
 - The permissions are fixed and shown by GitHub: **Contents** and **Pull requests** read/write; **Metadata**, **Commit
-  statuses**, **Deployments**, **Checks** read; account permission **Email addresses** read (sign-in). No webhooks.
+  statuses**, **Deployments**, **Checks**, **Pages** read; account permission **Email addresses** read (sign-in). No
+  webhooks. Pages read lets Connect verify a GitHub Pages domain as the repository's site (docs/WEBSITE-STUDIO.md); an
+  app registered before it was added lacks it until the owner accepts the new permission, and its users then verify
+  through the repository's Website field instead (or an admin approval).
 - Nothing per user is stored as a secret: for each operation the server mints an **installation token** (one hour,
   limited to the one repository) with the app's private key. Commits and pull requests appear as the app's bot.
 - Nothing is cloned or executed: the REST API reads the files the agent asks for and writes commits to a `knife/...`

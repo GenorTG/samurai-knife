@@ -17,6 +17,8 @@ export const APP_PERMISSIONS = {
   statuses: "read",
   deployments: "read",
   checks: "read",
+  // The Pages domain proves a website belongs to the repository (src/lib/site/ownership.ts).
+  pages: "read",
   // Account: the verified email for "Sign in with GitHub".
   email_addresses: "read",
 } as const;
