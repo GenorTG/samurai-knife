@@ -65,6 +65,41 @@ def processes() -> list[tuple[int, int, str, str]]:
     return result
 
 
+def tree() -> dict[int, tuple[int, str, str]]:
+    """pid -> (ppid, state, args) for every process."""
+    result = {}
+    for line in subprocess.check_output(["ps", "-eo", "pid=,ppid=,stat=,args="], text=True).splitlines():
+        pid, parent, state, args = line.strip().split(None, 3)
+        result[int(pid)] = (int(parent), state, args)
+    return result
+
+
+def job_processes(server_pid: int) -> tuple[set[int], bool]:
+    """Every live descendant of the scratch server between it and a running Tesseract (the Python worker, the parser
+    sandbox's bwrap/init when KNIFE_PY_SANDBOX is on, OCRmyPDF, Tesseract), and whether a Tesseract runs. Followed by
+    parent links, not by process group: the sandbox gives the job its own session."""
+    procs = tree()
+    found: set[int] = set()
+    tesseract = False
+    for pid, (_, state, args) in procs.items():
+        if state[0] in ("Z", "X") or "tesseract" not in args:
+            continue
+        # Walk up until the server side (the Node process that spawned the worker, or npm/sh above it); only the job's
+        # own processes below that point are collected.
+        chain, cur, below_server = [], pid, True
+        while cur in procs and cur != server_pid and cur > 1:
+            args_cur = procs[cur][2]
+            if below_server and any(mark in args_cur for mark in ("node", "next-server", "npm", "serve.mjs")):
+                below_server = False
+            if below_server:
+                chain.append(cur)
+            cur = procs[cur][0]
+        if cur == server_pid:
+            tesseract = True
+            found.update(chain)
+    return found, tesseract
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="knife-ocr-http-") as temp, ScratchServer() as server:
         root = Path(temp)
@@ -118,14 +153,12 @@ def main() -> None:
         status, job = upload(base, many, {})
         assert status == 202 and isinstance(job, dict), (status, job)
         deadline = time.monotonic() + 30
-        group = None
+        assert server._proc is not None
+        job_pids: set[int] = set()
         while time.monotonic() < deadline:
-            snapshot = processes()
-            worker = next((row for row in snapshot if str(server.cwd / "server/py/scripts/pdf_tool.py") in row[3]), None)
-            if worker:
-                group = worker[1]
-                if any(row[1] == group and row[2][0] != "Z" and "tesseract" in row[3] for row in snapshot):
-                    break
+            job_pids, running = job_processes(server._proc.pid)
+            if running:
+                break
             time.sleep(0.02)
         else:
             raise AssertionError("Never observed real Tesseract descendant")
@@ -133,7 +166,8 @@ def main() -> None:
         status, data = http(base, job["statusUrl"], "DELETE")
         assert status == 200 and json.loads(data)["status"] == "cancelled", data
         assert time.monotonic() - started < 5, "cancel should not wait for OCR completion"
-        survivors = [row for row in processes() if row[1] == group and row[2][0] not in ("Z", "X")]
+        live = tree()
+        survivors = [(pid, live[pid]) for pid in job_pids if pid in live and live[pid][1][0] not in ("Z", "X")]
         assert not survivors, survivors
         status, data = http(base, job["statusUrl"] + "/file")
         assert status != 200, "cancelled OCR must not publish a partial PDF"
