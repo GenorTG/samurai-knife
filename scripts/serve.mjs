@@ -4,6 +4,7 @@
 // `start` serves the production build (`npm run build` first): the public deployment. `dev` is the owner's live toolbox.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { deployProblems } from "./deploy-config.mjs";
 
 const mode = process.argv[2];
 if (mode !== "dev" && mode !== "start") {
@@ -32,11 +33,14 @@ if (authMode !== "private" && authMode !== "public") {
   console.error(`[serve] refusing KNIFE_AUTH_MODE=${process.env.KNIFE_AUTH_MODE}: use private (default) or public.`);
   process.exit(2);
 }
-if (authMode === "public") {
-  if (!process.env.KNIFE_PUBLIC_URL?.trim()) console.warn("[serve] public mode without KNIFE_PUBLIC_URL: links in mail point at the bind address.");
-  if (!process.env.KNIFE_TRUSTED_PROXIES?.trim()) console.warn("[serve] public mode without KNIFE_TRUSTED_PROXIES: X-Forwarded-For/-Proto are ignored, so every client shares one rate-limit bucket and cookies are never Secure.");
-  if (mode === "dev") console.warn("[serve] public mode under `next dev` (dev overlay, source maps, HMR endpoints): deploy with `npm run build && npm run start` (docs/DEPLOY.md).");
+// Fail closed on a deployment that would be insecure (scripts/deploy-config.mjs, docs/DEPLOY.md "Startup checks").
+const problems = deployProblems(process.env, authMode);
+for (const warning of problems.warnings) console.warn(`[serve] ${warning}`);
+if (problems.errors.length) {
+  for (const error of problems.errors) console.error(`[serve] refusing to start: ${error}`);
+  process.exit(2);
 }
+if (authMode === "public" && mode === "dev") console.warn("[serve] public mode under `next dev` (dev overlay, source maps, HMR endpoints): deploy with `npm run build && npm run start` (docs/DEPLOY.md).");
 if (mode === "start" && !existsSync(new URL("../.next/BUILD_ID", import.meta.url))) {
   console.error("[serve] no production build in .next: run `npm run build` first.");
   process.exit(2);

@@ -78,8 +78,34 @@ pm2 logs samurai-knife-public
 ```
 
 Always start through `scripts/serve.mjs` (`npm run start` or the config above): it resolves the bind address, refuses
-`0.0.0.0` and unknown auth modes, and preloads the socket-peer stamp (trusted `X-Forwarded-*`) and the security headers.
-A bare `next start` has neither.
+`0.0.0.0` and unknown auth modes, runs the startup checks below, and preloads the socket-peer stamp (trusted
+`X-Forwarded-*`), the security headers and the abuse guard with the Node server timeouts (docs/ACCOUNTS.md "Abuse
+guard"). A bare `next start` has none of them.
+
+### Startup checks (`scripts/deploy-config.mjs`)
+
+A deploy that loses or mistypes one variable must not quietly become insecure, so `serve.mjs` exits with code 2 and a
+one-line reason (`[serve] refusing to start: ...`) when:
+
+- public mode has no `KNIFE_PUBLIC_URL`, or it is not https (plain http only on a loopback/Tailscale/LAN address literal,
+  for test servers);
+- public mode has no `KNIFE_TRUSTED_PROXIES`, an entry that is not an IP or CIDR, or one wider than IPv4 /16 or IPv6 /48
+  (a network-wide entry narrower than that starts, with a warning: list the proxy's own address);
+- public mode has `KNIFE_ABUSE_GUARD=off`;
+- `KNIFE_AUTH_MODE` is empty but `KNIFE_PUBLIC_URL` is set. A public deploy that lost its mode would otherwise start
+  private and make the passwordless default account everyone's identity. Private installs set `KNIFE_PUBLIC_URL` too,
+  for the GitHub App (docs/GITHUB.md: GitHub only ever sees the public URL), so the rule is: say which one you are.
+  `KNIFE_AUTH_MODE=public` for a public deploy; `KNIFE_AUTH_MODE=private` for a private install that only uses the URL
+  for GitHub. The explicit private case starts with a warning: the Host guard accepts the public URL's name, so no proxy
+  may route that name to a private install while its default account has no password. (A server started without
+  `serve.mjs` treats the empty-mode case as public: `src/lib/accounts/mode.ts`.)
+- private mode binds or allows a public host: every entry of `KNIFE_HOST`, `KNIFE_ALLOWED_HOSTS` and
+  `KNIFE_MCP_ALLOWED_HOSTS` must be loopback, Tailscale, a private LAN address, or a private-network name (single-label
+  names, `*.ts.net`, `*.local`, `*.lan`, `*.home.arpa`, `*.internal`).
+
+Upgrading an existing install: if its environment sets `KNIFE_PUBLIC_URL` without `KNIFE_AUTH_MODE`, add the mode
+explicitly before restarting, or the new build refuses to start (an updater that preflights the new release keeps the
+old one running).
 
 ## 4. Reverse proxy with HTTPS (nginx-proxy-manager)
 
@@ -96,12 +122,53 @@ One Proxy Host per name:
     client_max_body_size 600m;          # >= KNIFE_PDF_UPLOAD_MAX_MB; the app streams uploads and enforces its own caps
     proxy_request_buffering off;        # stream uploads to the app instead of spooling them in the proxy
     proxy_read_timeout 300s;            # model rounds and PDF jobs
-    proxy_set_header X-Forwarded-For $remote_addr;   # replace, do not append, what the client sent
-    proxy_set_header X-Forwarded-Proto $scheme;
+    client_header_timeout 15s;
+    client_body_timeout 30s;
+    send_timeout 60s;
+    limit_conn knife_conn 40;           # per client (zone below); the app also caps connections (KNIFE_MAX_CONNECTIONS)
+    # The office Document Server reaches the app on its internal app URL (docs/SIDECARS.md "Addresses"), never through
+    # this public name: its two JWT-authenticated routes need not be public.
+    location ^~ /api/office/ds/ { return 404; }
     ```
 
-  - `KNIFE_TRUSTED_PROXIES` must match the address the proxy connects FROM, as seen by the app, or every client shares one
-    rate-limit bucket and cookies are never `Secure` (docs/ACCOUNTS.md "Client address").
+    Forwarded headers: NPM's generated `location /` includes `conf.d/include/proxy.conf`, which sets its own
+    `proxy_set_header` lines (`X-Forwarded-For $proxy_add_x_forwarded_for`, `X-Forwarded-Proto $scheme`, `Host`), and
+    nginx then ignores any `proxy_set_header` from the server level, so do not add them here. Appending is safe: the app
+    takes the right-most `X-Forwarded-For` entry that is not a trusted proxy, so whatever a client prepends is ignored.
+    A `location` you add yourself must `include conf.d/include/proxy.conf;` too.
+
+  - `KNIFE_TRUSTED_PROXIES` must match the address the proxy connects FROM, as seen by the app (startup refuses public
+    mode without it, docs/ACCOUNTS.md "Client address"). Check that the proxy sees real client addresses, IPv6 included
+    (Docker: `userland-proxy: false` with IPv6 enabled, or host networking): otherwise every IPv6 client arrives as the
+    bridge gateway and shares one bucket.
+  - Coarse per-client limits in nginx (`/data/nginx/custom/http_top.conf`, http context; the app's abuse guard and rate
+    limits stay authoritative, nginx only drops floods early):
+
+    ```nginx
+    # IPv6 clients grouped by /64 (first 4 hextets of an uncompressed head); everything else by full address
+    map $remote_addr $knife_client {
+      ~^(?<p>[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}): $p;
+      default $binary_remote_addr;
+    }
+    limit_conn_zone $knife_client zone=knife_conn:10m;
+    limit_req_zone  $knife_client zone=knife_auth:10m rate=6r/m;
+    limit_conn_status 429;
+    limit_req_status 429;
+    ```
+
+    and in the proxy host's Advanced config, before the `location ^~ /api/office/ds/` line:
+
+    ```nginx
+    location ~ ^/api/account/(register|forgot|resend|reset|verify|login)$ {
+      limit_req zone=knife_auth burst=10 nodelay;
+      include conf.d/include/proxy.conf;
+    }
+    location = /api/pdf {
+      limit_conn knife_conn 3;
+      proxy_read_timeout 300s;
+      include conf.d/include/proxy.conf;
+    }
+    ```
 - **office.knife.example.org** (only with the office sidecar) → the SAME `http://<KNIFE_HOST>:<KNIFE_PORT>` as the app,
   SSL as above, **Websockets Support on**, the same advanced config with `client_max_body_size 110m`. Set
   `KNIFE_OFFICE_PUBLIC_URL=https://office.knife.example.org` in the app's environment: the app proxies the editor itself
@@ -153,7 +220,9 @@ servers it starts never inherit the lock). Keep a separate `next dev` for develo
 
 - [ ] `npm run build` in the deploy checkout, process started via `serve.mjs start` with `KNIFE_AUTH_MODE=public`.
 - [ ] Owner account: password, verified email, admin; `set-network private` only if needed.
-- [ ] `KNIFE_PUBLIC_URL` (https), `KNIFE_TRUSTED_PROXIES`, SMTP, `KNIFE_SSRF_DENY_CIDRS` set.
+- [ ] `KNIFE_PUBLIC_URL` (https), `KNIFE_TRUSTED_PROXIES`, SMTP, `KNIFE_SSRF_DENY_CIDRS` set; `serve.mjs` starts without a
+      `refusing to start` line (Startup checks).
+- [ ] Proxy: `/api/office/ds/` answers 404 on the public name; NPM sees real client addresses (IPv6 too); `limit_conn` set.
 - [ ] Proxy: HTTPS, forced; body size and streaming as above; the office name on the app's port with websockets, and
       `KNIFE_OFFICE_PUBLIC_URL` set.
 - [ ] `tests/prod_smoke.py` against a scratch copy of this setup passes; `curl -sI` shows the CSP and HSTS.

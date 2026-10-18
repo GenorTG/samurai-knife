@@ -19,8 +19,10 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
 | Mail transport default | `outbox` | `smtp` |
 
-`src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public; `scripts/serve.mjs` refuses to
-start with an unknown value. Before switching a live install to public, give the owner a password and an address:
+`src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public, and so is an empty value with
+`KNIFE_PUBLIC_URL` set; `scripts/serve.mjs` refuses to start with an unknown value, with an empty value and
+`KNIFE_PUBLIC_URL` (say `private` explicitly for a private install that uses the URL for the GitHub App), and with an
+incomplete public config (docs/DEPLOY.md "Startup checks"). Before switching a live install to public, give the owner a password and an address:
 
 ```bash
 KNIFE_AUTH_MODE=public npm run accounts -- set-password <id>     # 10+ characters in public mode
