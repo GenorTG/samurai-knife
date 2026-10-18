@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-const { reportPresence, openTabs, takePending, requestShow, resetUiBridge, PRESENCE_TTL_MS, POLL_TTL_MS, validClientId } = await import("../src/lib/ui-bridge/store.ts");
+const { reportPresence, openTabs, takePending, requestShow, resetUiBridge, uiBridgeSize, PRESENCE_TTL_MS, POLL_TTL_MS, MAX_TABS, validClientId } = await import("../src/lib/ui-bridge/store.ts");
 const { showPath, ShowPathError } = await import("../src/lib/ui-bridge/path.ts");
 
 const tab = (clientId, path, extra = {}) => ({ clientId, path, title: "T", visible: true, active: true, ...extra });
@@ -34,6 +34,32 @@ test("requestShow: goes to the most recently active LISTENING tab, or the named 
   assert.deepEqual(takePending("a", "tab-one-0001", now), [], "picked up once");
   assert.equal(requestShow("a", "/tools/x", "", "MCP agent", "tab-two-0002", now), null, "a named tab that does not poll");
   assert.equal(requestShow("a", "/tools/x", "", "MCP agent", undefined, now + POLL_TTL_MS + 1), null, "a tab that stopped polling (hidden) is not listening");
+});
+
+test("bounded: polls with random client ids (no presence) are answered but never stored (audit L5 / abuse #11)", () => {
+  resetUiBridge();
+  for (let i = 0; i < 50_000; i += 1) assert.deepEqual(takePending("a", `random-${String(i).padStart(8, "0")}`, 1_000), []);
+  assert.deepEqual(uiBridgeSize(), { accounts: 0, presence: 0, polls: 0, pending: 0 });
+  reportPresence("a", tab("tab-one-0001", "/tools/json"), 1_000);
+  takePending("a", "tab-one-0001", 1_000);
+  assert.equal(openTabs("a", 1_000)[0].connected, true, "a tab that reported is listening once it polls");
+});
+
+test("bounded: the MAX_TABS cap and the TTLs take polls and pending requests with the presence they belong to", () => {
+  resetUiBridge();
+  const now = 10_000;
+  for (let i = 0; i < MAX_TABS + 20; i += 1) {
+    const id = `tab-${String(i).padStart(8, "0")}`;
+    reportPresence("a", tab(id, "/tools/json"), now + i);
+    takePending("a", id, now + i);
+    requestShow("a", "/tools/diff", "", "MCP agent", id, now + i);
+  }
+  const size = uiBridgeSize();
+  assert.ok(size.presence <= MAX_TABS && size.polls <= MAX_TABS && size.pending <= MAX_TABS, JSON.stringify(size));
+  assert.deepEqual(takePending("a", "tab-00000000", now + 100), [], "an evicted tab's pending request went with it");
+  const later = now + PRESENCE_TTL_MS + POLL_TTL_MS + 1_000;
+  assert.deepEqual(openTabs("a", later), []);
+  assert.deepEqual(uiBridgeSize(), { accounts: 0, presence: 0, polls: 0, pending: 0 }, "everything expires, the empty account too");
 });
 
 test("client ids are validated", () => {
