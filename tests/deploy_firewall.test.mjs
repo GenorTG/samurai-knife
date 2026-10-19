@@ -1,7 +1,7 @@
 // Deployment firewall policy is rendered/tested without loading a host ruleset; Docker policy uses --dry-run only.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -73,4 +73,12 @@ test("Docker forwarding script validates config and dry-run does not invoke ipta
   });
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /SIDECAR_EGRESS entry invalid/);
+});
+
+test("deploy units never pull in the stock nftables.service (its /etc/nftables.conf flushes Docker's rules)", () => {
+  const dir = join(ROOT, "deploy/systemd");
+  for (const name of readdirSync(dir)) {
+    const unit = readFileSync(join(dir, name), "utf8");
+    assert.doesNotMatch(unit, /^\s*(Wants|Requires|Requisite|BindsTo|PartOf|Upholds)=.*\bnftables\.service\b/m, name);
+  }
 });

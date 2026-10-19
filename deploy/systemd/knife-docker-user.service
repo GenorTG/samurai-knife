@@ -2,9 +2,10 @@
 # Install as /etc/systemd/system/knife-docker-user.service.
 [Unit]
 Description=Smart Knife Docker forwarding and sidecar egress policy
+# Ordering only: never Wants=/Requires= nftables.service. Debian's stock unit loads /etc/nftables.conf, whose
+# `flush ruleset` wipes Docker's and Tailscale's rules (new containers then fail to start).
 After=docker.service nftables.service
 Requires=docker.service
-Wants=nftables.service
 
 [Service]
 Type=simple

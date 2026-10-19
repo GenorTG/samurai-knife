@@ -199,6 +199,9 @@ install -o root -g root -m 0644 deploy/systemd/knife-docker-user.service /etc/sy
 Edit the two configs to replace placeholders, run `knife-firewall preflight` and `knife-firewall check`, then use the
 timed `knife-firewall apply` / fresh-session `confirm` flow described below. Only after successful confirmation run
 `systemctl daemon-reload && systemctl enable --now knife-firewall.service knife-docker-user.service`.
+Never enable or pull in Debian's stock `nftables.service` next to them: it loads `/etc/nftables.conf`, whose `flush
+ruleset` wipes Docker's and Tailscale's rules (running containers keep working through docker-proxy, new ones fail to
+start). `systemctl mask nftables.service` if nothing else needs it; the units only order themselves after it.
 
 At cutover, stage and preflight the new app first, stop PM2, then `systemctl enable --now samurai-knife.service`; verify
 health and logs before deleting the old PM2 entry. Keep the previous release and PM2 config for rollback. Rollback by
