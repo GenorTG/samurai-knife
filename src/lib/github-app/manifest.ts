@@ -19,8 +19,10 @@ export const APP_PERMISSIONS = {
   checks: "read",
   // The Pages domain proves a website belongs to the repository (src/lib/site/ownership.ts).
   pages: "read",
-  // Account: the verified email for "Sign in with GitHub".
-  email_addresses: "read",
+  // Account: the verified email for "Sign in with GitHub" (GET /user/emails). The manifest takes GitHub's internal resource
+  // name `emails`; `email_addresses` (the name in installation/token API responses) is refused by GitHub's manifest check
+  // ("Default permission records resource is not included in the list").
+  emails: "read",
 } as const;
 
 export function callbackPaths(base: string) {
