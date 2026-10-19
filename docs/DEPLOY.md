@@ -236,7 +236,7 @@ One Proxy Host per name:
   - Advanced (custom nginx config):
 
     ```nginx
-    client_max_body_size 600m;          # >= KNIFE_PDF_UPLOAD_MAX_MB; the app streams uploads and enforces its own caps
+    client_max_body_size 120m;          # >= KNIFE_PDF_UPLOAD_MAX_MB (public default 100) and office uploads; the app streams uploads and enforces its own caps
     proxy_request_buffering off;        # stream uploads to the app instead of spooling them in the proxy
     proxy_read_timeout 300s;            # model rounds and PDF jobs
     client_header_timeout 15s;
@@ -264,7 +264,7 @@ One Proxy Host per name:
     ```nginx
     # IPv6 clients grouped by /64 (first 4 hextets of an uncompressed head); everything else by full address
     map $remote_addr $knife_client {
-      ~^(?<p>[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}): $p;
+      "~^(?<p>[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}):" $p;   # quoted: nginx reads a bare { as a block
       default $binary_remote_addr;
     }
     limit_conn_zone $knife_client zone=knife_conn:10m;
