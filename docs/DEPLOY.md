@@ -191,7 +191,10 @@ Sidecars: with Docker installed the root helper is installed too (`deploy/sideca
 `knife-sidecar.socket`, `knife-sidecar@.service`) and the unit uses `KNIFE_SIDECAR_BACKEND=helper`: the app reaches docker
 only through a strict verb/id allow-list on root-owned compose bundles. The installer runs `knife-sidecar sync <id>` for
 every staged bundle in the data dir; when a release changes a definition, secret, image or plugin asset, the app reports
-the hash mismatch and `sudo knife-sidecar sync <id>` must be run again. `--no-sidecars` skips the helper.
+the hash mismatch and `sudo knife-sidecar sync <id>` must be run again. `--no-sidecars` skips the helper. ArtCraft
+(`craft`): the first Install downloads and unpacks the apps into the staging dir, then stops at the bundle check; run
+`sudo knife-sidecar sync craft` (it copies ~0.5 GB: the helper allows craft 1.5 GB of assets, other sidecars 64 MB) and
+press Start. A release that bumps an app pin needs the same Start (downloads) + sync + Start.
 
 ### Moving an existing install
 
@@ -320,6 +323,14 @@ One Proxy Host per name:
   into the live CSP), so without it the editor cannot load and the server logs `[security-headers] public mode without
   KNIFE_OFFICE_PUBLIC_URL` at startup. `KNIFE_CSP_FRAME_ORIGINS` entries that are not https on a public name are dropped
   with a warning too. Private mode keeps the state-file fallback.
+- **craft.knife.example.org** (only with the ArtCraft sidecar) → the SAME `http://<KNIFE_HOST>:<KNIFE_PORT>` as the app,
+  SSL as above (Websockets not needed; no large bodies: GET/HEAD only). Set
+  `KNIFE_CRAFT_PUBLIC_URL=https://craft.knife.example.org` in the app's environment: the app proxies the seven ArtCraft
+  apps itself (docs/SIDECARS.md "ArtCraft"), the sidecar moves to loopback at its next start/update, the CSP's frame-src
+  picks the origin up, and the craft nginx's `frame-ancestors` names `KNIFE_PUBLIC_URL`'s origin. Same rules as the office
+  name: same registrable domain as the app (SameSite=Strict ticket cookie), https on a public host name or the CSP leaves
+  it out (startup warning `[security-headers] KNIFE_CRAFT_PUBLIC_URL …`). Over https the apps get WebGPU and OPFS. A
+  public instance whose users open ArtCraft should turn on **Autostart** for it (users cannot start sidecars).
 
 Only 443 (and 80 for the certificate challenge) should be reachable from outside; check from another network with
 `curl -sI https://knife.example.org` and a port scan of the public address.
