@@ -1381,8 +1381,9 @@ export const TOOLS: ToolMeta[] = [
     keywords: ["sql", "postgres", "postgresql", "postgis", "course", "learn", "lesson", "tutorial", "exercise", "interview", "select", "join", "group by", "window function", "index", "explain", "st_dwithin", "gis", "spatial", "kurs", "nauka"],
   },
   {
+    // Slug kept (slugs are permanent); the visible name avoids the ArtCraft name (their brand terms, docs/LEGAL.md).
     slug: "artcraft",
-    name: "ArtCraft apps",
+    name: "Craft apps",
     tagline: "Photos, vectors, video, raw, motion graphics, layouts, PDFs, UI design, documents, audio, slides, CAD and spreadsheets in thirteen open-source browser apps.",
     category: "sidecars",
     family: "creative-apps",

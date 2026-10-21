@@ -264,9 +264,12 @@ def main() -> int:
 
             # Install from the page (the compact sidecar card).
             page.goto(f"{url}/tools/artcraft?tab=photocraft")
-            install = page.get_by_role("button", name="Install ArtCraft apps")
+            install = page.get_by_role("button", name="Install Craft apps")
             install.wait_for(timeout=60_000)
-            check("ArtCraft page shows the install card while not installed", install.is_visible())
+            check("Craft apps page shows the install card while not installed", install.is_visible())
+            # Brand terms (docs/LEGAL.md): the suite's own name never carries the ArtCraft name.
+            heading = page.locator("main h1").first.inner_text()
+            check("suite title is neutral (no ArtCraft in our own name)", "ArtCraft" not in heading and "Craft apps" in heading, heading)
             page.screenshot(path=str(shots / "00-not-installed.png"))
             t0 = time.monotonic()
             install.click()
@@ -339,6 +342,18 @@ def main() -> int:
                 bad = [line for line in console if BAD_CONSOLE.search(line) and not BENIGN.search(line)]
                 check(f"{app}: no console message about CSP, MIME or the sandbox", not bad, " | ".join(bad[:3])[:400])
                 METRICS[f"{app}_console_errors"] = sum(1 for line in console if line.startswith("[error]") or line.startswith("[pageerror]"))
+                credit = page.locator(f"[data-craft-app={app}] [data-craft-credit]").inner_text()
+                check(f"{app}: credit line names the ArtCraft team, the licence and no endorsement", "by the ArtCraft team and contributors" in credit and "MIT OR Apache-2.0" in credit and "Not affiliated with or endorsed" in credit, credit[:200])
+                if app in ("photocraft", "soundcraft"):
+                    page.locator(f"[data-craft-app={app}]").get_by_role("button", name="licences & notices").click()
+                    drawer = page.get_by_role("dialog", name=f"{NAMES[app]}: licences & notices")
+                    drawer.locator("summary", has_text="LICENSE-MIT").wait_for(timeout=60_000)
+                    names = drawer.locator("summary").all_inner_texts()
+                    drawer.locator("summary", has_text="NOTICE").first.click()
+                    notice = drawer.locator("details[open] pre").first.inner_text()
+                    page.screenshot(path=str(shots / f"16-{app}-notices.png"))
+                    check(f"{app}: notices show both licences, the repository NOTICE and its third-party files", any("LICENSE-MIT" in n for n in names) and any("LICENSE-APACHE" in n for n in names) and any(n.startswith("NOTICE") for n in names) and len(names) >= 4 and "ArtCraft" in notice, " | ".join(names)[:300])
+                    drawer.get_by_role("button", name=f"Close {NAMES[app]}: licences & notices").click()
                 full = page.locator(f"[data-craft-app={app}]").get_by_role("button", name="Full screen")
                 if app in ("photocraft", "lightcraft"):
                     # Full screen: the iframe itself becomes the fullscreen element and fills the viewport; leaving it restores the tab.

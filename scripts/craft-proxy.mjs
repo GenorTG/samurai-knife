@@ -93,7 +93,7 @@ export function createCraftProxy({ craftUrl, config, trusted = trustedRules(), l
     const path = craftPath(request.url);
     if (!path) return refuse(404, "Not found.", "path not allowed");
     const current = config();
-    if (!current.key || !current.upstream) return plain(response, 503, "The ArtCraft apps are not installed.");
+    if (!current.key || !current.upstream) return plain(response, 503, "The Craft apps are not installed.");
     const url = new URL(request.url, "http://craft.invalid");
     const ticket = url.searchParams.get(TICKET_PARAM);
     if (ticket !== null) {
@@ -114,7 +114,7 @@ export function createCraftProxy({ craftUrl, config, trusted = trustedRules(), l
     }
     const cookie = cookieValue(request.headers.cookie, COOKIE_NAME);
     const claims = cookie ? verifyTicket(current.key, cookie) : null;
-    if (!claims) return refuse(403, "Open ArtCraft from Smart Knife; this address only serves its apps.", null);
+    if (!claims) return refuse(403, "Open the Craft apps from Smart Knife; this address only serves them.", null);
     if (!perAccount.take(claims.account)) return plain(response, 429, "Too many requests; wait a minute.", { "Retry-After": "60" });
     const running = inflight.get(claims.account) ?? 0;
     if (running >= lim.concurrentPerAccount) return plain(response, 429, "Too many requests at once.", { "Retry-After": "5" });
@@ -143,7 +143,7 @@ export function createCraftProxy({ craftUrl, config, trusted = trustedRules(), l
     upstream.on("timeout", () => upstream.destroy(new Error("upstream idle timeout")));
     upstream.on("error", (error) => {
       const down = error?.code === "ECONNREFUSED" || error?.code === "EHOSTUNREACH";
-      plain(response, down ? 503 : 502, down ? "The ArtCraft apps are not running; open them again from Smart Knife." : "The ArtCraft server did not answer.");
+      plain(response, down ? 503 : 502, down ? "The Craft apps are not running; open them again from Smart Knife." : "The Craft apps server did not answer.");
     });
     request.on("aborted", () => upstream.destroy());
     upstream.end();
@@ -208,8 +208,8 @@ function install() {
           else proxy.handleUpgrade(request, rest[0]);
         } catch (error) {
           console.error("[craft-proxy]", error);
-          if (event === "request") plain(rest[0], 500, "ArtCraft proxy error.");
-          else rejectUpgrade(rest[0], 500, "ArtCraft proxy error.");
+          if (event === "request") plain(rest[0], 500, "Craft apps proxy error.");
+          else rejectUpgrade(rest[0], 500, "Craft apps proxy error.");
         }
         return true;
       }

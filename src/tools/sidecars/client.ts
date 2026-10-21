@@ -5,6 +5,7 @@ import type { Folder } from "@/lib/office/folders";
 import type { StorageUsage } from "@/lib/storage/quota";
 import type { OfficeFormat } from "@/lib/office/templates";
 import type { CraftLaunch } from "@/lib/craft/launch";
+import type { AppNotices } from "@/lib/craft/notices";
 
 /**
  * Typed browser helpers for /api/services and /api/office. Same-origin relative URLs and JSON bodies, so every mutating
@@ -229,11 +230,16 @@ export async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
-/* ------------------------------------------------------------------------------------------- ArtCraft */
+/* ------------------------------------------------------------------------------------------- Craft apps */
 
-export type { CraftLaunch };
+export type { AppNotices, CraftLaunch };
 
-/** Where each ArtCraft app loads from (with a proxy ticket in public mode); 409 not_installed without the sidecar. */
+/** Licence and notice texts of the Craft app version this install serves. */
+export function getCraftNotices(app: string): Promise<AppNotices> {
+  return request<AppNotices>("GET", `/api/craft/notices?app=${encodeURIComponent(app)}`);
+}
+
+/** Where each Craft app loads from (with a proxy ticket in public mode); 409 not_installed without the sidecar. */
 export function getCraftLaunch(): Promise<CraftLaunch> {
   return request<CraftLaunch>("GET", "/api/craft");
 }

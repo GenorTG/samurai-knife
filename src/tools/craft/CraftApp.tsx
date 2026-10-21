@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ButtonLink, FullscreenButton, Notice, Panel } from "@/components/ui";
+import { Button, ButtonLink, FullscreenButton, Notice, Panel } from "@/components/ui";
 import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
 import { ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, touchService } from "@/tools/sidecars/client";
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
 import { useSidecar } from "@/tools/sidecars/useSidecar";
+import { CraftNotices } from "./CraftNotices";
 
 const SERVICE = "craft";
 
@@ -30,7 +31,7 @@ function withFlag(url: string, flag: string): string {
 }
 
 /**
- * One ArtCraft app (a tab of the `artcraft` suite): the `craft` sidecar serves it on an origin of its own and this page
+ * One Craft app (a tab of the `artcraft` suite; apps by the ArtCraft team): the `craft` sidecar serves it on an origin of its own and this page
  * embeds it in an iframe with exactly the sandbox its hosting notes ask for. Install card while the sidecar is missing,
  * then a lazy start (`ensure`) and the launch URL (`GET /api/craft`). docs/SIDECARS.md "ArtCraft".
  */
@@ -43,6 +44,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   const [webgl, setWebgl] = useState(false);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
+  const [noticesOpen, setNoticesOpen] = useState(false);
 
   useEffect(() => {
     if (!installed) return;
@@ -62,10 +64,10 @@ export default function CraftApp({ app: appId }: { app: string }) {
               current = await getOp(current.opId);
               follow(current);
             }
-            if (current.status === "failed") throw new Error(current.error ?? "the ArtCraft server did not start");
+            if (current.status === "failed") throw new Error(current.error ?? "the Craft apps server did not start");
           }
           if (cancelled) return;
-          if (Date.now() > deadline) throw new Error("the ArtCraft server did not become ready in time");
+          if (Date.now() > deadline) throw new Error("the Craft apps server did not become ready in time");
         }
         const launch = await getCraftLaunch();
         const entry = launch.apps.find((candidate) => candidate.id === app.id);
@@ -96,7 +98,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         compact
         intro={
           <Notice tone="info">
-            {app.name} ({app.kind}) is one of {ARTCRAFT_APPS.length} ArtCraft apps that run entirely in your browser. A small web server on this machine serves
+            {app.name} ({app.kind}) is one of {ARTCRAFT_APPS.length} open-source apps by the ArtCraft team that run entirely in your browser. A small web server on this machine serves
             them on an address of their own: install it once (about {Math.round(ARTCRAFT_APPS.reduce((sum, a) => sum + a.bytes, 0) / 1048576)} MB of
             downloads, checked against pinned hashes); it starts by itself when you open an app and stops when idle.
           </Notice>
@@ -109,7 +111,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
     return (
       <div className="space-y-4">
         <Notice tone={stage.needsAdmin ? "info" : "error"}>
-          {stage.needsAdmin ? `An administrator has to start the ArtCraft apps before you can use ${app.name}.` : `${app.name} could not start: ${stage.message}`}
+          {stage.needsAdmin ? `An administrator has to start the Craft apps before you can use ${app.name}.` : `${app.name} could not start: ${stage.message}`}
         </Notice>
         <OpProgress op={op} />
       </div>
@@ -119,7 +121,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   if (stage.kind !== "ready") {
     return (
       <div className="space-y-3">
-        <p role="status" className="text-sm text-muted">Starting the ArtCraft server…</p>
+        <p role="status" className="text-sm text-muted">Starting the Craft apps server…</p>
         <OpProgress op={op} />
       </div>
     );
@@ -153,19 +155,27 @@ export default function CraftApp({ app: appId }: { app: string }) {
         {!secure ? (
           <p className="text-xs text-faint">
             {app.webgpu
-              ? `This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so ${app.name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve ArtCraft over https for WebGPU.`
-              : `This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve ArtCraft over https for the full storage.`}
+              ? `This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so ${app.name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve the Craft apps over https for WebGPU.`
+              : `This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve the Craft apps over https for the full storage.`}
           </p>
         ) : null}
         {app.note ? <p className="text-xs text-faint">{app.note}</p> : null}
-        <p className="text-xs text-faint">
-          Files you open stay in this browser; Save and Export download them. {app.license},{" "}
+        <p className="text-xs text-faint">Files you open stay in this browser; Save and Export download them.</p>
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint" data-craft-credit>
+          <span>
+            {app.name} {app.version} by the ArtCraft team and contributors · {app.license} ·
+          </span>
           <a className="underline underline-offset-2 hover:text-ink" href={app.repo} target="_blank" rel="noopener noreferrer">
             source
           </a>
-          .
+          <span>·</span>
+          <Button size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs underline underline-offset-2" onClick={() => setNoticesOpen(true)}>
+            licences &amp; notices
+          </Button>
+          <span>· Not affiliated with or endorsed by the ArtCraft team.</span>
         </p>
       </Panel>
+      <CraftNotices app={app} open={noticesOpen} onClose={() => setNoticesOpen(false)} />
       <iframe
         key={src}
         ref={frame}

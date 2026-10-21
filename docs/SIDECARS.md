@@ -327,6 +327,15 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
 `packaging/web/README.md` (identical to the `HOSTING.md` inside each zip) and the `_headers` in the zips, read
 2026-10-21.
 
+- **Attribution** (rules in docs/LEGAL.md "Third-party components served to browsers"): the suite and the sidecar are
+  named "Craft apps", never with the ArtCraft name (their brand terms); each tab shows "<App> <version> by the ArtCraft
+  team and contributors · MIT OR Apache-2.0 · source · licences & notices · Not affiliated with or endorsed by the
+  ArtCraft team". "licences & notices" opens a drawer fed by `GET /api/craft/notices?app=<id>` (signed-in users,
+  read-only, src/lib/craft/notices.ts): the release's own `LICENSE-*`/`OFL-*`/`ATTRIBUTION*` files plus the repository's
+  `NOTICE` and every licence file it names, fetched from `raw.githubusercontent.com/<repo>/v<version>/` (no redirects,
+  512 KB per file, 24 files) and cached in `services/craft/notices/<app>-<version>.json` once complete (outside the
+  bundle, so it never changes the helper hash). Most zips do not carry `NOTICE` (SoundCraft's does).
+
 - **Pins** (`ARTCRAFT_APPS` in definitions.ts): version, release URL, zip size and sha256, verified 2026-10-21 against
   the GitHub API's asset digest and a local `sha256sum` (they agree):
 

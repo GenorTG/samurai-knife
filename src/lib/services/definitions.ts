@@ -176,7 +176,7 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
     immutable: [],
     sandbox: [...ARTCRAFT_SANDBOX, "allow-modals"],
     webgpu: false,
-    note: "Experimental: the library lives in this browser's storage for the ArtCraft address; keep your originals elsewhere and use File > Back Up Library.",
+    note: "Experimental: the library lives in this browser's storage for the Craft apps address; keep your originals elsewhere and use File > Back Up Library.",
   }),
   artcraft("effectcraft", "EffectCraft", "motion graphics and effects", "0.13.0", "70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc", 19328128, {
     immutable: [],
@@ -302,10 +302,10 @@ export const SIDECARS: readonly SidecarDefinition[] = [
   },
   {
     id: "craft",
-    name: "ArtCraft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft, GridCraft)",
-    shortName: "ArtCraft apps",
+    name: "Craft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft, GridCraft)",
+    shortName: "Craft apps",
     description:
-      "Thirteen open-source creative and office apps (image, vector, video, photo library, motion graphics, page layout, PDF, interface design, word processor, audio workstation, presentations, CAD, spreadsheet) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads.",
+      "Thirteen open-source creative and office apps by the ArtCraft team and contributors (image, vector, video, photo library, motion graphics, page layout, PDF, interface design, word processor, audio workstation, presentations, CAD, spreadsheet) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads. This site serves their official, unmodified web builds and is not affiliated with or endorsed by the ArtCraft team.",
     // nginx's unprivileged image (uid 101, port 8080), pinned by digest (the multi-arch index of 1.31.7-alpine, 2026-10-19).
     image: "nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e",
     serviceName: "nginx",
@@ -327,7 +327,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     cpus: "1",
     // Verified on 1.31.7-alpine with every capability dropped: nginx runs as uid 101, binds 8080, writes only its tmpfs.
     security: { capAdd: [], pidsLimit: 64 },
-    sites: { target: "/srv/craft", label: "ArtCraft apps", apps: ARTCRAFT_APPS },
+    sites: { target: "/srv/craft", label: "Craft apps", apps: ARTCRAFT_APPS },
     container: {
       readOnly: true,
       tmpfs: ["/tmp:size=64m,mode=1777"],

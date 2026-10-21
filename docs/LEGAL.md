@@ -75,17 +75,28 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
 
 ## Third-party components served to browsers
 
-- **ArtCraft apps** (`craft` sidecar, docs/SIDECARS.md "ArtCraft"): PhotoCraft, VectorCraft, FilmCraft, LightCraft,
-  EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft and GridCraft by storytold
-  ("ArtCraft Team and the <app> contributors"), each MIT OR Apache-2.0. The instance redistributes their release zips
-  unmodified (plus `.gz` copies) from its own server; each unpacked release keeps and serves its `LICENSE-MIT`,
-  `LICENSE-APACHE` and, where the release has them, `NOTICE`, `ATTRIBUTION.md` (SoundCraft) and the SIL Open Font
-  License 1.1 texts of the fonts FigCraft embeds (`OFL-*.txt`, Inter and 20 others) (Apache-2.0 §4, OFL §2), and the
-  ArtCraft page names the licence and links the source. The bundled egui fonts (Ubuntu Font Licence 1.0, Hack MIT, Noto
-  Emoji OFL-1.1) are inside the wasm under their own licences, listed in the apps' NOTICE/ATTRIBUTION files. The
-  ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team and not covered by the code licence: Smart
-  Knife uses the names only to say which app a tab runs and shows none of their logos. Nothing of theirs is in this
-  repository. nginx (the container) is BSD-2-Clause.
+- **Craft apps** (`craft` sidecar, suite slug `artcraft`, docs/SIDECARS.md "ArtCraft"): PhotoCraft, VectorCraft,
+  FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft and
+  GridCraft by the ArtCraft team (github.com/storytold; "Copyright (c) 2026 ArtCraft Team and the <app> contributors"),
+  each MIT OR Apache-2.0 at the recipient's option. Embedding is what the projects document: every app's
+  `packaging/web/README.md` has an "Embedding in a page (iframe)" section ("cross-origin embeds work") and the sandbox it
+  needs. The instance redistributes the official release zips **unmodified** (plus `.gz` copies) from its own server.
+  - Licences: the zips carry `LICENSE-MIT` and `LICENSE-APACHE` (some also `OFL-*.txt` or `ATTRIBUTION.md`) and keep
+    them; most do **not** carry the repository's `NOTICE` (SoundCraft's does), which lists the third-party material bundled into the build
+    (Inter/JetBrains Mono OFL-1.1, Lucide ISC, SCOWL, libfacedetection BSD-3-Clause, …). Each app tab's "licences &
+    notices" view (`GET /api/craft/notices`, src/lib/craft/notices.ts) shows the copyright line, both licence texts from
+    the release, and the repository's `NOTICE` plus every licence file it names, fetched from the repository at the
+    release's tag (`v<version>`) and cached per version. That satisfies MIT (copyright + permission notice) and, if
+    Apache-2.0 is elected, §4(a)/(d) (licence copy, NOTICE text); OFL §2 (licence with the font) through the same view.
+  - Brand: the ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team, NOT open source
+    (`docs/brand/LICENSE-brand.txt` in each repo): they may appear only inside the apps' own official builds (which the
+    instance serves unmodified), never "in the name, logo, icon, domain, … advertising or marketing of anything other
+    than" the app, and nothing may suggest that the ArtCraft Team endorses another product. So the suite and the sidecar
+    are called "Craft apps" (the slug `artcraft` is a URL path, kept because slugs are permanent), the craft host name
+    must not contain "artcraft" (e.g. `smart-knife-craft.`), Smart Knife shows none of their logos, and every tab says
+    in plain text "<App> <version> by the ArtCraft team and contributors · MIT OR Apache-2.0 · source · licences &
+    notices · Not affiliated with or endorsed by the ArtCraft team". App names (PhotoCraft, …) are used only to say
+    which app a tab runs. Nothing of theirs is in this repository. nginx (the container) is BSD-2-Clause.
 - Privacy notice, not changed automatically (a text change is a new legal version that existing users should hear
   about): an instance that offers ArtCraft would add two rows to "Cookies and browser storage": `knife_craft` (cookie on
   the ArtCraft host, only with `KNIFE_CRAFT_PUBLIC_URL`: lets the browser load the apps, up to 12 hours) and the apps'

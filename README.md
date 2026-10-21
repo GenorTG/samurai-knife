@@ -37,11 +37,13 @@ runs for you, with progressive hints and interview drills. See [docs/LEARN.md](d
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
 
-**ArtCraft apps** (optional sidecar): PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft,
+**Craft apps** (optional sidecar): PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft,
 PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft and GridCraft, thirteen open-source (MIT OR Apache-2.0)
-creative and office apps by [storytold](https://github.com/storytold) that run
-entirely in the browser as WebAssembly. A small read-only nginx container serves their pinned, hash-checked release
-builds on an origin of their own; each app is a tab of one suite. See [docs/SIDECARS.md](docs/SIDECARS.md) "ArtCraft".
+creative and office apps by the [ArtCraft team](https://github.com/storytold) that run entirely in the browser as
+WebAssembly. A small read-only nginx container serves their official, unmodified, hash-checked release builds on an
+origin of their own; each app is a tab of one suite, with its licences and notices one click away. Smart Knife is not
+affiliated with or endorsed by the ArtCraft team; "ArtCraft" and its logos are their trademarks. See
+[docs/SIDECARS.md](docs/SIDECARS.md) "ArtCraft" and [docs/LEGAL.md](docs/LEGAL.md).
 
 ## The AI layer
 
@@ -93,7 +95,7 @@ flowchart LR
 
 ## Quick start
 
-Requirements: Node.js 24, Python 3.12 (only for PDF/SQL server tools), and Docker (only for the office, course-database and ArtCraft sidecars).
+Requirements: Node.js 24, Python 3.12 (only for PDF/SQL server tools), and Docker (only for the office, course-database and Craft apps sidecars).
 
 ```bash
 git clone https://github.com/GenorTG/samurai-knife.git && cd samurai-knife
@@ -164,7 +166,7 @@ it in `src/tools/registry-client.tsx`. Nothing else is wired by hand.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): layout, rules and hard-won gotchas
 - [docs/MCP.md](docs/MCP.md): using the app from outside agents
 - [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV studio contract
-- [docs/SIDECARS.md](docs/SIDECARS.md): Docker sidecars, the live office plugin and the ArtCraft apps
+- [docs/SIDECARS.md](docs/SIDECARS.md): Docker sidecars, the live office plugin and the Craft apps
 - [docs/LEARN.md](docs/LEARN.md): the Database course (lessons, seed, learner sandbox)
 - [docs/SUITES.md](docs/SUITES.md): how 100 small tools became 30 suites
 - [docs/TESTING.md](docs/TESTING.md): every suite and how to run it
