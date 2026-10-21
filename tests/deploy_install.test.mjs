@@ -137,6 +137,7 @@ test("log files: the app writes only its two log folders, knife-update its own, 
   assert.match(updater, /LOG_DAYS="\$\(conf LOG_RETENTION_DAYS\)"/);
   assert.match(updater, /umask 027/, "update log files are 0640");
   assert.match(updater, /^prune_logs$/m, "retention runs on every updater run");
+  assert.match(updater, /KNIFE_LOG_DIR="\$pre\/logs"/, "the preflight server logs into its temp dir, never into the release");
   const updaterUnit = read("deploy/systemd/knife-update.service");
   assert.deepEqual(unitLines(updaterUnit, "ReadWritePaths"), ["@APP_ROOT@"], "logs/update is inside the updater's writable tree");
 });

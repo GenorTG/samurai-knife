@@ -146,13 +146,15 @@ printf 'commit=%s\ntag=%s\nbuilt=%s\n' "$target" "$name" "$(date -u +%FT%TZ)" >"
 ( "$PYTHON_BIN" -m venv "$dir/.py/venv" && "$dir/.py/venv/bin/pip" install --quiet --disable-pip-version-check \
     -r "$dir/server/py/requirements.txt" ) >"$dir/.deploy-python.log" 2>&1 || die "python venv (log: $dir/.deploy-python.log)"
 
-# Preflight: public mode on a spare loopback port, empty data dir, own sidecar prefix (never live data or containers).
+# Preflight: public mode on a spare loopback port, empty data dir, own sidecar prefix and log dir (never live data,
+# containers or log files; nothing is written into the release).
 pre="$(mktemp -d "${TMPDIR:-/tmp}/knife-preflight-XXXX")"
 pport="$("$PYTHON_BIN" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
 cd "$dir"
 env -i PATH="$PATH" HOME="$pre" NODE_ENV=production KNIFE_AUTH_MODE=public KNIFE_HOST=127.0.0.1 KNIFE_PORT="$pport" \
   KNIFE_PUBLIC_URL="http://127.0.0.1:$pport" KNIFE_TRUSTED_PROXIES=127.0.0.1/32 KNIFE_DATA_DIR="$pre/data" \
   KNIFE_SIDECAR_PREFIX=sk-preflight KNIFE_PYTHON="$dir/.py/venv/bin/python" NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+  KNIFE_LOG_DIR="$pre/logs" \
   setsid "$NODE_BIN" scripts/serve.mjs start >"$pre/server.log" 2>&1 &
 echo $! >"$pre/pid"
 cd /
