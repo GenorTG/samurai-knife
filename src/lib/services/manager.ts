@@ -4,6 +4,7 @@ import { connect } from "node:net";
 import { networkInterfaces } from "node:os";
 import { onlyofficeFilterEnv, renderCompose } from "./compose";
 import { syncAssets } from "./assets";
+import { installSites, missingSites, pruneSites, sitesConfig, writeSitesConf } from "./sites";
 import { PullTracker, type PullProgress } from "./pull-progress";
 import type { RunOptions, RunResult, RuntimeInfo } from "./runtime";
 import { sidecarBackend, type BackendAction, type SidecarBackend } from "./backend";
@@ -20,7 +21,7 @@ import {
   type OpLock,
   type SidecarState,
 } from "./state";
-import { appHost, appPort, appUrl, internalUrl, officeProxyUrl, pickPort, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
+import { appHost, appPort, appUrl, internalUrl, pickPort, proxiedSidecarUrl, portFree, publicUrl, validateHttpUrl, type AppUrlChoice } from "./urls";
 import { writePrivateFile } from "@/lib/accounts/store";
 import { isIpAddress } from "@/lib/net/address-policy";
 import { addressScope, normalizeIp } from "@/lib/net/client-ip.mjs";
@@ -240,9 +241,9 @@ export function bindHostFor(def: SidecarDefinition): string {
   return loopbackOnly(def) ? "127.0.0.1" : appHost();
 }
 
-/** Only this app connects: a `publish: "loopback"` definition, or the office editor while the app proxies it. */
+/** Only this app connects: a `publish: "loopback"` definition, or a sidecar the app proxies on its own host name. */
 function loopbackOnly(def: SidecarDefinition): boolean {
-  return def.publish === "loopback" || (def.id === "office" && officeProxyUrl() !== null);
+  return def.publish === "loopback" || proxiedSidecarUrl(def.id) !== null;
 }
 
 /**
@@ -294,20 +295,34 @@ function refusedAllowIpsMessage(refused: string[]): string {
 
 function composeText(def: SidecarDefinition, state: SidecarState): string {
   const extraEnv = def.requestFilter === "onlyoffice" ? onlyofficeFilterEnv(filterAllowIps()) : undefined;
-  return renderCompose(def, { bindHost: state.bindHost, hostPort: state.hostPort, image: state.image, extraEnv });
+  return renderCompose(def, { bindHost: state.bindHost, hostPort: state.hostPort, image: state.image, extraEnv, command: sitesConfig(def)?.command });
 }
 
 export function composeHashOf(def: SidecarDefinition, state: SidecarState): string {
   return createHash("sha256").update(composeText(def, state)).digest("hex");
 }
 
-/** compose.yaml + the definition's assets (the editor plugin): written before every `up`. */
+/** compose.yaml + the definition's assets (the editor plugin) or its nginx.conf (sites): written before every `up`. */
 function writeCompose(def: SidecarDefinition, state: SidecarState, reporter?: OpReporter): void {
   // A secret added to the definition later (SECURE_LINK_SECRET) is generated for existing installs too.
   ensureSecrets(def);
   writePrivateFile(composeFile(def.id), composeText(def, state));
   const assets = syncAssets(def);
   if (assets?.changed) reporter?.log(`${def.assets?.label ?? "assets"} updated: ${assets.folders.join(", ")}`);
+  writeSitesConf(def);
+}
+
+/** A `sites` sidecar: downloads and verifies the apps its pins name that are not unpacked yet (before `up`). */
+async function fetchSites(def: SidecarDefinition, reporter: OpReporter): Promise<void> {
+  if (!def.sites || !missingSites(def).length) return;
+  const added = await installSites(def, reporter);
+  reporter.log(`${def.sites.label}: ${added.join(", ")} downloaded and verified`);
+}
+
+/** After a successful `up`: drop app versions and configs the running container no longer uses. */
+function pruneUnused(def: SidecarDefinition, reporter: OpReporter): void {
+  const removed = pruneSites(def);
+  if (removed.length) reporter.log(`removed unused: ${removed.join(", ")}`);
 }
 
 /**
@@ -443,9 +458,11 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
     });
     writeCompose(def, state, reporter);
     reporter.log(`compose project ${composeProject(id)}, published on ${state.bindHost}:${state.hostPort}`);
+    await fetchSites(def, reporter);
     await requireBundle(backend, def);
     await pull(backend, def, reporter);
     const ready = await upAndWait(backend, def, state, reporter);
+    pruneUnused(def, reporter);
     reporter.phase("Installed and running", 100);
     return ready;
   });
@@ -471,8 +488,10 @@ export function start(id: string, reporter: OpReporter): Promise<SidecarState> {
     const backend = await requireBackend();
     const state = movedToBindHost(def, requireState(id), reporter);
     writeCompose(def, state, reporter);
+    await fetchSites(def, reporter);
     await requireBundle(backend, def);
     const ready = await upAndWait(backend, def, state, reporter);
+    pruneUnused(def, reporter);
     reporter.phase("Running", 100);
     return ready;
   });
@@ -523,12 +542,14 @@ export function update(id: string, reporter: OpReporter): Promise<SidecarState &
     const before = await imageId(backend, def, previous.image);
     const state = writeState({ ...previous, image: def.image });
     writeCompose(def, state, reporter);
+    await fetchSites(def, reporter);
     await requireBundle(backend, def);
     await pull(backend, def, reporter);
     const after = await imageId(backend, def, def.image);
     const imageChanged = before !== after;
     reporter.log(imageChanged ? `image changed: ${before ?? "none"} -> ${after}` : "image unchanged");
     const ready = await upAndWait(backend, def, state, reporter);
+    pruneUnused(def, reporter);
     reporter.phase(imageChanged ? "Updated and running" : "Already up to date; running", 100);
     return { ...ready, imageChanged };
   });
@@ -634,6 +655,8 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
     const { refused } = allowIpsCheck();
     if (refused.length) warnings.push(refusedAllowIpsMessage(refused));
   }
+  const sitesMissing = state ? missingSites(def).map((app) => `${app.name} ${app.version}`) : [];
+  if (sitesMissing.length) warnings.push(`Not downloaded yet: ${sitesMissing.join(", ")}. The next start or update downloads ${sitesMissing.length === 1 ? "it" : "them"}.`);
   if (state && container.state === "running" && state.composeHash !== composeHashOf(def, state)) {
     warnings.push("The running container was created with older settings (for example without the assistant's editor plugin); it is recreated at the next start when no document is open, or restart it now.");
   }
@@ -656,7 +679,7 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
     state,
     publicUrl: state ? publicUrl(state) : null,
     appUrl: app,
-    updateAvailable: Boolean(state && state.image !== def.image),
+    updateAvailable: Boolean(state && (state.image !== def.image || sitesMissing.length > 0)),
     busy: readLock(id),
     openSessions: sessions(id).size,
     memory,

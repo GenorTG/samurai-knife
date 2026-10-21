@@ -4,6 +4,7 @@ import type { DocMeta, DocVersion } from "@/lib/office/store";
 import type { Folder } from "@/lib/office/folders";
 import type { StorageUsage } from "@/lib/storage/quota";
 import type { OfficeFormat } from "@/lib/office/templates";
+import type { CraftLaunch } from "@/lib/craft/launch";
 
 /**
  * Typed browser helpers for /api/services and /api/office. Same-origin relative URLs and JSON bodies, so every mutating
@@ -226,4 +227,13 @@ export async function fileToBase64(file: File): Promise<string> {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
+}
+
+/* ------------------------------------------------------------------------------------------- ArtCraft */
+
+export type { CraftLaunch };
+
+/** Where each ArtCraft app loads from (with a proxy ticket in public mode); 409 not_installed without the sidecar. */
+export function getCraftLaunch(): Promise<CraftLaunch> {
+  return request<CraftLaunch>("GET", "/api/craft");
 }

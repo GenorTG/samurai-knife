@@ -1,7 +1,7 @@
 # Sidecars — optional docker services
 
 Some tools need a real server program that cannot run in the browser or the Python lane (an office document editor, the
-Database course's PostgreSQL). Those programs run as **sidecars**: docker compose services the app installs, starts, stops, updates and
+Database course's PostgreSQL), or files too big for the app's own bundle (the ArtCraft apps). Those programs run as **sidecars**: docker compose services the app installs, starts, stops, updates and
 removes itself, from the web UI (launcher category **Sidecars** → *Sidecar services*) or the CLI. Nothing is installed until
 the owner presses Install.
 
@@ -18,7 +18,9 @@ the owner presses Install.
 | `src/app/api/services/…` | `GET /api/services`, `GET|POST /api/services/<id>`, `GET /api/services/ops/<opId>`, `GET /api/services/ping`. |
 | `scripts/services.ts` | `npm run services -- list|status|install|start|stop|update|remove|configure <id> | reap` (same lib, same lock). |
 | `src/lib/services/assets.ts` | A definition's `assets` (files shipped in the repo, e.g. the editor plugin) -> `assets/<folder>-<hash>/`, mounted read-only. |
+| `src/lib/services/sites.ts` | A definition's `sites` (pinned release zips of static web apps): download, size + sha256 check, unpack into `assets/<app>-<version>-<sha12>/<app>/`, `.gz` twins, the generated `assets/conf-<hash>/nginx.conf`, pruning. |
 | `src/tools/sidecars/` | `SidecarCard` (status + controls + progress), `SidecarsTool` (settings page), `OfficeTool`. |
+| `src/tools/craft/`, `src/lib/craft/`, `src/app/api/craft/`, `scripts/craft-proxy.mjs` | The ArtCraft suite (one iframe tab per app), its launch URLs and the public-mode proxy. |
 
 The compose project is `samurai-knife-<id>` (env `KNIFE_SIDECAR_PREFIX` overrides the prefix; tests use it so a scratch
 server never takes over the live project). Every container, network and volume carries that project label; the app never
@@ -88,7 +90,8 @@ known sidecar ids and lifecycle verbs, reads root-owned compose bundles, and rej
 Two URLs per sidecar, both shown and editable in its Settings:
 
 - **Public URL** (browser → sidecar): default `http://<KNIFE_HOST>:<port>`. The editor's scripts and websocket load from it.
-  `KNIFE_OFFICE_PUBLIC_URL` (the app proxies the editor, above) replaces it and publishes the sidecar on loopback.
+  `KNIFE_OFFICE_PUBLIC_URL` (the app proxies the editor, below) replaces it and publishes the sidecar on loopback;
+  `KNIFE_CRAFT_PUBLIC_URL` does the same for the ArtCraft apps.
 - **App URL** (container → app): default `http://<KNIFE_HOST>:<KNIFE_PORT>`. A container reaches the host's Tailscale/LAN
   address fine, but **not the host's loopback**. With `KNIFE_HOST=127.0.0.1` the derived URL is
   `http://host.docker.internal:<port>` (the compose file maps it with `host-gateway`) and the status carries a warning,
@@ -313,6 +316,100 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   added as plain text boxes, not layout placeholders; one live editor per page (the active bridge); an editor opened
   outside Smart Knife never connects (no options).
 
+## ArtCraft (`craft`, slug `artcraft`)
+
+Seven clean-room, pure-Rust creative apps by storytold (https://github.com/storytold, MIT OR Apache-2.0), each shipped
+as a static WebAssembly web build: PhotoCraft (images), VectorCraft (vectors), FilmCraft (video), LightCraft (photo
+library + raw), EffectCraft (motion graphics), DesignCraft (page layout), PdfCraft (PDF). No server-side code: files are
+opened with the browser's picker, Save/Export are downloads, preferences and LightCraft's library live in the browser's
+storage for the craft origin. Facts below come from each repo's `packaging/web/README.md` (and the `_headers` in the
+zips), read 2026-10-21.
+
+- **Pins** (`ARTCRAFT_APPS` in definitions.ts): version, release URL, zip size and sha256, verified 2026-10-21 against
+  the GitHub API's asset digest and a local `sha256sum` (they agree):
+
+  | App | Version | Zip sha256 | Zip / unpacked |
+  | --- | --- | --- | --- |
+  | photocraft | 0.11.1 | `f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f` | 11.6 / 11.8 MB |
+  | vectorcraft | 0.14.0 | `6f28a8bcee1c5ad6c37c6a0c44058793a40ea4443085866d5f78afb16aba075e` | 27.7 / 75.4 MB |
+  | filmcraft | 0.10.0 | `47618cc373ff1306be17cfd539a33a5a5af490d3bb6722a6bc1436fcd6bf87a0` | 13.4 / 41.7 MB |
+  | lightcraft | 0.10.0 | `6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794` | 22.4 / 39.9 MB |
+  | effectcraft | 0.13.0 | `70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc` | 19.3 / 64.2 MB |
+  | designcraft | 0.10.0 | `88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4` | 19.2 / 49.5 MB |
+  | pdfcraft | 0.10.1 | `58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9` | 14.5 / 39.4 MB |
+
+  A version bump = new `version`, `sha256`, `bytes` (read the asset digest with `gh release view -R storytold/<app>
+  --json assets`, download it and `sha256sum` it; re-read the app's README for changed headers or sandbox needs).
+- **Install / update / start** (`sites.ts`, inside the op's lock, with download progress): every app whose
+  `<app>-<version>-<sha12>` folder is missing is downloaded (`fetch`, redirects followed, 15 min cap) to
+  `services/craft/downloads/`, refused unless size and sha256 equal the pin, unpacked with the in-repo ZIP reader (entries
+  must sit under `<app>-web-<version>/`, segments `[A-Za-z0-9._-]`, no `..`, at most 8 levels, 5000 entries, 256 MB per
+  entry; dotfiles skipped) into `assets/.tmp-…`, given `.gz` twins (wasm/js/html/css/svg/json/txt/fonts over 1 KB, unless
+  the zip has one; PhotoCraft's parts are gzip already and are served byte for byte), and renamed into place. The zip is
+  deleted. Nothing downloaded is ever in git. After a healthy `up`, folders the pins and the current config no longer name
+  are removed (`pruneSites`), so an update swaps atomically: the old container serves the old folders until the new one
+  runs. A Smart Knife release that bumps a pin changes the nginx.conf and so the compose hash: the next `ensure` (an admin
+  opening a tab) or Start/Update downloads the new version and recreates the container.
+- **Container**: `nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b…` (pinned by digest), uid 101, port 8080,
+  `read_only: true` + `tmpfs /tmp` (64 MB), `cap_drop: [ALL]` and nothing added, `pids_limit: 64`, `mem_limit: 256m`,
+  `cpus: 1`, entrypoint `nginx`, command `-c /srv/craft/conf-<hash>/nginx.conf`, a compose healthcheck (`wget /healthz`)
+  and the app's own probe (`GET /healthz` = `ok`). One bind mount: `services/craft/assets` read-only at `/srv/craft`. No
+  volumes, no call back to the app (`callsBack: false`), egress `none` in `knife-docker-user`. Measured: install with a
+  cached image 33 s (download + verify + unpack ~31 s, healthy 0.6 s after `up`), stopped -> app loaded 8.5 s, ~3 MiB RAM.
+- **nginx.conf** (`renderNginxConf`, rewritten on every compose write): own `types` (`application/wasm`, `text/javascript`,
+  `application/manifest+json`, `font/ttf`…), `gzip_static on` and no on-the-fly gzip, GET/HEAD only (405), dotfiles and
+  unknown paths 404, `absolute_redirect off` (`/<app>` -> `/<app>/` stays relative behind a port mapping or the proxy), no
+  cookies. Caching per README: hash-named files `public, max-age=31536000, immutable` (PhotoCraft's parts and boot module,
+  the `-<16 hex>` glue/wasm of VectorCraft, DesignCraft and PdfCraft, VectorCraft's `fonts/<hash>/`, FilmCraft's `.wasm`/`.js`
+  which index.html loads with `?v=<build hash>`), everything else `no-cache` (revalidate by ETag): LightCraft and
+  EffectCraft keep their file names across releases, PhotoCraft's `app/photocraft-web.js` and `app/parts.txt` too. Every
+  answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy:
+  same-origin` (and `Cross-Origin-Opener-Policy: same-origin` when the craft origin is https: on http browsers ignore it
+  and Chromium logs an error), a `Permissions-Policy`, and the CSP `default-src 'self'; script-src 'self'
+  'unsafe-inline' 'wasm-unsafe-eval'` (the apps boot from inline modules; no `'unsafe-eval'` needed), `worker-src 'self'
+  blob:`, `connect-src 'self' data: blob:`, `img-src`/`media-src` `'self' data: blob:`, `frame-src 'none'`,
+  `object-src 'none'`, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors` = the app's page origins
+  (`appOrigins()`: KNIFE_PUBLIC_URL's origin, else `http://<host>:<KNIFE_PORT>` for KNIFE_HOST and KNIFE_ALLOWED_HOSTS).
+  No COOP/COEP isolation: none of the builds uses `SharedArrayBuffer`.
+- **Own origin, always.** The apps never run on the app's origin. Private mode: the sidecar's own port on KNIFE_HOST
+  (`http://<tailscale-ip>:<port>`, a different origin). Public mode: `KNIFE_CRAFT_PUBLIC_URL=https://craft.<app host>`;
+  the app proxies that host itself (`scripts/craft-proxy.mjs`, preloaded after the office proxy) and the sidecar moves to
+  loopback. The reverse proxy only has to send that name to the app's port (no websockets). The proxy: GET/HEAD on
+  `/<app>/…` only (no `..`, encoded dots/slashes, `//` or control characters; websockets 404); `GET /api/craft` hands the
+  page each app's URL with `?knife_ticket=` (HMAC ticket naming the account, 12 h, key = HMAC of a fixed context under the
+  sidecar's `TICKET_SECRET`, `src/lib/craft/launch.ts`); a valid ticket answers **303 to the same URL without it** and sets
+  `knife_craft` (HttpOnly, SameSite=Strict, Secure on https) on the craft host, so the ticket never stays in the address
+  bar, history or a Referer; every other request needs that cookie (403 otherwise). Only `accept*`, `cache-control`,
+  `pragma`, `if-*` and `range` reach nginx (no cookies, credentials or forwarding headers); `Set-Cookie`/`Server` from
+  nginx are dropped; HSTS on https. Budgets: 1200 requests/min and 32 at once per account, 60 refused/min per client
+  prefix (then 429), 2 min idle. The abuse guard leaves the craft host to the proxy (as the office host). App and craft
+  host must share a registrable domain (SameSite=Strict cookie). The app's CSP lists the craft origin in `frame-src`
+  only (never script/connect): public mode only an https KNIFE_CRAFT_PUBLIC_URL on a public name, private mode that
+  variable, else the state file.
+- **Page** (`/tools/artcraft`, suite `artcraft`, one `wide` tab per app, component `craft-<app>` -> `src/tools/craft/CraftApp.tsx`):
+  the compact sidecar card until it is installed (non-admins in public mode: "An administrator has to …"), then the
+  lazy start (`ensure`, following the op), `GET /api/craft`, and the app in an iframe with **exactly** the README's
+  sandbox (`allow-scripts allow-same-origin allow-downloads allow-popups`, LightCraft also `allow-modals`; with
+  `allow-same-origin` that is safe only because the frame is cross-origin), `allow="fullscreen; clipboard-read;
+  clipboard-write"`, `referrerpolicy=no-referrer`. `role=status` says "Loading <App>…" until the frame loaded, then
+  "<App> loaded from <origin>." "Open in new tab" (`rel=noopener noreferrer`) opens the same URL; the wgpu apps get a
+  "Force WebGL2" checkbox (`?webgl`). A heartbeat (`touch`, 60 s) keeps the idle stop away while a tab is open.
+- **Secure context.** WebGPU, the async clipboard and OPFS need https (or localhost). Over the plain-http Tailscale
+  address the page says so: the wgpu apps fall back to WebGL2 by themselves (verified in Firefox: every app starts),
+  LightCraft keeps its library in IndexedDB instead of OPFS and EffectCraft has no OPFS disk cache or service worker.
+  Public mode over https gets WebGPU where the browser has it.
+- **Known limits.** All seven are young (0.10-0.14) and the vendor calls the web builds experimental (LightCraft
+  explicitly: browser storage can be cleared; back up the library from its File menu). Everything runs on the client:
+  EffectCraft is a 63 MB wasm (17 MB with gzip) and VectorCraft 74 MB (27 MB), so the first open of a tab downloads tens
+  of MB and needs a few hundred MB of browser memory; later opens revalidate (304) or hit the immutable cache. All seven
+  share one origin, so they share its storage quota, localStorage and OPFS root. The names checked in these releases do
+  not collide (EffectCraft: OPFS dir and IndexedDB `effectcraft*`; LightCraft: OPFS `library/`, `originals/`, `thumbs/`;
+  only PdfCraft uses eframe's generic `egui_memory_ron` key), but the apps do not promise it; one origin per app would
+  need a host name (or port) per app. Firefox logs "Skipping unsupported feature name clipboard-read/-write" for the
+  iframe's `allow` (harmless). Headless Firefox has no WebGL2; the e2e runs headed under Xvfb (llvmpipe).
+- **Licences**: the apps are MIT OR Apache-2.0; each unpacked release keeps its `LICENSE-MIT`, `LICENSE-APACHE` and
+  `NOTICE` (where present) next to the app and serves them (`/<app>/LICENSE-MIT`…); nginx is BSD-2-Clause.
+
 ## Hardening (container privileges)
 
 Every sidecar container runs with `cap_drop: [ALL]`, only its definition's `security.capAdd` given back,
@@ -324,6 +421,7 @@ other capability dropped (2026-10-18):
 | --- | --- | --- | --- |
 | `office` (Euro-Office 9.3.5) | CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID | 1024 (~150 tasks idle) | the entrypoint chowns/chmods its dirs as root; supervisord/gosu switch to ds, postgres, rabbitmq, redis, www-data; supervisord signals the ds processes on stop and restart (without KILL: `PermissionError`, then a hard kill). Port 80 binds without NET_BIND_SERVICE (docker sets `ip_unprivileged_port_start=0`); FSETID is not needed. Checked: start, `/healthcheck`, the font `prepare`, graceful stop, restart, and `tests/office_e2e.py` (editor load, both saves, every blank format, idle stop, lazy start). |
 | `learn-db` (postgis 16-3.4) | CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID | 256 | initdb on a fresh volume, chmod of the data and socket dirs, gosu to postgres. FOWNER without DAC_OVERRIDE fails (root cannot enter the 0700 data dir it no longer owns). Checked: fresh volume, restart on an existing one, `tests/learn_db_e2e.py`. |
+| `craft` (nginx-unprivileged 1.31.7-alpine) | none | 64 | runs as uid 101 on port 8080 and writes only its tmpfs `/tmp` (pid, temp paths) under a read-only root. Checked: start, health, every app served and loaded, stop, lazy start, `tests/craft_e2e.py`. |
 
 The compose hash covers these keys, so an existing install is recreated with them at its next start or `ensure` (when no
 editor session is open). An image bump or a new sidecar repeats the check: drop one capability at a time and look for
@@ -331,7 +429,8 @@ editor session is open). An image bump or a new sidecar repeats the check: drop 
 
 ## Adding a sidecar
 
-1. Add a `SIDECARS` entry (pin the image by tag; check the registry, not a blog post). Pick `health` (`http` or
+1. Add a `SIDECARS` entry (pin the image by tag or digest; check the registry, not a blog post). Static web apps: `sites`
+   (pinned zips, sites.ts) + `container` (read-only root, tmpfs) instead of an image that bundles them. Pick `health` (`http` or
    `postgres`; add a kind to `probeHealth` for another protocol) and `callsBack`. State `security.capAdd` (see
    "Hardening": verified, minimal) and `pidsLimit`.
 2. Build the tool; put `sidecar: "<id>"` on its registry entry and show `SidecarCard compact` until it is installed.
@@ -355,6 +454,15 @@ editor session is open). An image bump or a new sidecar repeats the check: drop 
   image; screenshots in `.tmp/office-live-e2e/`.
 - Real docker: `python3 tests/learn_db_e2e.py` — the course database installed from the course page, seeded, every
   lesson checked, sandbox probes, lazy start, purge (docs/LEARN.md). ~1.5 min with a cached image.
+- Unit: `tests/craft.test.mjs` (ArtCraft pins and sandboxes, compose rendering, nginx.conf + caching rules against the
+  real file names, download/verify/unpack/prune against a fake fetch incl. tampered and malformed zips, launch URLs and
+  tickets, the craft proxy against a fake nginx, the app CSP's frame-src).
+- Real docker + real releases: `python3 tests/craft_e2e.py --host <tailscale-ip>` — install from the ArtCraft page in
+  Firefox (headed under `xvfb-run`, which the suite starts itself), container hardening, the craft origin's headers, all
+  seven apps load in their tab (exact sandbox, canvas drawn, no CSP/MIME/sandbox console message), PhotoCraft opens a PNG
+  through the file input and Quick-Exports it (same pixels), PdfCraft opens a PDF and saves it (2 pages, text kept),
+  "Open in new tab", stop -> lazy start, remove + purge. ~3 min with a cached image (downloads ~128 MB of zips);
+  screenshots in `.tmp/craft-e2e/`.
 - Unit: `tests/office_library.test.mjs` (storage scope, quota, folders, trash, versions, callback room-making,
   `knife_doc_*` isolation, retention).
 - Real docker: `python3 tests/office_files_e2e.py --host <tailscale-ip>` — public mode, admin + two users: every office

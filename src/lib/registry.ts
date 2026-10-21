@@ -43,6 +43,7 @@ export const TOOL_FAMILIES = [
   { id: "image-inspection", label: "Image inspection" },
   { id: "office-documents", label: "Office documents" },
   { id: "sidecar-services", label: "Sidecar services" },
+  { id: "creative-apps", label: "Creative apps" },
   { id: "courses", label: "Courses" },
 ] as const;
 
@@ -1378,6 +1379,26 @@ export const TOOLS: ToolMeta[] = [
       { id: "sql", label: "SQL & PostGIS", component: "learn-sql", wide: true },
     ],
     keywords: ["sql", "postgres", "postgresql", "postgis", "course", "learn", "lesson", "tutorial", "exercise", "interview", "select", "join", "group by", "window function", "index", "explain", "st_dwithin", "gis", "spatial", "kurs", "nauka"],
+  },
+  {
+    slug: "artcraft",
+    name: "ArtCraft apps",
+    tagline: "Edit photos, vectors, video, raw photos, motion graphics, page layouts and PDFs in seven open-source browser apps.",
+    category: "sidecars",
+    family: "creative-apps",
+    kind: "sidecar",
+    sidecar: "craft",
+    // One tab per app of the `craft` sidecar (src/lib/services/definitions.ts ARTCRAFT_APPS); tab ids are the app ids.
+    tabs: [
+      { id: "photocraft", label: "PhotoCraft", component: "craft-photocraft", wide: true },
+      { id: "vectorcraft", label: "VectorCraft", component: "craft-vectorcraft", wide: true },
+      { id: "filmcraft", label: "FilmCraft", component: "craft-filmcraft", wide: true },
+      { id: "lightcraft", label: "LightCraft", component: "craft-lightcraft", wide: true },
+      { id: "effectcraft", label: "EffectCraft", component: "craft-effectcraft", wide: true },
+      { id: "designcraft", label: "DesignCraft", component: "craft-designcraft", wide: true },
+      { id: "pdfcraft", label: "PdfCraft", component: "craft-pdfcraft", wide: true },
+    ],
+    keywords: ["photoshop", "illustrator", "premiere", "lightroom", "after effects", "indesign", "acrobat", "photo editor", "image editor", "vector", "svg", "video editor", "raw", "motion graphics", "layout", "pdf editor", "wasm", "webassembly", "artcraft", "photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft", "grafika", "edytor zdjęć", "montaż wideo"],
   },
   {
     slug: "sidecars",

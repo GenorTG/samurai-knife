@@ -1,4 +1,5 @@
 import { createServer } from "node:net";
+import { knifeHosts } from "@/lib/hosts";
 import type { SidecarState } from "./state";
 
 /**
@@ -31,12 +32,16 @@ export function stripSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+/** Sidecars the app can serve on a host name of their own (the office editor, the ArtCraft apps) and their variable. */
+const PROXY_ENV: Readonly<Record<string, string>> = { office: "KNIFE_OFFICE_PUBLIC_URL", craft: "KNIFE_CRAFT_PUBLIC_URL" };
+
 /**
- * The office editor served by this app on its own host name (scripts/office-proxy.mjs): KNIFE_OFFICE_PUBLIC_URL, as an
- * origin, or null. While set, the office sidecar is published on loopback only and the browser reaches it through the app.
+ * A sidecar served by this app on its own host name (scripts/office-proxy.mjs, scripts/craft-proxy.mjs): its variable, as
+ * an origin, or null. While set, the sidecar is published on loopback only and the browser reaches it through the app.
  */
-export function officeProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
-  const value = env.KNIFE_OFFICE_PUBLIC_URL?.trim();
+export function proxiedSidecarUrl(id: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  const name = PROXY_ENV[id];
+  const value = name ? env[name]?.trim() : undefined;
   if (!value) return null;
   try {
     const url = new URL(value);
@@ -46,8 +51,33 @@ export function officeProxyUrl(env: NodeJS.ProcessEnv = process.env): string | n
   }
 }
 
+/** The office editor's proxied origin (KNIFE_OFFICE_PUBLIC_URL), or null. */
+export function officeProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  return proxiedSidecarUrl("office", env);
+}
+
+/** The ArtCraft apps' proxied origin (KNIFE_CRAFT_PUBLIC_URL), or null. */
+export function craftProxyUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  return proxiedSidecarUrl("craft", env);
+}
+
+/**
+ * Origins the app's pages are served from, i.e. who may frame a sidecar: KNIFE_PUBLIC_URL's origin when set, else
+ * http://<host>:<KNIFE_PORT> for KNIFE_HOST and every KNIFE_ALLOWED_HOSTS name (the same rule as the office proxy).
+ */
+export function appOrigins(env: NodeJS.ProcessEnv = process.env): string[] {
+  try {
+    const url = new URL(env.KNIFE_PUBLIC_URL?.trim() ?? "");
+    if (url.protocol === "https:" || url.protocol === "http:") return [url.origin];
+  } catch {
+    // private mode
+  }
+  const port = env.KNIFE_PORT?.trim() || "3210";
+  return [...new Set(knifeHosts(env).map((host) => `http://${hostForUrl(host)}:${port}`))];
+}
+
 export function publicUrl(state: SidecarState): string {
-  const proxied = state.id === "office" ? officeProxyUrl() : null;
+  const proxied = proxiedSidecarUrl(state.id);
   if (proxied) return proxied;
   return stripSlash(state.publicUrl || `http://${hostForUrl(state.bindHost)}:${state.hostPort}`);
 }

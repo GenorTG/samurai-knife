@@ -79,9 +79,9 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
-/** The app's own names (KNIFE_PUBLIC_URL, KNIFE_OFFICE_PUBLIC_URL, KNIFE_EMAIL_OWN_DOMAINS) and their subdomains. */
+/** The app's own names (KNIFE_PUBLIC_URL, KNIFE_OFFICE_PUBLIC_URL, KNIFE_CRAFT_PUBLIC_URL, KNIFE_EMAIL_OWN_DOMAINS) and their subdomains. */
 function ownDomains(env: NodeJS.ProcessEnv): string[] {
-  return [hostOf(env.KNIFE_PUBLIC_URL), hostOf(env.KNIFE_OFFICE_PUBLIC_URL), ...csv(env.KNIFE_EMAIL_OWN_DOMAINS).map(asciiDomain)]
+  return [hostOf(env.KNIFE_PUBLIC_URL), hostOf(env.KNIFE_OFFICE_PUBLIC_URL), hostOf(env.KNIFE_CRAFT_PUBLIC_URL), ...csv(env.KNIFE_EMAIL_OWN_DOMAINS).map(asciiDomain)]
     .filter((d): d is string => Boolean(d) && !isIpAddress(d as string));
 }
 

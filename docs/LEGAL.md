@@ -72,3 +72,19 @@ service stays non-commercial; the riskiest).
 Donations for access, ads, a paid tier or sponsorship make the operator a "usługodawca" (UŚUDE applies fully, including
 art. 5) and very likely a "przedsiębiorca": consumer law, KC art. 385¹ (unfair clauses), the right of withdrawal, the
 Polish-language act and tax rules then apply, and the defaults are no longer enough. Get advice before that step.
+
+## Third-party components served to browsers
+
+- **ArtCraft apps** (`craft` sidecar, docs/SIDECARS.md "ArtCraft"): PhotoCraft, VectorCraft, FilmCraft, LightCraft,
+  EffectCraft, DesignCraft and PdfCraft by storytold, each MIT OR Apache-2.0. The instance redistributes their release
+  zips unmodified (plus `.gz` copies) from its own server; each unpacked release keeps and serves its `LICENSE-MIT`,
+  `LICENSE-APACHE` and `NOTICE` (Apache-2.0 §4), and the ArtCraft page names the licence and links the source. Nothing of
+  theirs is in this repository. nginx (the container) is BSD-2-Clause.
+- Privacy notice, not changed automatically (a text change is a new legal version that existing users should hear
+  about): an instance that offers ArtCraft would add two rows to "Cookies and browser storage": `knife_craft` (cookie on
+  the ArtCraft host, only with `KNIFE_CRAFT_PUBLIC_URL`: lets the browser load the apps, up to 12 hours) and the apps'
+  own browser storage on the ArtCraft host (preferences, LightCraft's photo library, EffectCraft's projects and media, in
+  local storage, IndexedDB or OPFS; kept until the user clears it; never sent to the server). Both are strictly
+  necessary for a tool the user opens (art. 399 ust. 3 PKE). The office editor's `knife_office` cookie is missing from
+  the table today too.
+

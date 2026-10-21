@@ -83,13 +83,17 @@ function refuseUpgrade(socket, retryAfter) {
   setTimeout(() => socket.destroy(), 5_000).unref();
 }
 
-function officeHostOf(env) {
+function hostOf(value) {
   try {
-    const url = new URL(env.KNIFE_OFFICE_PUBLIC_URL?.trim() || "");
+    const url = new URL(value?.trim() || "");
     return { host: url.host.toLowerCase(), name: url.hostname.toLowerCase() };
   } catch {
     return null;
   }
+}
+
+function officeHostOf(env) {
+  return hostOf(env.KNIFE_OFFICE_PUBLIC_URL);
 }
 
 function pathOf(url) {
@@ -112,11 +116,12 @@ export function installAbuseGuard(env = process.env) {
     ? (holder[GUARD_KEY] ??= new AbuseGuard({ policy: guardPolicy({ mode, scale: Number(env.KNIFE_GUARD_SCALE ?? 1) }), dataDir: securityDir(env) }))
     : null;
   const rules = trustedRules(env);
-  const office = officeHostOf(env);
+  // The office editor's and the ArtCraft apps' own hosts: their proxies keep per-account budgets of their own.
+  const sidecarHosts = [officeHostOf(env), hostOf(env.KNIFE_CRAFT_PUBLIC_URL)].filter(Boolean);
   const isOffice = (request) => {
-    if (!office) return false;
+    if (!sidecarHosts.length) return false;
     const host = String(request.headers.host ?? "").toLowerCase();
-    return host === office.host || host.replace(/:\d+$/, "") === office.name;
+    return sidecarHosts.some((side) => host === side.host || host.replace(/:\d+$/, "") === side.name);
   };
   if (guard) process.once("exit", () => guard.saveNow());
 

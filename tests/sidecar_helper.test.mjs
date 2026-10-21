@@ -31,9 +31,11 @@ const { findSidecar, SIDECARS } = await import("../src/lib/services/definitions.
 const manager = await import("../src/lib/services/manager.ts");
 const state = await import("../src/lib/services/state.ts");
 const { renderCompose, DEFAULT_PIDS_LIMIT } = await import("../src/lib/services/compose.ts");
+const { sitesConfig } = await import("../src/lib/services/sites.ts");
 
 const office = findSidecar("office");
 const learn = findSidecar("learn-db");
+const craft = findSidecar("craft");
 const silent = { phase() {}, log() {} };
 
 /* ------------------------------------------------------------------------------------------- 1. selection */
@@ -395,13 +397,14 @@ test("sync: the app's rendered compose files pass the helper's validator; tamper
   chmodSync(wrapper, 0o755);
   const conf = helperConf(dir, { DOCKER: wrapper });
   const env = { PATH: process.env.PATH, KNIFE_SIDECAR_HELPER_CONF: conf };
-  for (const def of [learn, office]) {
+  for (const def of [learn, office, craft]) {
     const staging = join(dir, "staging", def.id);
     mkdirSync(join(staging, "assets", "knife-bridge-0123abcd"), { recursive: true });
     writeFileSync(join(staging, "assets", "knife-bridge-0123abcd", "config.json"), "{}\n");
     const host = def.id === "office" ? "100.64.0.7" : "127.0.0.1";
     const extraEnv = def.requestFilter ? { NODE_CONFIG: JSON.stringify({ services: { CoAuthoring: { "request-filtering-agent": { allowIPAddressList: [] } } } }) } : undefined;
-    writeFileSync(join(staging, "compose.yaml"), renderCompose(def, { bindHost: host, hostPort: 3290, extraEnv }));
+    // The ArtCraft nginx: read-only root, tmpfs, fixed entrypoint, healthcheck, its generated config named in `command`.
+    writeFileSync(join(staging, "compose.yaml"), renderCompose(def, { bindHost: host, hostPort: 3290, extraEnv, command: sitesConfig(def)?.command }));
     writeFileSync(join(staging, "secrets.env"), def.secrets.map((secret) => `${secret.name}=${"ab".repeat(8)}`).join("\n") + "\n");
     const result = spawnSync("python3", ["-I", HELPER, "sync", def.id, "--yes"], { env, encoding: "utf8" });
     assert.equal(result.status, 0, `${def.id}: ${result.stdout}${result.stderr}`);

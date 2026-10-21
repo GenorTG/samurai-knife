@@ -72,6 +72,18 @@ SIDECARS = {
         "pids_max": 256,
         "mem_max": 1024 ** 3,
     },
+    # The ArtCraft apps: nginx (uid 101, no capabilities) serving the seven unpacked web builds plus its generated
+    # nginx.conf from the bundle's assets (~0.5 GB, hence its own asset cap).
+    "craft": {
+        "service": "nginx",
+        "image_prefix": "nginxinc/nginx-unprivileged:",
+        "prepare": None,
+        "assets_target": "/srv/craft",
+        "cap_add": frozenset(),
+        "pids_max": 64,
+        "mem_max": 256 * 1024 ** 2,
+        "max_asset_bytes": 1536 * 1024 ** 2,
+    },
 }
 
 # verb -> (needs id, allowed flags, timeout seconds, takes the per-id lock)
@@ -778,7 +790,8 @@ def sync(conf, sidecar_id, assume_yes, dry_run):
             fd = os.open(os.path.join(fresh, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
             with os.fdopen(fd, "wb") as handle:
                 handle.write(data)
-        copy_assets(os.path.join(staging, "assets"), os.path.join(fresh, "assets"), int(conf["MAX_ASSET_BYTES"]))
+        max_assets = SIDECARS[sidecar_id].get("max_asset_bytes", int(conf["MAX_ASSET_BYTES"]))
+        copy_assets(os.path.join(staging, "assets"), os.path.join(fresh, "assets"), max_assets)
         new_hash = bundle_hash_of(fresh)
         if new_hash == old_hash:
             print(f"{sidecar_id}: already installed (bundle {new_hash[:12]})")

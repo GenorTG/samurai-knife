@@ -26,9 +26,11 @@ export function originOf(value) {
  * (React escaping and DOMPurify are); the policy's value is frame-ancestors (no clickjacking of the trust prompts),
  * connect-src 'self' (page data cannot be posted elsewhere), object-src/base-uri/form-action, and frame-src.
  */
-export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = [], formOrigins = [] } = {}) {
+export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = [], frameOnlyOrigins = [], formOrigins = [] } = {}) {
   const extra = [...new Set(frameOrigins.filter(Boolean))].join(" ");
   const withExtra = (list) => (extra ? `${list} ${extra}` : list);
+  // Embedded only (the ArtCraft apps: the page frames them and never loads their scripts or talks to them).
+  const frames = [...new Set([...frameOrigins, ...frameOnlyOrigins].filter(Boolean))].join(" ");
   const https = originOf(publicUrl)?.startsWith("https:") ?? false;
   const csp = [
     "default-src 'self'",
@@ -39,7 +41,7 @@ export function securityHeaders({ dev = false, publicUrl = "", frameOrigins = []
     "media-src 'self' data: blob:",
     withExtra(`connect-src 'self'${dev ? " ws: wss:" : ""}`),
     "worker-src 'self' blob:",
-    withExtra("frame-src 'self' blob:"),
+    frames ? `frame-src 'self' blob: ${frames}` : "frame-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     // The GitHub App's manifest is POSTed to github.com by the admin's browser (docs/GITHUB.md).
@@ -112,14 +114,36 @@ export function officeOrigins(dataDir, env = process.env) {
   // Proxied by the app on its own host name (scripts/office-proxy.mjs): that origin, whatever the state says.
   const proxied = originOf(configured);
   if (proxied) return { origins: [proxied], warning: null };
+  return { origins: stateOrigin(join(dataDir, "services", "office", "state.json")), warning: null };
+}
+
+/**
+ * The ArtCraft sidecar's origin for frame-src, by the same rules as the office editor: public mode only an https
+ * KNIFE_CRAFT_PUBLIC_URL on a public host name; private mode that variable, else the state file (`publicUrl`, else
+ * bind:port). Returns `{ origins, warning }`.
+ */
+export function craftOrigins(dataDir, env = process.env) {
+  const configured = String(env.KNIFE_CRAFT_PUBLIC_URL ?? "").trim();
+  if (isPublicAuthMode(env)) {
+    if (!configured) return { origins: [], warning: null };
+    const verdict = publicOriginVerdict(configured);
+    return verdict.origin ? { origins: [verdict.origin], warning: null } : { origins: [], warning: `KNIFE_CRAFT_PUBLIC_URL ${verdict.reason}; the ArtCraft origin is left out of the CSP.` };
+  }
+  const proxied = originOf(configured);
+  if (proxied) return { origins: [proxied], warning: null };
+  return { origins: stateOrigin(join(dataDir, "services", "craft", "state.json")), warning: null };
+}
+
+/** A sidecar's browser origin from its state file: `publicUrl`, else http://bindHost:hostPort; none when not installed. */
+function stateOrigin(file) {
   try {
-    const state = JSON.parse(readFileSync(join(dataDir, "services", "office", "state.json"), "utf8"));
+    const state = JSON.parse(readFileSync(file, "utf8"));
     const host = String(state.bindHost ?? "");
     const fallback = host && state.hostPort ? `http://${host.includes(":") ? `[${host}]` : host}:${state.hostPort}` : null;
     const origin = originOf(state.publicUrl || fallback || "");
-    return { origins: origin ? [origin] : [], warning: null };
+    return origin ? [origin] : [];
   } catch {
-    return { origins: [], warning: null };
+    return [];
   }
 }
 
@@ -169,8 +193,10 @@ function install() {
     const office = officeOrigins(dataDir);
     if (office.warning) console.warn(`[security-headers] ${office.warning}`);
     else if (office.origins.length === 0) console.warn("[security-headers] public mode without KNIFE_OFFICE_PUBLIC_URL (https): no office editor origin in the CSP, so the editor cannot load.");
+    const craft = craftOrigins(dataDir);
+    if (craft.warning) console.warn(`[security-headers] ${craft.warning}`);
   }
-  const stateFile = join(dataDir, "services", "office", "state.json");
+  const stateFiles = ["office", "craft"].map((id) => join(dataDir, "services", id, "state.json"));
   // Two variants: requests on the public host (https through the proxy) get HSTS and upgrade-insecure-requests; requests
   // on any other address (the owner's plain-http Tailscale/LAN URL) get the same policy without both, or the browser
   // would rewrite every script URL to https on an address without TLS and the page would never start.
@@ -186,15 +212,18 @@ function install() {
     const now = Date.now();
     if (now - cached.at < 5_000) return cached;
     let mtime = 0;
-    try {
-      mtime = statSync(stateFile).mtimeMs;
-    } catch {
-      // not installed
+    for (const file of stateFiles) {
+      try {
+        mtime += statSync(file).mtimeMs;
+      } catch {
+        // not installed
+      }
     }
     if (mtime !== cached.mtime || cached.headers.length === 0) {
       const options = {
         dev,
         frameOrigins: [...officeOrigins(dataDir).origins, ...extra],
+        frameOnlyOrigins: craftOrigins(dataDir).origins,
         formOrigins: [originOf(process.env.KNIFE_GITHUB_WEB_URL ?? "") ?? "https://github.com"],
       };
       cached.headers = securityHeaders({ ...options, publicUrl: process.env.KNIFE_PUBLIC_URL ?? "" });

@@ -27,6 +27,8 @@ export interface ComposeChoices {
   image?: string;
   /** Environment computed from the install (e.g. the request-filter allow list); added after the definition's env. */
   extraEnv?: Record<string, string>;
+  /** Container command computed from the install (a `sites` sidecar: the path of its generated nginx.conf). */
+  command?: string[];
 }
 
 /**
@@ -68,6 +70,7 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
     volumes: [
       ...def.volumes.map((volume) => `${volume.name}:${volume.target}`),
       ...(def.assets ? [`./${ASSETS_DIR}:${def.assets.target}:ro`] : []),
+      ...(def.sites ? [`./${ASSETS_DIR}:${def.sites.target}:ro`] : []),
     ],
     labels: {
       [`${LABEL_PREFIX}.managed`]: "true",
@@ -76,7 +79,8 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
   };
   if (def.memLimit) service.mem_limit = def.memLimit;
   if (def.cpus) service.cpus = def.cpus;
-  Object.assign(service, securityOptions(def));
+  Object.assign(service, securityOptions(def), containerOptions(def));
+  if (choices.command) service.command = choices.command;
   const doc = {
     name: composeProject(def.id),
     services: { [def.serviceName]: service },
@@ -97,6 +101,21 @@ export function securityOptions(def: SidecarDefinition): Record<string, unknown>
     ...(capAdd.length ? { cap_add: capAdd.sort() } : {}),
     security_opt: ["no-new-privileges:true"],
     pids_limit: pids,
+  };
+}
+
+/** read_only / tmpfs / entrypoint / healthcheck from the definition's `container`. */
+export function containerOptions(def: SidecarDefinition): Record<string, unknown> {
+  if (def.assets && def.sites) throw new ComposeError(`${def.id}: assets and sites both use the assets folder`);
+  const c = def.container;
+  if (!c) return {};
+  return {
+    ...(c.readOnly ? { read_only: true } : {}),
+    ...(c.tmpfs?.length ? { tmpfs: c.tmpfs } : {}),
+    ...(c.entrypoint ? { entrypoint: c.entrypoint } : {}),
+    ...(c.healthcheck
+      ? { healthcheck: { test: c.healthcheck.test, interval: `${c.healthcheck.intervalSec}s`, timeout: `${c.healthcheck.timeoutSec}s`, retries: c.healthcheck.retries } }
+      : {}),
   };
 }
 
