@@ -199,6 +199,13 @@ def main() -> int:
             check("docx opens in the editor", text.startswith("Editor ready"), text)
             frame_title = page.locator("iframe").first.get_attribute("title")
             check("editor iframe titled for the snapshot", (frame_title or "").startswith("Office editor:"), str(frame_title))
+            page.get_by_role("button", name="Full screen").click()
+            page.wait_for_function("() => document.fullscreenElement?.querySelector('iframe') != null", timeout=10_000)
+            fs = page.evaluate("() => { const r = document.fullscreenElement.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight }; }")
+            check("Full screen puts the editor over the whole screen", fs["w"] >= fs["vw"] - 2 and fs["h"] >= fs["vh"] - 2, json.dumps(fs))
+            page.evaluate("() => document.exitFullscreen()")
+            page.wait_for_function("() => document.fullscreenElement === null", timeout=10_000)
+            check("leaving full screen restores the page", page.get_by_role("button", name="Full screen").is_visible())
             METRICS["ram_one_doc_open_mib"] = round(mem_mib(cname))
 
             editor = page.frame_locator('iframe[name="frameEditor"]')

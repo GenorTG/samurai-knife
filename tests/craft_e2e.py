@@ -339,6 +339,24 @@ def main() -> int:
                 bad = [line for line in console if BAD_CONSOLE.search(line) and not BENIGN.search(line)]
                 check(f"{app}: no console message about CSP, MIME or the sandbox", not bad, " | ".join(bad[:3])[:400])
                 METRICS[f"{app}_console_errors"] = sum(1 for line in console if line.startswith("[error]") or line.startswith("[pageerror]"))
+                full = page.locator(f"[data-craft-app={app}]").get_by_role("button", name="Full screen")
+                if app in ("photocraft", "lightcraft"):
+                    # Full screen: the iframe itself becomes the fullscreen element and fills the viewport; leaving it restores the tab.
+                    full.click()
+                    page.wait_for_function("() => document.fullscreenElement?.tagName === 'IFRAME'", timeout=10_000)
+                    fs = page.evaluate("() => { const r = document.fullscreenElement.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight, title: document.fullscreenElement.title }; }")
+                    shot = page.screenshot(path=str(shots / f"15-{app}-fullscreen.png"))
+                    check(f"{app}: Full screen puts the app's iframe over the whole screen", fs["w"] >= fs["vw"] - 2 and fs["h"] >= fs["vh"] - 2 and NAMES[app] in fs["title"] and drawn(shot) > 40, json.dumps(fs))
+                    page.evaluate("() => document.exitFullscreen()")
+                    page.wait_for_function("() => document.fullscreenElement === null", timeout=10_000)
+                    try:  # the page may be busy: Playwright's Firefox runs the cross-origin app in the same process (no Fission)
+                        page.wait_for_function("() => [...document.querySelectorAll('[data-craft-app=%s] button[aria-pressed]')].some((b) => b.getAttribute('aria-pressed') === 'false')" % app, timeout=10_000)
+                    except Exception:
+                        pass
+                    after = page.evaluate("""() => { const box = document.querySelector('[data-craft-app=%s]'); const b = [...box.querySelectorAll('button')].map((x) => [x.textContent, x.getAttribute('aria-pressed')]); return { buttons: b, fs: String(document.fullscreenElement), active: document.activeElement?.tagName }; }""" % app)
+                    check(f"{app}: leaving full screen restores the tab (button back to 'Full screen')", full.is_visible() and full.get_attribute("aria-pressed") == "false", json.dumps(after))
+                else:
+                    check(f"{app}: Full screen button offered", full.is_visible())
 
             if len(only) == len(APPS):
                 _, body = api.call("GET", f"/api/services/{SERVICE}?memory=1")

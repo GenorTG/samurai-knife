@@ -5,8 +5,10 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
   type Ref,
+  type RefObject,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -114,6 +116,34 @@ export function CopyButton({
       }}
     >
       {done ? "Copied" : label}
+    </Button>
+  );
+}
+
+function subscribeFullscreen(onChange: () => void): () => void {
+  document.addEventListener("fullscreenchange", onChange);
+  return () => document.removeEventListener("fullscreenchange", onChange);
+}
+
+/**
+ * Puts `target` (an embedded app or editor) in full screen with the Fullscreen API; Esc leaves it (the browser's own
+ * key, not ours). Renders nothing on the server and where the browser cannot (iPhone Safari): "Open in new tab" stays.
+ */
+export function FullscreenButton({ target, size = "sm", label = "Full screen" }: { target: RefObject<HTMLElement | null>; size?: ButtonProps["size"]; label?: string }) {
+  const supported = useSyncExternalStore(subscribeFullscreen, () => document.fullscreenEnabled, () => false);
+  const active = useSyncExternalStore(subscribeFullscreen, () => document.fullscreenElement !== null && document.fullscreenElement === target.current, () => false);
+  if (!supported) return null;
+  return (
+    <Button
+      size={size}
+      aria-pressed={active}
+      title="Esc leaves full screen"
+      onClick={() => {
+        if (active) void document.exitFullscreen().catch(() => {});
+        else void target.current?.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+      }}
+    >
+      {active ? "Exit full screen" : label}
     </Button>
   );
 }

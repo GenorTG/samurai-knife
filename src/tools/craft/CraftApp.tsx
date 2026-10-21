@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ButtonLink, Notice, Panel } from "@/components/ui";
+import { useEffect, useRef, useState } from "react";
+import { ButtonLink, FullscreenButton, Notice, Panel } from "@/components/ui";
 import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
 import { ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, touchService } from "@/tools/sidecars/client";
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
@@ -42,6 +42,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   const [stage, setStage] = useState<Stage>({ kind: "waiting" });
   const [webgl, setWebgl] = useState(false);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     if (!installed) return;
@@ -138,6 +139,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
                 Force WebGL2
               </label>
             ) : null}
+            <FullscreenButton target={frame} />
             <ButtonLink href={src} external size="sm">
               Open in new tab
             </ButtonLink>
@@ -166,6 +168,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
       </Panel>
       <iframe
         key={src}
+        ref={frame}
         src={src}
         title={`${app.name} (${app.kind})`}
         sandbox={app.sandbox.join(" ")}
@@ -173,7 +176,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         allowFullScreen
         referrerPolicy="no-referrer"
         onLoad={() => setLoadedSrc(src)}
-        className="block h-[calc(100dvh-15rem)] min-h-[560px] w-full rounded-tool border border-line bg-black"
+        className="block h-[calc(100dvh-15rem)] min-h-[560px] w-full rounded-tool border border-line bg-black [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
       />
     </div>
   );

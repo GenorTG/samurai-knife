@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, Notice } from "@/components/ui";
+import { Button, FullscreenButton, Notice } from "@/components/ui";
 import { docDownloadUrl, editorConfig, ensureService, errorText, getDoc, getOp, isAdminRequired, touchService, type DocMeta } from "./client";
 import { OpProgress } from "./SidecarCard";
 import { OfficeLiveBridge, setActiveLiveBridge, type LiveState } from "@/lib/office/live-bridge";
@@ -223,6 +223,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           </p>
         </div>
         <div className="flex gap-2">
+          {phase.kind === "ready" ? <FullscreenButton target={holder} size="md" /> : null}
           <DownloadLink doc={doc} />
           <Button
             variant="primary"
@@ -255,7 +256,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           {liveLabel(live)}
         </p>
       ) : null}
-      <div ref={holder} className={phase.kind === "error" ? "hidden" : "h-[calc(100vh-15rem)] min-h-[32rem] overflow-hidden rounded-tool border border-line bg-white"} />
+      <div ref={holder} className={phase.kind === "error" ? "hidden" : "h-[calc(100vh-15rem)] min-h-[32rem] overflow-hidden rounded-tool border border-line bg-white [&:fullscreen]:rounded-none [&:fullscreen]:border-0"} />
     </div>
   );
 }
