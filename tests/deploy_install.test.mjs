@@ -83,3 +83,10 @@ test("knife-update builds a venv per release and never deploys backwards", () =>
   assert.match(updater, /ln -s "\$CACHE_DIR" "\$dir\/\.next\/cache"/);
   assert.match(updater, /flock -n -o -E 75/);
 });
+
+test("the service is enabled at boot only by --start (never next to an old server before the data moved)", () => {
+  const enables = INSTALL.split("\n").filter((line) => /systemctl enable\b.*\$SERVICE/.test(line));
+  assert.equal(enables.length, 1, enables.join("\n"));
+  const startBlock = INSTALL.slice(INSTALL.indexOf('if [[ -n "$START" ]]; then'));
+  assert.ok(startBlock.includes(enables[0]), "the only `systemctl enable $SERVICE` must be inside the --start block");
+});

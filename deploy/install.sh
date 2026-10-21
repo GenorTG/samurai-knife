@@ -264,13 +264,15 @@ if [[ ! -e "$APP_ROOT/current" ]]; then
     TMPDIR=/var/lib/knife-deploy "$LIBEXEC/knife-update" --install ${REF:+"$REF"} || die "first build failed (logs in $APP_ROOT/releases/<tag>/.deploy-*.log)"
 fi
 systemctl enable --now knife-update.timer knife-email-lists.timer >/dev/null
-systemctl enable "$SERVICE" >/dev/null
+# Enabled for boot only with --start: a reboot between the build and a data migration must never start a second server
+# (with an empty data dir) next to the old one.
 
 # ------------------------------------------------------------------------------------------------ start
 if [[ -n "$START" ]]; then
   grep -q KNIFE_UNCONFIGURED "$ETC/live.env" && die "$ETC/live.env is still the template: edit it, then: systemctl start $SERVICE"
   port_busy && ! systemctl is-active --quiet "$SERVICE" && die "something else listens on $env_host:$env_port: stop it first"
   say "starting $SERVICE"
+  systemctl enable "$SERVICE" >/dev/null
   systemctl reset-failed "$SERVICE" 2>/dev/null || true
   systemctl restart "$SERVICE"
   up=""
@@ -288,5 +290,5 @@ cat <<EOF
   accounts:  sudo knife-admin accounts list   (also: storage, email-lists; runs as knife with the service's settings)
   backup:    $DATA, $ETC/storage.key and $SECRETS (storage.key apart from the data)
 EOF
-[[ -z "$START" ]] && echo "  start:     systemctl start $SERVICE"
+[[ -z "$START" ]] && echo "  start:     rerun with --start (enables the service at boot and starts it)"
 exit 0
