@@ -42,7 +42,7 @@ Options:
   --storage-key FILE     keep an existing storage key (64 hex chars); else one is generated
   --github-app FILE      existing GitHub App credentials (docs/GITHUB.md)
   --migrate-data DIR     copy an existing data directory into /var/lib/samurai-knife (old server stopped)
-  --repo URL             git remote to deploy from (default: this checkout's origin, else the installed one)
+  --repo URL             git remote to deploy from (default: this checkout's origin, else the installed one, else package.json)
   --ref REF              release to install first (default: the newest v* tag)
   --app-root DIR         where releases live (default /opt/samurai-knife; must not be under /home)
   --no-sidecars          skip the root sidecar helper even if Docker is installed
@@ -149,11 +149,12 @@ else
   need+=(tess-eng tess-pol tess-osd)
 fi
 if [[ "$SIDECARS" == auto ]]; then command -v docker >/dev/null 2>&1 && SIDECARS=yes || SIDECARS=no; fi
+# The remote: --repo, else this checkout's origin, else the installed one (a re-run from <app-root>/current: releases are
+# `git archive` exports without .git; keeps a fork or mirror chosen earlier), else package.json `repository.url`.
 if [[ -z "$REPO_URL" ]]; then REPO_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"; fi
-# A re-run from <app-root>/current has no .git (releases are `git archive` exports): keep the installed remote.
 if [[ -z "$REPO_URL" && -r "$ETC/update.conf" ]]; then REPO_URL="$(sed -n 's/^REPO_URL=//p' "$ETC/update.conf" | tail -1)"; fi
-if [[ -z "$REPO_URL" ]]; then REPO_URL="$(git -c safe.directory="$APP_ROOT/repo.git" -C "$APP_ROOT/repo.git" remote get-url origin 2>/dev/null || true)"; fi
-[[ -n "$REPO_URL" ]] || problems+=("no --repo given, $SRC has no origin remote and no earlier install names one")
+if [[ -z "$REPO_URL" ]]; then REPO_URL="$(sed -n '/"repository"/,/}/s/^ *"url": *"\([^"]*\)".*/\1/p' "$SRC/package.json" 2>/dev/null | head -1 || true)"; fi
+[[ -n "$REPO_URL" ]] || problems+=("no --repo given and neither $SRC, an earlier install nor package.json names a repository")
 case "$REPO_URL" in git@*|ssh://*) problems+=("--repo $REPO_URL needs SSH keys knife-deploy does not have: use the https URL") ;; esac
 for f in "$ENV_IN" "$KEY_IN" "$GH_IN"; do [[ -z "$f" || -r "$f" ]] || problems+=("cannot read $f"); done
 [[ -z "$DATA_IN" || -d "$DATA_IN" ]] || problems+=("--migrate-data $DATA_IN is not a directory")

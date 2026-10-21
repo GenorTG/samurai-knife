@@ -2,6 +2,10 @@
   "name": "samurai-knife",
   "version": "0.2.0",
   "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GenorTG/samurai-knife.git"
+  },
   "private": true,
   "scripts": {
     "predev": "node scripts/prepare-ocr-assets.mjs && node scripts/prepare-sql-assets.mjs",
