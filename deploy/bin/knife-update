@@ -33,16 +33,40 @@ CACHE_DIR="$(conf CACHE_DIR)"; CACHE_DIR="${CACHE_DIR:-/var/cache/samurai-knife}
 STATE="${STATE_DIRECTORY:-${HOME:-/var/lib/knife-deploy}}"
 GIT_DIR="$APP_ROOT/repo.git"
 RELEASES="$APP_ROOT/releases"
-LOG="$STATE/update.log"
+# Run log: <app-root>/logs/update/update-<UTC day>.log (setgid knife, files 0640: the app's admin viewer reads them),
+# pruned after LOG_RETENTION_DAYS (install.sh copies legal.json logRetentionDays), past days gzipped. Without that folder
+# (an install from before log files) it falls back to $STATE/update.log.
+LOG_DIR="$(conf LOG_DIR)"; LOG_DIR="${LOG_DIR:-$APP_ROOT/logs/update}"
+LOG_DAYS="$(conf LOG_RETENTION_DAYS)"
+[[ "$LOG_DAYS" =~ ^[0-9]{1,4}$ ]] && (( LOG_DAYS >= 1 && LOG_DAYS <= 3650 )) || LOG_DAYS=30
+if [[ -d "$LOG_DIR" && ! -L "$LOG_DIR" && -w "$LOG_DIR" ]]; then LOG_TO_DIR=1; else LOG_TO_DIR=""; fi
+log_file() { if [[ -n "$LOG_TO_DIR" ]]; then printf '%s/update-%s.log' "$LOG_DIR" "$(date -u +%F)"; else printf '%s/update.log' "$STATE"; fi; }
 export PATH="$(dirname "$NODE_BIN"):/usr/local/bin:/usr/bin:/bin"
 export npm_config_cache="$STATE/npm-cache" PIP_CACHE_DIR="$STATE/pip-cache" NEXT_TELEMETRY_DISABLED=1
 
 [[ -n "$REPO_URL" ]] || { echo "knife-update: REPO_URL missing in $CONF" >&2; exit 2; }
 mkdir -p "$STATE" "$RELEASES"
-log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG" >&2; }
+# Same line shape as the app's log files: `<UTC ISO time> <out|err> <text>`.
+logs() { local stream="$1"; shift; local line; line="$(date -u +%FT%T.%3NZ) $stream $*"; printf '%s\n' "$line" >&2; ( umask 027; printf '%s\n' "$line" >>"$(log_file)" ) 2>/dev/null || true; }
+log() { logs out "$@"; }
+# The last lines of a failed step's own log (npm, build, venv, preflight), so the viewer shows why without a shell.
+log_tail() { [[ -f "$1" ]] || return 0; tail -n 40 -- "$1" | while IFS= read -r l; do logs err "  | $l"; done; }
+prune_logs() {
+  [[ -n "$LOG_TO_DIR" ]] || return 0
+  local today cutoff f day
+  today="$(date -u +%F)"; cutoff="$(date -u -d "$today - $((LOG_DAYS - 1)) days" +%F)"
+  for f in "$LOG_DIR"/update-*.log "$LOG_DIR"/update-*.log.gz; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    day="$(basename -- "$f" | sed -nE 's/^update-([0-9]{4}-[0-9]{2}-[0-9]{2})(\.[0-9]{1,2})?\.log(\.gz)?$/\1/p')"
+    [[ -n "$day" ]] || continue
+    if [[ "$day" < "$cutoff" ]]; then rm -f -- "$f"
+    elif [[ "$day" < "$today" && "$f" != *.gz ]]; then gzip -n -- "$f" 2>/dev/null || true; fi
+  done
+}
 failed_dir=""
 die() {
-  log "FAILED: $*"
+  logs err "FAILED: $*"
+  [[ "$*" =~ \(log:\ ([^\)]+)\) ]] && log_tail "${BASH_REMATCH[1]}"
   if [[ -n "$failed_dir" ]]; then mkdir -p "$RELEASES/.failed"; printf '%s\n' "${target:-}" >"$RELEASES/.failed/$(basename "$failed_dir")"; fi
   exit 1
 }
@@ -60,6 +84,8 @@ esac
 if [[ -z "${KNIFE_UPDATE_LOCKED:-}" ]]; then
   KNIFE_UPDATE_LOCKED=1 exec flock -n -o -E 75 "$STATE/update.lock" "$0" "$@"
 fi
+
+prune_logs
 
 if [[ ! -d "$GIT_DIR" ]]; then
   git clone --quiet --mirror "$REPO_URL" "$GIT_DIR" || die "git clone $REPO_URL"
@@ -85,7 +111,7 @@ if [[ "$name" == v* ]]; then
   if [[ "v$tree_version" != "$name" ]]; then
     msg="$name: the tagged commit's VERSION is '${tree_version:-missing}', not ${name#v}: not a release"
     [[ "$mode" == "check" ]] && { echo "$msg"; exit 0; }
-    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$LOG" 2>/dev/null || log "skip: $msg"; exit 0; }
+    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$(log_file)" 2>/dev/null || log "skip: $msg"; exit 0; }
     die "$msg"
   fi
 fi
@@ -97,7 +123,7 @@ if [[ -n "$current" ]]; then
   fi
   if ! g merge-base --is-ancestor "$current" "$target"; then
     msg="$name (${target:0:7}) does not contain the deployed ${current:0:7}: not deployed (only forward)"
-    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$LOG" 2>/dev/null || log "skip: $msg"; exit 0; }
+    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$(log_file)" 2>/dev/null || log "skip: $msg"; exit 0; }
     [[ "$mode" == "check" ]] && { echo "$msg"; exit 0; }
     die "$msg"
   fi

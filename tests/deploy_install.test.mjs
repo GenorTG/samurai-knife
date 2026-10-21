@@ -116,3 +116,27 @@ test("package names per package manager (checked against Debian 12, Fedora 44, A
     assert.equal(out.stdout.trim(), names, pm);
   }
 });
+
+test("log files: the app writes only its two log folders, knife-update its own, the viewer reads both", () => {
+  const app = read("deploy/systemd/samurai-knife.service");
+  assert.deepEqual(unitLines(app, "Environment").filter((line) => line.startsWith("KNIFE_LOG_DIR=")), ["KNIFE_LOG_DIR=@APP_ROOT@/logs"]);
+  assert.deepEqual(unitLines(app, "ReadOnlyPaths"), ["@APP_ROOT@"], "the release tree stays read-only");
+  assert.deepEqual(unitLines(app, "ReadWritePaths"), ["@APP_ROOT@/logs/app @APP_ROOT@/logs/sidecars"], "never logs/update, never the root");
+  // install.sh creates every ReadWritePaths entry (systemd refuses to start the unit when one is missing)
+  assert.match(INSTALL, /^install -d -o root -g root -m 0751 "\$LOGS"$/m, "log root: root-owned, not listable");
+  assert.match(INSTALL, /^install -d -o knife -g knife -m 0750 "\$LOGS\/app" "\$LOGS\/sidecars"$/m);
+  assert.match(INSTALL, /^install -d -o knife-deploy -g knife -m 2750 "\$LOGS\/update"$/m, "update/: knife-deploy writes, knife (setgid group) only reads");
+  assert.match(INSTALL, /^LOGS="\$APP_ROOT\/logs"/m);
+  assert.ok(INSTALL.indexOf('install -d -o root -g root -m 0751 "$LOGS"') < INSTALL.indexOf("samurai-knife-sandbox-probe.service"), "dirs exist before the probe copy of the unit starts");
+  // knife-update gets the folder and the retention (it cannot read legal.json) through update.conf
+  assert.match(INSTALL, /^LOG_DIR=\$LOGS\/update$/m);
+  assert.match(INSTALL, /^LOG_RETENTION_DAYS=\$log_days$/m);
+  assert.match(INSTALL, /logRetentionDays/);
+  const updater = read("deploy/bin/knife-update");
+  assert.match(updater, /LOG_DIR="\$\(conf LOG_DIR\)"/);
+  assert.match(updater, /LOG_DAYS="\$\(conf LOG_RETENTION_DAYS\)"/);
+  assert.match(updater, /umask 027/, "update log files are 0640");
+  assert.match(updater, /^prune_logs$/m, "retention runs on every updater run");
+  const updaterUnit = read("deploy/systemd/knife-update.service");
+  assert.deepEqual(unitLines(updaterUnit, "ReadWritePaths"), ["@APP_ROOT@"], "logs/update is inside the updater's writable tree");
+});

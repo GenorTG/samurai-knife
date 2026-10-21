@@ -37,6 +37,9 @@ Environment=KNIFE_GITHUB_APP_FILE=/var/lib/samurai-knife-secrets/github-app.json
 # Terms of Service / privacy notice of this instance (legal.json + optional page files; legal/README.md): root-owned,
 # read-only to the app, so a compromised app cannot rewrite what users agreed to.
 Environment=KNIFE_LEGAL_DIR=/etc/samurai-knife/legal
+# Log files (docs/DEPLOY.md "Log files"): app/ and sidecars/ are the app's (writable below), update/ is knife-update's
+# (readable through the setgid group); retention follows legal.json logRetentionDays.
+Environment=KNIFE_LOG_DIR=@APP_ROOT@/logs
 Environment=KNIFE_SIDECAR_BACKEND=helper
 Environment=KNIFE_SIDECAR_HELPER_SOCKET=/run/knife-sidecar.sock
 # Each release carries its own venv (deploy/bin/knife-update builds it), so a rollback also rolls Python back.
@@ -62,6 +65,8 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadOnlyPaths=@APP_ROOT@
+# The two log folders the app writes (deploy/install.sh creates them; the rest of the release tree stays read-only).
+ReadWritePaths=@APP_ROOT@/logs/app @APP_ROOT@/logs/sidecars
 
 # --- kernel and devices
 # Left out on purpose: ProtectKernelTunables, ProtectKernelLogs and ProtectHostname cover parts of /proc with mounts,
