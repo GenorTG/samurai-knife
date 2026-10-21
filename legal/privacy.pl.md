@@ -11,7 +11,7 @@ Administratorem danych osobowych jest **{{operatorName}}**, {{postalAddress}} (�
 - Serwis i wszystkie dane Kont są przechowywane na **prywatnym komputerze Operatora w Polsce**, a nie w centrum danych: Operator stosuje zabezpieczenia opisane w pkt 10, ale nie zapewnia ochrony fizycznej i redundancji, jakie daje profesjonalny hosting.
 - Pliki Kont (dane CV, dokumenty, rozmowy, szkice, połączenie z repozytorium) są przechowywane **zaszyfrowane** (AES-256-GCM, osobny klucz dla każdego Konta). Klucze API Dostawców AI są zaszyfrowane i nigdy nie są wyświetlane w całości. Klucz szyfrujący znajduje się na tym samym komputerze, więc Operator jako administrator serwera ma techniczną możliwość dostępu do danych. Nie przegląda ich i korzysta z tej możliwości tylko wtedy, gdy wymaga tego rozwiązanie problemu zgłoszonego przez Ciebie, prawo lub bezpieczeństwo Serwisu.
 - Poczta wychodząca (potwierdzenia, resetowanie hasła, powiadomienia) jest wysyłana przez serwer pocztowy Operatora i przekaźnik pocztowy u dostawcy **{{mailRelay}}**.
-- Kopie zapasowe, o ile są wykonywane, są przechowywane na nośnikach Operatora w Polsce i są nadpisywane po **{{backupRetentionDays}} dniach**.
+- Kopie zapasowe, o ile są wykonywane, są przechowywane na nośnikach Operatora w Polsce i są nadpisywane po **{{backupRetentionDays}} dniach**. Dane, które usuniesz (także razem z Kontem), znikają z kopii zapasowych najpóźniej po tym czasie; do tego czasu kopie nie są używane do niczego poza odtworzeniem Serwisu po awarii.
 
 ## 3. Jakie dane, w jakim celu, na jakiej podstawie i jak długo {#dane}
 

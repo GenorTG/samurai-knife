@@ -11,7 +11,7 @@ The controller of your personal data is **{{operatorName}}**, {{postalAddress}} 
 - The Service and all Account data are stored on the **Operator's private computer in Poland**, not in a data centre: the Operator applies the safeguards in section 10, but cannot offer the physical protection and redundancy of professional hosting.
 - Account files (CV data, documents, conversations, drafts, the repository connection) are stored **encrypted** (AES-256-GCM, a separate key per Account). AI provider API keys are encrypted and never shown in full. The encryption key is on the same computer, so the Operator, as the server's administrator, is technically able to access the data. The Operator does not look at it, and uses that ability only when resolving a problem you reported, when the law requires it, or for the security of the Service.
 - Outgoing e-mail (confirmations, password resets, notices) is sent by the Operator's mail server through a mail relay at **{{mailRelay}}**.
-- Backups, where they are made, are kept on the Operator's own storage in Poland and are overwritten after **{{backupRetentionDays}} days**.
+- Backups, where they are made, are kept on the Operator's own storage in Poland and are overwritten after **{{backupRetentionDays}} days**. Data you delete (also together with your Account) is gone from the backups at the latest after that time; until then backups are used only to restore the Service after a failure.
 
 ## 3. What data, why, on what basis, and for how long {#data}
 

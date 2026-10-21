@@ -43,9 +43,18 @@ conclusions below change: see "If money is involved".
    One table: purposes, categories of data and people, recipients, transfers, retention, security (the privacy notice
    table is a good start).
 2. **Breach log** (art. 33(5)), and the 72-hour notification to UODO when a breach is likely to risk people's rights.
-3. **Processing agreement with your mail relay host** (art. 28): e.g. netcup's AVV/DPA in its customer panel.
+3. **Processing agreement with your mail relay host** (art. 28): the hosting terms you accepted at sign-up are not one;
+   art. 28(3) needs a separate contract with fixed content (instructions, confidentiality, security, sub-processors,
+   deletion, audits). Providers offer it as a click-through, e.g. netcup: CCP > Master Data > Order Processing >
+   "Create AV Contract". Keep the PDF.
 4. **Make the retention numbers true**: the reverse proxy, app and mail-server logs must not outlive
-   `logRetentionDays` (journald `MaxRetentionSec=`, docker `log-opts`, the proxy's logrotate), backups `backupRetentionDays`.
+   `logRetentionDays`, backups `backupRetentionDays` (deleted data leaves the backups when they are overwritten).
+   - journald: a drop-in with `MaxRetentionSec=` one day under the limit and `MaxFileSec=1day` (journald deletes whole
+     files, and the default file span is a month).
+   - Docker's `json-file` driver rotates by size only, so a quiet container keeps lines for months: give containers that
+     log client IPs or recipients (mail server, proxy) `logging: driver: journald` instead.
+   - nginx-proxy-manager rotates inside its container (access logs weekly x4, error logs weekly x10, about 11 weeks):
+     delete rotated `*.gz` older than the limit minus the 7-day rotation span from its `data/logs` with a daily timer.
 5. **DSA, cautious**: a short yearly statement on the site ("0 orders, 0 notices, 0 restrictions") instead of relying on
    the micro-enterprise exemption, which may not literally fit a non-enterprise.
 6. **Announce changes** of the texts to existing users by e-mail at least `changeNoticeDays` before they apply.
