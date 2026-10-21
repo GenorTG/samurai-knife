@@ -95,7 +95,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         compact
         intro={
           <Notice tone="info">
-            {app.name} ({app.kind}) is one of seven ArtCraft apps that run entirely in your browser. A small web server on this machine serves
+            {app.name} ({app.kind}) is one of {ARTCRAFT_APPS.length} ArtCraft apps that run entirely in your browser. A small web server on this machine serves
             them on an address of their own: install it once (about {Math.round(ARTCRAFT_APPS.reduce((sum, a) => sum + a.bytes, 0) / 1048576)} MB of
             downloads, checked against pinned hashes); it starts by itself when you open an app and stops when idle.
           </Notice>
@@ -169,7 +169,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         src={src}
         title={`${app.name} (${app.kind})`}
         sandbox={app.sandbox.join(" ")}
-        allow="fullscreen; clipboard-read; clipboard-write"
+        allow={app.allow.join("; ")}
         allowFullScreen
         referrerPolicy="no-referrer"
         onLoad={() => setLoadedSrc(src)}

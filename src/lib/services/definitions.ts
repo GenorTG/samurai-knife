@@ -128,6 +128,8 @@ export interface SidecarSite {
   repo: string;
   immutable: string[];
   sandbox: string[];
+  /** The iframe's `allow` (Permissions Policy features delegated to the frame), from the README's embedding example. */
+  allow: string[];
   /** wgpu apps: WebGPU in a secure context, else WebGL2 (`?webgl` forces it). False: WebGL2 only. */
   webgpu: boolean;
   /** One-line caveat shown with the app. */
@@ -137,6 +139,7 @@ export interface SidecarSite {
 // ArtCraft (https://github.com/storytold): MIT OR Apache-2.0, pure Rust, static WebAssembly web builds. Versions and
 // sha256 verified 2026-10-21 against the GitHub release assets (the API's asset digest and a local sha256sum agree).
 const ARTCRAFT_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-downloads", "allow-popups"];
+const ARTCRAFT_ALLOW = ["fullscreen", "clipboard-read", "clipboard-write"];
 const HASHED_GLUE = String.raw`-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`;
 const artcraft = (id: string, name: string, kind: string, version: string, sha256: string, bytes: number, rest: Partial<SidecarSite> = {}): SidecarSite => ({
   id,
@@ -150,6 +153,7 @@ const artcraft = (id: string, name: string, kind: string, version: string, sha25
   repo: `https://github.com/storytold/${id}`,
   immutable: [HASHED_GLUE],
   sandbox: ARTCRAFT_SANDBOX,
+  allow: ARTCRAFT_ALLOW,
   webgpu: true,
   ...rest,
 });
@@ -180,6 +184,26 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
   }),
   artcraft("designcraft", "DesignCraft", "page layout", "0.10.0", "88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4", 19242619),
   artcraft("pdfcraft", "PdfCraft", "PDF workbench", "0.10.1", "58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9", 14507703),
+  // The web build has no file system ("native file dialogs aren't wired up yet"), so its README asks for no
+  // allow-downloads; live sessions (ws:// to a desktop host) are blocked by the craft CSP's connect-src.
+  artcraft("figcraft", "FigCraft", "interface design", "0.8.0", "75fd4821e0ef8793c82bc56d530764f8244a137e55745f49a745838028c9bb51", 9794330, {
+    sandbox: ["allow-scripts", "allow-same-origin", "allow-popups"],
+    note: "The web build starts with one new document and has no files: work you want to keep needs the desktop app.",
+  }),
+  artcraft("wordcraft", "WordCraft", "word processor", "0.9.0", "710d2f4dd95ac6234a043d15d8e82232d20330199dbdbc94159324eeb02631c1", 16450184),
+  // WebAudio only (no SharedArrayBuffer, no recording, so no microphone); `autoplay` lets the first click start sound.
+  artcraft("soundcraft", "SoundCraft", "audio workstation", "0.10.0", "834949ad6ef7df7c45fd28632b6eb94768c52134581b3778275a10a5451a6206", 5947630, {
+    sandbox: ["allow-scripts", "allow-same-origin"],
+    allow: ["fullscreen", "autoplay", "clipboard-read", "clipboard-write"],
+    note: "The web build opens a synthesised demo session (no recording, no files); click once into the app before you expect sound.",
+  }),
+  // Not the newest: the 0.8.0 and 0.9.0 web builds panic at startup ("no pids on this platform", std::process on
+  // wasm32; https://github.com/storytold/deckcraft/issues/959, open on 2026-10-21). 0.7.0 starts; same hosting notes.
+  artcraft("deckcraft", "DeckCraft", "presentations", "0.7.0", "4ab91994048c096fa356b7246c31098474d978ecd572e5b252dd825a287d1c40", 9385879, {
+    note: "Starts with the sample deck every time and keeps no preferences: save your presentation before you close the tab.",
+  }),
+  artcraft("cadcraft", "CADCraft", "CAD", "0.10.0", "d86268e964ca91402439f4518d25057463db988d0145a48d3c65213957a1ced2", 8670115),
+  artcraft("gridcraft", "GridCraft", "spreadsheet", "0.9.0", "f2327c09f176258143f7a5a78e4b40ae439be52e7cceca50fca1176dddcd11d8", 7128155),
 ];
 
 export const SIDECARS: readonly SidecarDefinition[] = [
@@ -278,10 +302,10 @@ export const SIDECARS: readonly SidecarDefinition[] = [
   },
   {
     id: "craft",
-    name: "ArtCraft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft)",
+    name: "ArtCraft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft, GridCraft)",
     shortName: "ArtCraft apps",
     description:
-      "Seven open-source creative apps (image, vector, video, photo library, motion graphics, page layout, PDF) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads.",
+      "Thirteen open-source creative and office apps (image, vector, video, photo library, motion graphics, page layout, PDF, interface design, word processor, audio workstation, presentations, CAD, spreadsheet) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads.",
     // nginx's unprivileged image (uid 101, port 8080), pinned by digest (the multi-arch index of 1.31.7-alpine, 2026-10-19).
     image: "nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e",
     serviceName: "nginx",
@@ -294,7 +318,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     env: {},
     volumes: [],
     startTimeoutSec: 60,
-    requirements: { ramGb: 0.25, diskGb: 0.6 },
+    requirements: { ramGb: 0.25, diskGb: 0.8 },
     license: "MIT OR Apache-2.0 (apps), BSD-2-Clause (nginx)",
     homepage: "https://github.com/storytold",
     usedBy: ["artcraft"],

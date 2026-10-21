@@ -41,19 +41,32 @@ const silent = { phase() {}, log() {} };
 
 /* ------------------------------------------------------------------------------------------- definition */
 
-test("definition: seven pinned apps (https release URL, sha256, size), the sandbox each README asks for", () => {
-  assert.deepEqual(ARTCRAFT_APPS.map((app) => app.id), ["photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft"]);
+test("definition: thirteen pinned apps (https release URL, sha256, size), the sandbox and allow list each README asks for", () => {
+  assert.deepEqual(ARTCRAFT_APPS.map((app) => app.id), [
+    "photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft",
+    "figcraft", "wordcraft", "soundcraft", "deckcraft", "cadcraft", "gridcraft",
+  ]);
+  const full = ["allow-scripts", "allow-same-origin", "allow-downloads", "allow-popups"];
+  // Each README's "Sandboxed iframes need at least …", exactly (FigCraft has no files in the browser, SoundCraft no downloads or links).
+  const sandboxes = {
+    lightcraft: [...full, "allow-modals"],
+    figcraft: ["allow-scripts", "allow-same-origin", "allow-popups"],
+    soundcraft: ["allow-scripts", "allow-same-origin"],
+  };
   for (const app of ARTCRAFT_APPS) {
     assert.match(app.sha256, /^[0-9a-f]{64}$/, app.id);
     assert.equal(app.url, `https://github.com/storytold/${app.id}/releases/download/v${app.version}/${app.id}-web-${app.version}.zip`);
     assert.ok(app.bytes > 1_000_000, app.id);
-    for (const token of ["allow-scripts", "allow-same-origin", "allow-downloads", "allow-popups"]) assert.ok(app.sandbox.includes(token), `${app.id} ${token}`);
+    assert.deepEqual(app.sandbox, sandboxes[app.id] ?? full, app.id);
     assert.ok(!app.sandbox.includes("allow-top-navigation") && !app.sandbox.includes("allow-forms"), `${app.id}: nothing beyond the README`);
+    // No app asks for the microphone or the camera (SoundCraft's web build has no recording); only SoundCraft gets autoplay.
+    assert.deepEqual(app.allow, app.id === "soundcraft" ? ["fullscreen", "autoplay", "clipboard-read", "clipboard-write"] : ["fullscreen", "clipboard-read", "clipboard-write"], app.id);
   }
+  assert.equal(new Set(ARTCRAFT_APPS.map((app) => app.id)).size, ARTCRAFT_APPS.length);
   // LightCraft's confirmations (restore, ?reset) need modals; it draws with WebGL2 only.
   const light = ARTCRAFT_APPS.find((app) => app.id === "lightcraft");
-  assert.ok(light.sandbox.includes("allow-modals"));
   assert.equal(light.webgpu, false);
+  assert.deepEqual(ARTCRAFT_APPS.filter((app) => !app.webgpu).map((app) => app.id), ["lightcraft"]);
   assert.deepEqual([craft.security.capAdd, craft.security.pidsLimit, craft.memLimit, craft.callsBack], [[], 64, "256m", false]);
   assert.match(craft.image, /^nginxinc\/nginx-unprivileged:[\w.-]+@sha256:[0-9a-f]{64}$/, "pinned by digest");
   assert.deepEqual(craft.usedBy, ["artcraft"]);
@@ -154,6 +167,17 @@ test("caching: hash-named files immutable, files that keep their names revalidat
     ["designcraft", "/designcraft-web-92f623d7d2fa3eba_bg.wasm", true],
     ["pdfcraft", "/pdfcraft-web-5c41d0edd9acf531.js", true],
     ["pdfcraft", "/pdfcraft-web.js", false],
+    // The six later apps are plain trunk builds: `<app>-web-<16 hex>.js` / `_bg.wasm` immutable, index.html and the rest revalidate.
+    ["figcraft", "/figcraft-web-5289479dee16242b_bg.wasm", true],
+    ["figcraft", "/OFL-inter.txt", false],
+    ["wordcraft", "/wordcraft-web-5cc86b80984cdfee.js", true],
+    ["wordcraft", "/index.html", false],
+    ["soundcraft", "/soundcraft-web-74df05ce253e0a03_bg.wasm", true],
+    ["deckcraft", "/deckcraft-web-f413cd376cc2a98b_bg.wasm", true],
+    ["cadcraft", "/cadcraft-web-6807ee8a677c2a95.js", true],
+    ["gridcraft", "/gridcraft-web-47d72c1e9c3ab366_bg.wasm", true],
+    ["gridcraft", "/gridcraft-45f84b7721cb79a9.ico", false],
+    ["gridcraft", "/", false],
   ];
   for (const [id, path, expected] of cases) assert.equal(cached(id, path), expected, `${id}${path}`);
 });

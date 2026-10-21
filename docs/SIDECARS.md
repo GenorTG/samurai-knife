@@ -318,12 +318,14 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
 
 ## ArtCraft (`craft`, slug `artcraft`)
 
-Seven clean-room, pure-Rust creative apps by storytold (https://github.com/storytold, MIT OR Apache-2.0), each shipped
-as a static WebAssembly web build: PhotoCraft (images), VectorCraft (vectors), FilmCraft (video), LightCraft (photo
-library + raw), EffectCraft (motion graphics), DesignCraft (page layout), PdfCraft (PDF). No server-side code: files are
-opened with the browser's picker, Save/Export are downloads, preferences and LightCraft's library live in the browser's
-storage for the craft origin. Facts below come from each repo's `packaging/web/README.md` (and the `_headers` in the
-zips), read 2026-10-21.
+Thirteen clean-room, pure-Rust creative and office apps by storytold (https://github.com/storytold, MIT OR Apache-2.0),
+each shipped as a static WebAssembly web build: PhotoCraft (images), VectorCraft (vectors), FilmCraft (video), LightCraft
+(photo library + raw), EffectCraft (motion graphics), DesignCraft (page layout), PdfCraft (PDF), FigCraft (interface
+design), WordCraft (word processor), SoundCraft (audio workstation), DeckCraft (presentations), CADCraft (CAD), GridCraft
+(spreadsheets). No server-side code: files are opened with the browser's picker, Save/Export are downloads, preferences
+and LightCraft's library live in the browser's storage for the craft origin. Facts below come from each repo's
+`packaging/web/README.md` (identical to the `HOSTING.md` inside each zip) and the `_headers` in the zips, read
+2026-10-21.
 
 - **Pins** (`ARTCRAFT_APPS` in definitions.ts): version, release URL, zip size and sha256, verified 2026-10-21 against
   the GitHub API's asset digest and a local `sha256sum` (they agree):
@@ -337,6 +339,20 @@ zips), read 2026-10-21.
   | effectcraft | 0.13.0 | `70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc` | 19.3 / 64.2 MB |
   | designcraft | 0.10.0 | `88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4` | 19.2 / 49.5 MB |
   | pdfcraft | 0.10.1 | `58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9` | 14.5 / 39.4 MB |
+  | figcraft | 0.8.0 | `75fd4821e0ef8793c82bc56d530764f8244a137e55745f49a745838028c9bb51` | 9.8 / 34.9 MB |
+  | wordcraft | 0.9.0 | `710d2f4dd95ac6234a043d15d8e82232d20330199dbdbc94159324eeb02631c1` | 16.5 / 60.6 MB |
+  | soundcraft | 0.10.0 | `834949ad6ef7df7c45fd28632b6eb94768c52134581b3778275a10a5451a6206` | 5.9 / 21.6 MB |
+  | deckcraft | 0.7.0 | `4ab91994048c096fa356b7246c31098474d978ecd572e5b252dd825a287d1c40` | 9.4 / 35.1 MB |
+  | cadcraft | 0.10.0 | `d86268e964ca91402439f4518d25057463db988d0145a48d3c65213957a1ced2` | 8.7 / 31.9 MB |
+  | gridcraft | 0.9.0 | `f2327c09f176258143f7a5a78e4b40ae439be52e7cceca50fca1176dddcd11d8` | 7.1 / 26.3 MB |
+
+  DeckCraft is pinned one step back on purpose: the 0.8.0 and 0.9.0 web builds panic before the first frame ("no pids
+  on this platform": a `std::process` call on wasm32, https://github.com/storytold/deckcraft/issues/959, open on
+  2026-10-21; reproduced here in Firefox for both); 0.7.0 starts and its hosting notes are identical. Bump it once a
+  release fixes that issue (check that the tab draws, not just loads).
+  Unpacked = the app's files plus their `.gz` twins; all thirteen: 626 MB on disk, 187 MB of zips to download (59 MB of it the six later apps).
+  The six later apps (FigCraft … GridCraft) are plain trunk builds: `index.html` + `<app>-web-<16 hex>.js` /
+  `_bg.wasm` (immutable, as their READMEs say) + licence files and an icon (revalidated).
 
   A version bump = new `version`, `sha256`, `bytes` (read the asset digest with `gh release view -R storytold/<app>
   --json assets`, download it and `sha256sum` it; re-read the app's README for changed headers or sandbox needs).
@@ -354,13 +370,15 @@ zips), read 2026-10-21.
   `read_only: true` + `tmpfs /tmp` (64 MB), `cap_drop: [ALL]` and nothing added, `pids_limit: 64`, `mem_limit: 256m`,
   `cpus: 1`, entrypoint `nginx`, command `-c /srv/craft/conf-<hash>/nginx.conf`, a compose healthcheck (`wget /healthz`)
   and the app's own probe (`GET /healthz` = `ok`). One bind mount: `services/craft/assets` read-only at `/srv/craft`. No
-  volumes, no call back to the app (`callsBack: false`), egress `none` in `knife-docker-user`. Measured: install with a
-  cached image 33 s (download + verify + unpack ~31 s, healthy 0.6 s after `up`), stopped -> app loaded 8.5 s, ~3 MiB RAM.
+  volumes, no call back to the app (`callsBack: false`), egress `none` in `knife-docker-user`. Measured with all thirteen apps
+  (2026-10-21): install with a cached image 53 s from the click to the first app drawn (download + verify + unpack of
+  187 MB), stopped -> app loaded 7.6 s, 3.3 MiB RAM in the container after every app was loaded once (nginx only
+  serves files; the apps' memory is the browser's), 626 MB on disk.
 - **nginx.conf** (`renderNginxConf`, rewritten on every compose write): own `types` (`application/wasm`, `text/javascript`,
   `application/manifest+json`, `font/ttf`…), `gzip_static on` and no on-the-fly gzip, GET/HEAD only (405), dotfiles and
   unknown paths 404, `absolute_redirect off` (`/<app>` -> `/<app>/` stays relative behind a port mapping or the proxy), no
   cookies. Caching per README: hash-named files `public, max-age=31536000, immutable` (PhotoCraft's parts and boot module,
-  the `-<16 hex>` glue/wasm of VectorCraft, DesignCraft and PdfCraft, VectorCraft's `fonts/<hash>/`, FilmCraft's `.wasm`/`.js`
+  the `-<16 hex>` glue/wasm of VectorCraft, DesignCraft, PdfCraft and the six later apps, VectorCraft's `fonts/<hash>/`, FilmCraft's `.wasm`/`.js`
   which index.html loads with `?v=<build hash>`), everything else `no-cache` (revalidate by ETag): LightCraft and
   EffectCraft keep their file names across releases, PhotoCraft's `app/photocraft-web.js` and `app/parts.txt` too. Every
   answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy:
@@ -370,7 +388,8 @@ zips), read 2026-10-21.
   blob:`, `connect-src 'self' data: blob:`, `img-src`/`media-src` `'self' data: blob:`, `frame-src 'none'`,
   `object-src 'none'`, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors` = the app's page origins
   (`appOrigins()`: KNIFE_PUBLIC_URL's origin, else `http://<host>:<KNIFE_PORT>` for KNIFE_HOST and KNIFE_ALLOWED_HOSTS).
-  No COOP/COEP isolation: none of the builds uses `SharedArrayBuffer`.
+  No COOP/COEP isolation: none of the builds uses `SharedArrayBuffer` (each README says so; SoundCraft plays through
+  WebAudio without it).
 - **Own origin, always.** The apps never run on the app's origin. Private mode: the sidecar's own port on KNIFE_HOST
   (`http://<tailscale-ip>:<port>`, a different origin). Public mode: `KNIFE_CRAFT_PUBLIC_URL=https://craft.<app host>`;
   the app proxies that host itself (`scripts/craft-proxy.mjs`, preloaded after the office proxy) and the sidecar moves to
@@ -389,26 +408,35 @@ zips), read 2026-10-21.
 - **Page** (`/tools/artcraft`, suite `artcraft`, one `wide` tab per app, component `craft-<app>` -> `src/tools/craft/CraftApp.tsx`):
   the compact sidecar card until it is installed (non-admins in public mode: "An administrator has to …"), then the
   lazy start (`ensure`, following the op), `GET /api/craft`, and the app in an iframe with **exactly** the README's
-  sandbox (`allow-scripts allow-same-origin allow-downloads allow-popups`, LightCraft also `allow-modals`; with
-  `allow-same-origin` that is safe only because the frame is cross-origin), `allow="fullscreen; clipboard-read;
-  clipboard-write"`, `referrerpolicy=no-referrer`. `role=status` says "Loading <App>…" until the frame loaded, then
+  sandbox (`allow-scripts allow-same-origin allow-downloads allow-popups`, LightCraft also `allow-modals`, FigCraft
+  only `allow-scripts allow-same-origin allow-popups` (its web build has no files, so no downloads), SoundCraft only
+  `allow-scripts allow-same-origin`; with `allow-same-origin` that is safe only because the frame is cross-origin) and
+  the README's `allow` (`fullscreen; clipboard-read; clipboard-write`, SoundCraft also `autoplay` so the first click
+  starts sound; no app asks for the microphone or camera: SoundCraft's web build has no recording, and the craft
+  origin's Permissions-Policy turns both off anyway), `referrerpolicy=no-referrer`. `role=status` says "Loading <App>…" until the frame loaded, then
   "<App> loaded from <origin>." "Open in new tab" (`rel=noopener noreferrer`) opens the same URL; the wgpu apps get a
   "Force WebGL2" checkbox (`?webgl`). A heartbeat (`touch`, 60 s) keeps the idle stop away while a tab is open.
 - **Secure context.** WebGPU, the async clipboard and OPFS need https (or localhost). Over the plain-http Tailscale
   address the page says so: the wgpu apps fall back to WebGL2 by themselves (verified in Firefox: every app starts),
   LightCraft keeps its library in IndexedDB instead of OPFS and EffectCraft has no OPFS disk cache or service worker.
   Public mode over https gets WebGPU where the browser has it.
-- **Known limits.** All seven are young (0.10-0.14) and the vendor calls the web builds experimental (LightCraft
+- **Known limits.** All thirteen are young (0.8-0.14) and the vendor calls the web builds experimental (LightCraft
   explicitly: browser storage can be cleared; back up the library from its File menu). Everything runs on the client:
   EffectCraft is a 63 MB wasm (17 MB with gzip) and VectorCraft 74 MB (27 MB), so the first open of a tab downloads tens
-  of MB and needs a few hundred MB of browser memory; later opens revalidate (304) or hit the immutable cache. All seven
-  share one origin, so they share its storage quota, localStorage and OPFS root. The names checked in these releases do
+  of MB and needs a few hundred MB of browser memory; later opens revalidate (304) or hit the immutable cache. All
+  thirteen share one origin, so they share its storage quota, localStorage and OPFS root. The names checked in these releases do
   not collide (EffectCraft: OPFS dir and IndexedDB `effectcraft*`; LightCraft: OPFS `library/`, `originals/`, `thumbs/`;
   only PdfCraft uses eframe's generic `egui_memory_ron` key), but the apps do not promise it; one origin per app would
-  need a host name (or port) per app. Firefox logs "Skipping unsupported feature name clipboard-read/-write" for the
+  need a host name (or port) per app. FigCraft's web build starts with one new document and has no file system (its
+  "Export page as PNG" gives no file even top-level), and its live sessions (ws:// to a desktop host) are blocked by the
+  craft CSP's `connect-src 'self'`; SoundCraft opens its synthesised demo session (no recording, no files) and plays
+  only after a click in the frame; DeckCraft starts with its sample deck and keeps no preferences; GridCraft's README documents no `?webgl` flag (the
+  build reads one; the Force WebGL2 box is harmless if a release drops it). Firefox logs "Skipping unsupported feature name clipboard-read/-write" for the
   iframe's `allow` (harmless). Headless Firefox has no WebGL2; the e2e runs headed under Xvfb (llvmpipe).
-- **Licences**: the apps are MIT OR Apache-2.0; each unpacked release keeps its `LICENSE-MIT`, `LICENSE-APACHE` and
-  `NOTICE` (where present) next to the app and serves them (`/<app>/LICENSE-MIT`…); nginx is BSD-2-Clause.
+- **Licences**: the apps are MIT OR Apache-2.0; each unpacked release keeps its `LICENSE-MIT`, `LICENSE-APACHE` and,
+  where present, `NOTICE`, `ATTRIBUTION.md` (SoundCraft) and the OFL-1.1 texts of FigCraft's embedded fonts
+  (`OFL-*.txt`) next to the app and serves them (`/<app>/LICENSE-MIT`…); nginx is BSD-2-Clause. docs/LEGAL.md
+  "Third-party components".
 
 ## Hardening (container privileges)
 
@@ -454,15 +482,17 @@ editor session is open). An image bump or a new sidecar repeats the check: drop 
   image; screenshots in `.tmp/office-live-e2e/`.
 - Real docker: `python3 tests/learn_db_e2e.py` — the course database installed from the course page, seeded, every
   lesson checked, sandbox probes, lazy start, purge (docs/LEARN.md). ~1.5 min with a cached image.
-- Unit: `tests/craft.test.mjs` (ArtCraft pins and sandboxes, compose rendering, nginx.conf + caching rules against the
+- Unit: `tests/craft.test.mjs` (ArtCraft pins, sandboxes and `allow` lists, compose rendering, nginx.conf + caching rules against the
   real file names, download/verify/unpack/prune against a fake fetch incl. tampered and malformed zips, launch URLs and
   tickets, the craft proxy against a fake nginx, the app CSP's frame-src).
 - Real docker + real releases: `python3 tests/craft_e2e.py --host <tailscale-ip>` — install from the ArtCraft page in
   Firefox (headed under `xvfb-run`, which the suite starts itself), container hardening, the craft origin's headers, all
-  seven apps load in their tab (exact sandbox, canvas drawn, no CSP/MIME/sandbox console message), PhotoCraft opens a PNG
-  through the file input and Quick-Exports it (same pixels), PdfCraft opens a PDF and saves it (2 pages, text kept),
-  "Open in new tab", stop -> lazy start, remove + purge. ~3 min with a cached image (downloads ~128 MB of zips);
-  screenshots in `.tmp/craft-e2e/`.
+  thirteen apps load in their tab (exact sandbox and `allow`, canvas drawn, no CSP/MIME/sandbox console message),
+  PhotoCraft opens a PNG through the file input and Quick-Exports it (same pixels), PdfCraft opens a PDF and saves it
+  (2 pages, text kept), WordCraft opens a .docx, gets a typed paragraph and saves it (all three paragraphs in the
+  download), GridCraft opens a CSV, gets a formula and exports CSV (rows kept, value computed), unpacked size and
+  container memory after all thirteen (metrics), "Open in new tab", stop -> lazy start, remove + purge. ~5 min with a
+  cached image (downloads ~187 MB of zips); screenshots in `.tmp/craft-e2e/`. Last run 2026-10-21: 70/70.
 - Unit: `tests/office_library.test.mjs` (storage scope, quota, folders, trash, versions, callback room-making,
   `knife_doc_*` isolation, retention).
 - Real docker: `python3 tests/office_files_e2e.py --host <tailscale-ip>` — public mode, admin + two users: every office

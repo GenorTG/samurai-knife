@@ -371,7 +371,7 @@ One Proxy Host per name:
   with a warning too. Private mode keeps the state-file fallback.
 - **craft.knife.example.org** (only with the ArtCraft sidecar) → the SAME `http://<KNIFE_HOST>:<KNIFE_PORT>` as the app,
   SSL as above (Websockets not needed; no large bodies: GET/HEAD only). Set
-  `KNIFE_CRAFT_PUBLIC_URL=https://craft.knife.example.org` in the app's environment: the app proxies the seven ArtCraft
+  `KNIFE_CRAFT_PUBLIC_URL=https://craft.knife.example.org` in the app's environment: the app proxies the thirteen ArtCraft
   apps itself (docs/SIDECARS.md "ArtCraft"), the sidecar moves to loopback at its next start/update, the CSP's frame-src
   picks the origin up, and the craft nginx's `frame-ancestors` names `KNIFE_PUBLIC_URL`'s origin. Same rules as the office
   name: same registrable domain as the app (SameSite=Strict ticket cookie), https on a public host name or the CSP leaves

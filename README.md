@@ -37,8 +37,9 @@ runs for you, with progressive hints and interview drills. See [docs/LEARN.md](d
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
 
-**ArtCraft apps** (optional sidecar): PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft and
-PdfCraft, seven open-source (MIT OR Apache-2.0) creative apps by [storytold](https://github.com/storytold) that run
+**ArtCraft apps** (optional sidecar): PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft,
+PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft and GridCraft, thirteen open-source (MIT OR Apache-2.0)
+creative and office apps by [storytold](https://github.com/storytold) that run
 entirely in the browser as WebAssembly. A small read-only nginx container serves their pinned, hash-checked release
 builds on an origin of their own; each app is a tab of one suite. See [docs/SIDECARS.md](docs/SIDECARS.md) "ArtCraft".
 

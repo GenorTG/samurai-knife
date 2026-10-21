@@ -14,7 +14,7 @@ SKIPS: dict[tuple[str, str | None], str] = {
     ("office", None): "editing happens in a cross-origin iframe served by a docker sidecar the coverage server does not install; library + knife_doc_* tools are covered by tests/office_e2e.py",
     ("sidecars", None): "installs and starts docker containers on the host (real side effects, ~5 GB pull); covered by tests/office_e2e.py",
     **{("artcraft", app): "an iframe of a cross-origin WebAssembly app served by the craft docker sidecar the coverage server does not install; covered by tests/craft_e2e.py"
-       for app in ("photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft")},
+       for app in ("photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft", "figcraft", "wordcraft", "soundcraft", "deckcraft", "cadcraft", "gridcraft")},
     ("db-course", "sql"): "needs the learn-db docker sidecar (PostgreSQL + PostGIS) the coverage server does not install; the page flow, every lesson and the tutor tools are covered by tests/learn_db_e2e.py",
 }
 

@@ -1,13 +1,17 @@
 """ArtCraft apps end to end, against REAL docker and the real release zips: install the `craft` sidecar from the ArtCraft
-page in Firefox (seven pinned zips downloaded, sha256-checked, unpacked; an unprivileged read-only nginx), then
+page in Firefox (thirteen pinned zips downloaded, sha256-checked, unpacked; an unprivileged read-only nginx), then
 
 - check the container hardening (read-only root, no capabilities, uid 101, no-new-privileges, pids cap) and the craft
   origin's headers (application/wasm, gzip twins, caching per app, CSP + frame-ancestors = the app, nosniff, no cookies,
   GET/HEAD only, unknown paths 404);
-- open every one of the seven tabs in Firefox: the iframe carries exactly the app's sandbox, the app starts (its canvas is
+- open every one of the thirteen tabs in Firefox: the iframe carries exactly the app's sandbox and `allow`, the app starts (its canvas is
   sized and drawn, its loading/failure text is gone) and no console message mentions CSP, MIME types or the sandbox;
 - PhotoCraft: open a generated PNG through the file input (Ctrl+O) and Quick Export it as PNG (a download whose pixels
   match); PdfCraft: open a generated PDF the same way and save it (Ctrl+S; the download keeps both pages and the text);
+  WordCraft: open a generated .docx (File > Open > Browse…), type a paragraph, save (Ctrl+S; the downloaded .docx holds
+  the old and the typed text); GridCraft: open a CSV (File > Open > Browse…), add a formula, File > Export > CSV (the
+  download holds the rows and the computed value);
+- the unpacked size per app and the container's memory after all thirteen apps were loaded (metrics line);
 - "Open in new tab" serves the same app top-level; stop -> reopen = lazy start; remove + purge leaves no container,
   network, volume or data.
 
@@ -42,10 +46,17 @@ from scratch_server import ROOT, ScratchServer  # noqa: E402
 RESULTS: list[tuple[str, bool, str]] = []
 METRICS: dict[str, object] = {}
 SERVICE = "craft"
-APPS = ["photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft"]
-NAMES = {"photocraft": "PhotoCraft", "vectorcraft": "VectorCraft", "filmcraft": "FilmCraft", "lightcraft": "LightCraft", "effectcraft": "EffectCraft", "designcraft": "DesignCraft", "pdfcraft": "PdfCraft"}
+APPS = ["photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft",
+        "figcraft", "wordcraft", "soundcraft", "deckcraft", "cadcraft", "gridcraft"]
+NAMES = {"photocraft": "PhotoCraft", "vectorcraft": "VectorCraft", "filmcraft": "FilmCraft", "lightcraft": "LightCraft", "effectcraft": "EffectCraft", "designcraft": "DesignCraft", "pdfcraft": "PdfCraft",
+         "figcraft": "FigCraft", "wordcraft": "WordCraft", "soundcraft": "SoundCraft", "deckcraft": "DeckCraft", "cadcraft": "CADCraft", "gridcraft": "GridCraft"}
+# Each README's "Sandboxed iframes need at least …" and its embedding example's `allow`.
 SANDBOX = {app: "allow-scripts allow-same-origin allow-downloads allow-popups" for app in APPS}
 SANDBOX["lightcraft"] += " allow-modals"
+SANDBOX["figcraft"] = "allow-scripts allow-same-origin allow-popups"
+SANDBOX["soundcraft"] = "allow-scripts allow-same-origin"
+ALLOW = {app: "fullscreen; clipboard-read; clipboard-write" for app in APPS}
+ALLOW["soundcraft"] = "fullscreen; autoplay; clipboard-read; clipboard-write"
 # New modules a fresh checkout may not have committed yet (the scratch worktree holds tracked files only).
 OVERLAY = ["src/lib/craft", "src/app/api/craft", "src/tools/craft", "src/lib/services/sites.ts", "scripts/craft-proxy.mjs"]
 # Console text that means the craft origin's headers or the iframe sandbox got in an app's way. Firefox's own note that
@@ -139,6 +150,24 @@ def sample_pdf(path: Path) -> None:
     path.write_bytes(make_pdf(["ArtCraft PDF page one", "Second page here"]))
 
 
+def sample_docx(path: Path, paragraphs: list[str]) -> None:
+    """A minimal WordprocessingML package (content types, the package relationship, one document part)."""
+    import zipfile
+
+    body = "".join(f'<w:p><w:r><w:t xml:space="preserve">{text}</w:t></w:r></w:p>' for text in paragraphs)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+        z.writestr("word/document.xml", f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{body}</w:body></w:document>')
+
+
+def docx_text(path: Path) -> str:
+    import zipfile
+
+    with zipfile.ZipFile(path) as z:
+        return re.sub(r"<[^>]+>", " ", z.read("word/document.xml").decode())
+
+
 def pdf_facts(path: Path) -> tuple[int, str]:
     """(pages, text): pypdf from the Python lane's venv when present, else a byte-level count of /Type /Page."""
     venv = ROOT.parent / "samurai-knife-py" / "venv" / "bin" / "python"
@@ -208,6 +237,8 @@ def main() -> int:
     work.mkdir(exist_ok=True)
     sample_png(work / "sample.png")
     sample_pdf(work / "sample.pdf")
+    sample_docx(work / "sample.docx", ["ArtCraft WordCraft opening line", "Second paragraph here"])
+    (work / "sample.csv").write_text("name,qty,price\napple,3,1.5\npear,4,2.25\nplum,10,0.4\n")
     only = [app for app in args.only.split(",") if app in APPS]
 
     prefix = os.environ.get("KNIFE_E2E_SIDECAR_PREFIX") or f"sk-craft-e2e-{os.getpid()}"
@@ -250,8 +281,11 @@ def main() -> int:
             check("no warnings after install", not svc["warnings"], "; ".join(svc["warnings"]))
             assets = Path(server.data_dir) / "services" / SERVICE / "assets"
             folders = sorted(p.name for p in assets.iterdir())
-            check("assets: one versioned folder per app + one config, no leftovers", len(folders) == 8 and sum(f.startswith("conf-") for f in folders) == 1 and not any(f.startswith(".") for f in folders), " ".join(folders))
+            check("assets: one versioned folder per app + one config, no leftovers", len(folders) == len(APPS) + 1 and sum(f.startswith("conf-") for f in folders) == 1 and not any(f.startswith(".") for f in folders), " ".join(folders))
             check("downloads removed after unpacking", not (Path(server.data_dir) / "services" / SERVICE / "downloads").exists())
+            sizes = {f.split("-")[0]: sum(p.stat().st_size for p in (assets / f).rglob("*") if p.is_file()) for f in folders if not f.startswith("conf-")}
+            METRICS["unpacked_mb"] = {app: round(size / 1e6, 1) for app, size in sizes.items()}
+            METRICS["unpacked_total_mb"] = round(sum(sizes.values()) / 1e6, 1)
 
             # Container hardening.
             name = next(iter(docker_lines("ps", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Names}}")), "")
@@ -293,7 +327,8 @@ def main() -> int:
                 page.locator("main [role=status]", has_text=f"{NAMES[app]} loaded from").first.wait_for(timeout=180_000)
                 frame_el = page.locator(f"[data-craft-app={app}] iframe")
                 sandbox = frame_el.get_attribute("sandbox")
-                check(f"{app}: iframe sandbox is exactly the README's", sandbox == SANDBOX[app], sandbox or "")
+                allow = frame_el.get_attribute("allow")
+                check(f"{app}: iframe sandbox and allow are exactly the README's", sandbox == SANDBOX[app] and allow == ALLOW[app], f"{sandbox} | {allow}")
                 state = wait_app(page, app)
                 METRICS[f"{app}_start_s"] = round(time.monotonic() - t1, 1)
                 time.sleep(3)
@@ -304,6 +339,10 @@ def main() -> int:
                 bad = [line for line in console if BAD_CONSOLE.search(line) and not BENIGN.search(line)]
                 check(f"{app}: no console message about CSP, MIME or the sandbox", not bad, " | ".join(bad[:3])[:400])
                 METRICS[f"{app}_console_errors"] = sum(1 for line in console if line.startswith("[error]") or line.startswith("[pageerror]"))
+
+            if len(only) == len(APPS):
+                _, body = api.call("GET", f"/api/services/{SERVICE}?memory=1")
+                METRICS["memory_after_all_apps"] = (body["service"].get("memory") or {}).get("text")
 
             if "photocraft" in only:
                 page.goto(f"{url}/tools/artcraft?tab=photocraft")
@@ -358,6 +397,71 @@ def main() -> int:
                 pages, text = pdf_facts(out)
                 check("PdfCraft: PDF opened via the file input and saved as a download (2 pages, text kept)",
                       out.read_bytes().startswith(b"%PDF") and pages == 2 and "ArtCraft PDF page one" in text and "Second page here" in text, f"{out.name}, {pages} pages")
+
+            # WordCraft and GridCraft draw their own UI (egui): clicks are offsets from the frame's top-left, where their
+            # File views and Browse… buttons sit at any frame size.
+            if "wordcraft" in only:
+                page.goto(f"{url}/tools/artcraft?tab=wordcraft")
+                page.locator("main [role=status]", has_text="WordCraft loaded from").first.wait_for(timeout=120_000)
+                wait_app(page, "wordcraft")
+                time.sleep(2)
+                frame_el = page.locator("[data-craft-app=wordcraft] iframe")
+                frame_el.scroll_into_view_if_needed()
+                box = frame_el.bounding_box()
+                page.mouse.click(box["x"] + 70, box["y"] + 165)  # Open (start screen)
+                time.sleep(1.5)
+                with page.expect_file_chooser(timeout=15_000) as chooser:
+                    page.mouse.click(box["x"] + 279, box["y"] + 92)  # Browse…
+                chooser.value.set_files(str(work / "sample.docx"))
+                time.sleep(4)
+                frame_el.screenshot(path=str(shots / "60-wordcraft-opened.png"))
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + 330)  # in the page, near the text
+                page.keyboard.press("Control+End")
+                page.keyboard.press("Enter")
+                page.keyboard.type("Typed in Smart Knife 42", delay=30)
+                time.sleep(1)
+                frame_el.screenshot(path=str(shots / "61-wordcraft-typed.png"))
+                with page.expect_download(timeout=30_000) as download:
+                    page.keyboard.press("Control+s")
+                out = work / f"saved-{download.value.suggested_filename}"
+                download.value.save_as(str(out))
+                text = docx_text(out) if out.suffix == ".docx" else ""
+                check("WordCraft: .docx opened via Browse…, a paragraph typed, saved as a download (old and new text)",
+                      "ArtCraft WordCraft opening line" in text and "Second paragraph here" in text and "Typed in Smart Knife 42" in text, f"{out.name}: {' '.join(text.split())[:120]!r}")
+
+            if "gridcraft" in only:
+                page.goto(f"{url}/tools/artcraft?tab=gridcraft")
+                page.locator("main [role=status]", has_text="GridCraft loaded from").first.wait_for(timeout=120_000)
+                wait_app(page, "gridcraft")
+                time.sleep(2)
+                frame_el = page.locator("[data-craft-app=gridcraft] iframe")
+                frame_el.scroll_into_view_if_needed()
+                box = frame_el.bounding_box()
+                page.mouse.click(box["x"] + 40, box["y"] + 53)  # File
+                time.sleep(1.5)
+                page.mouse.click(box["x"] + 67, box["y"] + 191)  # Open
+                time.sleep(1.5)
+                with page.expect_file_chooser(timeout=15_000) as chooser:
+                    page.mouse.click(box["x"] + 288, box["y"] + 162)  # Browse…
+                chooser.value.set_files(str(work / "sample.csv"))
+                time.sleep(3)
+                page.mouse.click(box["x"] + 207, box["y"] + 240)  # D2
+                page.keyboard.type("=B2*C2", delay=30)
+                page.keyboard.press("Enter")
+                time.sleep(1)
+                frame_el.screenshot(path=str(shots / "70-gridcraft-opened.png"))
+                page.mouse.click(box["x"] + 40, box["y"] + 53)  # File
+                time.sleep(1.5)
+                page.mouse.click(box["x"] + 70, box["y"] + 398)  # Export
+                time.sleep(1.5)
+                frame_el.screenshot(path=str(shots / "71-gridcraft-export.png"))
+                with page.expect_download(timeout=30_000) as download:
+                    page.mouse.click(box["x"] + 362, box["y"] + 246)  # CSV (Comma delimited)
+                out = work / f"exported-{download.value.suggested_filename}"
+                download.value.save_as(str(out))
+                rows = out.read_text().splitlines()
+                check("GridCraft: CSV opened via Browse…, a formula added, exported as CSV (rows kept, value computed)",
+                      len(rows) == 4 and rows[0].startswith("name,qty,price") and rows[1] == "apple,3,1.5,4.5" and rows[3].startswith("plum,10,0.4"), f"{out.name}: {rows}")
 
             # "Open in new tab" = the same app, top-level on the craft origin.
             page.goto(f"{url}/tools/artcraft?tab=designcraft")

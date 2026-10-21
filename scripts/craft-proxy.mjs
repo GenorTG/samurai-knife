@@ -1,5 +1,5 @@
 // Preloaded into the Next server by scripts/peer-address.mjs (serve.mjs). With KNIFE_CRAFT_PUBLIC_URL set, every request
-// whose Host is that URL's host name goes to the ArtCraft sidecar (an nginx serving seven static WebAssembly apps) and never
+// whose Host is that URL's host name goes to the ArtCraft sidecar (an nginx serving thirteen static WebAssembly apps) and never
 // reaches Next: the apps run on their own origin (an app bug can never act as the signed-in user on the app's origin), the
 // sidecar is published on loopback only, and the reverse proxy only has to send that name to the app's port.
 //
