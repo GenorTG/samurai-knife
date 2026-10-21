@@ -90,3 +90,9 @@ test("the service is enabled at boot only by --start (never next to an old serve
   const startBlock = INSTALL.slice(INSTALL.indexOf('if [[ -n "$START" ]]; then'));
   assert.ok(startBlock.includes(enables[0]), "the only `systemctl enable $SERVICE` must be inside the --start block");
 });
+
+test("knife-update never returns to the caller's directory (knife-deploy may not enter the operator's home)", () => {
+  const updater = read("deploy/bin/knife-update");
+  assert.doesNotMatch(updater, /\bcd -/);
+  assert.match(updater, /^set -euo pipefail\n(#.*\n)*cd \/\n/m);
+});

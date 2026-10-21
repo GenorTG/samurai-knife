@@ -15,6 +15,8 @@
 #   knife-update --deploy <ref>  deploy a tag/commit now (same checks, forward only)
 #   knife-update --install <ref> first install: build + preflight + point `current`, never restart (no live yet)
 set -euo pipefail
+# Never depend on the caller's directory: sudo/runuser keep it, and knife-deploy may not enter it (a home dir).
+cd /
 
 CONF="${KNIFE_UPDATE_CONF:-/etc/samurai-knife/update.conf}"
 [[ -r "$CONF" ]] || { echo "knife-update: cannot read $CONF" >&2; exit 2; }
@@ -127,7 +129,7 @@ env -i PATH="$PATH" HOME="$pre" NODE_ENV=production KNIFE_AUTH_MODE=public KNIFE
   KNIFE_SIDECAR_PREFIX=sk-preflight KNIFE_PYTHON="$dir/.py/venv/bin/python" NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
   setsid "$NODE_BIN" scripts/serve.mjs start >"$pre/server.log" 2>&1 &
 echo $! >"$pre/pid"
-cd - >/dev/null
+cd /
 check_url() {  # <base> -> 0 when the pages, the account API and the MCP endpoint answer (signed out, public mode)
   local base="$1" u code where
   for u in / /login; do

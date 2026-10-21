@@ -260,8 +260,8 @@ fi
 # ------------------------------------------------------------------------------------------------ first release
 if [[ ! -e "$APP_ROOT/current" ]]; then
   say "building the first release as knife-deploy (npm ci, build, Python venv, preflight: several minutes)"
-  runuser -u knife-deploy -- env -i PATH=/usr/bin:/bin HOME=/var/lib/knife-deploy STATE_DIRECTORY=/var/lib/knife-deploy \
-    TMPDIR=/var/lib/knife-deploy "$LIBEXEC/knife-update" --install ${REF:+"$REF"} || die "first build failed (logs in $APP_ROOT/releases/<tag>/.deploy-*.log)"
+  ( cd / && runuser -u knife-deploy -- env -i PATH=/usr/bin:/bin HOME=/var/lib/knife-deploy STATE_DIRECTORY=/var/lib/knife-deploy \
+    TMPDIR=/var/lib/knife-deploy "$LIBEXEC/knife-update" --install ${REF:+"$REF"} ) || die "first build failed (logs in $APP_ROOT/releases/<tag>/.deploy-*.log)"
 fi
 systemctl enable --now knife-update.timer knife-email-lists.timer >/dev/null
 # Enabled for boot only with --start: a reboot between the build and a data migration must never start a second server
