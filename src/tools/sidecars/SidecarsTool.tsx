@@ -34,7 +34,7 @@ export default function SidecarsTool() {
     <div className="space-y-5">
       <p className="max-w-3xl text-sm text-muted">
         Sidecars are optional docker compose services some tools need. Each one is installed, started and stopped from here
-        (or with <code className="font-mono text-[13px]">npm run services</code>), starts by itself when a tool needs it, and stops after its idle time.
+        (or with <code className="font-mono text-[13px]">npm run services</code>), starts by itself when a tool needs it, and stops after its idle time, unless it is set to start automatically (then it runs from app start and comes back within a minute if it stops).
         Removing keeps its data volumes unless you choose otherwise.
       </p>
       {SIDECARS.map((def) => (
