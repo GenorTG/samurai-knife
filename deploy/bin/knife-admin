@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Runs a Smart Knife maintenance CLI as `knife` with exactly the service's settings (installed by deploy/install.sh
+# as /usr/local/sbin/knife-admin; @NPM@ and @APP_ROOT@ substituted).
+#
+#   sudo knife-admin accounts list
+#   sudo knife-admin accounts add owner --name "Owner" --password-prompt --email you@example.org --role admin
+#   sudo knife-admin email-lists update
+#   sudo knife-admin storage status
+set -euo pipefail
+[[ "$(id -u)" == 0 ]] || { echo "run with sudo" >&2; exit 1; }
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  accounts|storage|email-lists) ;;
+  *) echo "usage: sudo knife-admin accounts|storage|email-lists [args...]" >&2; exit 64 ;;
+esac
+tty=--pipe; [[ -t 0 && -t 1 ]] && tty=--pty
+exec systemd-run --quiet --wait --collect "$tty" \
+  -p User=knife -p Group=knife -p UMask=0077 \
+  -p WorkingDirectory=@APP_ROOT@/current \
+  -p EnvironmentFile=/etc/samurai-knife/live.env \
+  -p Environment=NODE_ENV=production \
+  -p Environment=KNIFE_DATA_DIR=/var/lib/samurai-knife \
+  -p Environment=KNIFE_STORAGE_KEY_FILE=/etc/samurai-knife/storage.key \
+  -p Environment=KNIFE_GITHUB_APP_FILE=/var/lib/samurai-knife-secrets/github-app.json \
+  -p Environment=PATH=/usr/local/bin:/usr/bin:/bin -p Environment=HOME=/tmp -p Environment=npm_config_cache=/tmp/npm \
+  -p PrivateTmp=yes -p ProtectSystem=strict -p ProtectHome=yes -p NoNewPrivileges=yes \
+  -p ReadWritePaths=/var/lib/samurai-knife -p ReadWritePaths=/var/lib/samurai-knife-secrets \
+  @NPM@ run --silent "$cmd" -- "$@"

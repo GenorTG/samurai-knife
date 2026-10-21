@@ -4,7 +4,7 @@
 #
 # Threat model: the app parses untrusted uploads and runs third-party libraries; assume code execution is possible.
 # It runs as `knife` (no login, no sudo, no docker group, no SSH agent), can write only its state/cache dirs, reads its
-# code (owned by knife-deploy) and secrets (root:knife 0640) read-only, and reaches docker only through the
+# code (owned by knife-deploy, built by deploy/bin/knife-update) and secrets (root:knife 0640) read-only, and reaches docker only through the
 # knife-sidecar helper socket (fixed verbs). Directives are chosen for what Node, Next and the Python lane need; the
 # reasons for the non-obvious ones are next to them.
 
@@ -34,7 +34,8 @@ Environment=KNIFE_STORAGE_KEY_FILE=/etc/samurai-knife/storage.key
 Environment=KNIFE_GITHUB_APP_FILE=/var/lib/samurai-knife-secrets/github-app.json
 Environment=KNIFE_SIDECAR_BACKEND=helper
 Environment=KNIFE_SIDECAR_HELPER_SOCKET=/run/knife-sidecar.sock
-Environment=KNIFE_PYTHON=@APP_ROOT@/py/venv/bin/python
+# Each release carries its own venv (deploy/bin/knife-update builds it), so a rollback also rolls Python back.
+Environment=KNIFE_PYTHON=@APP_ROOT@/current/.py/venv/bin/python
 # Only root-owned system paths: nothing under /home is reachable (ProtectHome) and nothing writable is on PATH.
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -48,7 +49,7 @@ KillMode=control-group
 # --- writable places (everything else is read-only or invisible)
 StateDirectory=samurai-knife samurai-knife-secrets
 StateDirectoryMode=0700
-# Next's runtime cache: the release links .next/cache here (deploy/bin/knife-update), the release itself is read-only.
+# Next's runtime cache: each release links .next/cache here (deploy/bin/knife-update); the release itself is read-only.
 CacheDirectory=samurai-knife
 CacheDirectoryMode=0700
 UMask=0077
@@ -60,6 +61,10 @@ ReadOnlyPaths=@APP_ROOT@
 # --- kernel and devices
 PrivateDevices=yes
 ProtectKernelTunables=yes
+# ...except the user-namespace limits: bwrap --disable-userns writes user.max_user_namespaces INSIDE the sandbox's own
+# user namespace (namespaced, so it never changes the host's value: knife has no capabilities); read-only, every
+# sandbox start fails and public mode refuses to start.
+ReadWritePaths=/proc/sys/user
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes

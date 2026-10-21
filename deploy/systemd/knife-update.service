@@ -1,0 +1,38 @@
+# Smart Knife updater: builds the newest release and restarts samurai-knife.service (deploy/bin/knife-update).
+# Install: deploy/install.sh (substitutes @UPDATER@ and @APP_ROOT@). Runs as knife-deploy: owns the release tree, no
+# app data, no secrets, no docker; restarting the service is the one privileged act, granted by polkit
+# (deploy/polkit/50-samurai-knife-deploy.rules), so NoNewPrivileges stays on.
+
+[Unit]
+Description=Smart Knife: deploy the newest release
+Documentation=file://@APP_ROOT@/current/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=knife-deploy
+Group=knife-deploy
+ExecStart=@UPDATER@
+# 75 = another run holds the lock
+SuccessExitStatus=75
+TimeoutStartSec=45min
+Nice=10
+StateDirectory=knife-deploy
+StateDirectoryMode=0750
+Environment=HOME=/var/lib/knife-deploy
+UMask=0022
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=@APP_ROOT@
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+# The preflight's sandbox probe: bwrap --disable-userns writes user.max_user_namespaces in its own user namespace.
+ReadWritePaths=/proc/sys/user
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# The preflight server runs the Python parser sandbox probe (bubblewrap, unprivileged user namespace).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+MemoryMax=6G

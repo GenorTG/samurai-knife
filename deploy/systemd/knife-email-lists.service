@@ -1,0 +1,35 @@
+# Weekly refresh of the disposable-email domain list sign-up checks (docs/DEPLOY.md "Mail policy"). Runs as the app
+# user with the service's settings; the command validates the download and keeps the previous list on failure.
+# Installed by deploy/install.sh (@NPM@ and @APP_ROOT@ substituted).
+
+[Unit]
+Description=Smart Knife: refresh the disposable-email domain list
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=knife
+Group=knife
+WorkingDirectory=@APP_ROOT@/current
+EnvironmentFile=/etc/samurai-knife/live.env
+Environment=NODE_ENV=production
+Environment=KNIFE_DATA_DIR=/var/lib/samurai-knife
+Environment=KNIFE_STORAGE_KEY_FILE=/etc/samurai-knife/storage.key
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/tmp
+Environment=npm_config_cache=/tmp/npm
+Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+ExecStart=@NPM@ run --silent email-lists -- update
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/samurai-knife
+NoNewPrivileges=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=512M

@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# Builds and activates Smart Knife releases for the systemd service (docs/DEPLOY.md "Install script").
+# Runs as `knife-deploy` (knife-update.service / .timer, or by hand: sudo -u knife-deploy knife-update --check).
+# Installed root-owned by deploy/install.sh, so a release can never change the code that deploys it.
+#
+# A release = a tag `v<VERSION>` on the remote whose tagged VERSION file says exactly that (v0.2.0.57); pre-releases
+# (`-rc.1`) are skipped. Forward only: a tag is deployed only if it contains the commit that runs now.
+# Steps: fetch -> git archive into <APP_ROOT>/releases/<tag> -> npm ci -> npm run build -> Python venv (.py/venv)
+# -> preflight on a spare loopback port with an empty data dir -> .next/cache -> /var/cache/samurai-knife
+# -> point <APP_ROOT>/current at it -> restart samurai-knife.service (polkit allows exactly that) -> health check
+# -> on failure point `current` back and restart. Keeps the newest KEEP releases plus the rollback target.
+#
+#   knife-update                 deploy if there is a newer release
+#   knife-update --check         only report what would happen
+#   knife-update --deploy <ref>  deploy a tag/commit now (same checks, forward only)
+#   knife-update --install <ref> first install: build + preflight + point `current`, never restart (no live yet)
+set -euo pipefail
+
+CONF="${KNIFE_UPDATE_CONF:-/etc/samurai-knife/update.conf}"
+[[ -r "$CONF" ]] || { echo "knife-update: cannot read $CONF" >&2; exit 2; }
+# KEY=VALUE only; never sourced (the file is root's, but parsing keeps it data).
+conf() { sed -n "s/^$1=//p" "$CONF" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"; }
+APP_ROOT="$(conf APP_ROOT)"; APP_ROOT="${APP_ROOT:-/opt/samurai-knife}"
+REPO_URL="$(conf REPO_URL)"
+SERVICE="$(conf SERVICE)"; SERVICE="${SERVICE:-samurai-knife.service}"
+LIVE_URL="$(conf LIVE_URL)"
+KEEP="$(conf KEEP)"; KEEP="${KEEP:-3}"
+NODE_BIN="$(conf NODE_BIN)"; NODE_BIN="${NODE_BIN:-/usr/bin/node}"
+PYTHON_BIN="$(conf PYTHON_BIN)"; PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
+CACHE_DIR="$(conf CACHE_DIR)"; CACHE_DIR="${CACHE_DIR:-/var/cache/samurai-knife}"
+STATE="${STATE_DIRECTORY:-${HOME:-/var/lib/knife-deploy}}"
+GIT_DIR="$APP_ROOT/repo.git"
+RELEASES="$APP_ROOT/releases"
+LOG="$STATE/update.log"
+export PATH="$(dirname "$NODE_BIN"):/usr/local/bin:/usr/bin:/bin"
+export npm_config_cache="$STATE/npm-cache" PIP_CACHE_DIR="$STATE/pip-cache" NEXT_TELEMETRY_DISABLED=1
+
+[[ -n "$REPO_URL" ]] || { echo "knife-update: REPO_URL missing in $CONF" >&2; exit 2; }
+mkdir -p "$STATE" "$RELEASES"
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG" >&2; }
+failed_dir=""
+die() {
+  log "FAILED: $*"
+  if [[ -n "$failed_dir" ]]; then mkdir -p "$RELEASES/.failed"; printf '%s\n' "${target:-}" >"$RELEASES/.failed/$(basename "$failed_dir")"; fi
+  exit 1
+}
+
+mode="auto"; ref=""
+case "${1:-}" in
+  --check) mode="check" ;;
+  --deploy) mode="deploy"; ref="${2:?--deploy needs a tag or commit}" ;;
+  --install) mode="install"; ref="${2:-}" ;;
+  "") ;;
+  *) echo "usage: $0 [--check | --deploy <ref> | --install [<ref>]]" >&2; exit 2 ;;
+esac
+
+# One run at a time; flock -o keeps the lock out of the servers/npm this script starts. 75 = another run holds it.
+if [[ -z "${KNIFE_UPDATE_LOCKED:-}" ]]; then
+  KNIFE_UPDATE_LOCKED=1 exec flock -n -o -E 75 "$STATE/update.lock" "$0" "$@"
+fi
+
+if [[ ! -d "$GIT_DIR" ]]; then
+  git clone --quiet --mirror "$REPO_URL" "$GIT_DIR" || die "git clone $REPO_URL"
+fi
+git --git-dir="$GIT_DIR" remote set-url origin "$REPO_URL"
+git --git-dir="$GIT_DIR" remote update --prune >/dev/null 2>&1 || die "git fetch $REPO_URL"
+g() { git --git-dir="$GIT_DIR" "$@"; }
+
+current_dir="$(readlink -f "$APP_ROOT/current" 2>/dev/null || true)"
+current=""
+if [[ -n "$current_dir" && -f "$current_dir/.release" ]]; then current="$(sed -n 's/^commit=//p' "$current_dir/.release")"; fi
+if [[ -z "$current" && "$mode" != "install" ]]; then die "$APP_ROOT/current does not point at a release (run --install first)"; fi
+
+if [[ -n "$ref" ]]; then
+  name="$ref"
+else
+  name="$(g tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
+  if [[ -z "$name" ]]; then [[ "$mode" == "check" ]] && echo "no release tag yet"; [[ "$mode" == "install" ]] && die "no release tag to install"; exit 0; fi
+fi
+target="$(g rev-parse --verify --quiet "$name^{commit}")" || die "unknown ref $name"
+if [[ "$name" == v* ]]; then
+  tree_version="$(g show "$target:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [[ "v$tree_version" != "$name" ]]; then
+    msg="$name: the tagged commit's VERSION is '${tree_version:-missing}', not ${name#v}: not a release"
+    [[ "$mode" == "check" ]] && { echo "$msg"; exit 0; }
+    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$LOG" 2>/dev/null || log "skip: $msg"; exit 0; }
+    die "$msg"
+  fi
+fi
+
+if [[ -n "$current" ]]; then
+  if [[ "$target" == "$current" ]]; then
+    [[ "$mode" != "auto" ]] && echo "already on $name (${current:0:7})"
+    exit 0
+  fi
+  if ! g merge-base --is-ancestor "$current" "$target"; then
+    msg="$name (${target:0:7}) does not contain the deployed ${current:0:7}: not deployed (only forward)"
+    [[ "$mode" == "auto" ]] && { grep -qF "skip: $msg" "$LOG" 2>/dev/null || log "skip: $msg"; exit 0; }
+    [[ "$mode" == "check" ]] && { echo "$msg"; exit 0; }
+    die "$msg"
+  fi
+fi
+if [[ "$mode" == "check" ]]; then echo "would deploy $name (${target:0:7}) over ${current:0:7}"; exit 0; fi
+
+safe="$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_')"
+dir="$RELEASES/$safe"
+if [[ "$mode" == "auto" && -f "$RELEASES/.failed/$safe" && "$(cat "$RELEASES/.failed/$safe")" == "$target" ]]; then
+  exit 0   # already failed (logged then); retry by hand with --deploy
+fi
+[[ "$(readlink -f "$dir" 2>/dev/null)" == "$current_dir" && -n "$current_dir" ]] && die "$dir is the running release"
+log "building $name (${target:0:7}) into $dir"
+rm -rf "$dir"; mkdir -p "$dir"
+failed_dir="$dir"
+g archive --format=tar "$target" | tar -x -C "$dir" || die "git archive"
+printf 'commit=%s\ntag=%s\nbuilt=%s\n' "$target" "$name" "$(date -u +%FT%TZ)" >"$dir/.release"
+( cd "$dir" && npm ci --no-audit --no-fund >"$dir/.deploy-npm.log" 2>&1 ) || die "npm ci (log: $dir/.deploy-npm.log)"
+( cd "$dir" && npm run build >"$dir/.deploy-build.log" 2>&1 ) || die "npm run build (log: $dir/.deploy-build.log)"
+( "$PYTHON_BIN" -m venv "$dir/.py/venv" && "$dir/.py/venv/bin/pip" install --quiet --disable-pip-version-check \
+    -r "$dir/server/py/requirements.txt" ) >"$dir/.deploy-python.log" 2>&1 || die "python venv (log: $dir/.deploy-python.log)"
+
+# Preflight: public mode on a spare loopback port, empty data dir, own sidecar prefix (never live data or containers).
+pre="$(mktemp -d "${TMPDIR:-/tmp}/knife-preflight-XXXX")"
+pport="$("$PYTHON_BIN" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
+cd "$dir"
+env -i PATH="$PATH" HOME="$pre" NODE_ENV=production KNIFE_AUTH_MODE=public KNIFE_HOST=127.0.0.1 KNIFE_PORT="$pport" \
+  KNIFE_PUBLIC_URL="http://127.0.0.1:$pport" KNIFE_TRUSTED_PROXIES=127.0.0.1/32 KNIFE_DATA_DIR="$pre/data" \
+  KNIFE_SIDECAR_PREFIX=sk-preflight KNIFE_PYTHON="$dir/.py/venv/bin/python" NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+  setsid "$NODE_BIN" scripts/serve.mjs start >"$pre/server.log" 2>&1 &
+echo $! >"$pre/pid"
+cd - >/dev/null
+check_url() {  # <base> -> 0 when the pages, the account API and the MCP endpoint answer (signed out, public mode)
+  local base="$1" u code where
+  for u in / /login; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base$u")"; [[ "$code" == 200 ]] || { echo "$u -> $code"; return 1; }
+  done
+  for u in /tools/json /tools/cv-studio; do
+    read -r code where < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 "$base$u")
+    [[ "$code" == 200 ]] && continue
+    [[ "$code" == 307 && "$where" == *"/login?next="* ]] || { echo "$u -> $code $where"; return 1; }
+  done
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/api/account")"
+  [[ "$code" == 200 || "$code" == 401 ]] || { echo "/api/account -> $code"; return 1; }
+  code="$(curl -s -o "$STATE/mcp-check" -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' "$base/api/mcp")"
+  if [[ "$code" == 200 ]]; then grep -q '"knife_' "$STATE/mcp-check" || { echo "mcp tools/list empty"; return 1; }
+  elif [[ "$code" != 401 ]]; then echo "/api/mcp -> $code"; return 1; fi
+}
+ok=""
+for _ in $(seq 120); do curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$pport/" && { ok=1; break; }; sleep 0.5; done
+if [[ -n "$ok" ]]; then pre_problem="$(check_url "http://127.0.0.1:$pport")" || true; else pre_problem="did not start"; fi
+kill -- -"$(cat "$pre/pid")" 2>/dev/null || true; sleep 1; kill -9 -- -"$(cat "$pre/pid")" 2>/dev/null || true
+if [[ -n "$pre_problem" ]]; then cp "$pre/server.log" "$dir/.deploy-preflight.log"; rm -rf "$pre"; die "preflight: $pre_problem (log: $dir/.deploy-preflight.log)"; fi
+rm -rf "$pre"
+
+# The release is read-only to the service; Next's runtime cache goes to the service's CacheDirectory.
+rm -rf "$dir/.next/cache" && ln -s "$CACHE_DIR" "$dir/.next/cache"
+chmod -R go-w "$dir"
+
+point_current() { ln -sfn "$1" "$APP_ROOT/current.next" && mv -T "$APP_ROOT/current.next" "$APP_ROOT/current"; }
+service_active() { systemctl is-active --quiet "$SERVICE"; }
+restart_and_check() {
+  systemctl --no-ask-password restart "$SERVICE" || { echo "systemctl restart $SERVICE refused"; return 1; }
+  local up=""
+  for _ in $(seq 90); do curl -s -o /dev/null --max-time 2 "$LIVE_URL/" && { up=1; break; }; sleep 0.5; done
+  [[ -n "$up" ]] || { echo "no answer at $LIVE_URL"; return 1; }
+  check_url "$LIVE_URL"
+}
+
+if [[ "$mode" == "install" ]] || ! service_active; then
+  point_current "$dir"
+  failed_dir=""; rm -f "$RELEASES/.failed/$safe"
+  log "current -> $name (${target:0:7}); $SERVICE is not running, so it was not started"
+else
+  [[ -n "$LIVE_URL" ]] || die "LIVE_URL missing in $CONF"
+  point_current "$dir"
+  if ! problem="$(restart_and_check)"; then
+    log "health check failed after the switch (${problem:-no answer}): rolling back to ${current:0:7}"
+    point_current "$current_dir"
+    restart_and_check >/dev/null || die "ROLLBACK ALSO FAILED: journalctl -u $SERVICE"
+    die "kept ${current:0:7}; $name is in $dir for inspection"
+  fi
+  failed_dir=""; rm -f "$RELEASES/.failed/$safe"
+  log "live now runs $name (${target:0:7}) at $LIVE_URL"
+fi
+
+# Retention: the current release and the one it replaced always stay; failed ones go (their marker stays);
+# other good ones up to KEEP dirs in total, newest first.
+now_dir="$(readlink -f "$APP_ROOT/current")"
+kept=2
+mapfile -t others < <(find "$RELEASES" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+for d in "${others[@]}"; do
+  real="$(readlink -f "$d")"
+  [[ "$real" == "$now_dir" || "$real" == "$current_dir" ]] && continue
+  if [[ ! -f "$RELEASES/.failed/$(basename "$d")" ]] && (( kept < KEEP )); then kept=$((kept + 1)); continue; fi
+  rm -rf "$d"; log "removed old release $d"
+done

@@ -1,0 +1,12 @@
+# Checks for a new Smart Knife release every 15 minutes (deploy/install.sh enables it).
+
+[Unit]
+Description=Smart Knife: check for a new release
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

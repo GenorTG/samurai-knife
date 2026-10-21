@@ -129,63 +129,84 @@ old one running).
 
 ## Dedicated service account and systemd
 
-For an internet-facing installation, run the app as a dedicated `knife` system user, not the operator or a Docker-group
-user. The reviewed template is `deploy/systemd/samurai-knife.service`; replace its `@NODE@` and `@APP_ROOT@`
-placeholders with absolute paths outside `/home`. Keep releases root-owned/read-only and readable by `knife`; put the
-Python venv under `@APP_ROOT@/py/venv` or set `KNIFE_PYTHON` and the sandbox's read-only roots accordingly.
+For an internet-facing installation, run the app as a dedicated `knife` system user under systemd, not as the operator
+or a Docker-group user. `deploy/install.sh` sets that up; the reviewed templates are in `deploy/systemd/`.
 
-Migration is host-specific. Make and verify a backup first, then adapt these root-only commands with actual source paths:
+### Install script
 
 ```bash
-useradd --system --home-dir /var/lib/samurai-knife --shell /usr/sbin/nologin knife
-install -d -o knife -g knife -m 0700 /var/lib/samurai-knife /var/lib/samurai-knife-secrets
-install -d -o root -g knife -m 0750 /etc/samurai-knife
-install -o root -g knife -m 0640 <old-data-dir>/storage.key /etc/samurai-knife/storage.key
-install -o root -g knife -m 0640 <old-live-env> /etc/samurai-knife/live.env
-rsync -a --exclude=storage.key --chown=knife:knife <old-data-dir>/ /var/lib/samurai-knife/
-install -o root -g root -m 0644 deploy/systemd/samurai-knife.service /etc/systemd/system/samurai-knife.service
-systemctl daemon-reload
+sudo deploy/install.sh --check                      # prerequisites only, changes nothing
+sudo deploy/install.sh --env my.env --start         # fresh install (my.env: section 2's settings)
+sudo knife-admin accounts add owner --name "Owner" --password-prompt --email you@example.org --role admin
 ```
 
-Preserve the existing storage key bytes exactly; Node needs it read-only as `root:knife`, but the bubblewrap parser does
-not bind the key or data directory into its namespace. Move GitHub App credentials to the configured
-`KNIFE_GITHUB_APP_FILE` in the separate secrets state directory, owned by `knife:knife`, mode 0600. The app needs writable
-data, secret-state and systemd cache directories only. Do not copy the old key into the new data dir; retain the old
-source only until the new service has been verified, then remove the duplicate securely according to the host's storage
-policy. Ensure old copies in backups remain protected too.
+Requirements: systemd, Node.js 22+ and Python 3.11+ installed system-wide (not under `/home`: the unit hides it), and
+unprivileged user namespaces for the parser sandbox. Missing tools (git, rsync, bubblewrap, Tesseract with eng/pol/osd,
+qpdf, ghostscript, polkit, python3-venv) are installed with apt after a prompt (`--yes` skips it). The script is
+idempotent: run it again from a newer checkout to update the units, the updater and the settings.
 
-For helper sidecars, install `deploy/sidecar-helper/knife-sidecar-helper` root-owned mode 0755 at a fixed path; install
-`deploy/systemd/knife-sidecar.socket` and `knife-sidecar@.service`, substituting the absolute helper path. Enable the
-socket before setting `KNIFE_SIDECAR_BACKEND=helper`; `docker` stays the default for existing installations. Never add
-`knife` to the docker group. The root helper serves a strict verb/id allow-list and validates root-owned compose bundles.
+What it creates:
 
-Example helper installation (run from this repository root as root; set the helper path identically in the unit):
+| Thing | Where | Owner / mode |
+|---|---|---|
+| app user `knife` | runs the app: no login, no sudo, never in the docker group | |
+| deploy user `knife-deploy` | builds releases; no app data, no secrets, no docker | |
+| releases | `/opt/samurai-knife/releases/<tag>` + `current` symlink (`--app-root`) | knife-deploy, read-only to the app |
+| settings | `/etc/samurai-knife/live.env` | root:knife 0640 |
+| storage key | `/etc/samurai-knife/storage.key` (kept byte for byte with `--storage-key`, else generated) | root:knife 0640 |
+| data | `/var/lib/samurai-knife` | knife 0700 |
+| GitHub App credentials | `/var/lib/samurai-knife-secrets/github-app.json` (`--github-app`) | knife 0600 |
+| units | `samurai-knife.service`, `knife-update.service` + `.timer` (15 min), `knife-email-lists.timer` (weekly) | root 0644 |
+| restart permission | `/etc/polkit-1/rules.d/50-samurai-knife-deploy.rules`: knife-deploy may only *restart* the app | root 0644 |
+| tools | `/usr/local/sbin/knife-admin` (accounts, storage, email-lists as knife with the service's settings); with Docker `knife-sidecar` | root 0755 |
+
+`live.env` is filtered on the way in: keys the unit sets itself (`KNIFE_DATA_DIR`, `KNIFE_STORAGE_KEY_FILE`,
+`KNIFE_GITHUB_APP_FILE`, `KNIFE_PYTHON`, the sidecar backend, `PATH`, `NODE_ENV`) are left out, because an
+`EnvironmentFile=` value overrides `Environment=`; `KNIFE_PY_SANDBOX_RO` entries under `/home` are dropped (they can never
+work under `ProtectHome` and make public mode refuse to start); any other value under `/home` is reported.
+
+Releases: `knife-update` (installed root-owned in `/usr/local/libexec/samurai-knife/`, so a release can never change the
+code that deploys it) keeps a mirror of the repo in `<app-root>/repo.git`, builds each new `v*` tag with `git archive`,
+`npm ci`, `npm run build` and its own Python venv (`<release>/.py/venv`, so a rollback also rolls Python back), runs it
+once in public mode on a spare loopback port with an empty data dir, links `.next/cache` to the service's cache dir,
+moves `current`, restarts the service and checks it; on failure it moves `current` back. Forward only, one run at a
+time, the newest three releases kept. `sudo -u knife-deploy /usr/local/libexec/samurai-knife/knife-update --check` shows
+what it would do; `--deploy <tag>` deploys one by hand. The first install builds the newest tag (`--ref` for another).
+
+Units that start the parser sandbox (the app, and the updater's preflight) keep `ReadWritePaths=/proc/sys/user` under
+`ProtectKernelTunables=yes`: `bwrap --disable-userns` writes `user.max_user_namespaces` inside its own user namespace,
+which never changes the host's value (the users have no capabilities). Without it every sandbox start fails and public
+mode refuses to start. `tests/deploy_install.test.mjs` pins this and the other invariants of the install.
+
+Sidecars: with Docker installed the root helper is installed too (`deploy/sidecar-helper/knife-sidecar-helper`,
+`knife-sidecar.socket`, `knife-sidecar@.service`) and the unit uses `KNIFE_SIDECAR_BACKEND=helper`: the app reaches docker
+only through a strict verb/id allow-list on root-owned compose bundles. The installer runs `knife-sidecar sync <id>` for
+every staged bundle in the data dir; when a release changes a definition, secret, image or plugin asset, the app reports
+the hash mismatch and `sudo knife-sidecar sync <id>` must be run again. `--no-sidecars` skips the helper.
+
+### Moving an existing install
+
+Back up the data dir, the storage key and the GitHub App file first. Then:
 
 ```bash
-install -d -o root -g root -m 0755 /usr/local/libexec/samurai-knife
-install -o root -g root -m 0755 deploy/sidecar-helper/knife-sidecar-helper /usr/local/libexec/samurai-knife/knife-sidecar-helper
-ln -s /usr/local/libexec/samurai-knife/knife-sidecar-helper /usr/local/sbin/knife-sidecar
-install -o root -g root -m 0644 deploy/systemd/knife-sidecar.socket /etc/systemd/system/knife-sidecar.socket
-sed 's|@HELPER@|/usr/local/libexec/samurai-knife/knife-sidecar-helper|g' deploy/systemd/knife-sidecar@.service > /etc/systemd/system/knife-sidecar@.service
-chown root:root /etc/systemd/system/knife-sidecar@.service && chmod 0644 /etc/systemd/system/knife-sidecar@.service
-systemctl daemon-reload
-systemctl enable --now knife-sidecar.socket
+sudo deploy/install.sh --env <old live.env> --storage-key <old storage.key> --github-app <old github-app.json>
+#   builds the first release; the old server keeps running
+<stop the old server>                                 # e.g. pm2 stop samurai-knife
+sudo deploy/install.sh --migrate-data <old data dir> --start
 ```
 
-After copying the existing data into `/var/lib/samurai-knife`, install each sidecar bundle the app currently has staged
-before enabling the helper backend (skip an uninstalled service):
+The second run refuses while anything listens on the app's address (never two servers on one data set), copies the data
+(`rsync --delete`, without a `storage.key` in it), syncs the sidecar bundles and starts the service. Check the site, then
+remove the old process manager entry and its updater. Rollback: `sudo systemctl disable --now samurai-knife.service
+knife-update.timer` and start the old server again; it still has its own data dir, so only changes made after the move
+are lost. Keep the old storage key until the new service has been verified, then remove the duplicate securely.
 
-```bash
-knife-sidecar sync office
-knife-sidecar sync learn-db
-```
+### Host firewall (optional)
 
-The helper compares root's installed bundle hash with the app's staged compose/secrets/assets; if a later release changes
-a definition, secret, image or plugin asset, the app reports the mismatch and the corresponding `knife-sidecar sync <id>`
-must be run again as root before the helper will operate that sidecar.
-
-Install firewall artifacts and root-only configs before enabling their units. The examples intentionally contain
-placeholders and must not be enabled as-is:
+`deploy/sbin/knife-firewall` (nftables input table `inet knife_host`) and `knife-docker-user` (`DOCKER-USER` chains) are
+the reviewed firewall pieces for a dedicated host; a host that already runs firewalld can express the same policy with
+zones and policies instead. They are not installed by `install.sh`. The examples contain placeholders and must not be
+enabled as-is:
 
 ```bash
 install -o root -g root -m 0755 deploy/sbin/knife-firewall /usr/local/sbin/knife-firewall
@@ -202,15 +223,6 @@ timed `knife-firewall apply` / fresh-session `confirm` flow described below. Onl
 Never enable or pull in Debian's stock `nftables.service` next to them: it loads `/etc/nftables.conf`, whose `flush
 ruleset` wipes Docker's and Tailscale's rules (running containers keep working through docker-proxy, new ones fail to
 start). `systemctl mask nftables.service` if nothing else needs it; the units only order themselves after it.
-
-At cutover, stage and preflight the new app first, stop PM2, then `systemctl enable --now samurai-knife.service`; verify
-health and logs before deleting the old PM2 entry. Keep the previous release and PM2 config for rollback. Rollback by
-stopping systemd, restoring the old environment/release symlink, then starting PM2. Never run both against one data dir.
-
-Run `scripts/update-live.sh` as a separate `knife-deploy` account with access to release staging and symlink activation,
-but no Docker socket or app data. The current operations script assumes the existing user-service/PM2 layout; review and
-adapt its restart/install locations in the deployment checkout. Do not run it as `knife` unless release-write access is
-intentional, and do not change operations files as part of this repo change.
 
 ### Python parser sandbox
 
@@ -336,7 +348,8 @@ A release is the tag `v<VERSION>` on the commit whose VERSION file says exactly 
 (`v0.2.0.57-rc.1`) marks a pre-release. To cut one: merge to `main`, then `git tag "v$(cat VERSION)" && git push origin
 main "v$(cat VERSION)"`.
 
-To keep a server on the newest release without touching the checkout it serves from, build every release in its own
+With the install script (above) this is `knife-update` on a timer; the rest of this section describes the same flow
+for a PM2 setup. To keep a server on the newest release without touching the checkout it serves from, build every release in its own
 directory (a `git worktree` per tag, its own `npm ci`, `.env.local` copied in) and serve through a `current` symlink: the
 PM2 app's `cwd` is `.../current`. An update is then: fetch tags; build the newest tag in a new directory while the old
 one keeps serving; start the new build once on a spare loopback port with an empty data dir and check a few pages,
