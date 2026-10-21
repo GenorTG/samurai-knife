@@ -10,7 +10,7 @@ Administratorem danych osobowych jest **{{operatorName}}**, {{postalAddress}} (�
 
 - Serwis i wszystkie dane Kont są przechowywane na **prywatnym komputerze Operatora w Polsce**, a nie w centrum danych: Operator stosuje zabezpieczenia opisane w pkt 10, ale nie zapewnia ochrony fizycznej i redundancji, jakie daje profesjonalny hosting.
 - Pliki Kont (dane CV, dokumenty, rozmowy, szkice, połączenie z repozytorium) są przechowywane **zaszyfrowane** (AES-256-GCM, osobny klucz dla każdego Konta). Klucze API Dostawców AI są zaszyfrowane i nigdy nie są wyświetlane w całości. Klucz szyfrujący znajduje się na tym samym komputerze, więc Operator jako administrator serwera ma techniczną możliwość dostępu do danych. Nie przegląda ich i korzysta z tej możliwości tylko wtedy, gdy wymaga tego rozwiązanie problemu zgłoszonego przez Ciebie, prawo lub bezpieczeństwo Serwisu.
-- Poczta wychodząca (potwierdzenia, resetowanie hasła, powiadomienia) jest wysyłana przez serwer pocztowy Operatora i przekaźnik pocztowy u dostawcy **{{mailRelay}}**.
+- **{{mailRelay}}** jest używany wyłącznie jako przekaźnik poczty wychodzącej z Serwisu — nie hostuje Kont ani pozostałych danych Serwisu. Przekazywane są do niego adres odbiorcy oraz treść wygenerowanej przez Serwis wiadomości transakcyjnej (np. nazwa Konta lub jednorazowy link potwierdzający/resetujący, zależnie od wiadomości) i niezbędne metadane doręczenia. Nie są tam wysyłane CV, dokumenty, rozmowy z Asystentem ani inne treści Konta.
 - Kopie zapasowe, o ile są wykonywane, są przechowywane na nośnikach Operatora w Polsce i są nadpisywane po **{{backupRetentionDays}} dniach**. Dane, które usuniesz (także razem z Kontem), znikają z kopii zapasowych najpóźniej po tym czasie; do tego czasu kopie nie są używane do niczego poza odtworzeniem Serwisu po awarii.
 
 ## 3. Jakie dane, w jakim celu, na jakiej podstawie i jak długo {#dane}
@@ -26,7 +26,7 @@ Administratorem danych osobowych jest **{{operatorName}}**, {{postalAddress}} (�
 | Zdarzenia bezpieczeństwa: rodzaj zdarzenia, nazwa Konta, adres IP (dla IPv6 – prefiks /64), czas | bezpieczeństwo Serwisu, wykrywanie nadużyć i ataków | art. 6 ust. 1 lit. f (prawnie uzasadniony interes: bezpieczeństwo sieci i informacji, motyw 49 RODO) | 30 dni |
 | Liczniki limitów i blokad (adres IP, liczba żądań) | ochrona przed przeciążeniem i nadużyciami | art. 6 ust. 1 lit. f | w pamięci serwera, od minut do godzin |
 | Dzienniki techniczne serwera, serwera pocztowego i serwera pośredniczącego (adres IP, czas, adres strony, przeglądarka, status; przy poczcie – adres odbiorcy i status doręczenia) | działanie i bezpieczeństwo Serwisu, usuwanie awarii | art. 6 ust. 1 lit. f | do {{logRetentionDays}} dni |
-| Wiadomości e-mail wysyłane do Ciebie i ich treść | potwierdzenie adresu, reset hasła, powiadomienia o bezpieczeństwie i zmianach | art. 6 ust. 1 lit. b i f | dzienniki doręczeń jak wyżej; adres, na który poczta nie dochodzi, jest blokowany na 30 dni (zapisywany wyłącznie jako skrót) |
+| Wiadomości e-mail wysyłane do Ciebie (adres odbiorcy i wygenerowana treść transakcyjna, np. nazwa Konta lub jednorazowy link) | potwierdzenie adresu, reset hasła, powiadomienia o bezpieczeństwie i zmianach | art. 6 ust. 1 lit. b i f | wiadomości są przekazywane wyłącznie w celu doręczenia; dzienniki doręczeń jak wyżej; adres, na który poczta nie dochodzi, jest blokowany na 30 dni (zapisywany wyłącznie jako skrót) |
 | Korespondencja z Operatorem, reklamacje, zgłoszenia nielegalnych treści | obsługa spraw, obowiązki z DSA, obrona przed roszczeniami | art. 6 ust. 1 lit. c (DSA) i f | do zakończenia sprawy, a potem do przedawnienia roszczeń |
 | Adresy stron podane do pobrania (oferty pracy, strony firm) lub audytu | wykonanie żądanej funkcji | art. 6 ust. 1 lit. b | razem z ofertą lub historią audytów |
 
@@ -34,7 +34,7 @@ Operator nie korzysta z Twoich danych do marketingu, profilowania ani trenowania
 
 ## 4. Odbiorcy danych {#odbiorcy}
 
-- **{{mailRelay}}** – dostawca serwera wirtualnego, przez który wychodzi poczta; przetwarza dane w imieniu Operatora (podmiot przetwarzający, art. 28 RODO).
+- **{{mailRelay}}** – dostawca serwera wirtualnego używanego wyłącznie jako przekaźnik poczty wychodzącej. W celu doręczenia otrzymuje adres odbiorcy, wygenerowaną treść wiadomości transakcyjnej (która może zawierać nazwę Konta lub jednorazowy link) oraz metadane techniczne doręczenia. Nie otrzymuje pozostałych danych Konta, takich jak CV, dokumenty ani rozmowy z Asystentem. Działa w tym zakresie jako podmiot przetwarzający (art. 28 RODO).
 - **Dostawca AI, którego wybrałeś** – gdy korzystasz z Asystenta AI, Serwis przesyła na Twoje polecenie treść rozmowy i dane z otwartych narzędzi do adresu skonfigurowanego na Twoim Koncie. Dostawca przetwarza je na podstawie **Twojej umowy z nim** i własnej polityki prywatności, a nie na zlecenie Operatora. Nie wysyłaj tam danych innych osób, do których udostępnienia nie masz prawa.
 - **GitHub, Inc.** (USA) – przy logowaniu przez GitHub i pracy z repozytorium; GitHub działa jako niezależny administrator danych w Twoim koncie GitHub ([polityka prywatności GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
 - **Google LLC** (USA) – przy audycie strony usługą PageSpeed Insights trafia tam adres audytowanej strony (z serwera Operatora, bez Twojego adresu IP).

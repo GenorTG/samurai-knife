@@ -43,10 +43,7 @@ conclusions below change: see "If money is involved".
    One table: purposes, categories of data and people, recipients, transfers, retention, security (the privacy notice
    table is a good start).
 2. **Breach log** (art. 33(5)), and the 72-hour notification to UODO when a breach is likely to risk people's rights.
-3. **Processing agreement with your mail relay host** (art. 28): the hosting terms you accepted at sign-up are not one;
-   art. 28(3) needs a separate contract with fixed content (instructions, confidentiality, security, sub-processors,
-   deletion, audits). Providers offer it as a click-through, e.g. netcup: CCP > Master Data > Order Processing >
-   "Create AV Contract". Keep the PDF.
+3. **Processing agreement with your mail relay host** (art. 28): the relay is used only for outgoing Service e-mail, not for hosting Accounts or other Service data. It nevertheless receives the recipient address, generated transactional message (which can include an Account name or one-time link), and delivery metadata. The hosting terms you accepted at sign-up are not necessarily an art. 28(3) processing agreement; verify and sign the separate contract covering instructions, confidentiality, security, sub-processors, deletion and audits. netcup offers a click-through in CCP > Master Data > Order Processing > "Create AV Contract". Keep the PDF.
 4. **Make the retention numbers true**: the reverse proxy, app and mail-server logs must not outlive
    `logRetentionDays`, backups `backupRetentionDays` (deleted data leaves the backups when they are overwritten).
    - journald: a drop-in with `MaxRetentionSec=` one day under the limit and `MaxFileSec=1day` (journald deletes whole

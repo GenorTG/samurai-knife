@@ -10,7 +10,7 @@ The controller of your personal data is **{{operatorName}}**, {{postalAddress}} 
 
 - The Service and all Account data are stored on the **Operator's private computer in Poland**, not in a data centre: the Operator applies the safeguards in section 10, but cannot offer the physical protection and redundancy of professional hosting.
 - Account files (CV data, documents, conversations, drafts, the repository connection) are stored **encrypted** (AES-256-GCM, a separate key per Account). AI provider API keys are encrypted and never shown in full. The encryption key is on the same computer, so the Operator, as the server's administrator, is technically able to access the data. The Operator does not look at it, and uses that ability only when resolving a problem you reported, when the law requires it, or for the security of the Service.
-- Outgoing e-mail (confirmations, password resets, notices) is sent by the Operator's mail server through a mail relay at **{{mailRelay}}**.
+- **{{mailRelay}}** is used only as a relay for outgoing Service e-mail; it does not host Accounts or other Service data. It receives the recipient address, the Service-generated transactional message (for example, an Account name or one-time confirmation/reset link, depending on the message), and delivery metadata needed to send it. CVs, documents, AI conversations and other Account content are not sent there.
 - Backups, where they are made, are kept on the Operator's own storage in Poland and are overwritten after **{{backupRetentionDays}} days**. Data you delete (also together with your Account) is gone from the backups at the latest after that time; until then backups are used only to restore the Service after a failure.
 
 ## 3. What data, why, on what basis, and for how long {#data}
@@ -26,7 +26,7 @@ The controller of your personal data is **{{operatorName}}**, {{postalAddress}} 
 | Security events: event type, account name, IP address (for IPv6 the /64 prefix), time | security of the Service, detecting abuse and attacks | Art. 6(1)(f) (legitimate interest: network and information security, recital 49) | 30 days |
 | Rate-limit and block counters (IP address, number of requests) | protection against overload and abuse | Art. 6(1)(f) | in server memory, minutes to hours |
 | Technical logs of the server, the mail server and the reverse proxy (IP address, time, page address, browser, status; for mail the recipient address and delivery status) | operating and securing the Service, fixing faults | Art. 6(1)(f) | up to {{logRetentionDays}} days |
-| E-mails sent to you and their content | confirming the address, password resets, security and change notices | Art. 6(1)(b) and (f) | delivery logs as above; an address that bounces is blocked for 30 days (stored only as a hash) |
+| E-mails sent to you (recipient address and generated transactional content, such as an Account name or one-time link) | confirming the address, password resets, security and change notices | Art. 6(1)(b) and (f) | messages are relayed only to deliver them; delivery logs as above; an address that bounces is blocked for 30 days (stored only as a hash) |
 | Correspondence with the Operator, complaints, notices of illegal content | handling them, DSA obligations, defending against claims | Art. 6(1)(c) (DSA) and (f) | until the matter is closed, then until claims are time-barred |
 | Addresses of pages you ask to fetch (job offers, company sites) or audit | carrying out the requested feature | Art. 6(1)(b) | with the offer or the audit history |
 
@@ -34,7 +34,7 @@ The Operator does not use your data for marketing, profiling or training AI mode
 
 ## 4. Recipients {#recipients}
 
-- **{{mailRelay}}**: the provider of the virtual server outgoing mail passes through; it processes data on the Operator's behalf (processor, Article 28 GDPR).
+- **{{mailRelay}}**: the provider of a virtual server used only to relay outgoing Service e-mail. To deliver a message it receives the recipient address, the generated transactional message (which may contain an Account name or a one-time link), and technical delivery metadata. It does not receive other Account data such as CVs, documents or AI conversations. It acts as a processor for this limited purpose (Article 28 GDPR).
 - **The AI provider you chose**: when you use the AI assistant, the Service sends, at your request, the conversation and data from open tools to the address configured in your Account. The provider processes it under **your contract with them** and their own privacy policy, not on the Operator's behalf. Do not send it other people's data you have no right to share.
 - **GitHub, Inc.** (USA): when you sign in with GitHub and work with a repository; GitHub acts as an independent controller for your GitHub account ([GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
 - **Google LLC** (USA): when you audit a site with PageSpeed Insights, the address of the audited site is sent there (from the Operator's server, without your IP address).
