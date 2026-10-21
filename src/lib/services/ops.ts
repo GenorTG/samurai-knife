@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { sidecarLog } from "@/lib/logs/server";
 import type { PullProgress } from "./pull-progress";
 import { ensureReaper, install, remove, SidecarError, start, stop, update, type InstallOptions, type OpKind, type OpReporter } from "./manager";
 
@@ -89,12 +90,19 @@ export function startOp(serviceId: string, request: OpRequest): OpView {
     t0: Date.now(),
   };
   store().set(op.opId, op);
+  // The op's phases, lines and outcome also go to <log root>/sidecars/<id>/ops-<day>.log (src/lib/logs/server.ts); pull
+  // progress (percentages) stays in memory only.
+  const file = sidecarLog(serviceId);
+  const tag = `[${op.opId} ${request.kind}]`;
+  file?.line("out", `${tag} started`);
   const reporter: OpReporter = {
     phase(text, percent) {
+      if (text !== op.phase) file?.line("out", `${tag} phase: ${text}`);
       op.phase = text;
       if (percent !== undefined) op.percent = percent;
     },
     log(line) {
+      file?.line("out", `${tag} ${line}`);
       op.log.push(line.length > 400 ? `${line.slice(0, 400)}…` : line);
       if (op.log.length > MAX_LOG) op.log.splice(0, op.log.length - MAX_LOG);
     },
@@ -129,6 +137,7 @@ export function startOp(serviceId: string, request: OpRequest): OpView {
   ).finally(() => {
     op.t1 = Date.now();
     op.finishedAt = new Date().toISOString();
+    file?.line(op.status === "failed" ? "err" : "out", `${tag} ${op.status === "failed" ? `failed: ${op.error}${op.hint ? ` (${op.hint})` : ""}` : "done"} after ${Math.round((op.t1 - op.t0) / 1000)} s`);
   });
   return view(op);
 }

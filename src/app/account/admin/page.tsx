@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireSignIn } from "@/lib/accounts/viewer";
 import { AdminSecurity } from "@/components/account/AdminSecurity";
 import { AdminUsers } from "@/components/account/AdminUsers";
@@ -17,7 +18,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/account/ad
       <div className="space-y-4">
         <header className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Users</h1>
-          <p className="text-[15px] text-muted">Every account on this server. Disabling or deleting an account ends its sessions at once.</p>
+          <p className="text-[15px] text-muted">Every account on this server. Disabling or deleting an account ends its sessions at once. <Link className="text-accent-soft underline underline-offset-2" href="/account/admin/logs">Server logs</Link></p>
         </header>
         <AdminUsers />
         <AdminSecurity />

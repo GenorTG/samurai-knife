@@ -162,6 +162,7 @@ What it creates:
 | settings | `/etc/samurai-knife/live.env` | root:knife 0640 |
 | storage key | `/etc/samurai-knife/storage.key` (kept byte for byte with `--storage-key`, else generated) | root:knife 0640 |
 | data | `/var/lib/samurai-knife` | knife 0700 |
+| log files | `/opt/samurai-knife/logs/`: `app/` + `sidecars/` (the app writes), `update/` (knife-update writes, setgid knife) | root 0751; knife 0750; knife-deploy:knife 2750 |
 | GitHub App credentials | `/var/lib/samurai-knife-secrets/github-app.json` (`--github-app`) | knife 0600 |
 | units | `samurai-knife.service`, `knife-update.service` + `.timer` (15 min), `knife-email-lists.timer` (weekly) | root 0644 |
 | restart permission | `/etc/polkit-1/rules.d/50-samurai-knife-deploy.rules`: knife-deploy may only *restart* the app | root 0644 |
@@ -247,6 +248,51 @@ other jobs' directories. Tesseract, qpdf, ghostscript and OCR assets must be ben
 The systemd unit retains only the namespace and syscall permissions bwrap needs inside its unprivileged user namespace.
 Do not tighten it to `RestrictNamespaces=yes` or remove mount/capability syscalls without re-running the sandbox probe.
 `run_limited.py` rlimits and process-group cancellation remain active.
+
+### Log files
+
+Besides the journal, the app keeps its own log files under one root, `KNIFE_LOG_DIR` (the systemd unit sets
+`<app-root>/logs`, e.g. `/opt/samurai-knife/logs`; a checkout defaults to `<repo>/logs`, gitignored; `off` turns files off):
+
+| Folder | What | Written by |
+|---|---|---|
+| `app/app-<day>.log` | the Next server's stdout/stderr and `serve.mjs`'s own lines (startup checks, warnings, errors); still also on stdout/stderr, so `journalctl -u samurai-knife` keeps working | the app (`scripts/serve.mjs`) |
+| `sidecars/<id>/ops-<day>.log` | sidecar install/start/stop/update/remove runs: phases, output lines, outcome (container output only as far as an op reports it) | the app (`src/lib/services/ops.ts`) |
+| `update/update-<day>.log` | `knife-update` runs: builds, preflights, switches, rollbacks, and the last 40 lines of a failed step's own log | knife-update as knife-deploy |
+
+Format: one line per entry, `<UTC ISO time> <out|err> <text>`, ANSI colours and control characters removed, anything that
+looks like a credential replaced by `[redacted]` (Authorization/Cookie values, `password=`/`token=`/`…_key=` values,
+capability query parameters such as the office `t=`, `sk-…`/`ghp_…` keys, JWTs, URL user:password). The app never logs
+mail bodies or passwords in the first place; the redaction is the safety net.
+
+Rotation: one file per UTC day; a file that passes `KNIFE_LOG_MAX_BYTES` (default 10 MB) becomes `.1` (the previous `.1` becomes `.2`, up to `.9`, the
+oldest dropped); past days are gzipped (`.log.gz`). Retention: a day file is deleted once its day is
+`logRetentionDays` old (the instance's `legal.json`, docs/LEGAL.md; default 30), so the privacy notice stays true. The
+app checks at startup and hourly; knife-update on every run, with the number `install.sh` copied into
+`/etc/samurai-knife/update.conf` (knife-deploy cannot read `legal.json`: rerun the installer after changing it).
+Security events stay where they are (`/var/lib/samurai-knife/security/events-<day>.jsonl`, 30 days).
+
+Permissions: the log root is `root:root 0751` (not listable); `app/` and `sidecars/` are the app's (`knife 0750`, files
+0600 under the unit's `UMask=0077`; they are the unit's only `ReadWritePaths` inside the app root, the release tree
+stays read-only); `update/` is `knife-deploy:knife 2750` (files 0640: the app reads them, never changes them).
+
+Reading them:
+
+- In the app: **Users -> Server logs** (`/account/admin/logs`, admins only): sources, files (size, time), the tail of a
+  file (up to 5000 lines) with a level and text filter, live refresh, download. Read-only: `GET /api/admin/logs` has no
+  delete or write; sources and file names are allow-listed, symlinks are never followed, gzipped files are readable.
+- On the box:
+
+  ```bash
+  sudo ls -l /opt/samurai-knife/logs/app /opt/samurai-knife/logs/update /opt/samurai-knife/logs/sidecars/*
+  sudo tail -f /opt/samurai-knife/logs/app/app-$(date -u +%F).log
+  sudo zless /opt/samurai-knife/logs/app/app-2026-10-20.log.gz
+  sudo grep -h ' err ' /opt/samurai-knife/logs/app/app-*.log
+  ```
+
+Not in these files: the sidecar containers' own output (the app has no docker access; the root helper only gives the
+last 30 lines on a failed start, which then lands in the op log), the reverse proxy and the mail server (they keep their
+own logs; LEGAL.md "Operator duties" item 4 covers their retention).
 
 ## 4. Reverse proxy with HTTPS (nginx-proxy-manager)
 

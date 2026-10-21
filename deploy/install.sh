@@ -12,6 +12,7 @@
 #   code       <app-root>/releases/<tag> + <app-root>/current, built by knife-update as knife-deploy
 #   settings   /etc/samurai-knife/live.env and storage.key (root:knife 0640), update.conf (root:knife-deploy 0640)
 #   state      /var/lib/samurai-knife (data), /var/lib/samurai-knife-secrets (GitHub App), /var/cache/samurai-knife
+#   logs       <app-root>/logs/{app,sidecars} (the app's) and logs/update (knife-update's), read by the admin log viewer
 #   units      samurai-knife.service, knife-update.service + .timer (every 15 min), knife-email-lists.timer (weekly),
 #              the polkit rule that lets knife-deploy restart the app, and with Docker the root sidecar helper
 #   tools      /usr/local/sbin/knife-admin (accounts / storage / email-lists as knife), knife-sidecar (with Docker)
@@ -31,7 +32,7 @@ UNITS=/etc/systemd/system
 MIN_NODE=22
 MIN_PY=3.11
 # Keys the unit sets itself; a copy in live.env would override them (EnvironmentFile wins over Environment=).
-UNIT_KEYS="KNIFE_DATA_DIR KNIFE_STORAGE_KEY_FILE KNIFE_GITHUB_APP_FILE KNIFE_LEGAL_DIR KNIFE_SIDECAR_BACKEND KNIFE_SIDECAR_HELPER_SOCKET KNIFE_PYTHON KNIFE_PY_HOME NODE_ENV PATH"
+UNIT_KEYS="KNIFE_DATA_DIR KNIFE_STORAGE_KEY_FILE KNIFE_GITHUB_APP_FILE KNIFE_LEGAL_DIR KNIFE_LOG_DIR KNIFE_SIDECAR_BACKEND KNIFE_SIDECAR_HELPER_SOCKET KNIFE_PYTHON KNIFE_PY_HOME NODE_ENV PATH"
 
 usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
 
@@ -67,6 +68,8 @@ while (($#)); do
   esac
   shift
 done
+
+LOGS="$APP_ROOT/logs"   # log files (docs/DEPLOY.md "Log files")
 
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -198,6 +201,12 @@ done
 
 say "directories"
 install -d -o knife-deploy -g knife-deploy -m 0755 "$APP_ROOT" "$APP_ROOT/releases"
+# Log files (docs/DEPLOY.md "Log files"): the root is not listable; app/ and sidecars/ belong to the app (the unit's only
+# ReadWritePaths under the app root); update/ belongs to knife-update, setgid knife so the app's viewer can read its files
+# (0640) and never change them.
+install -d -o root -g root -m 0751 "$LOGS"
+install -d -o knife -g knife -m 0750 "$LOGS/app" "$LOGS/sidecars"
+install -d -o knife-deploy -g knife -m 2750 "$LOGS/update"
 install -d -o root -g root -m 0751 "$ETC"
 # Legal pages (legal/README.md): the operator's legal.json and page overrides, readable by the app only.
 install -d -o root -g knife -m 0750 "$ETC/legal"
@@ -278,6 +287,14 @@ fi
 
 # ------------------------------------------------------------------------------------------------ units
 say "updater and units"
+# knife-update cannot read legal.json (root:knife), so its log retention is copied here: rerun the installer after
+# changing logRetentionDays (the app's own logs follow legal.json by themselves).
+log_days="$("$PYTHON_BIN" -I -c 'import json, sys
+try:
+    v = int(str(json.load(open(sys.argv[1])).get("logRetentionDays", 30)).strip())
+except Exception:
+    v = 30
+print(v if 1 <= v <= 3650 else 30)' "$ETC/legal/legal.json" 2>/dev/null || echo 30)"
 install -o root -g root -m 0755 "$SRC/deploy/bin/knife-update" "$LIBEXEC/knife-update"
 cat >"$ETC/update.conf.new" <<EOF
 # Written by deploy/install.sh; read by knife-update (KEY=VALUE, never sourced).
@@ -289,6 +306,8 @@ NODE_BIN=$NODE_BIN
 PYTHON_BIN=$PYTHON_BIN
 CACHE_DIR=$CACHE
 KEEP=3
+LOG_DIR=$LOGS/update
+LOG_RETENTION_DAYS=$log_days
 EOF
 install -o root -g knife-deploy -m 0640 "$ETC/update.conf.new" "$ETC/update.conf"; rm -f "$ETC/update.conf.new"
 sub() { sed -e "s|@NODE@|$NODE_BIN|g" -e "s|@NPM@|$(dirname "$NODE_BIN")/npm|g" -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@UPDATER@|$LIBEXEC/knife-update|g" \
@@ -360,6 +379,7 @@ say "done"
 cat <<EOF
   release:   $(readlink -f "$APP_ROOT/current")
   status:    systemctl status $SERVICE ; journalctl -u $SERVICE -f
+  logs:      $LOGS/{app,update,sidecars/<id>} (UTC day files, kept $log_days days) or the admin page /account/admin/logs
   updates:   systemctl list-timers knife-update.timer ; sudo -u knife-deploy $LIBEXEC/knife-update --check
   settings:  sudoedit $ETC/live.env, then systemctl restart $SERVICE
   accounts:  sudo knife-admin accounts list   (also: storage, email-lists; runs as knife with the service's settings)
