@@ -11,7 +11,9 @@
 [Unit]
 Description=Smart Knife (public app)
 Documentation=file://@APP_ROOT@/current/docs/DEPLOY.md
-After=network-online.target
+# docker.service: ordering only (no dependency): a KNIFE_HOST on the docker bridge (a containerised proxy's upstream)
+# exists only once Docker is up.
+After=network-online.target docker.service
 Wants=network-online.target
 # Sidecar control (KNIFE_SIDECAR_BACKEND=helper); the socket is root's, the app only connects.
 Wants=knife-sidecar.socket
