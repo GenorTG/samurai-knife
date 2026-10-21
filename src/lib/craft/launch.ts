@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { findSidecar } from "@/lib/services/definitions";
+import { activeRelease } from "@/lib/services/sites";
 import { ensureSecrets, readState } from "@/lib/services/state";
 import { craftProxyUrl, publicUrl } from "@/lib/services/urls";
 
@@ -26,7 +27,8 @@ export interface CraftLaunch {
   origin: string;
   /** Served through the app's proxy on KNIFE_CRAFT_PUBLIC_URL. */
   proxied: boolean;
-  apps: { id: string; url: string }[];
+  /** `version`: the release this install serves (the update channel, never below the pin). */
+  apps: { id: string; url: string; version: string }[];
 }
 
 /** Launch URLs for an account, or null when the sidecar is not installed. */
@@ -37,5 +39,5 @@ export function craftLaunch(accountId: string): CraftLaunch | null {
   const origin = publicUrl(state);
   const proxied = craftProxyUrl() !== null;
   const query = proxied ? `?${TICKET_PARAM}=${encodeURIComponent(craftTicket(accountId, ensureSecrets(def).TICKET_SECRET))}` : "";
-  return { origin, proxied, apps: def.sites.apps.map((app) => ({ id: app.id, url: `${origin}/${app.id}/${query}` })) };
+  return { origin, proxied, apps: def.sites.apps.map((app) => ({ id: app.id, url: `${origin}/${app.id}/${query}`, version: activeRelease(def, app).version })) };
 }

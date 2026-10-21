@@ -70,7 +70,8 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
     volumes: [
       ...def.volumes.map((volume) => `${volume.name}:${volume.target}`),
       ...(def.assets ? [`./${ASSETS_DIR}:${def.assets.target}:ro`] : []),
-      ...(def.sites ? [`./${ASSETS_DIR}:${def.sites.target}:ro`] : []),
+      // Config (root-approved bundle) and content (the apps; refreshed without a sync, sites.ts) are separate mounts.
+      ...(def.sites ? [`./${ASSETS_DIR}:${def.sites.target}:ro`, `../${def.id}-content:${def.sites.contentTarget}:ro`] : []),
     ],
     labels: {
       [`${LABEL_PREFIX}.managed`]: "true",

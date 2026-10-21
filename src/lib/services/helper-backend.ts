@@ -115,7 +115,7 @@ export function bundleHash(dir: string): string | null {
 }
 
 const SYNC_HINT = (id: string) =>
-  `On the host, as root: sudo knife-sidecar sync ${id} (validates the bundle this app staged in its data dir and installs it; docs/DEPLOY.md "Sidecars without the docker group").`;
+  `On the host, as root: sudo knife-sidecar sync ${id} (validates the bundle this app staged in its data dir and installs it; docs/DEPLOY.md "Sidecars without the docker group"). If the sync refuses something this release added (a new mount), re-run deploy/install.sh first: it installs the matching helper.`;
 
 let cached: { at: number; info: RuntimeInfo } | null = null;
 

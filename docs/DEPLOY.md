@@ -195,7 +195,11 @@ every staged bundle in the data dir; when a release changes a definition, secret
 the hash mismatch and `sudo knife-sidecar sync <id>` must be run again. `--no-sidecars` skips the helper. ArtCraft
 (`craft`): the first Install downloads and unpacks the apps into the staging dir, then stops at the bundle check; run
 `sudo knife-sidecar sync craft` (it copies ~0.5 GB: the helper allows craft 1.5 GB of assets, other sidecars 64 MB) and
-press Start. A release that bumps an app pin needs the same Start (downloads) + sync + Start.
+press Start. The apps themselves are static content outside the approved bundle: the app asks the helper's `content`
+verb to copy them into `/etc/samurai-knife/sidecars/craft-content/` (no sync), so automatic app updates and pin bumps
+need no host command (docs/SIDECARS.md "Config vs content"). `sudo knife-sidecar content craft` does the same by hand.
+The release that introduced this layout (0.4) changed the craft bundle once: re-run the installer (new helper), then
+`sudo knife-sidecar sync craft`.
 
 ### Moving an existing install
 

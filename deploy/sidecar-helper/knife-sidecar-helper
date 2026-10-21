@@ -17,6 +17,8 @@
 #   uninstall <id> [--force]
 #                         root CLI: remove an installed bundle (refuses while its containers exist, unless --force)
 #   hash <id>             print the installed bundle hash (same value the app compares against)
+#   content <id>          root CLI: refresh the static content of a `content` sidecar now (the app does it over the
+#                         socket too, see below)
 #
 # Wire protocol (serve): the client sends ONE line `<verb> [<id> [<flag>...]]\n` (ASCII, <= 200 bytes, tokens
 # [a-z][a-z0-9-]*). The helper answers with lines `o <text>` (docker stdout), `e <text>` (docker stderr / helper
@@ -72,17 +74,21 @@ SIDECARS = {
         "pids_max": 256,
         "mem_max": 1024 ** 3,
     },
-    # The ArtCraft apps: nginx (uid 101, no capabilities) serving the seven unpacked web builds plus its generated
-    # nginx.conf from the bundle's assets (~0.5 GB, hence its own asset cap).
+    # The Craft apps: nginx (uid 101, no capabilities) serving its generated nginx.conf from the bundle's assets and
+    # the unpacked web builds from the CONTENT dir. Content = static files that only run in browsers on the separate
+    # craft origin, so the app may refresh it without the owner (`content` verb: regular files only, bounded, copied
+    # by root into $BUNDLE_ROOT/craft-content, mounted read-only); config (compose, secrets, nginx.conf) still needs
+    # `sync`. docs/DEPLOY.md "Sidecars without the docker group".
     "craft": {
         "service": "nginx",
         "image_prefix": "nginxinc/nginx-unprivileged:",
         "prepare": None,
         "assets_target": "/srv/craft",
+        "content_target": "/srv/craft-content",
         "cap_add": frozenset(),
         "pids_max": 64,
         "mem_max": 256 * 1024 ** 2,
-        "max_asset_bytes": 1536 * 1024 ** 2,
+        "max_content_bytes": 1536 * 1024 ** 2,
     },
 }
 
@@ -99,6 +105,7 @@ VERBS = {
     "stop": (True, (), 180, True),
     "down": (True, ("volumes", "rmi"), 300, True),
     "prepare": (True, (), 600, True),
+    "content": (True, (), 900, True),
 }
 
 TOKEN = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
@@ -181,6 +188,12 @@ def project(conf, sidecar_id):
 
 def bundle_dir(conf, sidecar_id):
     return os.path.join(conf["BUNDLE_ROOT"], sidecar_id)
+
+
+def content_dir(conf, sidecar_id):
+    """Root's copy of a sidecar's static content: a SIBLING of the bundle dir, so a `sync` (which replaces the bundle
+    dir) never pulls it out from under a running container's bind mount."""
+    return os.path.join(conf["BUNDLE_ROOT"], f"{sidecar_id}-content")
 
 
 def docker_env(conf):
@@ -503,6 +516,9 @@ def handle(conn, conf, verb, sidecar_id, flags):
             conn.send("e", "container not running")
             return 1
         return run_streamed(conn, [conf["DOCKER"], "stats", "--no-stream", "--format", "{{.MemUsage}}", ids[0]], directory, env, timeout)
+    if verb == "content":
+        with IdLock(conf, sidecar_id):
+            return refresh_content(conf, sidecar_id, lambda text: conn.send("o", text))
     argv = compose_argv(conf, verb, sidecar_id, flags)
     if VERBS[verb][3]:
         with IdLock(conf, sidecar_id):
@@ -653,9 +669,14 @@ def validate_config(sidecar_id, cfg, conf, directory):
             if mount.get("source") not in volumes:
                 bad(f"volume mount {mount.get('source')} is not a declared named volume")
         elif kind == "bind":
-            if (spec["assets_target"] is None or mount.get("source") != os.path.join(directory, "assets")
-                    or mount.get("target") != spec["assets_target"] or mount.get("read_only") is not True):
-                bad(f"bind mount {mount.get('source')} -> {mount.get('target')}: only the bundle's assets, read-only, at the fixed target")
+            assets_ok = (spec["assets_target"] is not None and mount.get("source") == os.path.join(directory, "assets")
+                         and mount.get("target") == spec["assets_target"])
+            # `../<id>-content` next to the bundle (compose resolves it against the project directory).
+            content_ok = (spec.get("content_target") is not None
+                          and mount.get("source") == os.path.join(os.path.dirname(directory), f"{sidecar_id}-content")
+                          and mount.get("target") == spec["content_target"])
+            if not (assets_ok or content_ok) or mount.get("read_only") is not True:
+                bad(f"bind mount {mount.get('source')} -> {mount.get('target')}: only the bundle's assets or content, read-only, at the fixed target")
         elif kind != "tmpfs":
             bad(f"mount type {kind} not allowed")
     labels = svc.get("labels") or {}
@@ -721,6 +742,118 @@ def copy_assets(source, target, max_bytes):
                 out_fd = os.open(os.path.join(target, rel, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
                 with os.fdopen(out_fd, "wb") as out:
                     shutil.copyfileobj(handle, out)
+
+
+CONTENT_MARKER = ".knife-version"
+MAX_CONTENT_APPS = 32
+
+
+def staged_content_dir(conf, sidecar_id):
+    return os.path.join(conf["STAGING_DIR"], f"{sidecar_id}-content")
+
+
+def tree_size(root, cap):
+    """Bytes and files below `root` (regular files only, no symlinks followed); HelperError past `cap`."""
+    total, count = 0, 0
+    for base, dirs, files in os.walk(root, followlinks=False):
+        for name in dirs:
+            if os.path.islink(os.path.join(base, name)):
+                raise HelperError(f"content {os.path.join(base, name)} is a symlink")
+        for name in files:
+            info = os.lstat(os.path.join(base, name))
+            if not stat.S_ISREG(info.st_mode):
+                raise HelperError(f"content {os.path.join(base, name)} is not a regular file")
+            total += info.st_size
+            count += 1
+            if total > cap or count > MAX_CONTENT_APPS * 5000:
+                raise HelperError("content exceeds the size/count cap")
+    return total
+
+
+def refresh_content(conf, sidecar_id, say):
+    """Copies the app-staged static content ($STAGING_DIR/<id>-content/<app>/, each with a .knife-version marker) into
+    root's $BUNDLE_ROOT/<id>-content/<app>/: only apps whose marker changed, each built next to the live one and swapped
+    in by rename (the container's read-only mount of the parent sees the new files at once), apps no longer staged are
+    removed. Regular files and directories only (copy_assets), names [A-Za-z0-9._-], bounded depth, count and size."""
+    spec = SIDECARS[sidecar_id]
+    if not spec.get("content_target"):
+        raise HelperError(f"{sidecar_id} has no static content", 64)
+    source = staged_content_dir(conf, sidecar_id)
+    target = content_dir(conf, sidecar_id)
+    try:
+        owner = pwd.getpwnam(conf["CLIENT_USER"]).pw_uid
+    except KeyError:
+        owner = None
+    try:
+        info = os.lstat(source)
+    except FileNotFoundError:
+        raise HelperError(f"{source} does not exist: nothing staged yet", 69)
+    if not stat.S_ISDIR(info.st_mode):
+        raise HelperError(f"{source} is not a directory")
+    if owner is not None and info.st_uid not in (owner, 0):
+        raise HelperError(f"{source} is not owned by the app user")
+    cap = spec.get("max_content_bytes", int(conf["MAX_ASSET_BYTES"]))
+    apps = []
+    for entry in sorted(os.scandir(source), key=lambda e: e.name):
+        if entry.name.startswith("."):
+            continue  # the app's own temp folders
+        if not TOKEN.match(entry.name) or not entry.is_dir(follow_symlinks=False):
+            raise HelperError(f"content entry not allowed: {entry.name!r}")
+        apps.append(entry.name)
+    if len(apps) > MAX_CONTENT_APPS:
+        raise HelperError("too many content folders")
+    total = sum(tree_size(os.path.join(source, app), cap) for app in apps)
+    if total > cap:
+        raise HelperError("content exceeds the size cap")
+    os.makedirs(target, mode=0o755, exist_ok=True)
+    tinfo = os.lstat(target)
+    if not stat.S_ISDIR(tinfo.st_mode) or (is_root() and (tinfo.st_uid != 0 or tinfo.st_mode & 0o022)):
+        raise HelperError(f"{target} must be a root-owned directory, not group/world-writable", 69)
+    os.chmod(target, 0o755)
+    changed = []
+    for app in apps:
+        try:
+            wanted = read_staged(os.path.join(source, app, CONTENT_MARKER), 512, owner)
+        except FileNotFoundError:
+            raise HelperError(f"content {app} has no {CONTENT_MARKER}")
+        final = os.path.join(target, app)
+        try:
+            fd = os.open(os.path.join(final, CONTENT_MARKER), os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as handle:
+                current = handle.read(513)
+        except OSError:
+            current = None
+        if current == wanted and os.path.isdir(final) and not os.path.islink(final):
+            continue
+        fresh = os.path.join(target, f".new-{app}-{os.getpid()}")
+        shutil.rmtree(fresh, ignore_errors=True)
+        try:
+            copy_assets(os.path.join(source, app), fresh, cap)
+            if os.path.lexists(final):
+                retired = os.path.join(target, f".old-{app}-{os.getpid()}")
+                shutil.rmtree(retired, ignore_errors=True)
+                os.rename(final, retired)
+                os.rename(fresh, final)
+                shutil.rmtree(retired, ignore_errors=True)
+            else:
+                os.rename(fresh, final)
+        except BaseException:
+            shutil.rmtree(fresh, ignore_errors=True)
+            raise
+        changed.append(f"{app} {wanted.decode('ascii', 'replace').strip()}")
+    removed = []
+    for entry in os.scandir(target):
+        if entry.name in apps:
+            continue
+        full = os.path.join(target, entry.name)
+        if entry.is_dir(follow_symlinks=False):
+            shutil.rmtree(full, ignore_errors=True)
+        else:
+            os.unlink(full)
+        if not entry.name.startswith("."):
+            removed.append(entry.name)
+    say(f"{sidecar_id}: content {', '.join(changed) if changed else 'unchanged'}" + (f"; removed {', '.join(removed)}" if removed else ""))
+    return 0
 
 
 def normalized_config(conf, compose_text, secret_keys, sidecar_id):
@@ -815,6 +948,12 @@ def sync(conf, sidecar_id, assume_yes, dry_run):
             os.rename(fresh, final)
         fresh = None
         print(f"{sidecar_id}: installed in {final}; the app picks it up at the next start (or restart the sidecar from the Sidecars page)")
+        if SIDECARS[sidecar_id].get("content_target") and os.path.isdir(staged_content_dir(conf, sidecar_id)):
+            try:
+                with IdLock(conf, sidecar_id):
+                    refresh_content(conf, sidecar_id, print)
+            except HelperError as error:
+                print(f"{sidecar_id}: content not refreshed now ({error}); the app refreshes it before its next start")
         return 0
     finally:
         if fresh:
@@ -833,13 +972,14 @@ def uninstall(conf, sidecar_id, force):
     if result.returncode == 0 and result.stdout.strip() and not force:
         raise HelperError(f"{sidecar_id} still has containers: remove the sidecar in the app first (or pass --force)")
     shutil.rmtree(final)
+    shutil.rmtree(content_dir(conf, sidecar_id), ignore_errors=True)
     print(f"{sidecar_id}: bundle removed")
     return 0
 
 
 def main(argv):
     if not argv:
-        print(__doc__ or "usage: knife-sidecar-helper serve | sync <id> [--yes] [--dry-run] | check <id> | uninstall <id> [--force] | hash <id>", file=sys.stderr)
+        print(__doc__ or "usage: knife-sidecar-helper serve | sync <id> [--yes] [--dry-run] | check <id> | uninstall <id> [--force] | hash <id> | content <id>", file=sys.stderr)
         return 64
     mode, rest = argv[0], argv[1:]
     if mode == "serve":
@@ -858,6 +998,13 @@ def main(argv):
             return sync(conf, sidecar_id, "--yes" in options, mode == "check" or "--dry-run" in options)
         if mode == "uninstall":
             return uninstall(conf, sidecar_id, "--force" in options)
+        if mode == "content":
+            if sidecar_id not in SIDECARS:
+                raise HelperError(f"unknown sidecar {sidecar_id}")
+            if not is_root() and not os.environ.get("KNIFE_SIDECAR_HELPER_CONF"):
+                raise HelperError("content installs root-owned files: run it with sudo", 77)
+            with IdLock(conf, sidecar_id):
+                return refresh_content(conf, sidecar_id, print)
         if mode == "hash":
             if sidecar_id not in SIDECARS:
                 raise HelperError(f"unknown sidecar {sidecar_id}")

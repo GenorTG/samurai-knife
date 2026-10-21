@@ -8,7 +8,7 @@
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/sidecar_helper.test.mjs
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
@@ -440,4 +440,93 @@ test("sync: the app's rendered compose files pass the helper's validator; tamper
   writeFileSync(join(staging, "compose.yaml"), good);
   writeFileSync(join(staging, "secrets.env"), "POSTGRES_PASSWORD=$(id)\n");
   assert.match(spawnSync("python3", ["-I", HELPER, "sync", "learn-db", "--yes"], { env, encoding: "utf8" }).stderr, /secrets\.env must hold/);
+});
+
+test("sync: the craft content mount is accepted only read-only, from ../craft-content, at /srv/craft-content", { skip: !haveCompose && "docker compose plugin missing" }, () => {
+  const dir = mkdtempSync(join(work, "sync-content-"));
+  const wrapper = join(dir, "docker-wrapper");
+  writeFileSync(wrapper, `#!/bin/sh\nexport DOCKER_CONFIG=${JSON.stringify(join(homedir(), ".docker"))}\nexec docker "$@"\n`);
+  chmodSync(wrapper, 0o755);
+  const env = { PATH: process.env.PATH, KNIFE_SIDECAR_HELPER_CONF: helperConf(dir, { DOCKER: wrapper }) };
+  const staging = join(dir, "staging", "craft");
+  mkdirSync(join(staging, "assets"), { recursive: true });
+  const good = renderCompose(craft, { bindHost: "127.0.0.1", hostPort: 3290, command: sitesConfig(craft)?.command });
+  assert.match(good, /- \.\.\/craft-content:\/srv\/craft-content:ro\n/);
+  writeFileSync(join(staging, "secrets.env"), "TICKET_SECRET=abababababababab\n");
+  writeFileSync(join(staging, "compose.yaml"), good);
+  assert.equal(spawnSync("python3", ["-I", HELPER, "check", "craft"], { env, encoding: "utf8" }).status, 0);
+  for (const [text, expected] of [
+    [good.replace("../craft-content:/srv/craft-content:ro", "../craft-content:/srv/craft-content"), /read-only/],
+    [good.replace("../craft-content:/srv/craft-content:ro", "/etc:/srv/craft-content:ro"), /bind mount/],
+    [good.replace("../craft-content:/srv/craft-content:ro", "../office-content:/srv/craft-content:ro"), /bind mount/],
+    [good.replace("../craft-content:/srv/craft-content:ro", "../craft-content:/etc/nginx:ro"), /bind mount/],
+  ]) {
+    assert.notEqual(text, good);
+    writeFileSync(join(staging, "compose.yaml"), text);
+    const result = spawnSync("python3", ["-I", HELPER, "check", "craft"], { env, encoding: "utf8" });
+    assert.notEqual(result.status, 0, text);
+    assert.match(result.stderr, expected);
+  }
+  // Another sidecar may not mount a content dir at all.
+  const learnStaging = join(dir, "staging", "learn-db");
+  mkdirSync(learnStaging, { recursive: true });
+  const learnCompose = renderCompose(learn, { bindHost: "127.0.0.1", hostPort: 3291 }).replace("- pgdata:/var/lib/postgresql/data", "- pgdata:/var/lib/postgresql/data\n      - ../learn-db-content:/srv/craft-content:ro");
+  writeFileSync(join(learnStaging, "compose.yaml"), learnCompose);
+  writeFileSync(join(learnStaging, "secrets.env"), learn.secrets.map((secret) => `${secret.name}=abababababababab`).join("\n") + "\n");
+  assert.match(spawnSync("python3", ["-I", HELPER, "check", "learn-db"], { env, encoding: "utf8" }).stderr, /bind mount/);
+});
+
+test("content: root copies only changed apps (marker), swaps them in, removes unstaged ones; symlinks, stray files and markerless apps are refused", { skip: !havePython && "python3 missing" }, () => {
+  const dir = mkdtempSync(join(work, "content-"));
+  const env = { PATH: process.env.PATH, KNIFE_SIDECAR_HELPER_CONF: helperConf(dir) };
+  const staged = join(dir, "staging", "craft-content");
+  const target = join(dir, "etc", "craft-content");
+  const put = (app, marker, files) => {
+    rmSync(join(staged, app), { recursive: true, force: true });
+    mkdirSync(join(staged, app, "app"), { recursive: true });
+    writeFileSync(join(staged, app, ".knife-version"), `${marker} ${"a".repeat(64)}\n`);
+    for (const [name, data] of Object.entries(files)) writeFileSync(join(staged, app, name), data);
+  };
+  const run = () => spawnSync("python3", ["-I", HELPER, "content", "craft"], { env, encoding: "utf8" });
+  put("photocraft", "1.0.0", { "index.html": "p1", "app/parts.txt": "x" });
+  put("vectorcraft", "2.0.0", { "index.html": "v1" });
+  mkdirSync(join(staged, ".new-tmp-from-the-app"), { recursive: true });
+  let result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /content photocraft 1\.0\.0 a+, vectorcraft 2\.0\.0 a+/);
+  assert.equal(readFileSync(join(target, "photocraft", "index.html"), "utf8"), "p1");
+  assert.equal(readFileSync(join(target, "photocraft", "app", "parts.txt"), "utf8"), "x");
+  assert.ok(!existsSync(join(target, ".new-tmp-from-the-app")), "the app's temp folders are not copied");
+  assert.match(run().stdout, /content unchanged/);
+  // Only the app whose marker changed is copied again.
+  put("photocraft", "1.1.0", { "index.html": "p2" });
+  writeFileSync(join(staged, "vectorcraft", "index.html"), "changed without a new marker");
+  result = run();
+  assert.match(result.stdout, /content photocraft 1\.1\.0/);
+  assert.doesNotMatch(result.stdout, /vectorcraft/);
+  assert.equal(readFileSync(join(target, "photocraft", "index.html"), "utf8"), "p2");
+  assert.equal(readFileSync(join(target, "vectorcraft", "index.html"), "utf8"), "v1");
+  assert.ok(!existsSync(join(target, "photocraft", "app", "parts.txt")), "a swap, not a merge");
+  // An app no longer staged is removed.
+  rmSync(join(staged, "vectorcraft"), { recursive: true });
+  assert.match(run().stdout, /removed vectorcraft/);
+  assert.ok(!existsSync(join(target, "vectorcraft")));
+  // Refusals; root's copy stays as it was.
+  for (const [setup, expected] of [
+    [() => symlinkSync("/etc/hostname", join(staged, "photocraft", "leak.txt")), /symlink|not a regular file/],
+    [() => symlinkSync("/etc", join(staged, "photocraft", "etc")), /symlink/],
+    [() => writeFileSync(join(staged, "stray.txt"), "x"), /content entry not allowed/],
+    [() => symlinkSync(join(staged, "photocraft"), join(staged, "evilcraft")), /content entry not allowed/],
+    [() => { mkdirSync(join(staged, "nomarker"), { recursive: true }); writeFileSync(join(staged, "nomarker", "index.html"), "x"); }, /has no \.knife-version/],
+  ]) {
+    put("photocraft", "1.2.0", { "index.html": "p3" });
+    for (const extra of ["stray.txt", "evilcraft", "nomarker"]) rmSync(join(staged, extra), { recursive: true, force: true });
+    setup();
+    result = run();
+    assert.notEqual(result.status, 0, String(setup));
+    assert.match(result.stderr, expected);
+    assert.equal(readFileSync(join(target, "photocraft", "index.html"), "utf8"), "p2", "nothing half-copied");
+  }
+  const none = spawnSync("python3", ["-I", HELPER, "content", "learn-db"], { env, encoding: "utf8" });
+  assert.match(none.stderr, /has no static content/);
 });

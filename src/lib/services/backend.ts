@@ -32,7 +32,12 @@ export type BackendAction =
   /** Docker: `stats` of `container`. Helper: the bundle's running service container. */
   | { verb: "memory"; container: string }
   /** Docker only: GET the app's ping URL from inside the container. */
-  | { verb: "ping-app"; url: string };
+  | { verb: "ping-app"; url: string }
+  /**
+   * A `sites` sidecar's static content (sites.ts content dir). Helper: root copies it into its own content dir (no
+   * sync needed). Docker: nothing to do, the container mounts the data-dir content dir directly.
+   */
+  | { verb: "content" };
 
 /** Installed-bundle check (helper only): the root copy matches what this release renders, or the owner must sync. */
 export type BundleCheck = { ok: true } | { ok: false; reason: "absent" | "differs" | "unavailable"; message: string; hint: string };
@@ -73,6 +78,8 @@ export function dockerArgv(def: SidecarDefinition, action: BackendAction): strin
       return ["image", "inspect", "--format", "{{.Id}}", action.image];
     case "memory":
       return ["stats", "--no-stream", "--format", "{{.MemUsage}}", action.container];
+    case "content":
+      throw new Error("content is not a compose step");
     case "ping-app": {
       const target = `${action.url}/api/services/ping`;
       return [...base, "exec", "-T", def.serviceName, "sh", "-c", `curl -s -m 5 "${target}" || wget -q -T 5 -O - "${target}"`];
@@ -85,6 +92,7 @@ export const dockerBackend: SidecarBackend = {
   canPingApp: true,
   detect: (fresh) => detectRuntime(fresh),
   async exec(def, action, options = {}) {
+    if (action.verb === "content") return { code: 0, stdout: "", stderr: "" };
     const info = await detectRuntime();
     if (!info.ok) return { code: null, stdout: "", stderr: info.message };
     const composeStep = action.verb !== "image-id" && action.verb !== "memory";
