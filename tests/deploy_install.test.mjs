@@ -2,7 +2,8 @@
 // statically here; the full install was verified in a systemd Debian 12 container (docs/DEPLOY.md "Install script").
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -140,4 +141,28 @@ test("log files: the app writes only its two log folders, knife-update its own, 
   assert.match(updater, /KNIFE_LOG_DIR="\$pre\/logs"/, "the preflight server logs into its temp dir, never into the release");
   const updaterUnit = read("deploy/systemd/knife-update.service");
   assert.deepEqual(unitLines(updaterUnit, "ReadWritePaths"), ["@APP_ROOT@"], "logs/update is inside the updater's writable tree");
+});
+
+test("a re-run from <app-root>/current (no .git) keeps the installed remote", () => {
+  const start = INSTALL.indexOf('if [[ -z "$REPO_URL" ]]; then REPO_URL="$(git -C "$SRC"');
+  const end = INSTALL.indexOf("\n", INSTALL.indexOf("problems+=(\"no --repo given"));
+  assert.ok(start > 0 && end > start, "the repo resolution block was not found");
+  const block = INSTALL.slice(start, end);
+  const tmp = mkdtempSync(join(tmpdir(), "knife-install-repo-"));
+  try {
+    mkdirSync(join(tmp, "src"));
+    mkdirSync(join(tmp, "etc"));
+    const run = (extra = "") =>
+      spawnSync("bash", ["-c", `set -euo pipefail; SRC=${tmp}/src; ETC=${tmp}/etc; APP_ROOT=${tmp}/app; REPO_URL=""; problems=(); ${extra}\n${block}\necho "url=$REPO_URL problems=\${#problems[@]}"`], { encoding: "utf8" });
+    assert.match(run().stdout, /url= problems=1/, "nothing to go on must stay a problem");
+    writeFileSync(join(tmp, "etc", "update.conf"), "APP_ROOT=/opt/x\nREPO_URL=https://example.org/knife.git\nREF=\n");
+    assert.match(run().stdout, /url=https:\/\/example\.org\/knife\.git problems=0/, "update.conf's REPO_URL is used");
+    rmSync(join(tmp, "etc", "update.conf"));
+    spawnSync("git", ["init", "-q", "--bare", join(tmp, "app", "repo.git")]);
+    spawnSync("git", ["-C", join(tmp, "app", "repo.git"), "remote", "add", "origin", "https://example.org/bare.git"]);
+    assert.match(run().stdout, /url=https:\/\/example\.org\/bare\.git problems=0/, "the app root's repo.git origin is used");
+    assert.match(run('REPO_URL="https://example.org/given.git"').stdout, /url=https:\/\/example\.org\/given\.git problems=0/, "--repo still wins");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

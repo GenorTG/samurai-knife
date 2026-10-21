@@ -149,7 +149,7 @@ Verified end to end (install, sandbox, login, SQL, OCR, polkit restart, updates)
 Python 3.14); openSUSE package names are checked but the install is not; SELinux enforcing was not tested (containers
 cannot enable it). Before anything starts, the script runs bubblewrap twice: as an unprivileged user (catches user
 namespaces switched off by sysctl or by AppArmor, Ubuntu 24.04+) and inside a copy of the installed unit (catches
-hardening this systemd/bubblewrap pair does not tolerate). The script is idempotent: run it again from a newer checkout
+hardening this systemd/bubblewrap pair does not tolerate). The script is idempotent: run it again from a newer checkout or from `<app-root>/current` (it keeps the installed `--repo`)
 to update the units, the updater and the settings (`--start` restarts the app so a changed unit takes effect).
 
 What it creates:
