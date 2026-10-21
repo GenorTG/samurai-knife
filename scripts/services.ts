@@ -3,10 +3,10 @@
 //
 //   npm run services -- list
 //   npm run services -- status <id> [--json] [--memory]
-//   npm run services -- install <id> [--port N] [--app-url URL] [--public-url URL] [--idle-minutes N]
+//   npm run services -- install <id> [--port N] [--app-url URL] [--public-url URL] [--idle-minutes N] [--autostart]
 //   npm run services -- start <id> | stop <id> | update <id>
 //   npm run services -- remove <id> [--purge] [--remove-image]
-//   npm run services -- configure <id> [--port N] [--app-url URL|none] [--public-url URL|none] [--idle-minutes N]
+//   npm run services -- configure <id> [--port N] [--app-url URL|none] [--public-url URL|none] [--idle-minutes N] [--autostart|--no-autostart]
 //   npm run services -- reap            (one idle-stop pass, as the server does every minute)
 //
 // Reads .env.local like scripts/serve.mjs (KNIFE_HOST, KNIFE_PORT, KNIFE_DATA_DIR). Never runs sudo.
@@ -114,14 +114,14 @@ async function main(): Promise<void> {
         return;
       }
       console.log(`${s.name}\n  installed: ${s.installed}\n  container: ${s.container.state}${s.container.status ? ` (${s.container.status})` : ""}\n  ready: ${s.ready}`);
-      if (s.state) console.log(`  image: ${s.state.image}\n  public URL: ${s.publicUrl}\n  app URL: ${s.appUrl.url} (${s.appUrl.source})\n  idle stop: ${s.state.idleStopMinutes || "never"} min\n  last start: ${s.state.lastStartMs ? `${(s.state.lastStartMs / 1000).toFixed(1)} s` : "-"}`);
+      if (s.state) console.log(`  image: ${s.state.image}\n  public URL: ${s.publicUrl}\n  app URL: ${s.appUrl.url} (${s.appUrl.source})\n  idle stop: ${s.state.autostart ? "never (autostart)" : `${s.state.idleStopMinutes || "never"} min`}\n  autostart: ${s.state.autostart ? (s.state.heldStopped ? "on, held: stopped by an administrator" : "on") : "off"}\n  last start: ${s.state.lastStartMs ? `${(s.state.lastStartMs / 1000).toFixed(1)} s` : "-"}`);
       if (s.memory) console.log(`  memory: ${s.memory.text}`);
       if (!s.runtime.ok) console.log(`  runtime: ${s.runtime.message}\n  hint: ${s.runtime.hint}`);
       for (const w of s.warnings) console.log(`  warning: ${w}`);
       return;
     }
     case "install": {
-      const state = await install(needId(), { port: intOption("port"), appUrl: option("app-url"), publicUrl: option("public-url"), idleStopMinutes: intOption("idle-minutes") }, reporter());
+      const state = await install(needId(), { port: intOption("port"), appUrl: option("app-url"), publicUrl: option("public-url"), idleStopMinutes: intOption("idle-minutes"), autostart: flag("autostart") || undefined }, reporter());
       console.log(`installed: ${state.id} on ${state.bindHost}:${state.hostPort}`);
       return;
     }
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
       await remove(needId(), { purge: flag("purge"), removeImage: flag("remove-image") }, reporter());
       return;
     case "configure": {
-      const result = await configure(needId(), { port: intOption("port"), appUrl: urlOption("app-url"), publicUrl: urlOption("public-url"), idleStopMinutes: intOption("idle-minutes") });
+      const result = await configure(needId(), { port: intOption("port"), appUrl: urlOption("app-url"), publicUrl: urlOption("public-url"), idleStopMinutes: intOption("idle-minutes"), autostart: flag("autostart") ? true : flag("no-autostart") ? false : undefined });
       console.log(result.restartNeeded ? "saved; run stop + start to apply the new port" : "saved");
       return;
     }

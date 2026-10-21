@@ -88,7 +88,7 @@ export function listServices(): Promise<ServiceView[]> {
 }
 
 export type ServiceAction =
-  | { action: "install"; port?: number; appUrl?: string; publicUrl?: string; idleStopMinutes?: number }
+  | { action: "install"; port?: number; appUrl?: string; publicUrl?: string; idleStopMinutes?: number; autostart?: boolean }
   | { action: "start" | "stop" | "update" }
   | { action: "remove"; purge?: boolean; removeImage?: boolean };
 
@@ -106,7 +106,7 @@ export function touchService(id: string): Promise<void> {
 
 export function configureService(
   id: string,
-  options: { port?: number; appUrl?: string | null; publicUrl?: string | null; idleStopMinutes?: number },
+  options: { port?: number; appUrl?: string | null; publicUrl?: string | null; idleStopMinutes?: number; autostart?: boolean },
 ): Promise<{ restartNeeded: boolean }> {
   return request<{ restartNeeded: boolean }>("POST", `/api/services/${q(id)}`, { action: "configure", ...options });
 }

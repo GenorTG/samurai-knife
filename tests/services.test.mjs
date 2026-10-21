@@ -20,7 +20,8 @@ const { renderCompose, renderSecrets, parseSecrets, portMapping, ComposeError, o
 const { PullTracker } = await import("../src/lib/services/pull-progress.ts");
 const state = await import("../src/lib/services/state.ts");
 const urls = await import("../src/lib/services/urls.ts");
-const { parsePs, bindHostFor, filterAllowIps, allowIpsCheck, hostAddresses, composeHashOf } = await import("../src/lib/services/manager.ts");
+const { parsePs, bindHostFor, filterAllowIps, allowIpsCheck, hostAddresses, composeHashOf, configure } = await import("../src/lib/services/manager.ts");
+const { autostartDue, RETRY_MS } = await import("../src/lib/services/autostart.ts");
 const { readAccountText } = await import("../src/lib/storage/sealed.ts");
 const { signJwt, verifyJwt, JwtError, bearerToken } = await import("../src/lib/jwt-hs256.ts");
 const { buildDocument, OFFICE_FORMATS } = await import("../src/lib/office/templates.ts");
@@ -208,6 +209,36 @@ test("state: secrets generated once (600), state round trip, removal keeps secre
   state.removeState("office", true);
   assert.equal(state.readSecret("office", "JWT_SECRET"), null);
   assert.throws(() => state.serviceDir("../etc"), /invalid service id/);
+});
+
+test("autostart: starts an installed, not running, not held sidecar; waits RETRY_MS after a failure", () => {
+  const now = Date.now();
+  const on = { id: "learn-db", image: "x", bindHost: "127.0.0.1", hostPort: 3400, idleStopMinutes: 30, autostart: true, installedAt: "x", updatedAt: "x" };
+  const free = { busy: false, now };
+  for (const container of ["exited", "absent", "created", "dead", "paused"]) assert.equal(autostartDue(on, container, free), true, container);
+  assert.equal(autostartDue(on, "running", free), false);
+  assert.equal(autostartDue(on, "restarting", free), false);
+  assert.equal(autostartDue(null, "exited", free), false, "not installed");
+  assert.equal(autostartDue({ ...on, autostart: undefined }, "exited", free), false, "autostart off");
+  assert.equal(autostartDue({ ...on, heldStopped: true }, "exited", free), false, "an administrator stopped it");
+  assert.equal(autostartDue(on, "exited", { busy: true, now }), false, "an op holds the lock");
+  assert.equal(autostartDue(on, "exited", { busy: false, now, lastFailureAt: now - RETRY_MS + 1000 }), false, "failed recently");
+  assert.equal(autostartDue(on, "exited", { busy: false, now, lastFailureAt: now - RETRY_MS }), true, "retry after RETRY_MS");
+});
+
+test("autostart: configure turns it on and off; heldStopped round-trips and a start clears it", async () => {
+  const now = new Date().toISOString();
+  const def = findSidecar("learn-db");
+  state.ensureSecrets(def);
+  state.writeState({ id: "learn-db", image: def.image, bindHost: "127.0.0.1", hostPort: 3401, idleStopMinutes: 30, installedAt: now, updatedAt: now });
+  assert.equal((await configure("learn-db", { autostart: true })).state.autostart, true);
+  assert.equal(state.readState("learn-db").autostart, true);
+  assert.equal(state.patchState("learn-db", { heldStopped: true }).heldStopped, true);
+  assert.equal(state.patchState("learn-db", { heldStopped: undefined }).heldStopped, undefined, "upAndWait's patch clears it");
+  assert.equal(state.readState("learn-db").heldStopped, undefined);
+  assert.equal((await configure("learn-db", { autostart: false })).state.autostart, undefined, "off is stored as absent");
+  assert.equal((await configure("learn-db", { idleStopMinutes: 5 })).state.idleStopMinutes, 5, "other settings leave autostart alone");
+  state.removeState("learn-db", true);
 });
 
 test("op lock: exclusive, released, stale (dead pid) lock is cleared", () => {

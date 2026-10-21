@@ -20,6 +20,7 @@ const bodySchema = z.discriminatedUnion("action", [
     appUrl: urlField.optional(),
     publicUrl: urlField.optional(),
     idleStopMinutes: z.number().int().min(0).max(1440).optional(),
+    autostart: z.boolean().optional(),
   }).strict(),
   z.object({ action: z.literal("start") }).strict(),
   z.object({ action: z.literal("stop") }).strict(),
@@ -35,6 +36,7 @@ const bodySchema = z.discriminatedUnion("action", [
     appUrl: urlField.nullable().optional(),
     publicUrl: urlField.nullable().optional(),
     idleStopMinutes: z.number().int().min(0).max(1440).optional(),
+    autostart: z.boolean().optional(),
   }).strict(),
 ]);
 
@@ -78,7 +80,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   try {
     switch (body.action) {
       case "install": {
-        return json({ op: startOp(id, { kind: "install", options: { port: body.port, appUrl: body.appUrl, publicUrl: body.publicUrl, idleStopMinutes: body.idleStopMinutes } }) }, 202);
+        return json({ op: startOp(id, { kind: "install", options: { port: body.port, appUrl: body.appUrl, publicUrl: body.publicUrl, idleStopMinutes: body.idleStopMinutes, autostart: body.autostart } }) }, 202);
       }
       case "remove":
         return json({ op: startOp(id, { kind: "remove", purge: body.purge, removeImage: body.removeImage }) }, 202);
@@ -108,7 +110,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         touch(id);
         return json({ ok: true });
       case "configure": {
-        return json(await configure(id, { port: body.port, appUrl: body.appUrl, publicUrl: body.publicUrl, idleStopMinutes: body.idleStopMinutes }));
+        return json(await configure(id, { port: body.port, appUrl: body.appUrl, publicUrl: body.publicUrl, idleStopMinutes: body.idleStopMinutes, autostart: body.autostart }));
       }
     }
   } catch (error) {

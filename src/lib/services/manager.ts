@@ -139,7 +139,7 @@ export function parsePs(stdout: string): PsRow[] {
   return rows;
 }
 
-async function containerInfo(backend: SidecarBackend, def: SidecarDefinition): Promise<ContainerInfo> {
+export async function containerInfo(backend: SidecarBackend, def: SidecarDefinition): Promise<ContainerInfo> {
   const result = await compose(backend, def, { verb: "ps" }, { timeoutMs: 20_000 });
   if (result.code !== 0) return { state: "absent" };
   const row = parsePs(result.stdout).find((r) => r.Service === def.serviceName);
@@ -372,6 +372,7 @@ async function upAndWait(backend: SidecarBackend, def: SidecarDefinition, state:
     lastStartedAt: new Date().toISOString(),
     lastStartMs,
     lastUsedAt: new Date().toISOString(),
+    heldStopped: undefined,
     ...(prepared ? { preparedContainer: prepared } : {}),
     composeHash: composeHashOf(def, state),
   }) ?? state;
@@ -385,6 +386,7 @@ export interface InstallOptions {
   appUrl?: string;
   publicUrl?: string;
   idleStopMinutes?: number;
+  autostart?: boolean;
 }
 
 function checkUrls(options: { appUrl?: string; publicUrl?: string }): void {
@@ -435,6 +437,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
       appUrl: options.appUrl || previous?.appUrl || undefined,
       publicUrl: options.publicUrl || previous?.publicUrl || undefined,
       idleStopMinutes: options.idleStopMinutes ?? previous?.idleStopMinutes ?? def.idleStopMinutes,
+      autostart: options.autostart ?? previous?.autostart,
       installedAt: previous?.installedAt ?? now,
       updatedAt: now,
     });
@@ -484,6 +487,8 @@ export function stop(id: string, reporter: OpReporter, kindOfOp: "stop" | "idle-
     const result = await compose(backend, def, { verb: "stop" }, { onLine: (line) => reporter.log(line), timeoutMs: 120_000 });
     if (result.code !== 0) throw failed("compose stop", result);
     sessions(id).clear();
+    // A deliberate stop wins over autostart until the next start; the idle stop never touches autostart sidecars.
+    if (kindOfOp === "stop") patchState(id, { heldStopped: true });
     reporter.phase("Stopped", 100);
   });
 }
@@ -534,6 +539,7 @@ export interface ConfigureOptions {
   appUrl?: string | null;
   publicUrl?: string | null;
   idleStopMinutes?: number;
+  autostart?: boolean;
 }
 
 /** Changes stored choices; a port change needs a restart to take effect (`restartNeeded`). */
@@ -554,6 +560,7 @@ export async function configure(id: string, options: ConfigureOptions): Promise<
     if (options.appUrl !== undefined) next.appUrl = options.appUrl || undefined;
     if (options.publicUrl !== undefined) next.publicUrl = options.publicUrl || undefined;
     if (options.idleStopMinutes !== undefined) next.idleStopMinutes = options.idleStopMinutes;
+    if (options.autostart !== undefined) next.autostart = options.autostart || undefined;
     const saved = writeState(next);
     writeCompose(def, saved);
     return { state: saved, restartNeeded };
@@ -709,7 +716,7 @@ export async function reapIdle(now = Date.now()): Promise<string[]> {
   if (!(await backend.detect()).ok) return stopped;
   for (const def of SIDECARS) {
     const state = readState(def.id);
-    if (!state || state.idleStopMinutes <= 0 || readLock(def.id)) continue;
+    if (!state || state.autostart || state.idleStopMinutes <= 0 || readLock(def.id)) continue;
     if (sessions(def.id).size > 0) continue;
     const last = Date.parse(state.lastUsedAt ?? state.lastStartedAt ?? state.updatedAt);
     if (Number.isFinite(last) && now - last < state.idleStopMinutes * 60_000) continue;

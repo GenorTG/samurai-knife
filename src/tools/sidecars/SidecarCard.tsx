@@ -78,6 +78,7 @@ function Settings({ sidecar, service }: { sidecar: Sidecar; service: ServiceView
   const [appUrl, setAppUrl] = useState(state?.appUrl ?? "");
   const [publicUrl, setPublicUrl] = useState(state?.publicUrl ?? "");
   const [idle, setIdle] = useState(state?.idleStopMinutes ?? 30);
+  const [autostart, setAutostart] = useState(Boolean(state?.autostart));
   const [note, setNote] = useState<{ tone: "good" | "error"; text: string } | null>(null);
   if (!state) return null;
   return (
@@ -89,7 +90,7 @@ function Settings({ sidecar, service }: { sidecar: Sidecar; service: ServiceView
           event.preventDefault();
           setNote(null);
           try {
-            const result = await configureService(service.id, { port, appUrl: appUrl.trim() || null, publicUrl: publicUrl.trim() || null, idleStopMinutes: idle });
+            const result = await configureService(service.id, { port, appUrl: appUrl.trim() || null, publicUrl: publicUrl.trim() || null, idleStopMinutes: idle, autostart });
             setNote({ tone: "good", text: result.restartNeeded ? "Saved. Restart (Stop, Start) to use the new port." : "Saved." });
             void sidecar.refresh();
           } catch (error) {
@@ -100,9 +101,16 @@ function Settings({ sidecar, service }: { sidecar: Sidecar; service: ServiceView
         <Field label="Port" hint={`Published on ${state.bindHost} only.`}>
           <NumberField value={port} onValueChange={setPort} min={1024} max={65535} integer />
         </Field>
-        <Field label="Stop when idle (minutes)" hint="0 = never stop on its own.">
+        <Field label="Stop when idle (minutes)" hint={autostart ? "Not used while it starts automatically." : "0 = never stop on its own."}>
           <NumberField value={idle} onValueChange={setIdle} min={0} max={1440} integer />
         </Field>
+        <label className="flex items-start gap-2 text-sm text-ink sm:col-span-2">
+          <input type="checkbox" className="mt-1" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} />
+          <span>
+            Start automatically
+            <span className="block text-xs text-muted">Starts when the app starts and again within a minute if it stops, so users never wait for an administrator. Stop holds it stopped until the next Start.</span>
+          </span>
+        </label>
         {service.callsBack ? (
           <Field label="App URL (container → app)" hint={`Empty = ${service.appUrl.source === "state" ? "derived" : service.appUrl.url}.`}>
             <TextInput value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder={service.appUrl.url} />
@@ -208,7 +216,8 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
               ["Address", service.publicUrl ?? "—"],
               ...(service.callsBack ? [["App URL", `${service.appUrl.url} (${service.appUrl.source})`] as [string, string]] : []),
               ["Container", `${service.container.state}${service.container.status ? `, ${service.container.status}` : ""}`],
-              ["Idle stop", state.idleStopMinutes ? `after ${state.idleStopMinutes} min without use` : "never"],
+              ["Autostart", state.autostart ? (state.heldStopped ? "on, held: stopped by an administrator (Start resumes it)" : "on") : "off"],
+              ["Idle stop", state.autostart ? "never (autostart)" : state.idleStopMinutes ? `after ${state.idleStopMinutes} min without use` : "never"],
               ["Last start", state.lastStartMs ? `${(state.lastStartMs / 1000).toFixed(1)} s to healthy` : "—"],
               ["Memory", service.memory ? service.memory.text : "Refresh (with memory) to measure"],
               ["Open sessions", String(service.openSessions)],

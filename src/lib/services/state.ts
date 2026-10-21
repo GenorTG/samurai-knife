@@ -8,7 +8,7 @@ import { SIDECAR_ID_PATTERN, type SidecarDefinition } from "./definitions";
 
 /**
  * Per-sidecar state under `$KNIFE_DATA_DIR/services/<id>/` (dir 700, files 600):
- *   state.json   choices made at install (port, bind host, URLs, idle stop) + timestamps
+ *   state.json   choices made at install (port, bind host, URLs, idle stop, autostart) + timestamps
  *   compose.yaml generated from the definition (src/lib/services/compose.ts)
  *   secrets.env  generated once at install (JWT secret…); kept across remove unless the data is purged
  *   op.lock      held while an install/start/stop/remove/update runs (server or CLI), {pid, op, startedAt}
@@ -26,6 +26,10 @@ const stateSchema = z.object({
   /** URL the browser uses to reach the sidecar. Unset = http://<bindHost>:<hostPort>. */
   publicUrl: z.string().optional(),
   idleStopMinutes: z.number().int().min(0).max(24 * 60),
+  /** Started when the app boots and kept running (src/lib/services/autostart.ts); the idle stop leaves it alone. */
+  autostart: z.boolean().optional(),
+  /** An administrator stopped it: autostart leaves it stopped until the next start, install or update. */
+  heldStopped: z.boolean().optional(),
   installedAt: z.string(),
   updatedAt: z.string(),
   lastUsedAt: z.string().optional(),
