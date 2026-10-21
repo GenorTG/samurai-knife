@@ -108,6 +108,9 @@ test("nginx.conf: wasm MIME, gzip_static, GET/HEAD only, CSP for WebAssembly, fr
   assert.match(conf, /location ~ \/\\\. \{ return 404; \}/, "dotfiles are 404");
   assert.match(conf, /pid \/tmp\/nginx\.pid;/);
   assert.doesNotMatch(conf, /Set-Cookie|add_header Set-Cookie/i);
+  assert.doesNotMatch(conf, /Cross-Origin-Opener-Policy/, "plain http: browsers ignore COOP (Chromium logs an error)");
+  assert.match(sites.renderNginxConf(craft, ["https://knife.example.org"], { https: true }), /Cross-Origin-Opener-Policy "same-origin"/);
+  assert.match(sites.sitesConfig(craft, { KNIFE_CRAFT_PUBLIC_URL: "https://craft.knife.example.org", KNIFE_PUBLIC_URL: "https://knife.example.org" }).conf, /Cross-Origin-Opener-Policy/);
   for (const app of ARTCRAFT_APPS) {
     assert.ok(conf.includes(`location /${app.id}/ {\n      root /srv/craft/${sites.siteFolder(app)};`), app.id);
     assert.ok(conf.includes(`location = /${app.id} { return 301 /${app.id}/; }`), app.id);

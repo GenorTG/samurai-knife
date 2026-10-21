@@ -9,7 +9,7 @@ import { readZip } from "@/lib/office/zip";
 import { ASSETS_DIR } from "./compose";
 import type { SidecarDefinition, SidecarSite } from "./definitions";
 import { serviceDir } from "./state";
-import { appOrigins } from "./urls";
+import { appOrigins, craftProxyUrl } from "./urls";
 
 /**
  * A definition's `sites` (the ArtCraft apps): pinned release zips -> `<serviceDir>/assets/<app>-<version>-<sha12>/<app>/`,
@@ -79,13 +79,13 @@ function quoteRegex(pattern: string): string {
 }
 
 /**
- * nginx.conf for a `sites` definition. Own `types` table (application/wasm, text/javascript…), gzip_static for the
+ * nginx.conf for a `sites` definition (`https`: the craft origin is https, KNIFE_CRAFT_PUBLIC_URL). Own `types` table (application/wasm, text/javascript…), gzip_static for the
  * precompressed twins and no on-the-fly compression, no cookies, GET/HEAD only, dotfiles and unknown paths 404, the
  * README caching rules (hash-named files immutable for a year, everything else `no-cache` = revalidate with ETag), strict
  * headers on every answer. `absolute_redirect off` keeps `/<app>` -> `/<app>/` relative (the browser may reach the
  * container through a port mapping or the app's proxy).
  */
-export function renderNginxConf(def: SidecarDefinition, ancestors: readonly string[]): string {
+export function renderNginxConf(def: SidecarDefinition, ancestors: readonly string[], options: { https?: boolean } = {}): string {
   if (!def.sites) throw new SiteError(`${def.id} has no sites`);
   const target = def.sites.target;
   const headers = (cache: string) =>
@@ -94,7 +94,8 @@ export function renderNginxConf(def: SidecarDefinition, ancestors: readonly stri
       `add_header Content-Security-Policy ${quote(siteCsp(ancestors))} always;`,
       `add_header X-Content-Type-Options "nosniff" always;`,
       `add_header Referrer-Policy "no-referrer" always;`,
-      `add_header Cross-Origin-Opener-Policy "same-origin" always;`,
+      // Browsers ignore COOP on plain http and Chromium logs a console error for it: https craft origins only.
+      ...(options.https ? [`add_header Cross-Origin-Opener-Policy "same-origin" always;`] : []),
       `add_header Cross-Origin-Resource-Policy "same-origin" always;`,
       `add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;`,
     ].map((line) => `      ${line}`).join("\n");
@@ -175,7 +176,7 @@ export function confFolder(conf: string): string {
 /** The current config (env decides frame-ancestors) and the container command that names it. Pure: no I/O. */
 export function sitesConfig(def: SidecarDefinition, env: NodeJS.ProcessEnv = process.env): { conf: string; folder: string; command: string[] } | null {
   if (!def.sites) return null;
-  const conf = renderNginxConf(def, appOrigins(env));
+  const conf = renderNginxConf(def, appOrigins(env), { https: craftProxyUrl(env)?.startsWith("https:") ?? false });
   const folder = confFolder(conf);
   return { conf, folder, command: ["-c", `${def.sites.target}/${folder}/nginx.conf`] };
 }

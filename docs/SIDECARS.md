@@ -363,8 +363,9 @@ zips), read 2026-10-21.
   the `-<16 hex>` glue/wasm of VectorCraft, DesignCraft and PdfCraft, VectorCraft's `fonts/<hash>/`, FilmCraft's `.wasm`/`.js`
   which index.html loads with `?v=<build hash>`), everything else `no-cache` (revalidate by ETag): LightCraft and
   EffectCraft keep their file names across releases, PhotoCraft's `app/photocraft-web.js` and `app/parts.txt` too. Every
-  answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy` and
-  `Cross-Origin-Resource-Policy: same-origin`, a `Permissions-Policy`, and the CSP `default-src 'self'; script-src 'self'
+  answer: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy:
+  same-origin` (and `Cross-Origin-Opener-Policy: same-origin` when the craft origin is https: on http browsers ignore it
+  and Chromium logs an error), a `Permissions-Policy`, and the CSP `default-src 'self'; script-src 'self'
   'unsafe-inline' 'wasm-unsafe-eval'` (the apps boot from inline modules; no `'unsafe-eval'` needed), `worker-src 'self'
   blob:`, `connect-src 'self' data: blob:`, `img-src`/`media-src` `'self' data: blob:`, `frame-src 'none'`,
   `object-src 'none'`, `base-uri 'none'`, `form-action 'none'` and `frame-ancestors` = the app's page origins
