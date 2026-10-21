@@ -391,6 +391,40 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   only serves them, and they only ever run in browsers on the separate craft origin, which the app's own origin never
   trusts; a compromised app could already serve anything on its own origin. What can hurt the host (image, ports,
   capabilities, mounts, secrets, nginx.conf) still needs the owner's `sudo knife-sidecar sync craft`.
+- **Craft files** (account-synced work; src/lib/craft/files.ts, `sidecars/craft/knife-bridge/`, src/tools/craft/):
+  - What the person sees: Save and Export in an app keep the file in their Smart Knife account ("My files" in every
+    tab: list, Download, Delete; the "Saved … · Download" line after each save). Download is separate: it puts a copy
+    on this computer. Open in an app shows Smart Knife's own chooser: the account's files that match the app's
+    `accept` (this app's first, then the other Craft apps'), or "From this computer…". So work saved on one browser or
+    device opens on any other. Files count against the account's quota (area `craft`, 1 GiB for registered users).
+  - How (no change to any app): the page loads a hidden iframe of ours, `/knife-bridge/?app=<id>` on the craft origin
+    (served from the content dir like an app, copied from the repo with a content-hash marker, so a change needs no
+    `sync`), and talks to it over a MessagePort. Once the app frame loads, the bridge (same origin as the app, reaching
+    it through `parent.frames`) patches the app window's `HTMLElement.prototype.click`, `showPicker` and
+    `URL.createObjectURL`: every ArtCraft web build saves by clicking an `a[download]` with a blob URL and opens by
+    clicking an `input[type=file]` (wasm-bindgen glue, checked 2026-10-21), so a save becomes a `save` message (the
+    Blob kept from `createObjectURL`, since apps revoke the URL right after the click) and an open becomes an `open`
+    message; the chosen files go back into the app's input as `File`s with `input`/`change` events, and the focus goes
+    back to the element that had it (no scroll), so the app's next shortcut reaches it. Over 50 MB the browser
+    downloads as before and the page says so. A browser with the File System Access API (Chromium) may let an app save
+    through `showSaveFilePicker` instead, which the bridge does not see; Firefox has no such API.
+  - Server: `GET /api/craft/files` (list + usage), `POST /api/craft/files {action:"save", app, name, mime, data}`
+    (base64 in JSON like the office upload: `readJsonBody`, Origin guard; 50 MB per file, 500 files, 30 saves a minute
+    per account; same app + same name replaces the file; 507 with the quota message when it does not fit),
+    `GET /api/craft/files/<id>` (always `application/octet-stream` as an attachment, `nosniff`, `CSP: sandbox`: the
+    content comes from third-party apps and is never rendered on the app's origin; the real type in `X-Craft-Type`),
+    `DELETE /api/craft/files/<id>`. Stored sealed in `craft-files/<account>/`, removed with the account.
+  - Shared browsers: all accounts on one browser share the craft origin's storage (LightCraft's library, recovery
+    files, preferences). The launch answer carries an account tag (HMAC of the account id under a key derived from
+    TICKET_SECRET); the bridge keeps it in the craft origin's `localStorage` (`knife:account`) and, when a different
+    tag arrives, wipes local/session storage, IndexedDB, OPFS, Cache Storage and service workers BEFORE the page loads
+    the app ("Another account used the Craft apps in this browser before you: their local data was cleared"). A
+    browser that used the apps before account separation existed adopts the first account it sees. The app frame is
+    rendered only after the bridge answered: no bridge (20 s), no app (fail closed, "Try again").
+  - Trust: app code shares the craft origin with the bridge and can reach it, so it could send `save` messages too
+    (bounded by the per-file cap, the save rate and the quota, into the account's own Craft files). It cannot read the
+    account's files: a file only goes into an app after the person picked it in Smart Knife's chooser, which runs on
+    the app's origin where app code has no access. Every message from the port is checked (types, sizes, names).
 - **Updates** (src/lib/craft/updates.ts, admin drawer "Updates" in every tab, `GET`/`POST /api/craft/updates`):
   - Source: each app's GitHub releases, one `GET /repos/storytold/<app>/releases?per_page=20` per app per check with
     `If-None-Match` (13 requests; GitHub allows 60 unauthenticated an hour per address). A 403/429 stops the check and

@@ -105,6 +105,11 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
   the ArtCraft host, only with `KNIFE_CRAFT_PUBLIC_URL`: lets the browser load the apps, up to 12 hours) and the apps'
   own browser storage on the ArtCraft host (preferences, LightCraft's photo library, EffectCraft's projects and media,
   the documents the other apps keep for recovery, in local storage, IndexedDB or OPFS; kept until the user clears it;
-  never sent to the server). Both are strictly necessary for a tool the user opens (art. 399 ust. 3 PKE). The office
-  editor's `knife_office` cookie is missing from the table today too.
+  never sent to the server), plus `knife:account` in that storage (an opaque tag of the account that used it last, so
+  another account's data is cleared on a shared browser). Both are strictly necessary for a tool the user opens (art.
+  399 ust. 3 PKE). The office editor's `knife_office` cookie is missing from the table today too.
+- Craft files (since 0.5): what a person saves in a Craft app is stored on the server in their account
+  (`craft-files/<account>/`, sealed at rest, counted by the quota, deleted with the account or by the person in "My
+  files"). The privacy notice's list of stored content (next to office documents) should name it; nothing is shared
+  with the ArtCraft team or anyone else.
 

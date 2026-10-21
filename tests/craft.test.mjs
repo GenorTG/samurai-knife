@@ -242,7 +242,10 @@ test("installSites: verified download into releases/<app>-<version>-<sha12>/<app
   assert.equal(calls.length, 1);
 
   // Activation: hard links + a marker in <servicesRoot>/craft-demo-content/democraft/; idempotent.
-  assert.deepEqual(sites.activateSites(def), ["democraft"]);
+  // The first activation also copies Smart Knife's bridge page (sidecars/craft/knife-bridge/) next to the apps.
+  assert.deepEqual(sites.activateSites(def), ["democraft", sites.BRIDGE_FOLDER]);
+  assert.ok(existsSync(join(dataDir, "services", "craft-demo-content", sites.BRIDGE_FOLDER, "bridge.js")));
+  assert.match(readFileSync(join(dataDir, "services", "craft-demo-content", sites.BRIDGE_FOLDER, sites.CONTENT_MARKER), "utf8"), /^bridge [0-9a-f]{12}\n$/);
   const content = join(dataDir, "services", "craft-demo-content", "democraft");
   assert.equal(readFileSync(join(content, "app", "glue.js"), "utf8"), big);
   assert.equal(statSync(join(content, "app", "glue.js")).ino, statSync(join(root, "app", "glue.js")).ino, "hard link, not a copy");
@@ -351,6 +354,12 @@ test("launch: private mode = the sidecar's own origin without tickets; KNIFE_CRA
   assert.equal(plain.origin, "http://100.64.0.7:3215");
   assert.equal(plain.proxied, false);
   assert.equal(plain.apps.find((app) => app.id === "pdfcraft").url, "http://100.64.0.7:3215/pdfcraft/");
+  assert.equal(plain.apps.find((app) => app.id === "pdfcraft").bridgeUrl, "http://100.64.0.7:3215/knife-bridge/?app=pdfcraft");
+  // The account tag: per account, stable, opaque (not the id), 32 hex.
+  assert.match(plain.accountTag, /^[0-9a-f]{32}$/);
+  assert.equal(craftLaunch("genor").accountTag, plain.accountTag);
+  assert.notEqual(craftLaunch("alice").accountTag, plain.accountTag);
+  assert.ok(!plain.accountTag.includes(Buffer.from("genor").toString("hex")));
   process.env.KNIFE_CRAFT_PUBLIC_URL = "https://craft.knife.example.org";
   try {
     const proxied = craftLaunch("alice");
@@ -359,6 +368,10 @@ test("launch: private mode = the sidecar's own origin without tickets; KNIFE_CRA
     assert.equal(url.origin + url.pathname, "https://craft.knife.example.org/photocraft/");
     const secret = state.ensureSecrets(craft).TICKET_SECRET;
     assert.equal(verifyTicket(craftTicketKey(secret), url.searchParams.get("knife_ticket"))?.account, "alice");
+    const bridge = new URL(proxied.apps[0].bridgeUrl);
+    assert.equal(bridge.origin + bridge.pathname, "https://craft.knife.example.org/knife-bridge/");
+    assert.equal(bridge.searchParams.get("app"), "photocraft");
+    assert.equal(verifyTicket(craftTicketKey(secret), bridge.searchParams.get("knife_ticket"))?.account, "alice", "the bridge gets its own ticket");
   } finally {
     delete process.env.KNIFE_CRAFT_PUBLIC_URL;
   }
@@ -412,6 +425,14 @@ test("proxy: ticket -> 303 without it + HttpOnly cookie; cookie gate; only cache
     assert.match(redirect.headers["set-cookie"][0], new RegExp(`^${COOKIE_NAME}=v1\\.[^;]+; Path=/; Max-Age=\\d+; HttpOnly; SameSite=Strict; Secure$`));
     assert.equal(redirect.headers["cache-control"], "no-store");
     assert.equal(seen.length, 0, "the ticket request never reaches nginx");
+    // The bridge page (loaded before the app, with its own ticket): same redirect, the app id kept, then served.
+    const bridgeRedirect = await request(port, `/knife-bridge/?app=photocraft&knife_ticket=${encodeURIComponent(ticket)}`);
+    assert.equal(bridgeRedirect.status, 303);
+    assert.equal(bridgeRedirect.headers.location, "/knife-bridge/?app=photocraft");
+    const bridgePage = await request(port, "/knife-bridge/?app=photocraft", { headers: { cookie: `${COOKIE_NAME}=${ticket}` } });
+    assert.equal(bridgePage.status, 200);
+    assert.equal(seen.at(-1).url, "/knife-bridge/?app=photocraft");
+    seen.length = 0;
 
     assert.equal((await request(port, "/photocraft/")).status, 403, "no cookie");
     assert.equal((await request(port, "/photocraft/", { headers: { cookie: `${COOKIE_NAME}=forged` } })).status, 403);

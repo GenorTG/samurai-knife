@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { readZip } from "@/lib/office/zip";
+import { folderHash } from "./assets";
 import { ASSETS_DIR } from "./compose";
 import type { SidecarDefinition, SidecarSite } from "./definitions";
 import { compareVersions, readChannel, type SiteRelease } from "./site-channel";
@@ -535,6 +536,7 @@ export function activateSites(def: SidecarDefinition): string[] {
     }
     changed.push(app.id);
   }
+  if (activateBridge(def)) changed.push(BRIDGE_FOLDER);
   const known = new Set([...def.sites.apps.map((app) => app.id), BRIDGE_FOLDER]);
   for (const entry of readdirSync(dir)) {
     if (known.has(entry)) continue;
@@ -543,6 +545,53 @@ export function activateSites(def: SidecarDefinition): string[] {
     rmSync(full, { recursive: true, force: true });
   }
   return changed;
+}
+
+/** The bridge's repo folder (relative to the app checkout = the server's cwd), or null. */
+export function bridgeSource(def: SidecarDefinition): string | null {
+  if (!def.sites?.bridge) return null;
+  const source = join(process.cwd(), ...def.sites.bridge.split("/"));
+  return existsSync(join(source, "index.html")) ? source : null;
+}
+
+function copyTree(source: string, target: string): void {
+  mkdirSync(target, { mode: 0o755 });
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const from = join(source, entry.name);
+    const to = join(target, entry.name);
+    if (entry.isDirectory()) copyTree(from, to);
+    else if (entry.isFile()) {
+      copyFileSync(from, to);
+      chmodSync(to, 0o644);
+    }
+  }
+}
+
+/** Copies Smart Knife's own craft-origin files (`/knife-bridge/`) into the content dir when they changed. */
+function activateBridge(def: SidecarDefinition): boolean {
+  const source = bridgeSource(def);
+  if (!source) return false;
+  const dir = contentDir(def);
+  const marker = `bridge ${folderHash(source)}\n`;
+  const final = join(dir, BRIDGE_FOLDER);
+  try {
+    if (readFileSync(join(final, CONTENT_MARKER), "utf8") === marker) return false;
+  } catch {
+    // not there yet
+  }
+  const fresh = join(dir, `.new-${BRIDGE_FOLDER}-${process.pid}`);
+  rmSync(fresh, { recursive: true, force: true });
+  copyTree(source, fresh);
+  writeFileSync(join(fresh, CONTENT_MARKER), marker, { mode: 0o644 });
+  if (existsSync(final)) {
+    const retired = join(dir, `.old-${BRIDGE_FOLDER}-${process.pid}`);
+    rmSync(retired, { recursive: true, force: true });
+    renameSync(final, retired);
+    renameSync(fresh, final);
+    rmSync(retired, { recursive: true, force: true });
+  } else renameSync(fresh, final);
+  return true;
 }
 
 /**

@@ -174,6 +174,28 @@ class Api:
             except json.JSONDecodeError:
                 return err.code, {"raw": raw.decode(errors="replace")}
 
+    def raw(self, path: str) -> tuple[int, bytes, dict]:
+        req = urllib.request.Request(self.base + path)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as res:
+                return res.status, res.read(), {k.lower(): v for k, v in res.headers.items()}
+        except urllib.error.HTTPError as err:
+            return err.code, err.read(), {}
+
+    def craft_files(self) -> list[dict]:
+        _, body = self.call("GET", "/api/craft/files")
+        return body.get("files", [])
+
+    def wait_saved(self, app: str, suffix: str, after: str = "", timeout: float = 60) -> dict | None:
+        """The newest Craft file of `app` ending in `suffix` saved after `after` (ISO), or None."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            hit = next((f for f in self.craft_files() if f["app"] == app and f["name"].lower().endswith(suffix) and f["updatedAt"] > after), None)
+            if hit:
+                return hit
+            time.sleep(1)
+        return None
+
     def wait_op(self, op: dict, timeout: float) -> dict:
         deadline = time.monotonic() + timeout
         last = ""
@@ -264,6 +286,19 @@ APP_READY_JS = """() => {
   const failed = /failed to (start|load)|stopped working/i.test(document.body.innerText);
   return { ready: Boolean(canvas && canvas.width > 300 && canvas.height > 150 && !loading && !failed), canvas: canvas ? [canvas.width, canvas.height] : null, loading, failed, text: document.body.innerText.slice(0, 200), secure: isSecureContext };
 }"""
+
+
+def open_from_computer(page, app: str, path: Path, trigger) -> bool:
+    """The app asks for a file (`trigger`): Smart Knife's chooser appears (no native picker inside the app), and its
+    "From this computer…" button opens this page's own picker, which gets `path`."""
+    trigger()
+    drawer = page.get_by_role("dialog", name=f"Open in {NAMES[app]}")
+    drawer.wait_for(timeout=15_000)
+    with page.expect_file_chooser(timeout=15_000) as chooser:
+        drawer.get_by_role("button", name="From this computer…").click()
+    chooser.value.set_files(str(path))
+    drawer.wait_for(state="hidden", timeout=15_000)
+    return True
 
 
 def wait_app(page, app: str, timeout_s: float = 180) -> dict:
@@ -360,7 +395,8 @@ def main() -> int:
             folders = sorted(p.name for p in releases.iterdir())
             check("releases: one versioned folder per app, no leftovers", len(folders) == len(APPS) and not any(f.startswith(".") for f in folders), " ".join(folders))
             content = Path(server.data_dir) / "services" / f"{SERVICE}-content"
-            served = {p.name: (p / ".knife-version").read_text().split()[0] for p in content.iterdir() if not p.name.startswith(".")}
+            served = {p.name: (p / ".knife-version").read_text().split()[0] for p in content.iterdir() if not p.name.startswith(".") and p.name != "knife-bridge"}
+            check("content dir: Smart Knife's bridge page next to the apps", (content / "knife-bridge" / "bridge.js").is_file() and (content / "knife-bridge" / ".knife-version").read_text().startswith("bridge "))
             check("content dir: every app linked with its version marker", sorted(served) == sorted(APPS) and all(f.startswith(f"{a}-{v}-") for a, v in served.items() for f in folders if f.startswith(f"{a}-")), json.dumps(served)[:300])
             assets = releases  # where the unpacked files are, for the header checks below
             check("downloads removed after unpacking", not any((service_dir / "downloads").glob("*")) if (service_dir / "downloads").exists() else True)
@@ -463,9 +499,8 @@ def main() -> int:
                 frame_el.scroll_into_view_if_needed()
                 box = frame_el.bounding_box()
                 page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-                with page.expect_file_chooser(timeout=15_000) as chooser:
-                    page.keyboard.press("Control+o")
-                chooser.value.set_files(str(work / "sample.png"))
+                check("PhotoCraft: Ctrl+O opens Smart Knife's chooser, the file comes from this computer through it",
+                      open_from_computer(page, "photocraft", work / "sample.png", lambda: page.keyboard.press("Control+o")))
                 time.sleep(5)
                 frame_el.screenshot(path=str(shots / "20-photocraft-opened.png"))
                 page.mouse.click(box["x"] + 58, box["y"] + 16)  # File
@@ -476,16 +511,64 @@ def main() -> int:
                 page.mouse.move(box["x"] + 370, box["y"] + 388)  # Quick Export as PNG
                 time.sleep(0.5)
                 frame_el.screenshot(path=str(shots / "21-photocraft-export-menu.png"))
-                with page.expect_download(timeout=30_000) as download:
-                    page.mouse.click(box["x"] + 370, box["y"] + 388)
-                out = work / f"exported-{download.value.suggested_filename}"
-                download.value.save_as(str(out))
+                before = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 2))
+                downloads: list[object] = []
+                page.on("download", lambda d: downloads.append(d))
+                page.mouse.click(box["x"] + 370, box["y"] + 388)
+                page.locator("[data-craft-saved]", has_text="Saved").wait_for(timeout=30_000)
+                saved = api.wait_saved("photocraft", ".png", before)
                 from PIL import Image
 
-                image = Image.open(out).convert("RGB")
-                check("PhotoCraft: PNG opened via the file input and exported as a download with the same pixels",
-                      image.size == (640, 400) and image.getpixel((320, 200)) == (250, 200, 40) and image.getpixel((100, 100)) == (200, 40, 60) and image.getpixel((600, 360)) == (30, 90, 160),
-                      f"{out.name} {image.size} {image.getpixel((320, 200))}")
+                def pixels_ok(data: bytes) -> bool:
+                    image = Image.open(io.BytesIO(data)).convert("RGB")
+                    return image.size == (640, 400) and image.getpixel((320, 200)) == (250, 200, 40) and image.getpixel((100, 100)) == (200, 40, 60) and image.getpixel((600, 360)) == (30, 90, 160)
+
+                status, data, headers = api.raw(f"/api/craft/files/{saved['id']}") if saved else (0, b"", {})
+                check("PhotoCraft: Quick Export saves to the account (no download), the stored PNG has the same pixels",
+                      bool(saved) and status == 200 and pixels_ok(data) and not downloads, f"{saved and saved['name']} {status} downloads={len(downloads)}")
+                check("Craft file download: octet-stream attachment, nosniff, sandbox CSP (never rendered on the app origin)",
+                      headers.get("content-type") == "application/octet-stream" and headers.get("content-disposition", "").startswith("attachment") and headers.get("x-content-type-options") == "nosniff" and "sandbox" in headers.get("content-security-policy", ""), json.dumps(headers)[:300])
+                with page.expect_download(timeout=30_000) as download:
+                    page.locator("[data-craft-saved] a", has_text="Download").click()
+                out = work / f"downloaded-{download.value.suggested_filename}"
+                download.value.save_as(str(out))
+                check("Download (separate from Save) puts the same file on this computer", saved is not None and out.name.endswith(saved["name"]) and out.read_bytes() == data, out.name)
+                page.screenshot(path=str(shots / "22-photocraft-saved.png"))
+
+                # Another device: a fresh browser (no shared storage), the same account. Open lists the saved PNG.
+                other = browser.new_context(viewport={"width": 1600, "height": 1300}, accept_downloads=True)
+                page2 = other.new_page()
+                page2.goto(f"{url}/tools/artcraft?tab=photocraft")
+                page2.locator("main [role=status]", has_text="PhotoCraft loaded from").first.wait_for(timeout=120_000)
+                wait_app(page2, "photocraft")
+                frame2 = page2.locator("[data-craft-app=photocraft] iframe")
+                box2 = frame2.bounding_box()
+                page2.mouse.click(box2["x"] + box2["width"] / 2, box2["y"] + box2["height"] / 2)
+                page2.keyboard.press("Control+o")
+                drawer = page2.get_by_role("dialog", name="Open in PhotoCraft")
+                drawer.wait_for(timeout=15_000)
+                row = drawer.locator(f"[data-craft-pick='{saved['name']}']") if saved else drawer.locator("li").first
+                row.wait_for(timeout=15_000)
+                page2.screenshot(path=str(shots / "23-other-device-chooser.png"))
+                row.get_by_role("button", name="Open").click()
+                drawer.wait_for(state="hidden", timeout=15_000)
+                time.sleep(5)
+                frame2.screenshot(path=str(shots / "24-other-device-opened.png"))
+                again = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 1))
+                box2 = frame2.bounding_box()
+                page2.mouse.click(box2["x"] + 58, box2["y"] + 16)  # File
+                time.sleep(1)
+                page2.mouse.move(box2["x"] + 95, box2["y"] + 388)
+                time.sleep(1)
+                page2.mouse.move(box2["x"] + 300, box2["y"] + 388)
+                page2.mouse.move(box2["x"] + 370, box2["y"] + 388)
+                time.sleep(0.5)
+                page2.mouse.click(box2["x"] + 370, box2["y"] + 388)
+                resaved = api.wait_saved("photocraft", ".png", again)
+                status, data2, _ = api.raw(f"/api/craft/files/{resaved['id']}") if resaved else (0, b"", {})
+                check("another browser opens the saved PNG from the account in PhotoCraft (re-exported: same pixels, same file replaced)",
+                      bool(resaved) and resaved["id"] == saved["id"] and pixels_ok(data2), f"{resaved and resaved['updatedAt']}")
+                other.close()
 
             if "pdfcraft" in only:
                 page.goto(f"{url}/tools/artcraft?tab=pdfcraft")
@@ -496,18 +579,17 @@ def main() -> int:
                 frame_el.scroll_into_view_if_needed()
                 box = frame_el.bounding_box()
                 page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] - 30)
-                with page.expect_file_chooser(timeout=15_000) as chooser:
-                    page.keyboard.press("Control+o")
-                chooser.value.set_files(str(work / "sample.pdf"))
+                open_from_computer(page, "pdfcraft", work / "sample.pdf", lambda: page.keyboard.press("Control+o"))
                 time.sleep(5)
                 frame_el.screenshot(path=str(shots / "30-pdfcraft-opened.png"))
-                with page.expect_download(timeout=30_000) as download:
-                    page.keyboard.press("Control+s")
-                out = work / f"saved-{download.value.suggested_filename}"
-                download.value.save_as(str(out))
-                pages, text = pdf_facts(out)
-                check("PdfCraft: PDF opened via the file input and saved as a download (2 pages, text kept)",
-                      out.read_bytes().startswith(b"%PDF") and pages == 2 and "ArtCraft PDF page one" in text and "Second page here" in text, f"{out.name}, {pages} pages")
+                before = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 2))
+                page.keyboard.press("Control+s")
+                saved = api.wait_saved("pdfcraft", ".pdf", before)
+                out = work / "saved-pdfcraft.pdf"
+                out.write_bytes(api.raw(f"/api/craft/files/{saved['id']}")[1] if saved else b"")
+                pages, text = pdf_facts(out) if saved else (0, "")
+                check("PdfCraft: PDF opened through Smart Knife's chooser and saved to the account (2 pages, text kept)",
+                      out.read_bytes().startswith(b"%PDF") and pages == 2 and "ArtCraft PDF page one" in text and "Second page here" in text, f"{saved and saved['name']}, {pages} pages")
 
             # WordCraft and GridCraft draw their own UI (egui): clicks are offsets from the frame's top-left, where their
             # File views and Browse… buttons sit at any frame size.
@@ -521,9 +603,7 @@ def main() -> int:
                 box = frame_el.bounding_box()
                 page.mouse.click(box["x"] + 70, box["y"] + 165)  # Open (start screen)
                 time.sleep(1.5)
-                with page.expect_file_chooser(timeout=15_000) as chooser:
-                    page.mouse.click(box["x"] + 279, box["y"] + 92)  # Browse…
-                chooser.value.set_files(str(work / "sample.docx"))
+                open_from_computer(page, "wordcraft", work / "sample.docx", lambda: page.mouse.click(box["x"] + 279, box["y"] + 92))  # Browse…
                 time.sleep(4)
                 frame_el.screenshot(path=str(shots / "60-wordcraft-opened.png"))
                 page.mouse.click(box["x"] + box["width"] / 2, box["y"] + 330)  # in the page, near the text
@@ -532,13 +612,14 @@ def main() -> int:
                 page.keyboard.type("Typed in Smart Knife 42", delay=30)
                 time.sleep(1)
                 frame_el.screenshot(path=str(shots / "61-wordcraft-typed.png"))
-                with page.expect_download(timeout=30_000) as download:
-                    page.keyboard.press("Control+s")
-                out = work / f"saved-{download.value.suggested_filename}"
-                download.value.save_as(str(out))
-                text = docx_text(out) if out.suffix == ".docx" else ""
-                check("WordCraft: .docx opened via Browse…, a paragraph typed, saved as a download (old and new text)",
-                      "ArtCraft WordCraft opening line" in text and "Second paragraph here" in text and "Typed in Smart Knife 42" in text, f"{out.name}: {' '.join(text.split())[:120]!r}")
+                before = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 2))
+                page.keyboard.press("Control+s")
+                saved = api.wait_saved("wordcraft", ".docx", before)
+                out = work / "saved-wordcraft.docx"
+                out.write_bytes(api.raw(f"/api/craft/files/{saved['id']}")[1] if saved else b"")
+                text = docx_text(out) if saved else ""
+                check("WordCraft: .docx opened through the chooser, a paragraph typed, saved to the account (old and new text)",
+                      "ArtCraft WordCraft opening line" in text and "Second paragraph here" in text and "Typed in Smart Knife 42" in text, f"{saved and saved['name']}: {' '.join(text.split())[:120]!r}")
 
             if "gridcraft" in only:
                 page.goto(f"{url}/tools/artcraft?tab=gridcraft")
@@ -552,9 +633,7 @@ def main() -> int:
                 time.sleep(1.5)
                 page.mouse.click(box["x"] + 67, box["y"] + 191)  # Open
                 time.sleep(1.5)
-                with page.expect_file_chooser(timeout=15_000) as chooser:
-                    page.mouse.click(box["x"] + 288, box["y"] + 162)  # Browse…
-                chooser.value.set_files(str(work / "sample.csv"))
+                open_from_computer(page, "gridcraft", work / "sample.csv", lambda: page.mouse.click(box["x"] + 288, box["y"] + 162))  # Browse…
                 time.sleep(3)
                 page.mouse.click(box["x"] + 207, box["y"] + 240)  # D2
                 page.keyboard.type("=B2*C2", delay=30)
@@ -566,13 +645,39 @@ def main() -> int:
                 page.mouse.click(box["x"] + 70, box["y"] + 398)  # Export
                 time.sleep(1.5)
                 frame_el.screenshot(path=str(shots / "71-gridcraft-export.png"))
-                with page.expect_download(timeout=30_000) as download:
-                    page.mouse.click(box["x"] + 362, box["y"] + 246)  # CSV (Comma delimited)
-                out = work / f"exported-{download.value.suggested_filename}"
-                download.value.save_as(str(out))
-                rows = out.read_text().splitlines()
-                check("GridCraft: CSV opened via Browse…, a formula added, exported as CSV (rows kept, value computed)",
-                      len(rows) == 4 and rows[0].startswith("name,qty,price") and rows[1] == "apple,3,1.5,4.5" and rows[3].startswith("plum,10,0.4"), f"{out.name}: {rows}")
+                before = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 2))
+                page.mouse.click(box["x"] + 362, box["y"] + 246)  # CSV (Comma delimited)
+                saved = api.wait_saved("gridcraft", ".csv", before)
+                rows = (api.raw(f"/api/craft/files/{saved['id']}")[1] if saved else b"").decode(errors="replace").splitlines()
+                check("GridCraft: CSV opened through the chooser, a formula added, exported to the account (rows kept, value computed)",
+                      len(rows) == 4 and rows[0].startswith("name,qty,price") and rows[1] == "apple,3,1.5,4.5" and rows[3].startswith("plum,10,0.4"), f"{saved and saved['name']}: {rows}")
+
+            if "photocraft" in only:
+                # A browser shared by two accounts: the bridge clears the craft origin's storage before the app loads
+                # when another account used it last (here: a foreign tag and a leftover key planted in that storage).
+                page.goto(f"{url}/tools/artcraft?tab=photocraft")
+                page.locator("main [role=status]", has_text="PhotoCraft loaded from").first.wait_for(timeout=120_000)
+                bridge = next(f for f in page.frames if "/knife-bridge/" in f.url)
+                own_tag = bridge.evaluate("() => localStorage.getItem('knife:account')")
+                bridge.evaluate("() => { localStorage.setItem('knife:account', 'f'.repeat(32)); localStorage.setItem('probe:other-account', 'their work'); }")
+                page.reload()
+                page.locator("main [role=status]", has_text="PhotoCraft loaded from").first.wait_for(timeout=120_000)
+                bridge = next(f for f in page.frames if "/knife-bridge/" in f.url)
+                left = bridge.evaluate("() => [localStorage.getItem('probe:other-account'), localStorage.getItem('knife:account')]")
+                cleared_note = page.get_by_text("Another account used the Craft apps in this browser").is_visible()
+                check("shared browser: another account's craft-origin storage is cleared before the app loads, the tag becomes ours",
+                      left[0] is None and left[1] == own_tag and bool(own_tag) and cleared_note, json.dumps(left))
+                page.reload()
+                page.locator("main [role=status]", has_text="PhotoCraft loaded from").first.wait_for(timeout=120_000)
+                check("the same account again: nothing cleared", not page.get_by_text("Another account used the Craft apps in this browser").is_visible())
+                # My files: everything saved, with Download and Delete.
+                page.locator("[data-craft-app=photocraft]").get_by_role("button", name="My files").click()
+                files_drawer = page.get_by_role("dialog", name="Craft files")
+                files_drawer.locator("[data-craft-file]").first.wait_for(timeout=15_000)
+                listed = files_drawer.locator("[data-craft-file]").count()
+                page.screenshot(path=str(shots / "25-my-files.png"))
+                check("My files lists what the apps saved, each with Download and Delete", listed == len(api.craft_files()) and listed >= 1 and files_drawer.get_by_role("link", name="Download").count() == listed, f"{listed} listed")
+                files_drawer.get_by_role("button", name="Close Craft files").click()
 
             if "gridcraft" in only:
                 # Automatic updates: a "0.9.1" GridCraft (the real 0.9.0 files re-packed) from the fake GitHub, applied

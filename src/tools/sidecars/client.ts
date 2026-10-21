@@ -4,6 +4,7 @@ import type { DocMeta, DocVersion } from "@/lib/office/store";
 import type { Folder } from "@/lib/office/folders";
 import type { StorageUsage } from "@/lib/storage/quota";
 import type { OfficeFormat } from "@/lib/office/templates";
+import type { CraftFile } from "@/lib/craft/files";
 import type { CraftLaunch } from "@/lib/craft/launch";
 import type { AppNotices } from "@/lib/craft/notices";
 import type { CraftUpdatesView } from "@/lib/craft/updates";
@@ -250,6 +251,47 @@ export type CraftUpdateAction =
 
 export function postCraftUpdates(body: CraftUpdateAction): Promise<CraftUpdatesView | { started: boolean; view: CraftUpdatesView }> {
   return request("POST", "/api/craft/updates", body);
+}
+
+export type { CraftFile };
+
+export interface CraftFilesList {
+  files: CraftFile[];
+  usage: { usedBytes: number; quotaBytes: number | null };
+  maxFileBytes: number;
+}
+
+export function listCraftFiles(): Promise<CraftFilesList> {
+  return request<CraftFilesList>("GET", "/api/craft/files");
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Stores what an app saved (POST /api/craft/files); same app + name replaces the file. */
+export function saveCraftFile(app: string, name: string, mime: string, bytes: ArrayBuffer): Promise<{ file: CraftFile }> {
+  return request<{ file: CraftFile }>("POST", "/api/craft/files", { action: "save", app, name, mime, data: bytesToBase64(new Uint8Array(bytes)) });
+}
+
+export function deleteCraftFile(id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("DELETE", `/api/craft/files/${encodeURIComponent(id)}`);
+}
+
+/** The file's bytes and its real type (the response itself is always application/octet-stream). */
+export async function craftFileBytes(id: string): Promise<{ bytes: ArrayBuffer; mime: string }> {
+  const response = await fetch(`/api/craft/files/${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
+  if (!response.ok) {
+    await response.text();
+    throw new ApiError(`Could not read the file (${response.status}).`, response.status);
+  }
+  return { bytes: await response.arrayBuffer(), mime: response.headers.get("x-craft-type") ?? "" };
+}
+
+export function craftFileDownloadUrl(id: string): string {
+  return `/api/craft/files/${encodeURIComponent(id)}`;
 }
 
 /** Licence and notice texts of the Craft app version this install serves. */

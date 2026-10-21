@@ -100,7 +100,14 @@ export interface SidecarDefinition {
    * and served under `/<app>/`. The generated nginx.conf sits in `assets/conf-<hash>/`, mounted read-only at `target`.
    * Exclusive with `assets` (both use the assets folder).
    */
-  sites?: { target: string; contentTarget: string; label: string; apps: readonly SidecarSite[] };
+  sites?: {
+    target: string;
+    contentTarget: string;
+    label: string;
+    apps: readonly SidecarSite[];
+    /** Repo folder of Smart Knife's own static files served at `/knife-bridge/` (the account files bridge). */
+    bridge?: string;
+  };
   /** Container options beyond the defaults (a read-only root filesystem with tmpfs scratch, a fixed entrypoint, a healthcheck). */
   container?: {
     readOnly?: boolean;
@@ -332,7 +339,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     cpus: "1",
     // Verified on 1.31.7-alpine with every capability dropped: nginx runs as uid 101, binds 8080, writes only its tmpfs.
     security: { capAdd: [], pidsLimit: 64 },
-    sites: { target: "/srv/craft", contentTarget: "/srv/craft-content", label: "Craft apps", apps: ARTCRAFT_APPS },
+    sites: { target: "/srv/craft", contentTarget: "/srv/craft-content", label: "Craft apps", apps: ARTCRAFT_APPS, bridge: "sidecars/craft/knife-bridge" },
     container: {
       readOnly: true,
       tmpfs: ["/tmp:size=64m,mode=1777"],

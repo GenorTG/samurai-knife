@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { findSidecar } from "@/lib/services/definitions";
-import { activeRelease } from "@/lib/services/sites";
+import { activeRelease, BRIDGE_FOLDER } from "@/lib/services/sites";
 import { ensureSecrets, readState } from "@/lib/services/state";
 import { craftProxyUrl, publicUrl } from "@/lib/services/urls";
 
@@ -28,7 +28,12 @@ export interface CraftLaunch {
   /** Served through the app's proxy on KNIFE_CRAFT_PUBLIC_URL. */
   proxied: boolean;
   /** `version`: the release this install serves (the update channel, never below the pin). */
-  apps: { id: string; url: string; version: string }[];
+  apps: { id: string; url: string; version: string; bridgeUrl: string }[];
+  /**
+   * Stands for the account on the craft origin (the bridge wipes that origin's browser storage when another account
+   * used it last): HMAC of the account id under a key derived from TICKET_SECRET, so it says nothing about the id.
+   */
+  accountTag: string;
 }
 
 /** Launch URLs for an account, or null when the sidecar is not installed. */
@@ -38,6 +43,19 @@ export function craftLaunch(accountId: string): CraftLaunch | null {
   if (!def?.sites || !state) return null;
   const origin = publicUrl(state);
   const proxied = craftProxyUrl() !== null;
-  const query = proxied ? `?${TICKET_PARAM}=${encodeURIComponent(craftTicket(accountId, ensureSecrets(def).TICKET_SECRET))}` : "";
-  return { origin, proxied, apps: def.sites.apps.map((app) => ({ id: app.id, url: `${origin}/${app.id}/${query}`, version: activeRelease(def, app).version })) };
+  const secret = ensureSecrets(def).TICKET_SECRET;
+  const ticket = proxied ? `${TICKET_PARAM}=${encodeURIComponent(craftTicket(accountId, secret))}` : "";
+  const query = ticket ? `?${ticket}` : "";
+  const accountTag = createHmac("sha256", createHmac("sha256", secret).update("knife-craft-account-v1").digest()).update(accountId).digest("hex").slice(0, 32);
+  return {
+    origin,
+    proxied,
+    accountTag,
+    apps: def.sites.apps.map((app) => ({
+      id: app.id,
+      url: `${origin}/${app.id}/${query}`,
+      version: activeRelease(def, app).version,
+      bridgeUrl: `${origin}/${BRIDGE_FOLDER}/?app=${app.id}${ticket ? `&${ticket}` : ""}`,
+    })),
+  };
 }

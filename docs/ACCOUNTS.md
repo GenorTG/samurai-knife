@@ -137,6 +137,7 @@ removed:
 - `usage/<id>.json` (token ledger)
 - `workspace/<id>.json.enc` (browser-tool drafts, see "Tool drafts" below)
 - `site/<id>.json` (website studio: repository connection with its token, work branch, audit history; docs/WEBSITE-STUDIO.md)
+- `craft-files/<id>/` (what the Craft apps saved to the account: `index.json` + one sealed `<file id>.bin` each; docs/SIDECARS.md "Craft files")
 
 ### Tool drafts (`src/components/WorkspaceDraft.tsx`, `/api/workspace`)
 

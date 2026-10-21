@@ -110,6 +110,7 @@ const AREAS: [keyof StorageUsage["areas"], string][] = [
   ["conversations", "Assistant conversations"],
   ["workspace", "Tool drafts"],
   ["site", "Website studio (connection, audits)"],
+  ["craft", "Craft apps files"],
   ["jobs", "Running and finished jobs (temporary)"],
   ["learn", "Course progress"],
   ["usage", "Usage counters"],
