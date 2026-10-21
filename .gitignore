@@ -78,3 +78,6 @@ accounts.json
 /HANDOFF.md
 /docs/QA-*.md
 /tests/coverage/BRIEF.md
+
+# log files of a dev server (KNIFE_LOG_DIR default <repo>/logs; src/lib/logs/core.mjs)
+/logs/

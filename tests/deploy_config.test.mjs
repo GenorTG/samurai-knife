@@ -5,7 +5,7 @@
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/deploy_config.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -64,7 +64,7 @@ test("serve.mjs exits 2 with the message before starting Next", () => {
   // A copy of serve.mjs and what it imports, in a temp dir without .env.local or a build: a run that passes the checks
   // stops at "no production build" and never starts a server, whatever this checkout has built.
   const cwd = mkdtempSync(join(tmpdir(), "knife-serve-"));
-  for (const rel of ["scripts/serve.mjs", "scripts/deploy-config.mjs", "src/lib/net/client-ip.mjs", "src/lib/python-sandbox.mjs"]) {
+  for (const rel of ["scripts/serve.mjs", "scripts/deploy-config.mjs", "src/lib/net/client-ip.mjs", "src/lib/python-sandbox.mjs", "src/lib/logs/core.mjs"]) {
     mkdirSync(join(cwd, dirname(rel)), { recursive: true });
     copyFileSync(join(import.meta.dirname, "..", rel), join(cwd, rel));
   }
@@ -88,6 +88,28 @@ test("serve.mjs exits 2 with the message before starting Next", () => {
     const publicBind = run({ KNIFE_HOST: "203.0.113.5" });
     assert.equal(publicBind.status, 2);
     assert.match(publicBind.stderr, /KNIFE_HOST contains/);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("serve.mjs writes its refusal to the app log file too (KNIFE_LOG_DIR), and KNIFE_LOG_DIR=off writes none", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "knife-serve-log-"));
+  for (const rel of ["scripts/serve.mjs", "scripts/deploy-config.mjs", "src/lib/net/client-ip.mjs", "src/lib/python-sandbox.mjs", "src/lib/logs/core.mjs"]) {
+    mkdirSync(join(cwd, dirname(rel)), { recursive: true });
+    copyFileSync(join(import.meta.dirname, "..", rel), join(cwd, rel));
+  }
+  try {
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME, KNIFE_DATA_DIR: cwd, KNIFE_PORT: "9", KNIFE_AUTH_MODE: "public", KNIFE_PUBLIC_URL: "https://knife.example.org" };
+    const logs = join(cwd, "own-logs");
+    const run = spawnSync(process.execPath, [join(cwd, "scripts", "serve.mjs"), "start"], { cwd, env: { ...env, KNIFE_LOG_DIR: logs }, encoding: "utf8", timeout: 20_000 });
+    assert.equal(run.status, 2);
+    const day = new Date().toISOString().slice(0, 10);
+    const text = readFileSync(join(logs, "app", `app-${day}.log`), "utf8");
+    assert.match(text, /^\S+Z err \[serve\] refusing to start: public mode needs KNIFE_TRUSTED_PROXIES/m);
+    const off = spawnSync(process.execPath, [join(cwd, "scripts", "serve.mjs"), "start"], { cwd, env: { ...env, KNIFE_LOG_DIR: "off" }, encoding: "utf8", timeout: 20_000 });
+    assert.equal(off.status, 2);
+    assert.ok(!existsSync(join(cwd, "logs")), "no default folder when off");
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }

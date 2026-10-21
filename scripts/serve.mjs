@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { deployProblems } from "./deploy-config.mjs";
+import { createLogWriter, ensureLogRoot, logRoot, maintainLogs, retentionDays } from "../src/lib/logs/core.mjs";
 import { probeSandbox, sandboxLayout, sandboxPolicy, sandboxRequired, toolsOutsideSandbox } from "../src/lib/python-sandbox.mjs";
 
 const mode = process.argv[2];
@@ -18,6 +19,22 @@ try {
 } catch (error) {
   if (error?.code !== "ENOENT") throw error;
 }
+
+// Log files (src/lib/logs/core.mjs, docs/DEPLOY.md "Log files"): the server's stdout/stderr and these [serve] lines go to
+// <log root>/app/app-<UTC day>.log as well as to this process's stdout/stderr (the journal / PM2 keep working).
+const logs = logRoot(process.env);
+const appLog = logs && (await ensureLogRoot(logs)) ? createLogWriter({ root: logs, source: "app", prefix: "app" }) : null;
+for (const [name, stream] of /** @type {const} */ ([["log", "out"], ["warn", "err"], ["error", "err"]])) {
+  const original = console[name].bind(console);
+  console[name] = (...args) => {
+    original(...args);
+    appLog?.line(stream, args.map(String).join(" "));
+  };
+}
+// Retention (legal.json logRetentionDays, read each time) + gzip of past days, at startup and hourly.
+const maintain = () => logs ? maintainLogs({ root: logs, days: retentionDays(process.env) }).catch(() => undefined) : Promise.resolve();
+void maintain();
+setInterval(() => void maintain(), 3_600_000).unref();
 
 const host = process.env.KNIFE_HOST?.trim() || "127.0.0.1";
 const port = process.env.KNIFE_PORT?.trim() || "3210";
@@ -72,7 +89,22 @@ const nodeOptions = [process.env.NODE_OPTIONS ?? "", `--import ${JSON.stringify(
 const bin = new URL("../node_modules/next/dist/bin/next", import.meta.url).pathname;
 // UV_THREADPOOL_SIZE: libuv's pool (fs.promises, dns.lookup, zlib, scrypt) is 4 threads by default, which a burst of
 // password hashing fills; it must be set before the child starts.
-const env = { ...process.env, NODE_OPTIONS: nodeOptions, KNIFE_SERVE_MODE: mode, UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE?.trim() || "16", ...(headers ? { KNIFE_SECURITY_HEADERS_INSTALL: "1" } : {}) };
-const child = spawn(process.execPath, [bin, mode, "-H", host, "-p", port], { stdio: "inherit", env });
+const env = { ...process.env, KNIFE_LOG_DIR: logs ?? "off", NODE_OPTIONS: nodeOptions, KNIFE_SERVE_MODE: mode, UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE?.trim() || "16", ...(headers ? { KNIFE_SECURITY_HEADERS_INSTALL: "1" } : {}) };
+const child = spawn(process.execPath, [bin, mode, "-H", host, "-p", port], { stdio: appLog ? ["inherit", "pipe", "pipe"] : "inherit", env });
+if (appLog) {
+  child.stdout.on("data", (chunk) => {
+    process.stdout.write(chunk);
+    appLog.write("out", chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    appLog.write("err", chunk);
+  });
+}
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));
-child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+child.on("exit", (code, signal) => {
+  appLog?.flush();
+  appLog?.line("err", `[serve] next ${mode} exited (${signal ?? `code ${code}`})`);
+  appLog?.close();
+  process.exit(code ?? (signal ? 1 : 0));
+});
