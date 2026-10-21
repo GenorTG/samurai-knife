@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { SuiteShell } from "@/components/SuiteShell";
 import { findTool } from "@/lib/registry";
+import { ARTCRAFT_APPS } from "@/lib/services/definitions";
 import McpConnect from "@/tools/McpConnect";
 import { WorkspaceDraft } from "@/components/WorkspaceDraft";
 
@@ -141,6 +142,15 @@ const CvApplications = dynamic(() => import("@/tools/cv/ApplicationsTab"), { loa
 // The editor loads the sidecar's DocsAPI script into the page: browser-only.
 const OfficeTool = dynamic(() => import("@/tools/sidecars/OfficeTool"), { ssr: false, loading: ToolLoading });
 const SidecarsTool = dynamic(() => import("@/tools/sidecars/SidecarsTool"), { loading: ToolLoading });
+// Each ArtCraft tab embeds one app of the `craft` sidecar; client-only like the office page (live sidecar state).
+const CraftApp = dynamic(() => import("@/tools/craft/CraftApp"), { ssr: false, loading: ToolLoading });
+
+function craftTab(app: string): ComponentType {
+  const Tab = () => <CraftApp app={app} />;
+  Tab.displayName = `CraftApp(${app})`;
+  return Tab;
+}
+
 // Client-only like the office page: everything it shows depends on the course database's live state.
 const SqlCourse = dynamic(() => import("@/tools/learn/SqlCourse"), { ssr: false, loading: ToolLoading });
 
@@ -270,6 +280,7 @@ const COMPONENTS: Record<string, ComponentType> = {
   "site-changes": SiteChanges,
   sidecars: SidecarsTool,
   "learn-sql": SqlCourse,
+  ...Object.fromEntries(ARTCRAFT_APPS.map((app) => [`craft-${app.id}`, craftTab(app.id)])),
 };
 
 function MissingTool({ slug }: { slug: string }) {
@@ -286,7 +297,7 @@ function MissingTool({ slug }: { slug: string }) {
  * overwrite it and autosave the old values back), manage credentials, or generate secrets.
  */
 const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password"]);
-const NO_DRAFT_PREFIXES = ["cv-", "site-"];
+const NO_DRAFT_PREFIXES = ["cv-", "site-", "craft-"];
 
 function renderComponent(key: string) {
   const Component = COMPONENTS[key];

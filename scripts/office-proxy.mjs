@@ -88,7 +88,7 @@ export function allowedPath(target) {
 export const isApiJs = (path) => API_JS.test(path);
 export const isWebsocketPath = (path) => WEBSOCKET_PATH.test(path);
 
-function cookieValue(header, name) {
+export function cookieValue(header, name) {
   for (const part of String(header ?? "").split(";")) {
     const index = part.indexOf("=");
     if (index > 0 && part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
@@ -97,7 +97,7 @@ function cookieValue(header, name) {
 }
 
 /** Fixed-window counters with a hard cap on distinct keys (a flood of new keys cannot grow memory). */
-class Budget {
+export class Budget {
   constructor(limit, windowMs, maxKeys = 20_000) {
     Object.assign(this, { limit, windowMs, maxKeys, map: new Map() });
   }
@@ -134,13 +134,13 @@ function upstreamHeaders(request, options) {
   return headers;
 }
 
-function plain(response, status, text, extra = {}) {
+export function plain(response, status, text, extra = {}) {
   if (response.headersSent) return response.destroy();
   response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra });
   response.end(`${text}\n`);
 }
 
-function rejectUpgrade(socket, status, text) {
+export function rejectUpgrade(socket, status, text) {
   if (!socket.writable) return socket.destroy();
   // end() flushes the answer; destroy() right after would drop it. A client that never reads is cut off after 5 s.
   socket.end(`HTTP/1.1 ${status} ${http.STATUS_CODES[status] ?? ""}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(text)}\r\n\r\n${text}`);

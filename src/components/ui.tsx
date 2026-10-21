@@ -59,20 +59,29 @@ export function Button({
   return <button autoComplete="off" type={type} className={buttonClass(variant, size, className)} {...rest} />;
 }
 
-/** A navigation link that looks like a Button (calls to action). */
+/** A navigation link that looks like a Button (calls to action). `external`: another site, opened in a new tab. */
 export function ButtonLink({
   href,
   variant = "subtle",
   size = "md",
   className,
+  external = false,
   children,
 }: {
   href: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   className?: string;
+  external?: boolean;
   children: ReactNode;
 }) {
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={buttonClass(variant, size, className)}>
+        {children}
+      </a>
+    );
+  }
   return (
     <Link href={href} className={buttonClass(variant, size, className)}>
       {children}

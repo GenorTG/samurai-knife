@@ -9,7 +9,8 @@
 #                    internet  DNS to the configured resolvers and the internet; the LAN, Tailscale, other docker
 #                              networks, link-local/metadata, loopback and multicast are dropped (the office editor:
 #                              "insert image from URL" fetches public URLs only)
-#                    none      no new outbound connection at all (the course database only answers the app)
+#                    none      no new outbound connection at all (the course database only answers the app; the
+#                              ArtCraft nginx only serves files)
 #                  Drops log at a limited rate ("knife-sidecar-egress").
 #   Container -> host traffic (the app's port) is INPUT, not FORWARD: the host nftables table handles it
 #   (deploy/firewall/). This script keeps its `sidecar_nets` set equal to the networks of the sidecars that call the app
@@ -31,7 +32,7 @@ CONF="${KNIFE_DOCKER_USER_CONF:-/etc/samurai-knife/docker-user.conf}"
 if [[ $EUID -eq 0 && -n "${KNIFE_DOCKER_USER_CONF:-}" ]]; then CONF=/etc/samurai-knife/docker-user.conf; fi
 
 WAN_IF="" LAN_CIDR4="" INTERNET_TCP="" LAN_TCP="" SIDECAR_PROJECT_PREFIX="samurai-knife-" SIDECAR_DNS4="" SIDECAR_DENY_CIDRS4=""
-SIDECAR_EGRESS="office=internet learn-db=none" SIDECAR_CALLBACK_IDS="office"
+SIDECAR_EGRESS="office=internet learn-db=none craft=none" SIDECAR_CALLBACK_IDS="office"
 # shellcheck source=/dev/null
 if [[ -r "$CONF" ]]; then
   if [[ $EUID -eq 0 ]]; then

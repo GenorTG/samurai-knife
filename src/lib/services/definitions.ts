@@ -93,7 +93,94 @@ export interface SidecarDefinition {
    * files change, so a server that caches them forever (the Document Server sends `immutable`) still serves the new ones.
    */
   assets?: { source: string; target: string; label: string };
+  /**
+   * Static web apps served by an nginx container (sites.ts): each app's pinned release zip is downloaded, checked against
+   * its sha256, unpacked into `$KNIFE_DATA_DIR/services/<id>/assets/<app>-<version>-<sha prefix>/<app>/` and served under
+   * `/<app>/`; the generated nginx.conf sits next to them in `conf-<hash>/`. That directory is mounted read-only at
+   * `target`. Exclusive with `assets` (both use the assets folder).
+   */
+  sites?: { target: string; label: string; apps: readonly SidecarSite[] };
+  /** Container options beyond the defaults (a read-only root filesystem with tmpfs scratch, a fixed entrypoint, a healthcheck). */
+  container?: {
+    readOnly?: boolean;
+    tmpfs?: string[];
+    entrypoint?: string[];
+    healthcheck?: { test: string[]; intervalSec: number; timeoutSec: number; retries: number };
+  };
 }
+
+/**
+ * One static web app of a `sites` sidecar. Facts from the app's own hosting notes (packaging/web/README.md of its repo):
+ * `immutable` = regexes on the path below `/<id>` (`^/...` anchors at that point, others match anywhere) whose names carry a
+ * content hash and may be cached for a year (everything else revalidates); `sandbox` = the iframe sandbox tokens the app needs.
+ */
+export interface SidecarSite {
+  id: string;
+  name: string;
+  /** What it is, in a few words ("photo editor"). */
+  kind: string;
+  version: string;
+  url: string;
+  sha256: string;
+  /** Size of the zip, for download progress. */
+  bytes: number;
+  license: string;
+  repo: string;
+  immutable: string[];
+  sandbox: string[];
+  /** wgpu apps: WebGPU in a secure context, else WebGL2 (`?webgl` forces it). False: WebGL2 only. */
+  webgpu: boolean;
+  /** One-line caveat shown with the app. */
+  note?: string;
+}
+
+// ArtCraft (https://github.com/storytold): MIT OR Apache-2.0, pure Rust, static WebAssembly web builds. Versions and
+// sha256 verified 2026-10-21 against the GitHub release assets (the API's asset digest and a local sha256sum agree).
+const ARTCRAFT_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-downloads", "allow-popups"];
+const HASHED_GLUE = String.raw`-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`;
+const artcraft = (id: string, name: string, kind: string, version: string, sha256: string, bytes: number, rest: Partial<SidecarSite> = {}): SidecarSite => ({
+  id,
+  name,
+  kind,
+  version,
+  url: `https://github.com/storytold/${id}/releases/download/v${version}/${id}-web-${version}.zip`,
+  sha256,
+  bytes,
+  license: "MIT OR Apache-2.0",
+  repo: `https://github.com/storytold/${id}`,
+  immutable: [HASHED_GLUE],
+  sandbox: ARTCRAFT_SANDBOX,
+  webgpu: true,
+  ...rest,
+});
+
+export const ARTCRAFT_APPS: readonly SidecarSite[] = [
+  // The app's wasm ships gzipped in parts (app/*.part-*, served byte for byte); app/photocraft-web.js and app/parts.txt
+  // keep their names and revalidate.
+  artcraft("photocraft", "PhotoCraft", "image editor", "0.11.1", "f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f", 11567210, {
+    immutable: [String.raw`\.part-[a-z]+$`, String.raw`photocraft-web-boot-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`],
+  }),
+  artcraft("vectorcraft", "VectorCraft", "vector illustration", "0.14.0", "6f28a8bcee1c5ad6c37c6a0c44058793a40ea4443085866d5f78afb16aba075e", 27734185, {
+    immutable: [HASHED_GLUE, String.raw`^/fonts/[0-9a-f]{16}/`],
+  }),
+  // index.html loads the glue and wasm with `?v=<build hash>`.
+  artcraft("filmcraft", "FilmCraft", "video editor", "0.10.0", "47618cc373ff1306be17cfd539a33a5a5af490d3bb6722a6bc1436fcd6bf87a0", 13429216, {
+    immutable: [String.raw`\.(?:wasm|js)$`],
+  }),
+  // Same file names in every release: nothing is immutable. Library in OPFS (IndexedDB fallback), render workers.
+  artcraft("lightcraft", "LightCraft", "photo library and raw developer", "0.10.0", "6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794", 22381646, {
+    immutable: [],
+    sandbox: [...ARTCRAFT_SANDBOX, "allow-modals"],
+    webgpu: false,
+    note: "Experimental: the library lives in this browser's storage for the ArtCraft address; keep your originals elsewhere and use File > Back Up Library.",
+  }),
+  artcraft("effectcraft", "EffectCraft", "motion graphics and effects", "0.13.0", "70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc", 19328128, {
+    immutable: [],
+    note: "The largest app (about 63 MB of WebAssembly, 17 MB to download): the first start takes a while.",
+  }),
+  artcraft("designcraft", "DesignCraft", "page layout", "0.10.0", "88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4", 19242619),
+  artcraft("pdfcraft", "PdfCraft", "PDF workbench", "0.10.1", "58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9", 14507703),
+];
 
 export const SIDECARS: readonly SidecarDefinition[] = [
   {
@@ -188,6 +275,41 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     security: { capAdd: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"], pidsLimit: 256 },
     // Only this app connects (the browser never does): Postgres is published on loopback, not on KNIFE_HOST.
     publish: "loopback",
+  },
+  {
+    id: "craft",
+    name: "ArtCraft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft)",
+    shortName: "ArtCraft apps",
+    description:
+      "Seven open-source creative apps (image, vector, video, photo library, motion graphics, page layout, PDF) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads.",
+    // nginx's unprivileged image (uid 101, port 8080), pinned by digest (the multi-arch index of 1.31.7-alpine, 2026-10-19).
+    image: "nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e",
+    serviceName: "nginx",
+    containerPort: 8080,
+    health: { kind: "http", path: "/healthz", body: /^ok\s*$/ },
+    callsBack: false,
+    // Not used by the container: the key of the tickets that let a browser through the app's ArtCraft proxy
+    // (KNIFE_CRAFT_PUBLIC_URL, scripts/craft-proxy.mjs).
+    secrets: [{ name: "TICKET_SECRET", bytes: 32 }],
+    env: {},
+    volumes: [],
+    startTimeoutSec: 60,
+    requirements: { ramGb: 0.25, diskGb: 0.6 },
+    license: "MIT OR Apache-2.0 (apps), BSD-2-Clause (nginx)",
+    homepage: "https://github.com/storytold",
+    usedBy: ["artcraft"],
+    idleStopMinutes: 30,
+    memLimit: "256m",
+    cpus: "1",
+    // Verified on 1.31.7-alpine with every capability dropped: nginx runs as uid 101, binds 8080, writes only its tmpfs.
+    security: { capAdd: [], pidsLimit: 64 },
+    sites: { target: "/srv/craft", label: "ArtCraft apps", apps: ARTCRAFT_APPS },
+    container: {
+      readOnly: true,
+      tmpfs: ["/tmp:size=64m,mode=1777"],
+      entrypoint: ["nginx"],
+      healthcheck: { test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"], intervalSec: 30, timeoutSec: 5, retries: 3 },
+    },
   },
 ];
 
