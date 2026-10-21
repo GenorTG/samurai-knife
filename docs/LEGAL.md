@@ -46,6 +46,10 @@ conclusions below change: see "If money is involved".
 3. **Processing agreement with your mail relay host** (art. 28): the relay is used only for outgoing Service e-mail, not for hosting Accounts or other Service data. It nevertheless receives the recipient address, generated transactional message (which can include an Account name or one-time link), and delivery metadata. The hosting terms you accepted at sign-up are not necessarily an art. 28(3) processing agreement; verify and sign the separate contract covering instructions, confidentiality, security, sub-processors, deletion and audits. netcup offers a click-through in CCP > Master Data > Order Processing > "Create AV Contract". Keep the PDF.
 4. **Make the retention numbers true**: the reverse proxy, app and mail-server logs must not outlive
    `logRetentionDays`, backups `backupRetentionDays` (deleted data leaves the backups when they are overwritten).
+   - The app's own log files (`$KNIFE_LOG_DIR`: server output, sidecar ops, updater runs; docs/DEPLOY.md "Log files")
+     follow `logRetentionDays` by themselves: a day file is deleted once its day is that many days old (checked at
+     startup and hourly). The updater's copy of the number comes from the installer: rerun `deploy/install.sh` after
+     changing it. Security events (`$KNIFE_DATA_DIR/security/`) are kept 30 days: keep `logRetentionDays` at 30 or more.
    - journald: a drop-in with `MaxRetentionSec=` one day under the limit and `MaxFileSec=1day` (journald deletes whole
      files, and the default file span is a month).
    - Docker's `json-file` driver rotates by size only, so a quiet container keeps lines for months: give containers that
