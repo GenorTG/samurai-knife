@@ -1,4 +1,4 @@
-import { createLogWriter, logRoot, SOURCE_ID, type LogWriter } from "./core.mjs";
+import { createLogWriter, logRoot, maxBytes, SOURCE_ID, type LogWriter } from "./core.mjs";
 
 /**
  * Log writers the Next server owns (src/lib/logs/core.mjs has the format, rotation and retention): one per sidecar,
@@ -22,7 +22,7 @@ export function sidecarLog(serviceId: string): LogWriter | null {
   const key = `${root}\u0000${serviceId}`;
   let writer = writers().get(key);
   if (!writer) {
-    writer = createLogWriter({ root, source: `sidecars/${serviceId}`, prefix: "ops" });
+    writer = createLogWriter({ root, source: `sidecars/${serviceId}`, prefix: "ops", maxBytes: maxBytes() });
     writers().set(key, writer);
   }
   return writer;

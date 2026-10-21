@@ -28,6 +28,12 @@ test("logRoot: KNIFE_LOG_DIR, the <cwd>/logs default and off", () => {
   assert.equal(core.logRoot({ KNIFE_LOG_DIR: "off" }, "/repo"), null);
 });
 
+test("maxBytes: KNIFE_LOG_MAX_BYTES, at least 4096, else 10 MiB", () => {
+  assert.equal(core.maxBytes({}), 10 * 1024 * 1024);
+  assert.equal(core.maxBytes({ KNIFE_LOG_MAX_BYTES: "20000" }), 20000);
+  for (const bad of ["100", "-5", "1e9", "abc"]) assert.equal(core.maxBytes({ KNIFE_LOG_MAX_BYTES: bad }), 10 * 1024 * 1024, bad);
+});
+
 test("retentionDays reads legal.json logRetentionDays (string or number), else 30", () => {
   const legal = join(base, "legal");
   mkdirSync(legal, { recursive: true });

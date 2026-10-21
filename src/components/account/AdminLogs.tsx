@@ -214,7 +214,7 @@ export function AdminLogs() {
                 <span className="text-faint">{tail && tail.lines.length ? "No line matches the filter." : "The file is empty."}</span>
               ) : (
                 shown.map((line, index) => (
-                  <span key={index} data-level={line.level} className={cx("block", LEVEL_CLASS[line.level])}>{line.text}</span>
+                  <span key={index} data-level={line.level} className={LEVEL_CLASS[line.level]}>{`${line.text}\n`}</span>
                 ))
               )}
             </pre>

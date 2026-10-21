@@ -52,6 +52,13 @@ export function retentionDays(/** @type {Record<string, string | undefined>} */ 
   return DEFAULT_RETENTION_DAYS;
 }
 
+/** `KNIFE_LOG_MAX_BYTES` (size cap per file, at least 4096), default 10 MiB. */
+export function maxBytes(/** @type {Record<string, string | undefined>} */ env = process.env) {
+  const raw = env.KNIFE_LOG_MAX_BYTES?.trim();
+  const value = raw && /^\d{1,12}$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(value) && value >= 4096 ? value : DEFAULT_MAX_BYTES;
+}
+
 export const utcDay = (/** @type {Date} */ date) => date.toISOString().slice(0, 10);
 
 // -- redaction -------------------------------------------------------------------------------------------------------

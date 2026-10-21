@@ -5,7 +5,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { deployProblems } from "./deploy-config.mjs";
-import { createLogWriter, ensureLogRoot, logRoot, maintainLogs, retentionDays } from "../src/lib/logs/core.mjs";
+import { createLogWriter, ensureLogRoot, logRoot, maintainLogs, maxBytes, retentionDays } from "../src/lib/logs/core.mjs";
 import { probeSandbox, sandboxLayout, sandboxPolicy, sandboxRequired, toolsOutsideSandbox } from "../src/lib/python-sandbox.mjs";
 
 const mode = process.argv[2];
@@ -23,7 +23,7 @@ try {
 // Log files (src/lib/logs/core.mjs, docs/DEPLOY.md "Log files"): the server's stdout/stderr and these [serve] lines go to
 // <log root>/app/app-<UTC day>.log as well as to this process's stdout/stderr (the journal / PM2 keep working).
 const logs = logRoot(process.env);
-const appLog = logs && (await ensureLogRoot(logs)) ? createLogWriter({ root: logs, source: "app", prefix: "app" }) : null;
+const appLog = logs && (await ensureLogRoot(logs)) ? createLogWriter({ root: logs, source: "app", prefix: "app", maxBytes: maxBytes(process.env) }) : null;
 for (const [name, stream] of /** @type {const} */ ([["log", "out"], ["warn", "err"], ["error", "err"]])) {
   const original = console[name].bind(console);
   console[name] = (...args) => {

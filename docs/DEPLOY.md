@@ -265,7 +265,7 @@ looks like a credential replaced by `[redacted]` (Authorization/Cookie values, `
 capability query parameters such as the office `t=`, `sk-…`/`ghp_…` keys, JWTs, URL user:password). The app never logs
 mail bodies or passwords in the first place; the redaction is the safety net.
 
-Rotation: one file per UTC day; a file that passes 10 MB becomes `.1` (the previous `.1` becomes `.2`, up to `.9`, the
+Rotation: one file per UTC day; a file that passes `KNIFE_LOG_MAX_BYTES` (default 10 MB) becomes `.1` (the previous `.1` becomes `.2`, up to `.9`, the
 oldest dropped); past days are gzipped (`.log.gz`). Retention: a day file is deleted once its day is
 `logRetentionDays` old (the instance's `legal.json`, docs/LEGAL.md; default 30), so the privacy notice stays true. The
 app checks at startup and hourly; knife-update on every run, with the number `install.sh` copied into
