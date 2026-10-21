@@ -1,8 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ASSETS_DIR } from "@/lib/services/compose";
-import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
-import { siteFolder } from "@/lib/services/sites";
+import { ARTCRAFT_APPS, findSidecar, type SidecarSite } from "@/lib/services/definitions";
+import { activeRelease, releaseRoot } from "@/lib/services/sites";
 import { serviceDir } from "@/lib/services/state";
 
 /**
@@ -165,7 +164,10 @@ export function appNotices(id: string, version?: string, fetcher: typeof fetch =
   } catch (error) {
     return Promise.reject(error);
   }
-  const wanted = version ?? app.version;
+  const def = findSidecar("craft");
+  if (!def) return Promise.reject(new NoticeError("No Craft apps sidecar."));
+  const served = activeRelease(def, app);
+  const wanted = version ?? served.version;
   if (!VERSION.test(wanted)) return Promise.reject(new NoticeError("Invalid version."));
   const key = `${app.id}@${wanted}`;
   const running = inflight.get(key);
@@ -181,8 +183,7 @@ export function appNotices(id: string, version?: string, fetcher: typeof fetch =
         /* refetch */
       }
     }
-    const siteDir = join(serviceDir("craft"), ASSETS_DIR, siteFolder({ ...app, version: wanted }), app.id);
-    const local = wanted === app.version ? releaseNoticeFiles(siteDir) : [];
+    const local = wanted === served.version ? releaseNoticeFiles(releaseRoot(def, app, served)) : [];
     const remote = await repositoryNoticeFiles(app, wanted, local, fetcher);
     const result: AppNotices = {
       app: app.id,

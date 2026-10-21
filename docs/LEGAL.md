@@ -97,6 +97,9 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
     in plain text "<App> <version> by the ArtCraft team and contributors · MIT OR Apache-2.0 · source · licences &
     notices · Not affiliated with or endorsed by the ArtCraft team". App names (PhotoCraft, …) are used only to say
     which app a tab runs. Nothing of theirs is in this repository. nginx (the container) is BSD-2-Clause.
+  - Updates: the server asks `api.github.com` once a day for each app's releases and downloads new release zips from
+    `github.com` (no user data is sent; requests carry only a fixed User-Agent). The licences & notices view always
+    shows the texts of the version actually served.
 - Privacy notice, not changed automatically (a text change is a new legal version that existing users should hear
   about): an instance that offers ArtCraft would add two rows to "Cookies and browser storage": `knife_craft` (cookie on
   the ArtCraft host, only with `KNIFE_CRAFT_PUBLIC_URL`: lets the browser load the apps, up to 12 hours) and the apps'

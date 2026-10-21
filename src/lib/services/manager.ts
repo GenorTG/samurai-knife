@@ -1,14 +1,17 @@
 import { composeProject, findSidecar, SIDECARS, type SidecarDefinition } from "./definitions";
 import { createHash } from "node:crypto";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { connect } from "node:net";
 import { networkInterfaces } from "node:os";
 import { onlyofficeFilterEnv, renderCompose } from "./compose";
 import { syncAssets } from "./assets";
-import { installSites, missingSites, pruneSites, sitesConfig, writeSitesConf } from "./sites";
+import { activateSites, installSites, missingSites, pruneSites, sitesConfig, writeSitesConf } from "./sites";
 import { PullTracker, type PullProgress } from "./pull-progress";
 import type { RunOptions, RunResult, RuntimeInfo } from "./runtime";
 import { sidecarBackend, type BackendAction, type SidecarBackend } from "./backend";
 import {
+  servicesRoot,
   acquireLock,
   composeFile,
   ensureSecrets,
@@ -33,7 +36,7 @@ import { knifeHosts } from "@/lib/hosts";
  * ops on one service at once; progress goes to an OpReporter (the server keeps it in the op store, the CLI prints it).
  */
 
-export type OpKind = "install" | "start" | "stop" | "remove" | "update" | "idle-stop" | "configure";
+export type OpKind = "install" | "start" | "stop" | "remove" | "update" | "idle-stop" | "configure" | "site-update";
 
 export interface OpReporter {
   phase(text: string, percent?: number): void;
@@ -67,7 +70,7 @@ function definition(id: string): SidecarDefinition {
 }
 
 /** The configured backend (KNIFE_SIDECAR_BACKEND, backend.ts), once its runtime answered. */
-async function requireBackend(fresh = false): Promise<SidecarBackend> {
+export async function requireBackend(fresh = false): Promise<SidecarBackend> {
   let backend: SidecarBackend;
   try {
     backend = sidecarBackend();
@@ -223,7 +226,8 @@ async function checkAppReachable(backend: SidecarBackend, def: SidecarDefinition
 
 /* ------------------------------------------------------------------------------------------------- ops */
 
-async function withLock<T>(id: string, op: OpKind, fn: () => Promise<T>): Promise<T> {
+/** Runs `fn` under the sidecar's op lock (shared with the ops and `npm run services`); SidecarBusyError when taken. */
+export async function withLock<T>(id: string, op: OpKind, fn: () => Promise<T>): Promise<T> {
   const lock = acquireLock(id, op);
   if (!lock) {
     const holder = readLock(id);
@@ -312,11 +316,35 @@ function writeCompose(def: SidecarDefinition, state: SidecarState, reporter?: Op
   writeSitesConf(def);
 }
 
-/** A `sites` sidecar: downloads and verifies the apps its pins name that are not unpacked yet (before `up`). */
+/**
+ * A `sites` sidecar, before `up`: downloads and verifies each app's active release that is not unpacked yet and links
+ * the active releases into the content dir.
+ */
 async function fetchSites(def: SidecarDefinition, reporter: OpReporter): Promise<void> {
-  if (!def.sites || !missingSites(def).length) return;
-  const added = await installSites(def, reporter);
-  reporter.log(`${def.sites.label}: ${added.join(", ")} downloaded and verified`);
+  if (!def.sites) return;
+  if (missingSites(def).length) {
+    const added = await installSites(def, reporter);
+    reporter.log(`${def.sites.label}: ${added.join(", ")} downloaded and verified`);
+  }
+  const changed = activateSites(def);
+  if (changed.length) reporter.log(`${def.sites.label}: serving ${changed.join(", ")}`);
+}
+
+/**
+ * A `sites` sidecar's content to where the container reads it: with the root helper, root copies the content dir into
+ * its own (the `content` verb; static files only, no sync); with docker, the container mounts it directly.
+ */
+export async function pushSiteContent(backend: SidecarBackend, def: SidecarDefinition, reporter?: Pick<OpReporter, "log">): Promise<void> {
+  if (!def.sites) return;
+  const result = await compose(backend, def, { verb: "content" }, { timeoutMs: 900_000, onLine: (line) => reporter?.log(line) });
+  if (result.code === 64 && /unknown verb content/.test(result.stderr)) {
+    throw new SidecarError(
+      "The host's sidecar helper is older than this release (no `content` verb).",
+      409,
+      "On the host, as root: re-run deploy/install.sh (it installs the new helper), then sudo knife-sidecar sync craft.",
+    );
+  }
+  if (result.code !== 0) throw failed("content refresh", result);
 }
 
 /** After a successful `up`: drop app versions and configs the running container no longer uses. */
@@ -460,6 +488,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
     reporter.log(`compose project ${composeProject(id)}, published on ${state.bindHost}:${state.hostPort}`);
     await fetchSites(def, reporter);
     await requireBundle(backend, def);
+    await pushSiteContent(backend, def, reporter);
     await pull(backend, def, reporter);
     const ready = await upAndWait(backend, def, state, reporter);
     pruneUnused(def, reporter);
@@ -490,6 +519,7 @@ export function start(id: string, reporter: OpReporter): Promise<SidecarState> {
     writeCompose(def, state, reporter);
     await fetchSites(def, reporter);
     await requireBundle(backend, def);
+    await pushSiteContent(backend, def, reporter);
     const ready = await upAndWait(backend, def, state, reporter);
     pruneUnused(def, reporter);
     reporter.phase("Running", 100);
@@ -524,6 +554,8 @@ export function remove(id: string, options: { purge?: boolean; removeImage?: boo
     const result = await compose(backend, def, action, { onLine: (line) => reporter.log(line), timeoutMs: 180_000 });
     if (result.code !== 0 && state) throw failed("compose down", result);
     removeState(id, Boolean(options.purge));
+    // A `sites` sidecar's content dir is a sibling of the service dir (sites.ts): purged with it.
+    if (options.purge && def.sites) rmSync(join(servicesRoot(), `${def.id}-content`), { recursive: true, force: true });
     sessions(id).clear();
     reporter.phase("Removed", 100);
   });
@@ -544,6 +576,7 @@ export function update(id: string, reporter: OpReporter): Promise<SidecarState &
     writeCompose(def, state, reporter);
     await fetchSites(def, reporter);
     await requireBundle(backend, def);
+    await pushSiteContent(backend, def, reporter);
     await pull(backend, def, reporter);
     const after = await imageId(backend, def, def.image);
     const imageChanged = before !== after;

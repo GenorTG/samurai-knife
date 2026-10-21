@@ -7,13 +7,14 @@ import { ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, touch
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
 import { useSidecar } from "@/tools/sidecars/useSidecar";
 import { CraftNotices } from "./CraftNotices";
+import { CraftUpdates } from "./CraftUpdates";
 
 const SERVICE = "craft";
 
 type Stage =
   | { kind: "waiting" }
   | { kind: "starting" }
-  | { kind: "ready"; url: string; origin: string }
+  | { kind: "ready"; url: string; origin: string; version: string }
   | { kind: "failed"; message: string; needsAdmin?: boolean };
 
 /** WebGPU, the clipboard and OPFS need a secure context: https, or http on localhost. */
@@ -45,6 +46,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
 
   useEffect(() => {
     if (!installed) return;
@@ -72,7 +74,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         const launch = await getCraftLaunch();
         const entry = launch.apps.find((candidate) => candidate.id === app.id);
         if (!entry) throw new Error(`${app.name} is not served by this installation`);
-        if (!cancelled) setStage({ kind: "ready", url: entry.url, origin: launch.origin });
+        if (!cancelled) setStage({ kind: "ready", url: entry.url, origin: launch.origin, version: entry.version });
       } catch (err) {
         if (!cancelled) setStage({ kind: "failed", message: errorText(err), needsAdmin: isAdminRequired(err) });
       }
@@ -132,7 +134,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   return (
     <div className="space-y-3" data-craft-app={app.id}>
       <Panel
-        title={`${app.name} ${app.version}`}
+        title={`${app.name} ${stage.version}`}
         right={
           <div className="flex flex-wrap items-center gap-3">
             {app.webgpu ? (
@@ -140,6 +142,11 @@ export default function CraftApp({ app: appId }: { app: string }) {
                 <input type="checkbox" checked={webgl} onChange={(event) => setWebgl(event.target.checked)} />
                 Force WebGL2
               </label>
+            ) : null}
+            {service.canManage ? (
+              <Button size="sm" variant="ghost" onClick={() => setUpdatesOpen(true)}>
+                Updates
+              </Button>
             ) : null}
             <FullscreenButton target={frame} />
             <ButtonLink href={src} external size="sm">
@@ -163,7 +170,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         <p className="text-xs text-faint">Files you open stay in this browser; Save and Export download them.</p>
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint" data-craft-credit>
           <span>
-            {app.name} {app.version} by the ArtCraft team and contributors · {app.license} ·
+            {app.name} {stage.version} by the ArtCraft team and contributors · {app.license} ·
           </span>
           <a className="underline underline-offset-2 hover:text-ink" href={app.repo} target="_blank" rel="noopener noreferrer">
             source
@@ -176,6 +183,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         </p>
       </Panel>
       <CraftNotices app={app} open={noticesOpen} onClose={() => setNoticesOpen(false)} />
+      {service.canManage ? <CraftUpdates open={updatesOpen} onClose={() => setUpdatesOpen(false)} /> : null}
       <iframe
         key={src}
         ref={frame}

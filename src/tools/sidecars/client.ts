@@ -6,6 +6,7 @@ import type { StorageUsage } from "@/lib/storage/quota";
 import type { OfficeFormat } from "@/lib/office/templates";
 import type { CraftLaunch } from "@/lib/craft/launch";
 import type { AppNotices } from "@/lib/craft/notices";
+import type { CraftUpdatesView } from "@/lib/craft/updates";
 
 /**
  * Typed browser helpers for /api/services and /api/office. Same-origin relative URLs and JSON bodies, so every mutating
@@ -233,6 +234,23 @@ export async function fileToBase64(file: File): Promise<string> {
 /* ------------------------------------------------------------------------------------------- Craft apps */
 
 export type { AppNotices, CraftLaunch };
+
+export type { CraftUpdatesView };
+
+/** The Craft apps update channel (admins). */
+export function getCraftUpdates(): Promise<CraftUpdatesView> {
+  return request<CraftUpdatesView>("GET", "/api/craft/updates");
+}
+
+export type CraftUpdateAction =
+  | { action: "check"; apply?: boolean }
+  | { action: "apply" | "rollback"; app: string }
+  | { action: "hold"; app: string; hold: boolean }
+  | { action: "mode"; mode: "auto" | "notify" | "off" };
+
+export function postCraftUpdates(body: CraftUpdateAction): Promise<CraftUpdatesView | { started: boolean; view: CraftUpdatesView }> {
+  return request("POST", "/api/craft/updates", body);
+}
 
 /** Licence and notice texts of the Craft app version this install serves. */
 export function getCraftNotices(app: string): Promise<AppNotices> {

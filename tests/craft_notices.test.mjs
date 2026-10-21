@@ -64,7 +64,7 @@ function fakeGithub(files, calls) {
 
 test("appNotices: release licences + repository NOTICE and its files at the release tag, cached once complete", async () => {
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === "photocraft");
-  const site = join(dataDir, "services", "craft", "assets", siteFolder(app), app.id);
+  const site = join(dataDir, "services", "craft", "releases", siteFolder(app), app.id);
   mkdirSync(site, { recursive: true });
   writeFileSync(join(site, "LICENSE-MIT"), "MIT License\n\nCopyright (c) 2026 ArtCraft Team and the PhotoCraft contributors\n");
   writeFileSync(join(site, "LICENSE-APACHE"), "Apache License 2.0");

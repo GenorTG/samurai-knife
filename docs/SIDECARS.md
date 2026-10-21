@@ -18,7 +18,8 @@ the owner presses Install.
 | `src/app/api/services/…` | `GET /api/services`, `GET|POST /api/services/<id>`, `GET /api/services/ops/<opId>`, `GET /api/services/ping`. |
 | `scripts/services.ts` | `npm run services -- list|status|install|start|stop|update|remove|configure <id> | reap` (same lib, same lock). |
 | `src/lib/services/assets.ts` | A definition's `assets` (files shipped in the repo, e.g. the editor plugin) -> `assets/<folder>-<hash>/`, mounted read-only. |
-| `src/lib/services/sites.ts` | A definition's `sites` (pinned release zips of static web apps): download, size + sha256 check, unpack into `assets/<app>-<version>-<sha12>/<app>/`, `.gz` twins, the generated `assets/conf-<hash>/nginx.conf`, pruning. |
+| `src/lib/services/sites.ts` | A definition's `sites` (release zips of static web apps): download, size + sha256 check, unpack into `releases/<app>-<version>-<sha12>/<app>/`, `.gz` twins, the active release of each app hard-linked into the content dir `services/<id>-content/<app>/` (`.knife-version` marker), the generated `assets/conf-<hash>/nginx.conf`, the static health check, pruning, moving the old layout's `assets/<app>-…` folders. |
+| `src/lib/services/site-channel.ts` + `src/lib/craft/updates.ts` | The update channel (`services/<id>/channel.json`: active/previous/available release per app, hold, mode) and the Craft apps updater (GitHub releases, digest check, apply, rollback, daily schedule). |
 | `src/tools/sidecars/` | `SidecarCard` (status + controls + progress), `SidecarsTool` (settings page), `OfficeTool`. |
 | `src/tools/craft/`, `src/lib/craft/`, `src/app/api/craft/`, `scripts/craft-proxy.mjs` | The ArtCraft suite (one iframe tab per app), its launch URLs and the public-mode proxy. |
 
@@ -365,16 +366,56 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
 
   A version bump = new `version`, `sha256`, `bytes` (read the asset digest with `gh release view -R storytold/<app>
   --json assets`, download it and `sha256sum` it; re-read the app's README for changed headers or sandbox needs).
-- **Install / update / start** (`sites.ts`, inside the op's lock, with download progress): every app whose
-  `<app>-<version>-<sha12>` folder is missing is downloaded (`fetch`, redirects followed, 15 min cap) to
-  `services/craft/downloads/`, refused unless size and sha256 equal the pin, unpacked with the in-repo ZIP reader (entries
-  must sit under `<app>-web-<version>/`, segments `[A-Za-z0-9._-]`, no `..`, at most 8 levels, 5000 entries, 256 MB per
-  entry; dotfiles skipped) into `assets/.tmp-…`, given `.gz` twins (wasm/js/html/css/svg/json/txt/fonts over 1 KB, unless
-  the zip has one; PhotoCraft's parts are gzip already and are served byte for byte), and renamed into place. The zip is
-  deleted. Nothing downloaded is ever in git. After a healthy `up`, folders the pins and the current config no longer name
-  are removed (`pruneSites`), so an update swaps atomically: the old container serves the old folders until the new one
-  runs. A Smart Knife release that bumps a pin changes the nginx.conf and so the compose hash: the next `ensure` (an admin
-  opening a tab) or Start/Update downloads the new version and recreates the container.
+- **Install / update / start** (`sites.ts`, inside the op's lock, with download progress): every app whose ACTIVE
+  release (the update channel, never below the pin) has no `releases/<app>-<version>-<sha12>` folder is downloaded
+  (`fetch`, redirects followed, 15 min cap) to `services/craft/downloads/`, refused unless size and sha256 equal the
+  release, unpacked with the in-repo ZIP reader (entries must sit under `<app>-web-<version>/`, segments
+  `[A-Za-z0-9._-]`, no `..`, at most 8 levels, 5000 entries, 256 MB per entry; dotfiles skipped) into
+  `releases/.tmp-…`, given `.gz` twins (wasm/js/html/css/svg/json/txt/fonts over 1 KB, unless the zip has one;
+  PhotoCraft's parts are gzip already and are served byte for byte), and renamed into place. The zip is deleted.
+  Nothing downloaded is ever in git. Then each app's active release is hard-linked into the content dir
+  `services/craft-content/<app>/` (built as `.new-<app>-<pid>` and swapped in by rename; a `.knife-version` marker
+  names the release) and, with the root helper, handed to root (`content` verb, below). After a healthy `up`, configs
+  other than the current one and releases other than each app's active, previous and pinned one are removed
+  (`pruneSites`). The first start of this layout moves the old `assets/<app>-<version>-<sha12>/` folders to
+  `releases/` instead of downloading them again.
+- **Config vs content** (why app updates need no `sync`): the container mounts two read-only folders: `assets/` at
+  `/srv/craft` (only `conf-<hash>/nginx.conf`, which names no version) and the content dir at `/srv/craft-content`
+  (`../craft-content` in compose, a sibling of the service dir, so a `sync` that replaces the bundle dir never pulls it
+  out from under the running container). Switching a release touches only the content dir: compose, its hash and the
+  bundle's asset folder names stay the same, so the container is neither recreated nor does the root helper's bundle
+  check fail. With the helper, root copies the content dir into `/etc/samurai-knife/sidecars/craft-content/` on the
+  app's request (`content craft`: only apps whose marker changed, regular files and directories only, names
+  `[A-Za-z0-9._-]`, depth 8, 1.5 GB in all, each app swapped in by rename, apps no longer staged removed). That does not
+  widen the host's trust boundary: the files are static, nginx (uid 101, no capabilities, read-only root, no egress)
+  only serves them, and they only ever run in browsers on the separate craft origin, which the app's own origin never
+  trusts; a compromised app could already serve anything on its own origin. What can hurt the host (image, ports,
+  capabilities, mounts, secrets, nginx.conf) still needs the owner's `sudo knife-sidecar sync craft`.
+- **Updates** (src/lib/craft/updates.ts, admin drawer "Updates" in every tab, `GET`/`POST /api/craft/updates`):
+  - Source: each app's GitHub releases, one `GET /repos/storytold/<app>/releases?per_page=20` per app per check with
+    `If-None-Match` (13 requests; GitHub allows 60 unauthenticated an hour per address). A 403/429 stops the check and
+    records `retryAfter` (from `x-ratelimit-reset`); no check runs before it.
+  - What qualifies: not a draft or pre-release, tag `v<x.y.z>` above the active version, not in the app's `knownBad`
+    (DeckCraft 0.8.0 and 0.9.0 panic at startup, storytold/deckcraft#959), exactly the asset `<app>-web-<version>.zip`
+    at `https://github.com/storytold/<app>/releases/download/v<version>/…`, a `sha256:` digest from the API and at most
+    256 MB. The download is checked against that digest and size while it streams.
+  - Health gate before the switch (no browser on the server): an `index.html`, WebAssembly (`.wasm` or PhotoCraft's
+    `app/parts.txt`), and no file the nginx rules cache as `immutable` that kept its name but changed its bytes since
+    the previous release (browsers would keep the old one for a year; FilmCraft keeps its file names in every release,
+    so nothing of it is immutable). A release that fails is deleted again and the error shown on the app's row.
+  - Switch: the channel's `active` moves, the old one becomes `previous`, the content dir is relinked and pushed: no
+    restart, no `sync`; open tabs get the new version on their next load (index.html revalidates).
+  - Modes (admin): **Automatic** (default: daily check, apply every app that is not held), **Notify only** (daily check,
+    an admin presses "Update to x"), **Off** (no scheduled check; "Check now" still works). "Roll back to x" returns to
+    the previous release (still unpacked) and holds the app, so the next automatic check does not undo it; "Release
+    hold" lets it move again. The pins in definitions.ts stay the floor for fresh installs: an active release older than
+    the pin is ignored.
+  - Schedule: `startCraftUpdater()` from `src/instrumentation.ts`: first look 10-40 min after the server starts, then
+    hourly, acting only when the sidecar is installed, the mode is not off and the last check is ~a day old.
+    `KNIFE_CRAFT_UPDATES=off` disables the timer entirely (the scratch e2e does). Every check, skip, download, switch,
+    rollback and error goes to `$KNIFE_LOG_DIR/sidecars/craft/ops-<day>.log` (`[updates] …`).
+  - Tests: `KNIFE_CRAFT_RELEASES_API` and `KNIFE_CRAFT_DOWNLOAD_BASE` point the updater at a fake GitHub
+    (tests/craft_e2e.py; `http://` only on loopback).
 - **Container**: `nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b…` (pinned by digest), uid 101, port 8080,
   `read_only: true` + `tmpfs /tmp` (64 MB), `cap_drop: [ALL]` and nothing added, `pids_limit: 64`, `mem_limit: 256m`,
   `cpus: 1`, entrypoint `nginx`, command `-c /srv/craft/conf-<hash>/nginx.conf`, a compose healthcheck (`wget /healthz`)

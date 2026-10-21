@@ -5,7 +5,7 @@
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/craft.test.mjs
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -28,6 +28,7 @@ const { renderCompose } = await import("../src/lib/services/compose.ts");
 const sites = await import("../src/lib/services/sites.ts");
 const { writeZip } = await import("../src/lib/office/zip.ts");
 const state = await import("../src/lib/services/state.ts");
+const channel = await import("../src/lib/services/site-channel.ts");
 const { bindHostFor, composeHashOf } = await import("../src/lib/services/manager.ts");
 const urls = await import("../src/lib/services/urls.ts");
 const { craftLaunch, craftTicket } = await import("../src/lib/craft/launch.ts");
@@ -72,7 +73,7 @@ test("definition: thirteen pinned apps (https release URL, sha256, size), the sa
   assert.deepEqual(craft.usedBy, ["artcraft"]);
 });
 
-test("compose: read-only root with a tmpfs, no capabilities, fixed entrypoint + generated config, assets mounted read-only", () => {
+test("compose: read-only root with a tmpfs, no capabilities, fixed entrypoint + generated config, config and content mounted read-only", () => {
   const command = sites.sitesConfig(craft).command;
   const svc = parse(renderCompose(craft, { bindHost: "100.64.0.7", hostPort: 3215, command })).services.nginx;
   assert.equal(svc.read_only, true);
@@ -84,7 +85,8 @@ test("compose: read-only root with a tmpfs, no capabilities, fixed entrypoint + 
   assert.deepEqual(svc.entrypoint, ["nginx"]);
   assert.match(command.join(" "), /^-c \/srv\/craft\/conf-[0-9a-f]{12}\/nginx\.conf$/);
   assert.deepEqual(svc.command, command);
-  assert.deepEqual(svc.volumes, ["./assets:/srv/craft:ro"]);
+  // Config (root-approved bundle) and content (the apps, refreshed without a sync) are separate read-only mounts.
+  assert.deepEqual(svc.volumes, ["./assets:/srv/craft:ro", "../craft-content:/srv/craft-content:ro"]);
   assert.deepEqual(svc.ports, ["100.64.0.7:3215:8080"]);
   assert.deepEqual(svc.healthcheck.test, ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]);
   assert.equal(svc.env_file[0], "secrets.env");
@@ -125,9 +127,13 @@ test("nginx.conf: wasm MIME, gzip_static, GET/HEAD only, CSP for WebAssembly, fr
   assert.match(sites.renderNginxConf(craft, ["https://knife.example.org"], { https: true }), /Cross-Origin-Opener-Policy "same-origin"/);
   assert.match(sites.sitesConfig(craft, { KNIFE_CRAFT_PUBLIC_URL: "https://craft.knife.example.org", KNIFE_PUBLIC_URL: "https://knife.example.org" }).conf, /Cross-Origin-Opener-Policy/);
   for (const app of ARTCRAFT_APPS) {
-    assert.ok(conf.includes(`location /${app.id}/ {\n      root /srv/craft/${sites.siteFolder(app)};`), app.id);
+    // No version in the config: a release switch only touches the content dir (no recreate, no sync).
+    assert.ok(conf.includes(`location /${app.id}/ {\n      root /srv/craft-content;`), app.id);
+    assert.ok(!conf.includes(app.version), `${app.id}: the config names no version`);
     assert.ok(conf.includes(`location = /${app.id} { return 301 /${app.id}/; }`), app.id);
   }
+  // Smart Knife's own files on the craft origin (the sync bridge), from the content dir: adding them needs no sync.
+  assert.ok(conf.includes(`location /${sites.BRIDGE_FOLDER}/ {\n      root /srv/craft-content;`));
   const csp = sites.siteCsp(["https://knife.example.org"]);
   assert.match(csp, /script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'/);
   assert.match(csp, /worker-src 'self' blob:/);
@@ -158,7 +164,8 @@ test("caching: hash-named files immutable, files that keep their names revalidat
     ["vectorcraft", "/vectorcraft-web-d0094b3b031c2f0c_bg.wasm", true],
     ["vectorcraft", "/fonts/63111b5b2e074dd4/NotoSansArabic.ttf", true],
     ["vectorcraft", "/index.html", false],
-    ["filmcraft", "/filmcraft_web_bg.wasm", true],
+    // Same names in every release (the page adds `?v=`): revalidated, or an update would meet a year-old cached copy.
+    ["filmcraft", "/filmcraft_web_bg.wasm", false],
     ["filmcraft", "/index.html", false],
     ["lightcraft", "/lightcraft_web_bg.wasm", false],
     ["lightcraft", "/worker.js", false],
@@ -205,7 +212,7 @@ function fakeFetch(map, calls = []) {
   };
 }
 
-test("installSites: verified download, unpacked under <app>-<version>-<sha12>/<app>/, .gz twins, dotfiles skipped, pruned on update", async () => {
+test("installSites: verified download into releases/<app>-<version>-<sha12>/<app>/, .gz twins, dotfiles skipped, then linked into the content dir", async () => {
   const big = "console.log('x');\n".repeat(200);
   const v1 = fakeRelease("democraft", "1.0.0", {
     "index.html": `<!doctype html><title>demo</title>${" ".repeat(2048)}`,
@@ -221,41 +228,92 @@ test("installSites: verified download, unpacked under <app>-<version>-<sha12>/<a
   const progress = [];
   const installed = await sites.installSites(def, { phase: (text, percent) => progress.push([text, percent]), log() {} }, fakeFetch(new Map([[app.url, v1.zip]]), calls));
   assert.deepEqual(installed, ["democraft"]);
-  const root = join(dataDir, "services", "craft-demo", "assets", sites.siteFolder(app), "democraft");
+  const root = join(dataDir, "services", "craft-demo", "releases", sites.siteFolder(app), "democraft");
   assert.equal(readFileSync(join(root, "app", "glue.js"), "utf8"), big);
   assert.equal(gunzipSync(readFileSync(join(root, "app", "glue.js.gz"))).toString("utf8"), big, "gzip twin of the glue");
   assert.ok(existsSync(join(root, "demo-0123456789abcdef_bg.wasm.gz")));
   assert.ok(!existsSync(join(root, "app", "x.part-aa.gz")), "the gzipped parts are served as they are");
   assert.ok(!existsSync(join(root, ".htaccess")), "dotfiles are not unpacked");
   assert.ok(!existsSync(join(root, "fonts", "abc", "Font.ttf.gz")), "files under 1 KB get no twin");
-  assert.ok(!existsSync(join(dataDir, "services", "craft-demo", "downloads")), "the zip is deleted after unpacking");
+  assert.ok(!existsSync(join(dataDir, "services", "craft-demo", "downloads")), "the zip and its folder are deleted after unpacking");
   assert.ok(progress.some(([, percent]) => percent === 100));
   // Nothing missing now: no second download.
   assert.deepEqual(await sites.installSites(def, silent, fakeFetch(new Map(), calls)), []);
   assert.equal(calls.length, 1);
 
-  // An update pins 1.1.0: the new folder is added next to the old one; pruneSites drops the old version and old configs.
+  // Activation: hard links + a marker in <servicesRoot>/craft-demo-content/democraft/; idempotent.
+  assert.deepEqual(sites.activateSites(def), ["democraft"]);
+  const content = join(dataDir, "services", "craft-demo-content", "democraft");
+  assert.equal(readFileSync(join(content, "app", "glue.js"), "utf8"), big);
+  assert.equal(statSync(join(content, "app", "glue.js")).ino, statSync(join(root, "app", "glue.js")).ino, "hard link, not a copy");
+  assert.equal(readFileSync(join(content, sites.CONTENT_MARKER), "utf8"), `1.0.0 ${v1.sha256}\n`);
+  assert.deepEqual(sites.servedRelease(def, app), { version: "1.0.0", sha256: v1.sha256 });
+  assert.deepEqual(sites.activateSites(def), [], "already served");
+
+  // The channel moves to 1.1.0: downloaded next to 1.0.0, content switched, the config untouched.
   sites.writeSitesConf(def);
-  const v2 = fakeRelease("democraft", "1.1.0", { "index.html": "<!doctype html>v2" });
-  const app2 = { ...app, version: "1.1.0", url: "https://example.invalid/democraft-2.zip", sha256: v2.sha256, bytes: v2.zip.length };
-  const def2 = fakeDef("craft-demo", [app2]);
-  await sites.installSites(def2, silent, fakeFetch(new Map([[app2.url, v2.zip]])));
-  sites.writeSitesConf(def2);
-  const assets = join(dataDir, "services", "craft-demo", "assets");
-  assert.equal(readdirSync(assets).length, 4, "two versions + two configs before pruning");
-  const removed = sites.pruneSites(def2);
-  assert.deepEqual(readdirSync(assets).sort(), [sites.sitesConfig(def2).folder, sites.siteFolder(app2)].sort());
-  assert.equal(removed.length, 2);
+  const confBefore = sites.sitesConfig(def).folder;
+  const v2 = fakeRelease("democraft", "1.1.0", { "index.html": "<!doctype html>v2", "demo-fedcba9876543210_bg.wasm": Buffer.alloc(64, 1) });
+  const rel2 = { version: "1.1.0", sha256: v2.sha256, bytes: v2.zip.length, url: "https://example.invalid/democraft-2.zip" };
+  await sites.installRelease(def, app, rel2, silent, fakeFetch(new Map([[rel2.url, v2.zip]])));
+  assert.deepEqual(sites.checkRelease(def, app, rel2, sites.pinRelease(app)), []);
+  channel.writeChannel("craft-demo", { mode: "auto", apps: { democraft: { active: rel2, previous: sites.pinRelease(app) } } });
+  assert.deepEqual(sites.activeRelease(def, app), rel2);
+  assert.deepEqual(sites.activateSites(def), ["democraft"]);
+  assert.equal(readFileSync(join(content, "index.html"), "utf8"), "<!doctype html>v2");
+  assert.equal(sites.sitesConfig(def).folder, confBefore, "a release switch never changes nginx.conf");
+  // Prune keeps active + previous + pin, and only the current config in assets/.
+  const v3 = fakeRelease("democraft", "1.2.0", { "index.html": "<!doctype html>v3", "a.wasm": "x" });
+  const rel3 = { version: "1.2.0", sha256: v3.sha256, bytes: v3.zip.length, url: "https://example.invalid/democraft-3.zip" };
+  await sites.installRelease(def, app, rel3, silent, fakeFetch(new Map([[rel3.url, v3.zip]])));
+  sites.pruneSites(def);
+  assert.deepEqual(readdirSync(join(dataDir, "services", "craft-demo", "releases")).sort(), [sites.releaseFolder(app, rel2), sites.siteFolder(app)].sort());
+  assert.deepEqual(readdirSync(join(dataDir, "services", "craft-demo", "assets")), [confBefore]);
+  // A pin newer than the channel wins (a code release raised the floor).
+  const raised = fakeDef("craft-demo", [{ ...app, version: "2.0.0" }]);
+  assert.equal(sites.activeRelease(raised, raised.sites.apps[0]).version, "2.0.0");
 });
 
-test("installSites: a download that does not match the pin (hash, size) or a malformed release unpacks nothing", async () => {
+test("checkRelease: no index.html, no WebAssembly, or an immutable-cached name with new bytes is refused", async () => {
+  const app = { ...ARTCRAFT_APPS[6], id: "chkcraft", name: "ChkCraft", version: "1.0.0", immutable: [String.raw`-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`] };
+  const def = fakeDef("craft-chk", [app]);
+  const put = async (version, files) => {
+    const zip = fakeRelease("chkcraft", version, files);
+    const rel = { version, sha256: zip.sha256, bytes: zip.zip.length, url: `https://example.invalid/chk-${version}.zip` };
+    await sites.installRelease(def, app, rel, silent, fakeFetch(new Map([[rel.url, zip.zip]])));
+    return rel;
+  };
+  const one = await put("1.0.0", { "index.html": "a", "chk-0123456789abcdef_bg.wasm": "one" });
+  assert.deepEqual(sites.checkRelease(def, app, one), []);
+  const noWasm = await put("1.1.0", { "index.html": "a", "main.js": "x" });
+  assert.match(sites.checkRelease(def, app, noWasm).join(), /no WebAssembly/);
+  const sameName = await put("1.2.0", { "index.html": "a", "chk-0123456789abcdef_bg.wasm": "two" });
+  assert.match(sites.checkRelease(def, app, sameName, one).join(), /changed but keeps its name/);
+  const renamed = await put("1.3.0", { "index.html": "a", "chk-fedcba9876543210_bg.wasm": "two" });
+  assert.deepEqual(sites.checkRelease(def, app, renamed, one), []);
+});
+
+test("migrateLegacyAssets: release folders of the old layout (assets/) move to releases/ instead of downloading again", () => {
+  const app = ARTCRAFT_APPS[0];
+  const legacy = join(dataDir, "services", "craft-legacy", "assets", sites.siteFolder(app), app.id);
+  mkdirSync(legacy, { recursive: true });
+  writeFileSync(join(legacy, "index.html"), "old layout");
+  mkdirSync(join(dataDir, "services", "craft-legacy", "assets", "conf-0123456789ab"), { recursive: true });
+  const def = fakeDef("craft-legacy", ARTCRAFT_APPS);
+  assert.deepEqual(sites.migrateLegacyAssets(def), [sites.siteFolder(app)]);
+  assert.ok(sites.releaseInstalled(def, app, sites.pinRelease(app)));
+  assert.deepEqual(sites.missingSites(def).map((a) => a.id), ARTCRAFT_APPS.slice(1).map((a) => a.id));
+  assert.ok(existsSync(join(dataDir, "services", "craft-legacy", "assets", "conf-0123456789ab")), "configs stay");
+});
+
+test("installSites: a download that does not match the release (hash, size) or a malformed release unpacks nothing", async () => {
   const good = fakeRelease("badcraft", "1.0.0", { "index.html": "<!doctype html>" });
   const app = { ...ARTCRAFT_APPS[6], id: "badcraft", name: "BadCraft", version: "1.0.0", url: "https://example.invalid/bad.zip", sha256: good.sha256, bytes: good.zip.length };
-  const assets = join(dataDir, "services", "craft-bad", "assets");
+  const releases = join(dataDir, "services", "craft-bad", "releases");
   const tampered = Buffer.from(good.zip);
   tampered[tampered.length - 30] ^= 1;
-  await assert.rejects(sites.installSites(fakeDef("craft-bad", [app]), silent, fakeFetch(new Map([[app.url, tampered]]))), /does not match the pinned release/);
-  await assert.rejects(sites.installSites(fakeDef("craft-bad", [app]), silent, fakeFetch(new Map([[app.url, Buffer.concat([good.zip, Buffer.alloc(10)])]]))), /larger than the pinned/);
+  await assert.rejects(sites.installSites(fakeDef("craft-bad", [app]), silent, fakeFetch(new Map([[app.url, tampered]]))), /does not match the release/);
+  await assert.rejects(sites.installSites(fakeDef("craft-bad", [app]), silent, fakeFetch(new Map([[app.url, Buffer.concat([good.zip, Buffer.alloc(10)])]]))), /larger than the expected/);
   await assert.rejects(sites.installSites(fakeDef("craft-bad", [app]), silent, fakeFetch(new Map())), /HTTP 404/);
   // Correctly pinned but unexpected content: an entry outside the release folder, a traversal name, no index.html.
   for (const [files, message] of [
@@ -270,15 +328,17 @@ test("installSites: a download that does not match the pin (hash, size) or a mal
   const foreign = writeZip([{ name: "othercraft-web-1.0.0/index.html", data: "x" }]);
   const pinned = { ...app, sha256: createHash("sha256").update(foreign).digest("hex"), bytes: foreign.length };
   await assert.rejects(sites.installSites(fakeDef("craft-bad", [pinned]), silent, fakeFetch(new Map([[app.url, foreign]]))), /unexpected entry/);
-  assert.deepEqual(existsSync(assets) ? readdirSync(assets) : [], [], "nothing half-unpacked is left");
+  assert.deepEqual(existsSync(releases) ? readdirSync(releases) : [], [], "nothing half-unpacked is left");
   assert.equal(sites.siteEntryPath(app, "badcraft-web-1.0.0/"), null);
   assert.equal(sites.siteEntryPath(app, "badcraft-web-1.0.0/app/x.js"), "app/x.js");
+  assert.equal(sites.siteEntryPath(app, "badcraft-web-1.4.0/app/x.js", "1.4.0"), "app/x.js");
 });
 
-test("compose hash: a new pinned version changes the config, so a running container is recreated at the next ensure", () => {
+test("compose hash: an app version change leaves compose and nginx.conf alone (no recreate); the image or the framing origins change them", () => {
   const st = { id: "craft", image: craft.image, bindHost: "100.64.0.7", hostPort: 3215, idleStopMinutes: 30, installedAt: "x", updatedAt: "x" };
   const bumped = { ...craft, sites: { ...craft.sites, apps: craft.sites.apps.map((app, i) => (i === 0 ? { ...app, version: "9.9.9" } : app)) } };
-  assert.notEqual(composeHashOf(craft, st), composeHashOf(bumped, st));
+  assert.equal(composeHashOf(craft, st), composeHashOf(bumped, st));
+  assert.notEqual(composeHashOf(craft, st), composeHashOf(craft, { ...st, image: "nginxinc/nginx-unprivileged:other" }));
 });
 
 /* ------------------------------------------------------------------------------------------- launch + proxy */

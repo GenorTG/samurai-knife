@@ -43,6 +43,76 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scratch_server import ROOT, ScratchServer  # noqa: E402
 
+
+class FakeGithub:
+    """GitHub's releases API + asset downloads on loopback (KNIFE_CRAFT_RELEASES_API / KNIFE_CRAFT_DOWNLOAD_BASE):
+    `releases[app]` = list of (version, zip bytes); every other app lists nothing."""
+
+    def __init__(self) -> None:
+        import hashlib
+        import http.server
+        import socket
+        import threading
+
+        self.releases: dict[str, list[tuple[str, bytes]]] = {}
+        self.calls: list[str] = []
+        outer = self
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            self.port = sock.getsockname()[1]
+        self.base = f"http://127.0.0.1:{self.port}"
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args: object) -> None:
+                pass
+
+            def do_GET(self) -> None:  # noqa: N802
+                outer.calls.append(self.path)
+                m = re.match(r"^/repos/storytold/([a-z]+)/releases\?per_page=20$", self.path)
+                if m:
+                    app = m.group(1)
+                    listing = [{
+                        "tag_name": f"v{version}", "draft": False, "prerelease": False, "published_at": "2026-10-21T12:00:00Z",
+                        "assets": [{"name": f"{app}-web-{version}.zip", "size": len(data), "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
+                                    "browser_download_url": f"{outer.base}/storytold/{app}/releases/download/v{version}/{app}-web-{version}.zip"}],
+                    } for version, data in outer.releases.get(app, [])]
+                    body = json.dumps(listing).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                m = re.match(r"^/storytold/([a-z]+)/releases/download/v([0-9.]+)/[a-z]+-web-[0-9.]+\.zip$", self.path)
+                data = next((d for v, d in outer.releases.get(m.group(1), []) if v == m.group(2)), None) if m else None
+                if data is None:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+
+
+def repack(release_root: Path, app: str, version: str) -> bytes:
+    """The unpacked release (no .gz twins) as `<app>-web-<version>.zip`: a "newer" upstream release with real content."""
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{app}-web-{version}/", "")
+        for path in sorted(release_root.rglob("*")):
+            if path.is_file() and not path.name.endswith(".gz"):
+                zf.write(path, f"{app}-web-{version}/{path.relative_to(release_root).as_posix()}")
+    return buffer.getvalue()
+
 RESULTS: list[tuple[str, bool, str]] = []
 METRICS: dict[str, object] = {}
 SERVICE = "craft"
@@ -243,8 +313,9 @@ def main() -> int:
 
     prefix = os.environ.get("KNIFE_E2E_SIDECAR_PREFIX") or f"sk-craft-e2e-{os.getpid()}"
     project = f"{prefix}-{SERVICE}"
+    github = FakeGithub()
     server = ScratchServer(host=args.host)
-    url = server.start(env={"KNIFE_SIDECAR_PREFIX": prefix}, overlay=OVERLAY)
+    url = server.start(env={"KNIFE_SIDECAR_PREFIX": prefix, "KNIFE_CRAFT_RELEASES_API": github.base, "KNIFE_CRAFT_DOWNLOAD_BASE": github.base, "KNIFE_CRAFT_UPDATES": "off"}, overlay=OVERLAY)
     api = Api(url)
     print(f"scratch server {url}, data dir {server.data_dir}, compose project {project}", flush=True)
     try:
@@ -282,11 +353,18 @@ def main() -> int:
             origin = svc["publicUrl"]
             check("running, healthy, published on its own port of the app's address", svc["ready"] and origin.startswith(f"http://{args.host}:") and origin != url, origin)
             check("no warnings after install", not svc["warnings"], "; ".join(svc["warnings"]))
-            assets = Path(server.data_dir) / "services" / SERVICE / "assets"
-            folders = sorted(p.name for p in assets.iterdir())
-            check("assets: one versioned folder per app + one config, no leftovers", len(folders) == len(APPS) + 1 and sum(f.startswith("conf-") for f in folders) == 1 and not any(f.startswith(".") for f in folders), " ".join(folders))
-            check("downloads removed after unpacking", not (Path(server.data_dir) / "services" / SERVICE / "downloads").exists())
-            sizes = {f.split("-")[0]: sum(p.stat().st_size for p in (assets / f).rglob("*") if p.is_file()) for f in folders if not f.startswith("conf-")}
+            service_dir = Path(server.data_dir) / "services" / SERVICE
+            config_folders = sorted(p.name for p in (service_dir / "assets").iterdir())
+            check("assets (root-approved bundle): just the generated config", len(config_folders) == 1 and config_folders[0].startswith("conf-"), " ".join(config_folders))
+            releases = service_dir / "releases"
+            folders = sorted(p.name for p in releases.iterdir())
+            check("releases: one versioned folder per app, no leftovers", len(folders) == len(APPS) and not any(f.startswith(".") for f in folders), " ".join(folders))
+            content = Path(server.data_dir) / "services" / f"{SERVICE}-content"
+            served = {p.name: (p / ".knife-version").read_text().split()[0] for p in content.iterdir() if not p.name.startswith(".")}
+            check("content dir: every app linked with its version marker", sorted(served) == sorted(APPS) and all(f.startswith(f"{a}-{v}-") for a, v in served.items() for f in folders if f.startswith(f"{a}-")), json.dumps(served)[:300])
+            assets = releases  # where the unpacked files are, for the header checks below
+            check("downloads removed after unpacking", not any((service_dir / "downloads").glob("*")) if (service_dir / "downloads").exists() else True)
+            sizes = {f.split("-")[0]: sum(p.stat().st_size for p in (releases / f).rglob("*") if p.is_file()) for f in folders}
             METRICS["unpacked_mb"] = {app: round(size / 1e6, 1) for app, size in sizes.items()}
             METRICS["unpacked_total_mb"] = round(sum(sizes.values()) / 1e6, 1)
 
@@ -301,7 +379,7 @@ def main() -> int:
             user = subprocess.run(["docker", "exec", name, "id", "-u"], capture_output=True, text=True).stdout.strip()
             check("nginx runs as uid 101 (not root)", user == "101", user)
             mounts = [(m.get("Destination"), m.get("RW")) for m in inspect.get("Mounts", [])]
-            check("only the assets folder is mounted, read-only", mounts == [("/srv/craft", False)], str(mounts))
+            check("only the config and the content are mounted, both read-only", sorted(mounts) == [("/srv/craft", False), ("/srv/craft-content", False)], str(mounts))
 
             # The craft origin's headers.
             status, headers, body_bytes = head(f"{origin}/photocraft/")
@@ -496,6 +574,61 @@ def main() -> int:
                 check("GridCraft: CSV opened via Browse…, a formula added, exported as CSV (rows kept, value computed)",
                       len(rows) == 4 and rows[0].startswith("name,qty,price") and rows[1] == "apple,3,1.5,4.5" and rows[3].startswith("plum,10,0.4"), f"{out.name}: {rows}")
 
+            if "gridcraft" in only:
+                # Automatic updates: a "0.9.1" GridCraft (the real 0.9.0 files re-packed) from the fake GitHub, applied
+                # from the admin drawer: content switched, nginx.conf/compose untouched, the same container keeps
+                # serving (no recreate, and with the root helper no sync: the bundle hash covers neither).
+                releases = server.data_dir / "services" / SERVICE / "releases"
+                pinned = next(releases.glob("gridcraft-*"))
+                github.releases["gridcraft"] = [("0.9.1", repack(pinned / "gridcraft", "gridcraft", "0.9.1"))]
+                state_file = server.data_dir / "services" / SERVICE / "state.json"
+                compose_before = (server.data_dir / "services" / SERVICE / "compose.yaml").read_text()
+                assets_before = sorted(p.name for p in (server.data_dir / "services" / SERVICE / "assets").iterdir())
+                hash_before = json.loads(state_file.read_text()).get("composeHash")
+                container_before = subprocess.run(["docker", "compose", "-p", project, "ps", "-q"], capture_output=True, text=True).stdout.strip()
+                page.goto(f"{url}/tools/artcraft?tab=gridcraft")
+                page.locator("main [role=status]", has_text="GridCraft loaded from").first.wait_for(timeout=120_000)
+                page.locator("[data-craft-app=gridcraft]").get_by_role("button", name="Updates").click()
+                drawer = page.get_by_role("dialog", name="Craft apps updates")
+                drawer.get_by_role("button", name="Check now").click()
+                row = drawer.locator("[data-craft-update=gridcraft]")
+                row.get_by_text("0.9.1 available").wait_for(timeout=60_000)
+                check("updates: the check finds the newer release (one listing per app, nothing else downloaded)",
+                      sum(1 for c in github.calls if c.startswith("/repos/")) == len(APPS) and not any("/download/" in c for c in github.calls), f"{len(github.calls)} calls")
+                page.screenshot(path=str(shots / "50-updates-available.png"))
+                row.get_by_role("button", name="Update to 0.9.1").click()
+                row.get_by_role("button", name="Roll back to 0.9.0").wait_for(timeout=120_000)
+                served = (server.data_dir / "services" / f"{SERVICE}-content" / "gridcraft" / ".knife-version").read_text().split()[0]
+                container_after = subprocess.run(["docker", "compose", "-p", project, "ps", "-q"], capture_output=True, text=True).stdout.strip()
+                check("update applied from the drawer: the content dir serves 0.9.1", served == "0.9.1", served)
+                assets_after = sorted(p.name for p in (server.data_dir / "services" / SERVICE / "assets").iterdir())
+                check("an app update changes neither compose.yaml, its hash nor the bundle's asset folders (no recreate, no helper sync)",
+                      (server.data_dir / "services" / SERVICE / "compose.yaml").read_text() == compose_before and json.loads(state_file.read_text()).get("composeHash") == hash_before and assets_after == assets_before,
+                      f"assets {assets_before} -> {assets_after}")
+                check("the same container keeps serving across the update", container_before and container_after == container_before, f"{container_before} -> {container_after}")
+                drawer.get_by_role("button", name="Close Craft apps updates").click()
+                page.reload()
+                page.locator("main [role=status]", has_text="GridCraft loaded from").first.wait_for(timeout=120_000)
+                state = wait_app(page, "gridcraft")
+                title = page.locator("[data-craft-app=gridcraft] h2, [data-craft-app=gridcraft] h3").first.inner_text()
+                page.screenshot(path=str(shots / "51-gridcraft-updated.png"))
+                check("GridCraft 0.9.1 starts after the update and the tab names the new version", bool(state.get("ready")) and "0.9.1" in title, f"{title!r} {json.dumps(state)[:120]}")
+                page.locator("[data-craft-app=gridcraft]").get_by_role("button", name="Updates").click()
+                row = page.get_by_role("dialog", name="Craft apps updates").locator("[data-craft-update=gridcraft]")
+                row.get_by_role("button", name="Roll back to 0.9.0").click()
+                row.get_by_text("held").wait_for(timeout=60_000)
+                served = (server.data_dir / "services" / f"{SERVICE}-content" / "gridcraft" / ".knife-version").read_text().split()[0]
+                check("roll back: 0.9.0 served again and the app is held (no automatic re-update)", served == "0.9.0" and row.get_by_role("button", name="Release hold").is_visible(), served)
+                status, body = api.call("POST", "/api/craft/updates", {"action": "check", "apply": True})
+                for _ in range(60):
+                    status, view = api.call("GET", "/api/craft/updates")
+                    if not view.get("running"):
+                        break
+                    time.sleep(1)
+                grid = next(a for a in view["apps"] if a["id"] == "gridcraft")
+                check("a held app stays on its version through 'check and update all'", grid["active"] == "0.9.0" and grid["available"] == "0.9.1" and grid["hold"], json.dumps(grid)[:200])
+                page.get_by_role("button", name="Close Craft apps updates").click()
+
             # "Open in new tab" = the same app, top-level on the craft origin.
             page.goto(f"{url}/tools/artcraft?tab=designcraft")
             page.locator("main [role=status]", has_text="DesignCraft loaded from").first.wait_for(timeout=120_000)
@@ -544,8 +677,11 @@ def main() -> int:
                 check("remove + purge op done", False, str(err))
         else:
             check("remove + purge accepted", False, str(body)[:200])
-        left_files = sorted(str(p.relative_to(Path(server.data_dir))) for p in (Path(server.data_dir) / "services" / SERVICE).rglob("*")) if (Path(server.data_dir) / "services" / SERVICE).exists() else []
-        check("purge deleted the sidecar's apps, config and secrets", not left_files, " ".join(left_files[:10]))
+        left_files = [str(p.relative_to(Path(server.data_dir))) for folder in (SERVICE, f"{SERVICE}-content") for p in (Path(server.data_dir) / "services" / folder).rglob("*")] if (Path(server.data_dir) / "services").exists() else []
+        left_dirs = [folder for folder in (SERVICE, f"{SERVICE}-content") if (Path(server.data_dir) / "services" / folder).exists()]
+        # The status polls of the purge op may recreate the (empty) service dir; no file and no content dir may be left.
+        check("purge deleted the sidecar's releases, content, config and secrets", not left_files and f"{SERVICE}-content" not in left_dirs, " ".join((left_dirs + left_files)[:10]))
+        github.close()
         # Backstop when the API could not clean up: only this run's own project label is ever touched.
         for name in docker_lines("ps", "-a", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Names}}"):
             if name.startswith(prefix):

@@ -94,12 +94,13 @@ export interface SidecarDefinition {
    */
   assets?: { source: string; target: string; label: string };
   /**
-   * Static web apps served by an nginx container (sites.ts): each app's pinned release zip is downloaded, checked against
-   * its sha256, unpacked into `$KNIFE_DATA_DIR/services/<id>/assets/<app>-<version>-<sha prefix>/<app>/` and served under
-   * `/<app>/`; the generated nginx.conf sits next to them in `conf-<hash>/`. That directory is mounted read-only at
-   * `target`. Exclusive with `assets` (both use the assets folder).
+   * Static web apps served by an nginx container (sites.ts): each app's release zip (the pin, or a newer one from the
+   * update channel) is downloaded, checked against its sha256 and unpacked into `$KNIFE_DATA_DIR/services/<id>/releases/`;
+   * the active release of each app is linked into `services/<id>-content/<app>/`, mounted read-only at `contentTarget`
+   * and served under `/<app>/`. The generated nginx.conf sits in `assets/conf-<hash>/`, mounted read-only at `target`.
+   * Exclusive with `assets` (both use the assets folder).
    */
-  sites?: { target: string; label: string; apps: readonly SidecarSite[] };
+  sites?: { target: string; contentTarget: string; label: string; apps: readonly SidecarSite[] };
   /** Container options beyond the defaults (a read-only root filesystem with tmpfs scratch, a fixed entrypoint, a healthcheck). */
   container?: {
     readOnly?: boolean;
@@ -134,6 +135,8 @@ export interface SidecarSite {
   webgpu: boolean;
   /** One-line caveat shown with the app. */
   note?: string;
+  /** Upstream versions never installed by the update channel (known not to start). */
+  knownBad?: string[];
 }
 
 // ArtCraft (https://github.com/storytold): MIT OR Apache-2.0, pure Rust, static WebAssembly web builds. Versions and
@@ -167,9 +170,10 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
   artcraft("vectorcraft", "VectorCraft", "vector illustration", "0.14.0", "6f28a8bcee1c5ad6c37c6a0c44058793a40ea4443085866d5f78afb16aba075e", 27734185, {
     immutable: [HASHED_GLUE, String.raw`^/fonts/[0-9a-f]{16}/`],
   }),
-  // index.html loads the glue and wasm with `?v=<build hash>`.
+  // index.html loads the glue and wasm with `?v=<build hash>`, but the file names stay the same in every release: an
+  // update must not meet a year-long immutable copy of the old file, so everything revalidates (ETag, 304).
   artcraft("filmcraft", "FilmCraft", "video editor", "0.10.0", "47618cc373ff1306be17cfd539a33a5a5af490d3bb6722a6bc1436fcd6bf87a0", 13429216, {
-    immutable: [String.raw`\.(?:wasm|js)$`],
+    immutable: [],
   }),
   // Same file names in every release: nothing is immutable. Library in OPFS (IndexedDB fallback), render workers.
   artcraft("lightcraft", "LightCraft", "photo library and raw developer", "0.10.0", "6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794", 22381646, {
@@ -200,6 +204,7 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
   // Not the newest: the 0.8.0 and 0.9.0 web builds panic at startup ("no pids on this platform", std::process on
   // wasm32; https://github.com/storytold/deckcraft/issues/959, open on 2026-10-21). 0.7.0 starts; same hosting notes.
   artcraft("deckcraft", "DeckCraft", "presentations", "0.7.0", "4ab91994048c096fa356b7246c31098474d978ecd572e5b252dd825a287d1c40", 9385879, {
+    knownBad: ["0.8.0", "0.9.0"],
     note: "Starts with the sample deck every time and keeps no preferences: save your presentation before you close the tab.",
   }),
   artcraft("cadcraft", "CADCraft", "CAD", "0.10.0", "d86268e964ca91402439f4518d25057463db988d0145a48d3c65213957a1ced2", 8670115),
@@ -327,7 +332,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     cpus: "1",
     // Verified on 1.31.7-alpine with every capability dropped: nginx runs as uid 101, binds 8080, writes only its tmpfs.
     security: { capAdd: [], pidsLimit: 64 },
-    sites: { target: "/srv/craft", label: "Craft apps", apps: ARTCRAFT_APPS },
+    sites: { target: "/srv/craft", contentTarget: "/srv/craft-content", label: "Craft apps", apps: ARTCRAFT_APPS },
     container: {
       readOnly: true,
       tmpfs: ["/tmp:size=64m,mode=1777"],
