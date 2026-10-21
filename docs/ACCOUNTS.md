@@ -37,7 +37,8 @@ npm run accounts -- set-network <id> private                    # its provider m
 
 One JSON file (0600, atomic temp+rename). Per account: `id` (= username, `ACCOUNT_ID_PATTERN`), `displayName`,
 `passwordHash` (scrypt N=2^17, format shared with the CLI; old hashes verify and are upgraded after successful login), `provider`, `createdAt`, `email` (unique, lowercased),
-`emailVerifiedAt`, `role` (`admin`|`user`), `status` (`pending`|`active`|`disabled`), `storageQuotaBytes` (1 GiB for
+`emailVerifiedAt`, `termsAcceptedAt` / `termsVersion` (when and which legal version the person accepted at sign-up, docs/LEGAL.md; null for
+older and CLI-made accounts), `role` (`admin`|`user`), `status` (`pending`|`active`|`disabled`), `storageQuotaBytes` (1 GiB for
 registered users, `null` = unlimited; enforced, see Storage quota), `lastLoginAt`, `privateNetwork` (see "Outbound
 requests"; default false), and the pending link tokens `verifyToken` / `resetToken` / `emailChange` (`{hash, expiresAt}`,
 SHA-256 of the raw token only).
@@ -93,7 +94,7 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 
 | Page | Route | Notes |
 | --- | --- | --- |
-| `/register` | `POST /api/account/register {username, email, password}` -> 202 | username = `ACCOUNT_ID_PATTERN`, not reserved; password 10..1024 chars. Always the same answer. New: pending account + verification mail. Address taken: mail to its owner ("someone tried to sign up"). Username taken/reserved: mail to the given address ("choose another username"). Pending accounts whose link expired more than 24 h after creation are dropped at the next registration (frees the name and address). |
+| `/register` | `POST /api/account/register {username, email, password, acceptTerms}` -> 202 | `acceptTerms` = the legal version the page showed (`GET /api/legal`; docs/LEGAL.md): missing -> 400 `terms_required`, another version -> 409 `terms_changed`, checked before everything else. Then: username = `ACCOUNT_ID_PATTERN`, not reserved; password 10..1024 chars. Always the same answer. New: pending account + verification mail. Address taken: mail to its owner ("someone tried to sign up"). Username taken/reserved: mail to the given address ("choose another username"). Pending accounts whose link expired more than 24 h after creation are dropped at the next registration (frees the name and address). |
 | `/verify?token=` | `POST /api/account/verify {token}` | A button consumes the token (a mail scanner prefetching the link does not). Activates a pending account, or applies a confirmed address change (the old address gets a notice). 24 h, single use. |
 | `/verify` (no token) | `POST /api/account/resend {email}` -> 202 | For pending accounts, cancels the unverified record and mails a registration link (M3); same answer for unknown addresses. Active accounts with unverified email can receive a new verification link. |
 | `/login` (both modes) | `POST /api/account/login {id, password, pow?}` | `id` = username or (public) email, any case. Correct password but `pending` -> 403 `email_not_verified`, `disabled` -> 403 `account_disabled`; everything else 401 `invalid_credentials`. A successful login gets a signed known-device cookie and is capped at 30 successful logins/account/hour; each account has at most 20 sessions (oldest evicted). |

@@ -5,6 +5,7 @@ import { loadApp } from "@/lib/github-app/config";
 import { back, requestBase } from "@/lib/github-app/http";
 import { clearStateCookie, exchangeCode, GithubFlowError, identity, STATE_COOKIE, takeFlow, userInstallations } from "@/lib/github-app/oauth";
 import { linkInstallations } from "@/lib/site/service";
+import { legalVersion } from "@/lib/legal/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,8 +43,13 @@ export async function GET(request: Request): Promise<Response> {
       await linkInstallations(current.id, who.login, userToken, await userInstallations(userToken));
       return back(base, flow.returnTo, { github: "linked" }, [clear]);
     }
-    const result = signInWithGithub(who, clientIp(request), true);
-    if (result.kind === "refused") return back(base, "/login", { github_error: result.code, github_message: result.message }, [clear]);
+    // A new account needs the Terms accepted on the sign-up page, in the version that is current now.
+    const accepted = flow.purpose === "register" && flow.terms ? flow.terms : null;
+    const result = signInWithGithub(who, clientIp(request), accepted, legalVersion());
+    if (result.kind === "refused") {
+      const page = result.code === "terms_required" || result.code === "terms_changed" ? "/register" : "/login";
+      return back(base, page, { github_error: result.code, github_message: result.message }, [clear]);
+    }
     try {
       await linkInstallations(result.account.id, who.login, userToken, await userInstallations(userToken));
     } catch {

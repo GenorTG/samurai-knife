@@ -29,11 +29,13 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <footer className="border-t border-line px-4 py-6 text-xs text-faint sm:px-6">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
           <p>Smart Knife · self-hosted · no ads, no tracking</p>
-          <nav aria-label="Footer" className="flex gap-4">
+          <nav aria-label="Footer" className="flex flex-wrap gap-4">
             <Link href="/" className="hover:text-ink">Home</Link>
             <Link href="/login" className="hover:text-ink">Log in</Link>
             <Link href="/register" className="hover:text-ink">Create account</Link>
             <Link href="/forgot-password" className="hover:text-ink">Forgot password</Link>
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           </nav>
         </div>
       </footer>

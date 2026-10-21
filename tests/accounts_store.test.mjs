@@ -157,7 +157,8 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
     const { c, bits } = pow.issueChallenge(form, ip);
     return { c, nonce: solvePow(c, bits) };
   };
-  const register = (input, ip) => flows.register(input, ip, solved("register", ip));
+  const terms = (await import("../src/lib/legal/legal.ts")).legalVersion();
+  const register = (input, ip) => flows.register({ acceptTerms: terms, ...input }, ip, solved("register", ip));
 
   const ok = await register({ username: "zoe", email: "Zoe@Example.com", password: "zoe password 1" }, "ip-1");
   assert.equal(ok.ok, true);

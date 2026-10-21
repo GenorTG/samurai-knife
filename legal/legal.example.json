@@ -1,0 +1,13 @@
+{
+  "operatorName": "Jan Kowalski",
+  "contactEmail": "kontakt@knife.example.org",
+  "postalAddress": "ul. Przykładowa 1, 00-001 Warszawa, Polska",
+  "effectiveDate": "2026-11-01",
+  "minimumAge": "16",
+  "mailRelay": "Example Hosting GmbH (Germany)",
+  "backupRetentionDays": "30",
+  "logRetentionDays": "70",
+  "complaintDays": "14",
+  "changeNoticeDays": "30",
+  "shutdownNoticeDays": "30"
+}

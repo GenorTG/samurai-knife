@@ -21,6 +21,7 @@ import { clientPrefix, prefixTag } from "@/lib/accounts/ip-prefix";
 import { recordSecurityEvent } from "@/lib/security/events";
 import { checkEmailPolicy, checkEmailPolicySync, EMAIL_POLICY_MESSAGE } from "@/lib/accounts/email-policy";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
+import { legalVersion } from "@/lib/legal/legal";
 import {
   accountDeletedMail,
   changeEmailMail,
@@ -60,6 +61,9 @@ export const RESERVED = new Set([
 
 export type FlowError = { ok: false; status: number; error: string; retryAfterSeconds?: number; bits?: number; message?: string };
 export type FlowOk<T = object> = { ok: true } & T;
+
+const TERMS_REQUIRED = "Accept the Terms of Service and the privacy notice to create an account.";
+const TERMS_CHANGED = "The Terms of Service or privacy notice changed while this page was open: reload it, read them and try again.";
 
 function fail(status: number, error: string, extra?: { retryAfterSeconds?: number; bits?: number; message?: string }): FlowError {
   return { ok: false, status, error, ...extra };
@@ -116,7 +120,12 @@ export const PENDING_FULL = "Too many sign-ups are waiting for confirmation righ
 
 /* ------------------------------------------------------------------------------------------- register */
 
-export async function register(input: { username: string; email: string; password: string }, ip: string, pow?: PowSolution | null): Promise<FlowOk<{ message: string }> | FlowError> {
+export async function register(input: { username: string; email: string; password: string; acceptTerms?: string | null }, ip: string, pow?: PowSolution | null): Promise<FlowOk<{ message: string }> | FlowError> {
+  // The Terms and privacy notice must be accepted before the contract exists; the version the page showed is recorded.
+  // A version that changed in between (the operator edited the texts) is refused, so the record names what was shown.
+  const terms = legalVersion();
+  if (!input.acceptTerms) return fail(400, "terms_required", { message: TERMS_REQUIRED });
+  if (input.acceptTerms !== terms) return fail(409, "terms_changed", { message: TERMS_CHANGED });
   const username = input.username.trim();
   if (!ACCOUNT_ID_PATTERN.test(username)) {
     return fail(400, "The username needs 1-32 characters: lowercase letters, digits, - and _ (starting with a letter or digit).");
@@ -163,6 +172,8 @@ export async function register(input: { username: string; email: string; passwor
       storageQuotaBytes: DEFAULT_USER_QUOTA_BYTES,
       verifyToken: token.record,
       pendingIpp: ipTag,
+      termsAcceptedAt: new Date().toISOString(),
+      termsVersion: terms,
     }));
     if (store.accounts.length === 1) store.defaultAccountId = username;
     return "created";

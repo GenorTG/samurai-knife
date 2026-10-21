@@ -160,31 +160,44 @@ test("PKCE: a wrong verifier is refused by GitHub", async () => {
 test("sign-in: a new GitHub user registers (verified email, user role, no password); signing in again logs in", async () => {
   const { who } = await oauthAs("alice", { purpose: "login", accountId: null });
   assert.deepEqual({ login: who.login, email: who.verifiedEmail }, { login: "alice", email: "alice@example.org" });
-  const first = gaccounts.signInWithGithub(who, "203.0.113.5", true);
+  const first = gaccounts.signInWithGithub(who, "203.0.113.5", "terms-v1", "terms-v1");
   assert.equal(first.kind, "registered");
   assert.deepEqual({ id: first.account.id, role: first.account.role, status: first.account.status, pw: first.account.passwordHash, gh: first.account.github.id }, { id: "alice", role: "user", status: "active", pw: undefined, gh: 1001 });
   assert.ok(first.account.emailVerifiedAt);
+  assert.equal(first.account.termsVersion, "terms-v1", "the accepted legal version is recorded");
+  assert.ok(first.account.termsAcceptedAt);
   const { accountUsable } = await import("../src/lib/accounts/session.ts");
   assert.equal(accountUsable(first.account), true, "a password-less GitHub account may hold a session (public mode)");
   assert.equal(accountUsable({ ...first.account, github: null }), false, "without GitHub and without a password it may not");
-  const again = gaccounts.signInWithGithub(who, "203.0.113.5", true);
+  const again = gaccounts.signInWithGithub(who, "203.0.113.5", "terms-v1", "terms-v1");
   assert.equal(again.kind, "login");
   assert.equal(again.account.id, "alice");
 });
 
+test("sign-up needs the Terms accepted in the current version; a known GitHub user signs in without", async () => {
+  const carol = await oauthAs("carol", { purpose: "login", accountId: null });
+  const none = gaccounts.signInWithGithub(carol.who, "203.0.113.8", null, "terms-v2");
+  assert.deepEqual([none.kind, none.code], ["refused", "terms_required"]);
+  const stale = gaccounts.signInWithGithub(carol.who, "203.0.113.8", "terms-v1", "terms-v2");
+  assert.deepEqual([stale.kind, stale.code], ["refused", "terms_changed"]);
+  assert.ok(!accounts.getAccount("carol"), "no account without a valid acceptance");
+  const alice = await oauthAs("alice", { purpose: "login", accountId: null });
+  assert.equal(gaccounts.signInWithGithub(alice.who, "203.0.113.5", null, "terms-v2").kind, "login", "existing accounts are not blocked");
+});
+
 test("sign-in never takes over an account by email; no verified email and disabled accounts are refused", async () => {
   const bob = await oauthAs("bob", { purpose: "login", accountId: null });
-  const r = gaccounts.signInWithGithub(bob.who, "203.0.113.6", true);
+  const r = gaccounts.signInWithGithub(bob.who, "203.0.113.6", "terms-v1", "terms-v1");
   assert.equal(r.kind, "refused");
   assert.equal(r.code, "email_in_use");
   assert.equal(accounts.getAccount("bob").github, null, "the existing account stays unlinked");
   const ghost = await oauthAs("noemail", { purpose: "login", accountId: null });
-  assert.equal(gaccounts.signInWithGithub(ghost.who, "203.0.113.7", true).code, "no_email");
+  assert.equal(gaccounts.signInWithGithub(ghost.who, "203.0.113.7", "terms-v1", "terms-v1").code, "no_email");
   accounts.mutateStore((s) => {
     s.accounts.find((a) => a.id === "alice").status = "disabled";
   });
   const alice = await oauthAs("alice", { purpose: "login", accountId: null });
-  assert.equal(gaccounts.signInWithGithub(alice.who, "203.0.113.5", true).code, "disabled");
+  assert.equal(gaccounts.signInWithGithub(alice.who, "203.0.113.5", "terms-v1", "terms-v1").code, "disabled");
   accounts.mutateStore((s) => {
     s.accounts.find((a) => a.id === "alice").status = "active";
   });
@@ -216,7 +229,7 @@ test("installation tokens: minted with the app JWT, scoped to one repository, ca
 
 test("website studio on an installation: only installations proven by the user's GitHub sign-in; no token stored", async () => {
   // Mallory claims installation 7 (e.g. by typing it into the setup URL): her sign-in lists none, so nothing is linked.
-  await oauthAs("mallory", { purpose: "login", accountId: null }).then(({ who }) => gaccounts.signInWithGithub(who, "203.0.113.9", true));
+  await oauthAs("mallory", { purpose: "login", accountId: null }).then(({ who }) => gaccounts.signInWithGithub(who, "203.0.113.9", "terms-v1", "terms-v1"));
   const mal = await oauthAs("mallory", { purpose: "link", accountId: "mallory" });
   await service.linkInstallations("mallory", mal.who.login, mal.token, await oauth.userInstallations(mal.token));
   await assert.rejects(service.connect("mallory", { repo: REPO, tokenSource: "app", installationId: 7, productionUrl: "" }), /not linked to your account/);
@@ -245,7 +258,7 @@ const events = await import("../src/lib/security/events.ts");
 
 async function signUpAndLink(user) {
   const { who } = await oauthAs(user, { purpose: "login", accountId: null });
-  const signed = gaccounts.signInWithGithub(who, "203.0.113.20", true);
+  const signed = gaccounts.signInWithGithub(who, "203.0.113.20", "terms-v1", "terms-v1");
   const id = signed.account.id;
   const linked = await oauthAs(user, { purpose: "link", accountId: id });
   await service.linkInstallations(id, linked.who.login, linked.token, await oauth.userInstallations(linked.token));

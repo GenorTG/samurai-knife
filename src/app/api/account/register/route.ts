@@ -11,17 +11,19 @@ const bodySchema = z.object({
   username: z.string().max(64),
   email: z.string().max(320),
   password: z.string().max(2_048),
+  /** The legal version the page showed and the person accepted (`GET /api/legal`, src/lib/legal/legal.ts). */
+  acceptTerms: z.string().max(64).optional(),
   pow: powField,
 }).strict();
 
 /**
- * POST /api/account/register { username, email, password, pow } -> 202 with the same message whether or not the name or address
+ * POST /api/account/register { username, email, password, acceptTerms, pow } -> 202 (400 terms_required, 409 terms_changed) with the same message whether or not the name or address
  * is taken (public mode only; 404 in private mode). docs/ACCOUNTS.md.
  */
 export async function POST(request: Request): Promise<Response> {
   const off = publicOnly();
   if (off) return off;
-  const parsed = await parseBody(request, bodySchema, "{ username, email, password }");
+  const parsed = await parseBody(request, bodySchema, "{ username, email, password, acceptTerms }");
   if ("response" in parsed) return parsed.response;
   const result = await register(parsed.data, clientIp(request), parsed.data.pow);
   return result.ok ? json({ ok: true, message: result.message }, 202) : flowErrorResponse(result);

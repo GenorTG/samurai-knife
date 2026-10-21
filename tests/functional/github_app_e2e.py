@@ -4,7 +4,8 @@
 
 - the admin creates the GitHub App from the Users page (manifest form POSTed to "github.com", confirmed, back with
   "GitHub App created"); the credentials file is 0600 and outside the data dir;
-- "Continue with GitHub" on /login registers alice (GitHub's verified email, no password, user role) and signs her in;
+- "Continue with GitHub" on /login sends a new GitHub user to /register for the Terms; after accepting, "Sign up with GitHub"
+  registers alice (GitHub's verified email, no password, user role) and signs her in;
   her account page shows the GitHub link, the password-less note, and refuses to unlink;
 - the website studio Connect tab offers "GitHub App (no token)", lists the repository of the installation alice can
   reach, connects it; an agent with alice's MCP key edits and opens a pull request through a one-hour token minted for
@@ -105,6 +106,13 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         ctx_a, page_a = new_context(browser, base, "203.0.113.11")
         page_a.goto("/login", wait_until="networkidle")
         page_a.get_by_role("link", name="Continue with GitHub").click()
+        # A new GitHub user has no account yet: the sign-up page asks for the Terms first (no account was created).
+        page_a.wait_for_url("**/register?github_error=terms_required**", timeout=30_000)
+        hydrated(page_a)
+        ids = [a["id"] for a in json.loads((data / "accounts.json").read_text())["accounts"]]
+        check("Continue with GitHub for a new user asks for the Terms on the sign-up page, creating no account", "alice" not in ids, ids)
+        page_a.get_by_role("checkbox").check()
+        page_a.get_by_role("link", name="Sign up with GitHub").click()
         page_a.wait_for_url("**/account?github=welcome**", timeout=30_000)
         hydrated(page_a)
         expect(page_a.get_by_text("Linked to GitHub user")).to_be_visible(timeout=20_000)
@@ -143,6 +151,8 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         web_user(web, "mallory")
         ctx_m, page_m = new_context(browser, base, "203.0.113.12")
         page_m.goto("/register", wait_until="networkidle")
+        hydrated(page_m)
+        page_m.get_by_role("checkbox").check()
         page_m.get_by_role("link", name="Sign up with GitHub").click()
         page_m.wait_for_url("**/account?github=welcome**", timeout=30_000)
         page_m.goto("/api/github/setup?installation_id=7&setup_action=install")
@@ -158,8 +168,10 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         # ------------------------------------------------------------------------- 5. bob is not taken over
         web_user(web, "bob")
         ctx_b, page_b = new_context(browser, base, "203.0.113.13")
-        page_b.goto("/login", wait_until="networkidle")
-        page_b.get_by_role("link", name="Continue with GitHub").click()
+        page_b.goto("/register", wait_until="networkidle")
+        hydrated(page_b)
+        page_b.get_by_role("checkbox").check()
+        page_b.get_by_role("link", name="Sign up with GitHub").click()
         page_b.wait_for_url("**/login?github_error=email_in_use**", timeout=30_000)
         expect(page_b.get_by_text("An account with bob@example.org already exists")).to_be_visible(timeout=10_000)
         check("GitHub sign-in with bob's email does not take over his password account", "knife_session" not in {c["name"] for c in ctx_b.cookies()})

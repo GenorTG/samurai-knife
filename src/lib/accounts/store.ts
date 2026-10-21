@@ -99,6 +99,12 @@ const accountSchema = z.object({
   github: z.object({ id: z.number().int().positive(), login: z.string().max(100), linkedAt: z.string() }).nullable().default(null),
   /** Pending accounts only: keyed hash of the client address prefix that registered it (`ip-prefix.ts`), for the caps. */
   pendingIpp: z.string().max(32).optional(),
+  /**
+   * Public mode: when this account accepted the Terms of Service and privacy notice, and which version
+   * (`src/lib/legal/legal.ts` legalVersion). null = created before the legal pages existed, or by the owner's CLI.
+   */
+  termsAcceptedAt: z.string().nullable().default(null),
+  termsVersion: z.string().max(64).nullable().default(null),
 });
 
 const storeSchema = z.object({

@@ -67,9 +67,23 @@ def check(name: str, ok: bool, detail: object = "") -> bool:
 class Api:
     def __init__(self, base: str) -> None:
         self.base = base
+        self._terms: str | None = None
+
+    def terms(self) -> str:
+        """The legal version a sign-up must accept (GET /api/legal); cached per suite run."""
+        if self._terms is None:
+            with urllib.request.urlopen(self.base + "/api/legal", timeout=30) as resp:
+                self._terms = json.loads(resp.read().decode())["version"]
+        return self._terms
 
     def call(self, method: str, path: str, body: object | None = None, cookie: str | None = None, ip: str | None = None,
              headers: dict[str, str] | None = None, _pow_attempt: bool = False) -> tuple[int, object, dict[str, str]]:
+        # Sign-ups accept the current Terms unless the test says otherwise: "acceptTerms": None sends none at all.
+        if method == "POST" and path == "/api/account/register" and isinstance(body, dict):
+            if "acceptTerms" not in body:
+                body = {**body, "acceptTerms": self.terms()}
+            elif body["acceptTerms"] is None:
+                body = {key: value for key, value in body.items() if key != "acceptTerms"}
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method)
         if data is not None:
@@ -301,6 +315,8 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_a.locator("input[type=email]").fill("alice@example.com")
     page_a.locator("input[autocomplete=new-password]").nth(0).fill("alice password 1")
     page_a.locator("input[autocomplete=new-password]").nth(1).fill("alice password 1")
+    check("the Create account button waits for the Terms checkbox", page_a.get_by_role("button", name="Create account").is_disabled())
+    page_a.get_by_role("checkbox").check()
     page_a.get_by_role("button", name="Create account").click()
     expect(page_a.get_by_text(GENERIC_REGISTER)).to_be_visible(timeout=15_000)
     check("register in the UI shows the generic answer", True)
@@ -420,6 +436,17 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------------------------------ 7. resend
     status, body, _ = api.call("POST", "/api/account/register", {"username": "bob", "email": "bob@example.com", "password": "bob password 1"}, ip="198.51.100.31")
     check("register bob through the API -> 202 generic", status == 202 and body.get("message") == GENERIC_REGISTER, (status, body))
+    no_terms = api.call("POST", "/api/account/register", {"username": "nterms", "email": "nterms@example.com", "password": "no terms pw 12", "acceptTerms": None}, ip="198.51.100.35")[:2]
+    old_terms = api.call("POST", "/api/account/register", {"username": "oterms", "email": "oterms@example.com", "password": "old terms pw 12", "acceptTerms": "not-the-current"}, ip="198.51.100.36")[:2]
+    check("register without accepting the Terms -> 400 terms_required, with a stale version -> 409 terms_changed; no account",
+          no_terms[0] == 400 and isinstance(no_terms[1], dict) and no_terms[1].get("error") == "terms_required"
+          and old_terms[0] == 409 and isinstance(old_terms[1], dict) and old_terms[1].get("error") == "terms_changed"
+          and "nterms" not in accounts(data) and "oterms" not in accounts(data), (no_terms, old_terms))
+    bob_record = next((a for a in json.loads((data / "accounts.json").read_text())["accounts"] if a["id"] == "bob"), {})
+    check("the account records which Terms version was accepted, and when",
+          bob_record.get("termsVersion") == api.terms() and bool(bob_record.get("termsAcceptedAt")), bob_record)
+    check("the legal pages are public: /terms and /privacy answer 200 without a session, Polish and English",
+          all(urllib.request.urlopen(f"{base}/{doc}?lang={lang}", timeout=30).status == 200 for doc in ("terms", "privacy") for lang in ("pl", "en")))
     first = box.wait("bob@example.com", 1)
     go(page_b, "/verify")
     page_b.locator("input[type=email]").fill("bob@example.com")
@@ -472,6 +499,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_b.locator("input[type=email]").fill("tempui@guerrillamail.com")
     page_b.locator("input[autocomplete=new-password]").nth(0).fill("temp password 1")
     page_b.locator("input[autocomplete=new-password]").nth(1).fill("temp password 1")
+    page_b.get_by_role("checkbox").check()
     page_b.get_by_role("button", name="Create account").click()
     expect(page_b.get_by_text(EMAIL_POLICY)).to_be_visible(timeout=15_000)
     check("the register page shows the generic refusal for a disposable address", True)
@@ -655,6 +683,7 @@ def run_firefox_auth_smoke(server: ScratchServer, browser: Browser) -> None:
         password = "fox account password 1"
         page.locator("input[autocomplete=new-password]").nth(0).fill(password)
         page.locator("input[autocomplete=new-password]").nth(1).fill(password)
+        page.get_by_role("checkbox").check()
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_text(GENERIC_REGISTER)).to_be_visible(timeout=20_000)
         mails = box.wait("foxuser@example.com", 1)

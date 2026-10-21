@@ -184,7 +184,7 @@ test("a full hash budget turns logins and registrations into 503 busy, not stall
     const login = await session.attemptLogin("nobody-busy", "whatever pw 1", "198.51.100.200");
     assert.equal(login.ok, false);
     assert.equal(login.reason, "busy");
-    const reg = await flows.register({ username: "busyreg", email: "busyreg@example.com", password: "busy password 1" }, "198.51.100.201", solved("register", "198.51.100.201"));
+    const reg = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "busyreg", email: "busyreg@example.com", password: "busy password 1" }, "198.51.100.201", solved("register", "198.51.100.201"));
     assert.deepEqual([reg.status, reg.error], [503, "busy"]);
     assert.ok(reg.retryAfterSeconds >= 1);
     release();
@@ -343,7 +343,7 @@ test("proof-of-work: the replay set is bounded and fails closed when full", () =
 
 test("every public pre-login flow refuses without proof-of-work, before limits, hashing, store or mail", async () => {
   const before = statSync(accountsFile).mtimeMs;
-  const r = await flows.register({ username: "nopow", email: "nopow@example.com", password: "nopow password" }, "198.51.100.40");
+  const r = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "nopow", email: "nopow@example.com", password: "nopow password" }, "198.51.100.40");
   assert.deepEqual([r.status, r.error, typeof r.bits], [428, "challenge_required", "number"]);
   assert.equal(flows.forgotPassword("nopow@example.com", "198.51.100.40").status, 428);
   assert.equal(flows.resendVerification("nopow@example.com", "198.51.100.40").status, 428);
@@ -361,7 +361,7 @@ test("pending accounts: per client prefix cap, per domain cap, total cap, timed 
   const ip = "198.51.100.77";
   const results = [];
   for (let i = 0; i < 6; i++) {
-    results.push(await flows.register({ username: `squat${i}`, email: `squat${i}@squat.example`, password: "squat password 1" }, ip, solved("register", ip)));
+    results.push(await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: `squat${i}`, email: `squat${i}@squat.example`, password: "squat password 1" }, ip, solved("register", ip)));
   }
   assert.deepEqual(results.slice(0, 5).map((r) => r.ok), [true, true, true, true, true]);
   assert.deepEqual([results[5].status, results[5].error], [429, "pending_full"], "the 6th pending sign-up from one prefix");
@@ -373,14 +373,14 @@ test("pending accounts: per client prefix cap, per domain cap, total cap, timed 
   process.env.KNIFE_PENDING_PER_DOMAIN = "5";
   const fresh = [];
   for (const [i, otherIp] of ["198.51.100.78", "198.51.100.80", "198.51.100.81"].entries()) {
-    fresh.push((await flows.register({ username: `squat-d${i}`, email: `another${i}@squat.example`, password: "squat password 1" }, otherIp, solved("register", otherIp))).error ?? "ok");
+    fresh.push((await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: `squat-d${i}`, email: `another${i}@squat.example`, password: "squat password 1" }, otherIp, solved("register", otherIp))).error ?? "ok");
   }
   assert.deepEqual(fresh, ["ok", "ok", "pending_full"], "5 pending: fresh prefixes get in until 7, then the domain is full");
-  const sameAgain = await flows.register({ username: "squat-d9", email: "again@squat.example", password: "squat password 1" }, "198.51.100.78", solved("register", "198.51.100.78"));
+  const sameAgain = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "squat-d9", email: "again@squat.example", password: "squat password 1" }, "198.51.100.78", solved("register", "198.51.100.78"));
   assert.equal(sameAgain.error, "pending_full", "a prefix that already waits is refused at the soft cap");
   delete process.env.KNIFE_PENDING_PER_DOMAIN;
   process.env.KNIFE_PENDING_MAX = "5";
-  const totalFull = await flows.register({ username: "squat-t", email: "t@elsewhere.example", password: "squat password 1" }, "198.51.100.79", solved("register", "198.51.100.79"));
+  const totalFull = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "squat-t", email: "t@elsewhere.example", password: "squat password 1" }, "198.51.100.79", solved("register", "198.51.100.79"));
   assert.equal(totalFull.error, "pending_full", "7 pending is past the hard total cap (ceil(5 x 1.25))");
   delete process.env.KNIFE_PENDING_MAX;
   // Expire them: the sweep frees names and addresses without a registration.
@@ -407,7 +407,7 @@ test("pending caps cannot be used to block a big webmail domain: 60 fake gmail s
   }));
   store.mutateStore((s) => { s.accounts.push(...fakes); });
   const ip = "198.51.100.120";
-  const real = await flows.register({ username: "realgmail", email: "Real.Person@googlemail.com", password: "real password 12" }, ip, solved("register", ip));
+  const real = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "realgmail", email: "Real.Person@googlemail.com", password: "real password 12" }, ip, solved("register", ip));
   assert.equal(real.ok, true, "gmail.com (and googlemail.com) has no per-domain pending cap");
   // An ordinary domain still has its cap (canonical domain, soft/hard by prefix).
   store.mutateStore((s) => {
@@ -444,7 +444,7 @@ test("per-email flow limits key on the canonical mailbox: +tag, dot and googlema
 
 test("pre-registration hijack (M3): forgot/resend on a pending sign-up cancels it and mails 'create your account', never the squatter's link", async () => {
   const attacker = "198.51.100.90";
-  const ok = await flows.register({ username: "squatter", email: "victim@example.org", password: "attacker knows 1" }, attacker, solved("register", attacker));
+  const ok = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "squatter", email: "victim@example.org", password: "attacker knows 1" }, attacker, solved("register", attacker));
   assert.equal(ok.ok, true);
   const [verify] = await mails("victim@example.org", 1);
   assert.match(verify, /Someone signed up for Smart Knife with the username "squatter" and this email address/);
@@ -460,7 +460,7 @@ test("pre-registration hijack (M3): forgot/resend on a pending sign-up cancels i
   assert.equal(tokenIn(all[1], "/verify"), undefined, "no verification link goes to the victim");
   assert.equal(flows.verifyToken(squatLink, attacker).ok, false, "the old link is dead");
   // Resend does the same.
-  await flows.register({ username: "squatter2", email: "victim2@example.org", password: "attacker knows 1" }, "198.51.100.92", solved("register", "198.51.100.92"));
+  await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "squatter2", email: "victim2@example.org", password: "attacker knows 1" }, "198.51.100.92", solved("register", "198.51.100.92"));
   flows.resendVerification("victim2@example.org", "198.51.100.93", solved("resend", "198.51.100.93"));
   assert.equal(store.getAccount("squatter2"), undefined);
   // An active owner-made account without a confirmed address still gets a real confirmation link from resend.
@@ -471,19 +471,19 @@ test("pre-registration hijack (M3): forgot/resend on a pending sign-up cancels i
 });
 
 test("GitHub sign-up is not blocked by a squatted pending address or an unconfirmed address change", async () => {
-  await flows.register({ username: "ghsquat", email: "octo@example.org", password: "attacker knows 1" }, "198.51.100.95", solved("register", "198.51.100.95"));
+  await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "ghsquat", email: "octo@example.org", password: "attacker knows 1" }, "198.51.100.95", solved("register", "198.51.100.95"));
   addAccount("changer");
   store.mutateStore((s) => {
     s.accounts.find((a) => a.id === "changer").emailChange = { hash: "a".repeat(64), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), email: "octo2@example.org" };
   });
-  const first = gaccounts.signInWithGithub({ id: 777001, login: "octo", name: "Octo", verifiedEmail: "octo@example.org" }, "198.51.100.96", true);
+  const first = gaccounts.signInWithGithub({ id: 777001, login: "octo", name: "Octo", verifiedEmail: "octo@example.org" }, "198.51.100.96", "terms-test", "terms-test");
   assert.equal(first.kind, "registered");
   assert.equal(store.getAccount("ghsquat"), undefined);
-  const second = gaccounts.signInWithGithub({ id: 777002, login: "octo2", name: "Octo 2", verifiedEmail: "octo2@example.org" }, "198.51.100.97", true);
+  const second = gaccounts.signInWithGithub({ id: 777002, login: "octo2", name: "Octo 2", verifiedEmail: "octo2@example.org" }, "198.51.100.97", "terms-test", "terms-test");
   assert.equal(second.kind, "registered");
   assert.equal(store.getAccount("changer").emailChange, undefined, "the unproven change claim gave way");
   // A verified account with the address is still never taken over.
-  const third = gaccounts.signInWithGithub({ id: 777003, login: "octo3", name: "Octo 3", verifiedEmail: "changer@example.com" }, "198.51.100.98", true);
+  const third = gaccounts.signInWithGithub({ id: 777003, login: "octo3", name: "Octo 3", verifiedEmail: "changer@example.com" }, "198.51.100.98", "terms-test", "terms-test");
   assert.equal(third.kind, "refused");
 });
 

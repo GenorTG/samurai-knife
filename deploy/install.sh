@@ -31,7 +31,7 @@ UNITS=/etc/systemd/system
 MIN_NODE=22
 MIN_PY=3.11
 # Keys the unit sets itself; a copy in live.env would override them (EnvironmentFile wins over Environment=).
-UNIT_KEYS="KNIFE_DATA_DIR KNIFE_STORAGE_KEY_FILE KNIFE_GITHUB_APP_FILE KNIFE_SIDECAR_BACKEND KNIFE_SIDECAR_HELPER_SOCKET KNIFE_PYTHON KNIFE_PY_HOME NODE_ENV PATH"
+UNIT_KEYS="KNIFE_DATA_DIR KNIFE_STORAGE_KEY_FILE KNIFE_GITHUB_APP_FILE KNIFE_LEGAL_DIR KNIFE_SIDECAR_BACKEND KNIFE_SIDECAR_HELPER_SOCKET KNIFE_PYTHON KNIFE_PY_HOME NODE_ENV PATH"
 
 usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
 
@@ -199,6 +199,9 @@ done
 say "directories"
 install -d -o knife-deploy -g knife-deploy -m 0755 "$APP_ROOT" "$APP_ROOT/releases"
 install -d -o root -g root -m 0751 "$ETC"
+# Legal pages (legal/README.md): the operator's legal.json and page overrides, readable by the app only.
+install -d -o root -g knife -m 0750 "$ETC/legal"
+for f in "$ETC"/legal/*; do [[ -f "$f" ]] && { chown root:knife "$f"; chmod 0640 "$f"; }; done
 install -d -o knife -g knife -m 0700 "$DATA" "$SECRETS" "$CACHE"
 install -d -o knife-deploy -g knife-deploy -m 0750 /var/lib/knife-deploy
 install -d -o root -g root -m 0755 "$LIBEXEC"

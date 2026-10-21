@@ -50,7 +50,9 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.redirect(`${GITHUB_WEB()}/apps/${app.slug}/installations/new`, 303);
   }
   const redirectUri = callbackPaths(pub).callback;
-  const { state, challenge, cookie } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo });
+  // Sign-up: the legal version the page showed, ticked by the person; checked again (and recorded) when GitHub answers.
+  const terms = purpose === "register" ? (params.get("terms") ?? "").slice(0, 64) || null : null;
+  const { state, challenge, cookie } = beginFlow({ purpose, accountId: account?.id ?? null, redirectUri, returnTo, terms });
   const response = NextResponse.redirect(authorizeUrl(app, redirectUri, state, challenge), 303);
   response.headers.append("Set-Cookie", stateCookie(request, cookie));
   response.headers.set("Cache-Control", "no-store");

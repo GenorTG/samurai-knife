@@ -55,14 +55,19 @@ export function usernameFor(login: string, taken: (id: string) => boolean): stri
 export type GithubSignIn =
   | { kind: "login"; account: Account }
   | { kind: "registered"; account: Account }
-  | { kind: "refused"; code: "disabled" | "email_in_use" | "no_email" | "registration_closed" | "rate_limited" | "email_refused"; message: string };
+  | { kind: "refused"; code: "disabled" | "email_in_use" | "no_email" | "registration_closed" | "rate_limited" | "email_refused" | "terms_required" | "terms_changed"; message: string };
 
 /**
  * Sign-in or registration with a GitHub identity (public mode). A registration's verified address meets the email policy
  * (static rules, owner lists, disposable domains; email-policy.ts `checkEmailPolicySync`). The DNS part is skipped: GitHub
  * has just delivered a verification mail to that mailbox, and the mail queue re-checks the domain before every send.
  */
-export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister: boolean): GithubSignIn {
+/**
+ * `acceptedTerms`: the legal version the person accepted on the sign-up page (null = they did not: a known GitHub user
+ * still signs in, a new one is sent to the sign-up page). `currentTerms`: the version in force now; a mismatch means the
+ * texts changed while GitHub was asking, and the person has to accept the new ones.
+ */
+export function signInWithGithub(who: GithubIdentity, ip: string, acceptedTerms: string | null, currentTerms: string): GithubSignIn {
   const linked = findByGithub(who.id);
   if (linked) {
     if (linked.status === "disabled") return { kind: "refused", code: "disabled", message: "This account is disabled. Contact the administrator." };
@@ -82,7 +87,9 @@ export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister:
     if (fresh.status === "pending") return { kind: "refused", code: "disabled", message: "Confirm your email address first (the link we sent you)." };
     return { kind: "login", account: fresh };
   }
-  if (!allowRegister || !isPublicMode()) return { kind: "refused", code: "registration_closed", message: "No account is linked to this GitHub user. Sign in with your password and link GitHub in Account settings." };
+  if (!isPublicMode()) return { kind: "refused", code: "registration_closed", message: "No account is linked to this GitHub user. Sign in with your password and link GitHub in Account settings." };
+  if (!acceptedTerms) return { kind: "refused", code: "terms_required", message: "No account is linked to this GitHub user yet. To create one, accept the Terms of Service and the privacy notice here and continue with GitHub. (Already have an account with a password? Sign in and link GitHub in Account settings.)" };
+  if (acceptedTerms !== currentTerms) return { kind: "refused", code: "terms_changed", message: "The Terms of Service or privacy notice changed meanwhile: read them, accept them again and continue with GitHub." };
   if (!who.verifiedEmail) return { kind: "refused", code: "no_email", message: "GitHub has no verified primary email for this user: verify one on GitHub (Settings → Emails), then try again." };
   if (!checkEmailPolicySync(who.verifiedEmail).ok) return { kind: "refused", code: "email_refused", message: EMAIL_POLICY_MESSAGE };
   const blocked = consumeLimits([LIMITS.registerIp(ip), LIMITS.registerEmail(who.verifiedEmail)]);
@@ -109,6 +116,8 @@ export function signInWithGithub(who: GithubIdentity, ip: string, allowRegister:
       storageQuotaBytes: DEFAULT_USER_QUOTA_BYTES,
       lastLoginAt: now,
       github: { id: who.id, login: who.login, linkedAt: now },
+      termsAcceptedAt: now,
+      termsVersion: currentTerms,
     });
     store.accounts.push(account);
     if (store.accounts.length === 1) store.defaultAccountId = id;

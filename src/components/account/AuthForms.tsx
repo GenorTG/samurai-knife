@@ -5,6 +5,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Button, Field, Notice, Panel, TextInput } from "@/components/ui";
 import { call, hardNavigate, safeNext } from "./api";
 import { CHECKING_TEXT, withChallenge } from "./challenge";
+import { GithubButton } from "./GithubButton";
 
 /** Centered single-panel frame for the sign-in pages (inside <main>, like every page). */
 export function AuthFrame({ title, intro, aside, children }: { title: string; intro?: ReactNode; aside?: ReactNode; children: ReactNode }) {
@@ -146,7 +147,36 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
 
 /* --------------------------------------------------------------------------------------------- register */
 
-export function RegisterForm() {
+/**
+ * Sign-up: one consent (Terms of Service + privacy notice, in the version the page shows) gates both ways in, GitHub and
+ * the password form. The server refuses a sign-up without it (400 terms_required) or for another version (409).
+ */
+export function RegisterChoices({ terms, github }: { terms: string; github: boolean }) {
+  const [accepted, setAccepted] = useState(false);
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <label className="flex items-start gap-3 text-sm text-ink">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--c-accent)]" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} required />
+          <span>
+            I have read and accept the <A href="/terms">Terms of Service</A> and have read the <A href="/privacy">privacy notice</A> (what is
+            stored, where, and your rights). Akceptuję <A href="/terms?lang=pl">Regulamin</A> i zapoznałem/am się z{" "}
+            <A href="/privacy?lang=pl">Polityką prywatności</A>.
+          </span>
+        </label>
+      </Panel>
+      {github ? (
+        <div className="space-y-3">
+          <GithubButton label="Sign up with GitHub" purpose="register" terms={terms} disabled={!accepted} />
+          <p className="text-center text-xs text-faint">GitHub&apos;s verified email is used; no password needed. Or create an account with a password:</p>
+        </div>
+      ) : null}
+      <RegisterForm terms={terms} accepted={accepted} />
+    </div>
+  );
+}
+
+export function RegisterForm({ terms, accepted }: { terms: string; accepted: boolean }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -157,10 +187,10 @@ export function RegisterForm() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (working || mismatch) return;
+    if (working || mismatch || !accepted) return;
     setWorking(true);
     setNote(null);
-    const reply = await withChallenge("register", (pow) => call<{ message: string }>("POST", "/api/account/register", { username: username.trim(), email: email.trim(), password, pow }), {
+    const reply = await withChallenge("register", (pow) => call<{ message: string }>("POST", "/api/account/register", { username: username.trim(), email: email.trim(), password, acceptTerms: terms, pow }), {
       upfront: true,
       onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
     });
@@ -198,7 +228,7 @@ export function RegisterForm() {
         </Field>
         {mismatch ? <Notice tone="warn">The passwords do not match.</Notice> : null}
         <Status note={note} />
-        <Button type="submit" variant="primary" disabled={working || mismatch || !username || !email || password.length < 10}>
+        <Button type="submit" variant="primary" disabled={working || mismatch || !accepted || !username || !email || password.length < 10}>
           {working ? "Creating…" : "Create account"}
         </Button>
         <p className="border-t border-line pt-4 text-sm text-muted">

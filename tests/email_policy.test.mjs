@@ -210,25 +210,25 @@ test("register, email change and GitHub sign-up refuse a disposable address with
   const gaccounts = await import("../src/lib/github-app/accounts.ts");
   const mail = await import("../src/lib/mail/index.ts");
   const started = Date.now();
-  const refused = await flows.register({ username: "temp1", email: "temp@sub.mailinator.com", password: "temp password 1" }, "203.0.113.50");
+  const refused = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "temp1", email: "temp@sub.mailinator.com", password: "temp password 1" }, "203.0.113.50");
   assert.deepEqual(refused, { ok: false, status: 400, error: policy.EMAIL_POLICY_MESSAGE });
   assert.ok(Date.now() - started < 200, "refused before the password is hashed");
   // The list part needs no proof-of-work (it costs nothing), so a refused address is told so before solving one.
   assert.equal(store.getAccount("temp1"), undefined);
-  const ip = await flows.register({ username: "temp2", email: "temp@[192.0.2.1]", password: "temp password 1" }, "203.0.113.51");
+  const ip = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "temp2", email: "temp@[192.0.2.1]", password: "temp password 1" }, "203.0.113.51");
   assert.equal(ip.status, 400);
 
-  const ok = await flows.register({ username: "real1", email: "real1@example.com", password: "real password 1" }, "203.0.113.52", solved("register", "203.0.113.52"));
+  const ok = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "real1", email: "real1@example.com", password: "real password 1" }, "203.0.113.52", solved("register", "203.0.113.52"));
   assert.equal(ok.ok, true);
   store.mutateStore((s) => { const a = s.accounts.find((x) => x.id === "real1"); a.status = "active"; a.emailVerifiedAt = new Date().toISOString(); });
   const change = await flows.changeEmail(store.getAccount("real1"), "real password 1", "moved@yopmail.com");
   assert.deepEqual(change, { ok: false, status: 400, error: policy.EMAIL_POLICY_MESSAGE });
   assert.equal(store.getAccount("real1").emailChange, undefined);
 
-  const gh = gaccounts.signInWithGithub({ id: 4242, login: "tempgh", name: "Temp", verifiedEmail: "tempgh@guerrillamail.com" }, "203.0.113.53", true);
+  const gh = gaccounts.signInWithGithub({ id: 4242, login: "tempgh", name: "Temp", verifiedEmail: "tempgh@guerrillamail.com" }, "203.0.113.53", "terms-test", "terms-test");
   assert.equal(gh.kind, "refused");
   assert.equal(gh.code, "email_refused");
-  const ghOk = gaccounts.signInWithGithub({ id: 4243, login: "okgh", name: "Ok", verifiedEmail: "okgh@example.com" }, "203.0.113.54", true);
+  const ghOk = gaccounts.signInWithGithub({ id: 4243, login: "okgh", name: "Ok", verifiedEmail: "okgh@example.com" }, "203.0.113.54", "terms-test", "terms-test");
   assert.equal(ghOk.kind, "registered", "a GitHub-verified ordinary address signs up (no DNS lookup on this path)");
 
   await mail.flushMail();
@@ -244,11 +244,11 @@ test("register: the DNS part runs only after a paid proof-of-work (no outbound l
   const solve = await import("../src/lib/pow/solve.ts");
   const calls = [];
   policy.setMailResolverForTests(fakeResolver({ "nullmx.example.net": { mx: [{ exchange: "", priority: 0 }] } }, calls));
-  const unpaid = await flows.register({ username: "dns1", email: "a@nullmx.example.net", password: "dns password 12" }, "203.0.113.60");
+  const unpaid = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "dns1", email: "a@nullmx.example.net", password: "dns password 12" }, "203.0.113.60");
   assert.equal(unpaid.status, 428, "proof-of-work first");
   assert.equal(calls.length, 0, "no DNS lookup without a proof-of-work");
   const { c, bits } = pow.issueChallenge("register", "203.0.113.60");
-  const paid = await flows.register({ username: "dns1", email: "a@nullmx.example.net", password: "dns password 12" }, "203.0.113.60", { c, nonce: solve.solvePow(c, bits) });
+  const paid = await flows.register({ acceptTerms: (await import("../src/lib/legal/legal.ts")).legalVersion(),  username: "dns1", email: "a@nullmx.example.net", password: "dns password 12" }, "203.0.113.60", { c, nonce: solve.solvePow(c, bits) });
   assert.deepEqual(paid, { ok: false, status: 400, error: policy.EMAIL_POLICY_MESSAGE });
   assert.ok(calls.length > 0);
   policy.setMailResolverForTests(null);

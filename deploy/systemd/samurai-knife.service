@@ -34,6 +34,9 @@ Environment=KNIFE_STORAGE_KEY_FILE=/etc/samurai-knife/storage.key
 # The app WRITES this one when an admin creates the GitHub App (Users page), so it lives in a knife-writable state dir,
 # apart from the data dir (a data-dir backup alone must not carry it).
 Environment=KNIFE_GITHUB_APP_FILE=/var/lib/samurai-knife-secrets/github-app.json
+# Terms of Service / privacy notice of this instance (legal.json + optional page files; legal/README.md): root-owned,
+# read-only to the app, so a compromised app cannot rewrite what users agreed to.
+Environment=KNIFE_LEGAL_DIR=/etc/samurai-knife/legal
 Environment=KNIFE_SIDECAR_BACKEND=helper
 Environment=KNIFE_SIDECAR_HELPER_SOCKET=/run/knife-sidecar.sock
 # Each release carries its own venv (deploy/bin/knife-update builds it), so a rollback also rolls Python back.

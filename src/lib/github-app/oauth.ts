@@ -30,6 +30,8 @@ export interface PendingFlow {
   redirectUri: string;
   /** Same-site path to return to (validated). */
   returnTo: string;
+  /** register only: the legal version the sign-up page showed and the person accepted (src/lib/legal/legal.ts). */
+  terms: string | null;
   createdAt: number;
 }
 
@@ -60,13 +62,14 @@ interface SealedFlow {
   u: string;
   r: string;
   t: number;
+  k?: string | null;
 }
 
 /** A new flow: the `state` for GitHub's URL, the PKCE challenge, and the sealed cookie value carrying everything else. */
 export function beginFlow(flow: Omit<PendingFlow, "verifier" | "createdAt">): { state: string; challenge: string; cookie: string } {
   const state = randomBytes(24).toString("base64url");
   const verifier = randomBytes(32).toString("base64url");
-  const sealed: SealedFlow = { s: state, p: flow.purpose, a: flow.accountId, v: verifier, u: flow.redirectUri, r: safeReturnPath(flow.returnTo), t: Date.now() };
+  const sealed: SealedFlow = { s: state, p: flow.purpose, a: flow.accountId, v: verifier, u: flow.redirectUri, r: safeReturnPath(flow.returnTo), t: Date.now(), k: flow.terms };
   return { state, challenge: createHash("sha256").update(verifier).digest("base64url"), cookie: sealValue("github-state", JSON.stringify(sealed)) };
 }
 
@@ -95,7 +98,7 @@ export function takeFlow(state: string | null, cookie: string | undefined, now =
     }
   }
   used.set(state, sealed.t + TTL_MS + 60_000);
-  return { purpose: sealed.p, accountId: typeof sealed.a === "string" ? sealed.a : null, verifier: sealed.v, redirectUri: sealed.u, returnTo: safeReturnPath(sealed.r), createdAt: sealed.t };
+  return { purpose: sealed.p, accountId: typeof sealed.a === "string" ? sealed.a : null, verifier: sealed.v, redirectUri: sealed.u, returnTo: safeReturnPath(sealed.r), terms: typeof sealed.k === "string" ? sealed.k : null, createdAt: sealed.t };
 }
 
 export function stateCookie(request: Request, value: string): string {

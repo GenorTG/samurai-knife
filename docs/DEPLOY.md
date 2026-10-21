@@ -373,6 +373,9 @@ servers it starts never inherit the lock). Keep a separate `next dev` for develo
 
 - [ ] `npm run build` in the deploy checkout, process started via `serve.mjs start` with `KNIFE_AUTH_MODE=public`.
 - [ ] Owner account: password, verified email, admin; `set-network private` only if needed.
+- [ ] Legal pages: `legal.json` in `KNIFE_LEGAL_DIR` (systemd install: `/etc/samurai-knife/legal/`) with every
+      placeholder filled, `/terms` and `/privacy` show no warning, and the operator duties in docs/LEGAL.md are done
+      (record of processing, mail-relay DPA, true log/backup retention).
 - [ ] `KNIFE_PUBLIC_URL` (https), `KNIFE_TRUSTED_PROXIES`, SMTP, `KNIFE_SSRF_DENY_CIDRS` set; `serve.mjs` starts without a
       `refusing to start` line (Startup checks).
 - [ ] Proxy: `/api/office/ds/` answers 404 on the public name; NPM sees real client addresses (IPv6 too); `limit_conn` set.
