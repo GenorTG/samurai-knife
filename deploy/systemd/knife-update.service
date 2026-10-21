@@ -28,9 +28,8 @@ ProtectHome=yes
 ReadWritePaths=@APP_ROOT@
 NoNewPrivileges=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
-# The preflight's sandbox probe: bwrap --disable-userns writes user.max_user_namespaces in its own user namespace.
-ReadWritePaths=/proc/sys/user
+# No ProtectKernelTunables/ProtectKernelLogs/ProtectHostname/RestrictSUIDSGID: the preflight runs the parser sandbox
+# (reasons in samurai-knife.service).
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 # The preflight server runs the Python parser sandbox probe (bubblewrap, unprivileged user namespace).

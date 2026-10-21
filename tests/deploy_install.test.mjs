@@ -50,14 +50,18 @@ test("live.env never overrides what the unit sets (EnvironmentFile wins over Env
   }
 });
 
-test("units that start the parser sandbox keep /proc/sys/user writable under ProtectKernelTunables", () => {
-  // bwrap --disable-userns writes user.max_user_namespaces inside its own user namespace: with /proc/sys read-only every
-  // sandbox start fails, public mode refuses to start (service) and every preflight fails (updater).
+test("units that start the parser sandbox leave out the directives that break bubblewrap", () => {
+  // Verified in systemd containers (Debian 12 / systemd 252, Arch / systemd 262, bubblewrap 0.8 and 0.13): these cover
+  // parts of /proc with mounts, so the kernel refuses bwrap a fresh /proc, or answer openat2 with ENOSYS. Any of them
+  // makes every sandbox start fail: public mode refuses to start (service) and every preflight fails (updater).
+  const breaking = ["ProtectKernelTunables", "ProtectKernelLogs", "ProtectHostname", "RestrictSUIDSGID"];
   for (const rel of ["deploy/systemd/samurai-knife.service", "deploy/systemd/knife-update.service"]) {
     const unit = read(rel);
-    assert.ok(unitLines(unit, "ProtectKernelTunables").includes("yes"), `${rel}: ProtectKernelTunables expected`);
-    assert.ok(unitLines(unit, "ReadWritePaths").includes("/proc/sys/user"), `${rel}: ReadWritePaths=/proc/sys/user missing`);
+    for (const key of breaking) assert.deepEqual(unitLines(unit, key), [], `${rel} sets ${key}`);
+    assert.deepEqual(unitLines(unit, "ProtectHome"), ["yes"], `${rel}: ProtectHome expected`);
   }
+  const app = read("deploy/systemd/samurai-knife.service");
+  assert.deepEqual(unitLines(app, "CapabilityBoundingSet"), [""], "the reasoning above needs an empty capability set");
 });
 
 test("the app runs unprivileged and the updater restarts it through polkit, not sudo", () => {
@@ -95,4 +99,20 @@ test("knife-update never returns to the caller's directory (knife-deploy may not
   const updater = read("deploy/bin/knife-update");
   assert.doesNotMatch(updater, /\bcd -/);
   assert.match(updater, /^set -euo pipefail\n(#.*\n)*cd \/\n/m);
+});
+
+test("package names per package manager (checked against Debian 12, Fedora 44, Arch and openSUSE Tumbleweed)", () => {
+  const fn = INSTALL.slice(INSTALL.indexOf("pkg_name() {"), INSTALL.indexOf("pkg_install() {"));
+  const expected = {
+    "apt-get": "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-eng tesseract-ocr-pol tesseract-ocr-osd qpdf ghostscript polkitd python3-venv",
+    dnf: "git curl rsync util-linux bubblewrap tesseract tesseract-langpack-eng tesseract-langpack-pol tesseract-osd qpdf ghostscript polkit venv",
+    pacman: "git curl rsync util-linux bubblewrap tesseract tesseract-data-eng tesseract-data-pol tesseract-data-osd qpdf ghostscript polkit venv",
+    zypper: "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-traineddata-eng tesseract-ocr-traineddata-pol tesseract-ocr-traineddata-osd qpdf ghostscript polkit venv",
+  };
+  const logical = "git curl rsync util-linux bubblewrap tesseract tess-eng tess-pol tess-osd qpdf ghostscript polkit venv";
+  for (const [pm, names] of Object.entries(expected)) {
+    const script = `${fn}\nPM=${pm}; for n in ${logical}; do pkg_name "$n"; done | paste -sd' '`;
+    const out = spawnSync("bash", ["-c", script], { encoding: "utf8" });
+    assert.equal(out.stdout.trim(), names, pm);
+  }
 });

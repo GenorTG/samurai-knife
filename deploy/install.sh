@@ -76,34 +76,75 @@ umask 022
 
 # ------------------------------------------------------------------------------------------------ prerequisites
 problems=()
-need_pkgs=()
-[[ -d /run/systemd/system ]] || problems+=("systemd is not the init system")
+need=()   # logical tool names; pkg_name maps them to this distro's package
+[[ -d /run/systemd/system ]] || problems+=("systemd is not the init system (the install is systemd units)")
 case "$APP_ROOT" in /home/*|/root/*) problems+=("--app-root $APP_ROOT is under /home: the unit hides /home (ProtectHome)") ;; esac
 
+PM=""
+for candidate in apt-get dnf pacman zypper; do command -v "$candidate" >/dev/null 2>&1 && { PM="$candidate"; break; }; done
+# Package names checked against each distro's repositories (Debian 12, Fedora, Arch, openSUSE Tumbleweed; 2026-10).
+pkg_name() {
+  case "$PM:$1" in
+    *:git|*:curl|*:rsync|*:util-linux|*:bubblewrap|*:qpdf|*:ghostscript) echo "$1" ;;
+    apt-get:tesseract|zypper:tesseract) echo tesseract-ocr ;;
+    *:tesseract) echo tesseract ;;
+    apt-get:tess-*) echo "tesseract-ocr-${1#tess-}" ;;
+    dnf:tess-osd) echo tesseract-osd ;;
+    dnf:tess-*) echo "tesseract-langpack-${1#tess-}" ;;
+    pacman:tess-*) echo "tesseract-data-${1#tess-}" ;;
+    zypper:tess-*) echo "tesseract-ocr-traineddata-${1#tess-}" ;;
+    apt-get:polkit) echo polkitd ;;
+    *:polkit) echo polkit ;;
+    apt-get:venv) echo python3-venv ;;
+    *) echo "$1" ;;
+  esac
+}
+pkg_install() {
+  case "$PM" in
+    apt-get) DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" ;;
+    dnf) dnf install -y "$@" ;;
+    pacman) pacman -S --needed --noconfirm "$@" || die "pacman could not install $* (if it reported 404s, run pacman -Syu first)" ;;
+    zypper) zypper --non-interactive install "$@" ;;
+  esac
+}
+node_hint() {
+  case "$PM" in
+    apt-get) echo "e.g. NodeSource (https://github.com/nodesource/distributions)" ;;
+    dnf) echo "dnf install nodejs (or a versioned nodejs22/nodejs24 package)" ;;
+    pacman) echo "pacman -S nodejs npm" ;;
+    zypper) echo "zypper install nodejs npm" ;;
+    *) echo "from your distribution or nodejs.org, installed under /usr" ;;
+  esac
+}
+
 NODE_BIN="$(command -v node || true)"
-if [[ -z "$NODE_BIN" ]]; then problems+=("node $MIN_NODE+ not found (install Node.js system-wide, e.g. NodeSource)")
+if [[ -z "$NODE_BIN" ]]; then problems+=("node $MIN_NODE+ not found: install Node.js system-wide, $(node_hint)")
 else
   NODE_BIN="$(realpath "$NODE_BIN")"
-  case "$NODE_BIN" in /home/*) problems+=("node resolves to $NODE_BIN (under /home: invisible to the service); install it system-wide") ;; esac
+  case "$NODE_BIN" in /home/*) problems+=("node resolves to $NODE_BIN (under /home: invisible to the service); install it system-wide, $(node_hint)") ;; esac
   major="$("$NODE_BIN" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
   (( major >= MIN_NODE )) || problems+=("node $("$NODE_BIN" --version) is older than v$MIN_NODE")
-  [[ -x "$(dirname "$NODE_BIN")/npm" ]] || problems+=("npm not found next to $NODE_BIN")
+  [[ -x "$(dirname "$NODE_BIN")/npm" ]] || problems+=("npm not found next to $NODE_BIN (pacman/zypper: install npm)")
 fi
 PYTHON_BIN="$(command -v python3 || true)"
+[[ -n "$PYTHON_BIN" ]] && PYTHON_BIN="$(realpath "$PYTHON_BIN")"
 if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "import sys; sys.exit(sys.version_info < (${MIN_PY/./,}))" 2>/dev/null; then
-  problems+=("python3 $MIN_PY+ not found in /usr/bin")
-elif ! "$PYTHON_BIN" -c 'import ensurepip, venv' 2>/dev/null; then need_pkgs+=(python3-venv)
+  problems+=("python3 $MIN_PY+ not found")
+else
+  case "$PYTHON_BIN" in /home/*) problems+=("python3 resolves to $PYTHON_BIN (under /home: invisible to the service)") ;; esac
+  if ! "$PYTHON_BIN" -c 'import ensurepip, venv' 2>/dev/null; then
+    [[ "$PM" == apt-get ]] && need+=(venv) || problems+=("python3 has no venv/ensurepip module")
+  fi
 fi
-for pair in git:git curl:curl rsync:rsync flock:util-linux bwrap:bubblewrap tesseract:tesseract-ocr qpdf:qpdf gs:ghostscript pkcheck:polkitd; do
-  command -v "${pair%%:*}" >/dev/null 2>&1 || need_pkgs+=("${pair#*:}")
+for pair in git:git curl:curl rsync:rsync flock:util-linux runuser:util-linux bwrap:bubblewrap tesseract:tesseract qpdf:qpdf gs:ghostscript pkcheck:polkit; do
+  command -v "${pair%%:*}" >/dev/null 2>&1 || need+=("${pair#*:}")
 done
 if command -v tesseract >/dev/null 2>&1; then
   langs="$(tesseract --list-langs 2>/dev/null || true)"
-  for l in eng pol osd; do grep -qx "$l" <<<"$langs" || need_pkgs+=("tesseract-ocr-$l"); done
+  for l in eng pol osd; do grep -qx "$l" <<<"$langs" || need+=("tess-$l"); done
+else
+  need+=(tess-eng tess-pol tess-osd)
 fi
-userns="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || echo 1)"
-maxns="$(sysctl -n user.max_user_namespaces 2>/dev/null || echo 1)"
-[[ "$userns" == 1 && "$maxns" != 0 ]] || problems+=("unprivileged user namespaces are off (the Python parser sandbox needs kernel.unprivileged_userns_clone=1)")
 if [[ "$SIDECARS" == auto ]]; then command -v docker >/dev/null 2>&1 && SIDECARS=yes || SIDECARS=no; fi
 if [[ -z "$REPO_URL" ]]; then REPO_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"; fi
 [[ -n "$REPO_URL" ]] || problems+=("no --repo given and $SRC has no origin remote")
@@ -111,30 +152,46 @@ case "$REPO_URL" in git@*|ssh://*) problems+=("--repo $REPO_URL needs SSH keys k
 for f in "$ENV_IN" "$KEY_IN" "$GH_IN"; do [[ -z "$f" || -r "$f" ]] || problems+=("cannot read $f"); done
 [[ -z "$DATA_IN" || -d "$DATA_IN" ]] || problems+=("--migrate-data $DATA_IN is not a directory")
 
+pkgs=()
+if ((${#need[@]})); then mapfile -t pkgs < <(for n in "${need[@]}"; do pkg_name "$n"; done | sort -u); fi
 say "prerequisites"
+echo "  system   $(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}"), packages via ${PM:-none}"
 echo "  node     ${NODE_BIN:-missing}"
 echo "  python   ${PYTHON_BIN:-missing}"
 echo "  repo     ${REPO_URL:-missing}"
 echo "  sidecars $SIDECARS"
-if ((${#need_pkgs[@]})); then
-  mapfile -t need_pkgs < <(printf '%s\n' "${need_pkgs[@]}" | sort -u)
-  echo "  missing packages: ${need_pkgs[*]}"
-fi
+((${#pkgs[@]})) && echo "  missing packages: ${pkgs[*]}"
+if ((${#pkgs[@]})) && [[ -z "$PM" ]]; then problems+=("no supported package manager (apt-get, dnf, pacman, zypper): install ${need[*]} yourself"); fi
 if ((${#problems[@]})); then printf '  \033[31mproblem:\033[0m %s\n' "${problems[@]}"; die "fix the problems above first"; fi
-if [[ -n "$CHECK_ONLY" ]]; then echo "  ok"; exit 0; fi
+if [[ -n "$CHECK_ONLY" && ${#pkgs[@]} -gt 0 ]]; then echo "  (missing packages are installed by a real run)"; fi
 
-if ((${#need_pkgs[@]})); then
-  command -v apt-get >/dev/null || die "install these packages with your package manager: ${need_pkgs[*]}"
-  if [[ -z "$ASSUME_YES" ]]; then read -r -p "Install ${need_pkgs[*]} with apt-get? [y/N] " a; [[ "$a" == [yY]* ]] || die "cancelled"; fi
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${need_pkgs[@]}"
+if ((${#pkgs[@]})) && [[ -z "$CHECK_ONLY" ]]; then
+  if [[ -z "$ASSUME_YES" ]]; then read -r -p "Install ${pkgs[*]} with $PM? [y/N] " a; [[ "$a" == [yY]* ]] || die "cancelled"; fi
+  pkg_install "${pkgs[@]}"
 fi
+
+# The parser sandbox, for real: bubblewrap as an unprivileged user with the options the app uses. This catches user
+# namespaces switched off by sysctl (kernel.unprivileged_userns_clone, user.max_user_namespaces) and by AppArmor
+# (Ubuntu 24.04+: kernel.apparmor_restrict_unprivileged_userns) alike.
+if command -v bwrap >/dev/null 2>&1; then
+  if ! out="$(runuser -u nobody -- bwrap --unshare-user --unshare-pid --unshare-net --unshare-ipc --disable-userns \
+      --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 --proc /proc --dev /dev \
+      /usr/bin/true 2>&1)"; then
+    hint="enable unprivileged user namespaces"
+    [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" == 1 ]] && hint="AppArmor restricts unprivileged user namespaces: allow them for /usr/bin/bwrap (an AppArmor profile with 'userns,') or set kernel.apparmor_restrict_unprivileged_userns=0"
+    die "the parser sandbox does not work here (bwrap: ${out:-failed}): $hint"
+  fi
+  echo "  sandbox  bubblewrap works for an unprivileged user"
+fi
+if [[ -n "$CHECK_ONLY" ]]; then echo "  ok"; exit 0; fi
+NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
 # ------------------------------------------------------------------------------------------------ users and dirs
 say "users"
 getent group knife >/dev/null || groupadd --system knife
-getent passwd knife >/dev/null || useradd --system --gid knife --home-dir "$DATA" --no-create-home --shell /usr/sbin/nologin knife
+getent passwd knife >/dev/null || useradd --system --gid knife --home-dir "$DATA" --no-create-home --shell "$NOLOGIN" knife
 getent group knife-deploy >/dev/null || groupadd --system knife-deploy
-getent passwd knife-deploy >/dev/null || useradd --system --gid knife-deploy --home-dir /var/lib/knife-deploy --no-create-home --shell /usr/sbin/nologin knife-deploy
+getent passwd knife-deploy >/dev/null || useradd --system --gid knife-deploy --home-dir /var/lib/knife-deploy --no-create-home --shell "$NOLOGIN" knife-deploy
 for g in docker sudo adm; do
   id -nG knife 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "user knife is in group $g: remove it (it must not reach docker or root)"
 done
@@ -248,6 +305,21 @@ if [[ "$SIDECARS" == yes ]]; then
   put "$SRC/deploy/systemd/knife-sidecar@.service" "$UNITS/knife-sidecar@.service"
 fi
 systemctl daemon-reload
+# The sandbox again, now under the service's own hardening: a copy of the installed unit with the probe as ExecStart.
+# Hardening that hides /proc or filters syscalls breaks bwrap on some systemd/bubblewrap versions while a plain probe
+# passes (tests/deploy_install.test.mjs lists the known ones).
+probe_cmd="/usr/bin/bwrap --unshare-user --unshare-pid --unshare-net --unshare-ipc --disable-userns --ro-bind /usr /usr \
+--symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 --proc /proc --dev /dev /usr/bin/true"
+probe_unit=/run/systemd/system/samurai-knife-sandbox-probe.service
+mkdir -p /run/systemd/system
+sed -e "/^ExecStart=/c\\ExecStart=$probe_cmd" -e '/^Restart/d' -e '/^StartLimit/d' -e 's/^Type=simple/Type=oneshot/' \
+  -e '/^EnvironmentFile=/d' -e '/^WorkingDirectory=/d' -e '/^ReadOnlyPaths=/d' -e '/^\[Install\]/,$d' "$UNITS/$SERVICE" >"$probe_unit"
+systemctl daemon-reload
+if systemctl start samurai-knife-sandbox-probe.service 2>/dev/null; then probe_ok=1; else probe_ok=""; fi
+probe_log="$(journalctl -u samurai-knife-sandbox-probe.service -n 5 --no-pager -o cat 2>/dev/null | grep -m1 bwrap || true)"
+rm -f "$probe_unit"; systemctl daemon-reload; systemctl reset-failed samurai-knife-sandbox-probe.service 2>/dev/null || true
+[[ -n "$probe_ok" ]] || die "the parser sandbox fails under $SERVICE's hardening (${probe_log:-see journalctl -u samurai-knife-sandbox-probe}): report it with your systemd ($(systemctl --version | head -1)) and bubblewrap ($(bwrap --version 2>/dev/null)) versions"
+echo "  sandbox  works under the service's hardening"
 [[ "$SIDECARS" == yes ]] && systemctl enable --now knife-sidecar.socket >/dev/null
 if [[ "$SIDECARS" == yes && -d "$DATA/services" ]]; then
   for d in "$DATA"/services/*/; do

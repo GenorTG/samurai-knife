@@ -140,10 +140,17 @@ sudo deploy/install.sh --env my.env --start         # fresh install (my.env: sec
 sudo knife-admin accounts add owner --name "Owner" --password-prompt --email you@example.org --role admin
 ```
 
-Requirements: systemd, Node.js 22+ and Python 3.11+ installed system-wide (not under `/home`: the unit hides it), and
-unprivileged user namespaces for the parser sandbox. Missing tools (git, rsync, bubblewrap, Tesseract with eng/pol/osd,
-qpdf, ghostscript, polkit, python3-venv) are installed with apt after a prompt (`--yes` skips it). The script is
-idempotent: run it again from a newer checkout to update the units, the updater and the settings.
+Requirements: a systemd distribution, Node.js 22+ and Python 3.11+ installed system-wide (not under `/home`: the unit
+hides it), and unprivileged user namespaces for the parser sandbox. Missing tools (git, rsync, bubblewrap, Tesseract
+with eng/pol/osd, qpdf, ghostscript, polkit, python3-venv on Debian) are installed after a prompt (`--yes` skips it) with
+apt-get, dnf, pacman or zypper, using each distribution's package names; elsewhere the script lists what to install.
+Verified end to end (install, sandbox, login, SQL, OCR, polkit restart, updates) in systemd containers on Debian 12
+(systemd 252, bubblewrap 0.8, Python 3.11), Arch (systemd 262, bubblewrap 0.13, Python 3.14) and Fedora 44 (Node 24,
+Python 3.14); openSUSE package names are checked but the install is not; SELinux enforcing was not tested (containers
+cannot enable it). Before anything starts, the script runs bubblewrap twice: as an unprivileged user (catches user
+namespaces switched off by sysctl or by AppArmor, Ubuntu 24.04+) and inside a copy of the installed unit (catches
+hardening this systemd/bubblewrap pair does not tolerate). The script is idempotent: run it again from a newer checkout
+to update the units, the updater and the settings (`--start` restarts the app so a changed unit takes effect).
 
 What it creates:
 
@@ -173,10 +180,12 @@ moves `current`, restarts the service and checks it; on failure it moves `curren
 time, the newest three releases kept. `sudo -u knife-deploy /usr/local/libexec/samurai-knife/knife-update --check` shows
 what it would do; `--deploy <tag>` deploys one by hand. The first install builds the newest tag (`--ref` for another).
 
-Units that start the parser sandbox (the app, and the updater's preflight) keep `ReadWritePaths=/proc/sys/user` under
-`ProtectKernelTunables=yes`: `bwrap --disable-userns` writes `user.max_user_namespaces` inside its own user namespace,
-which never changes the host's value (the users have no capabilities). Without it every sandbox start fails and public
-mode refuses to start. `tests/deploy_install.test.mjs` pins this and the other invariants of the install.
+Units that start the parser sandbox (the app, and the updater's preflight) leave out `ProtectKernelTunables`,
+`ProtectKernelLogs`, `ProtectHostname` and `RestrictSUIDSGID`: the first three cover parts of `/proc` with mounts, after
+which the kernel refuses bubblewrap a fresh `/proc` (systemd 262 covers more than 252), and the last answers `openat2`
+with ENOSYS, which bubblewrap 0.11+ uses without a fallback. Any of them makes every sandbox start fail, so public mode
+refuses to start. For a user with an empty capability set they add nothing (tunables and the hostname need
+CAP_SYS_ADMIN, `/proc/kmsg` needs CAP_SYSLOG). `tests/deploy_install.test.mjs` pins this and the other invariants.
 
 Sidecars: with Docker installed the root helper is installed too (`deploy/sidecar-helper/knife-sidecar-helper`,
 `knife-sidecar.socket`, `knife-sidecar@.service`) and the unit uses `KNIFE_SIDECAR_BACKEND=helper`: the app reaches docker

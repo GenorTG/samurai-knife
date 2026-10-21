@@ -61,21 +61,18 @@ ProtectHome=yes
 ReadOnlyPaths=@APP_ROOT@
 
 # --- kernel and devices
+# Left out on purpose: ProtectKernelTunables, ProtectKernelLogs and ProtectHostname cover parts of /proc with mounts,
+# and the kernel then refuses the parser sandbox (bwrap --proc) a fresh /proc ("Can't mount proc: Operation not
+# permitted"; systemd 262 covers more than 252); RestrictSUIDSGID answers openat2 with ENOSYS, which bubblewrap 0.11+
+# uses without a fallback. For a user without capabilities they add nothing: kernel tunables and the hostname need
+# CAP_SYS_ADMIN, /proc/kmsg needs CAP_SYSLOG (CapabilityBoundingSet= is empty). tests/deploy_install.test.mjs pins this.
 PrivateDevices=yes
-ProtectKernelTunables=yes
-# ...except the user-namespace limits: bwrap --disable-userns writes user.max_user_namespaces INSIDE the sandbox's own
-# user namespace (namespaced, so it never changes the host's value: knife has no capabilities); read-only, every
-# sandbox start fails and public mode refuses to start.
-ReadWritePaths=/proc/sys/user
 ProtectKernelModules=yes
-ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
-ProtectHostname=yes
 ProtectProc=invisible
 LockPersonality=yes
 RestrictRealtime=yes
-RestrictSUIDSGID=yes
 RemoveIPC=yes
 KeyringMode=private
 NoNewPrivileges=yes
