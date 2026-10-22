@@ -111,6 +111,12 @@ export const NAV: readonly NavSection[] = [
       },
     ],
   },
+  {
+    id: "automate",
+    label: "Automate",
+    icon: "automate",
+    groups: [{ items: [{ slug: "workflows", tab: "editor", label: "Workflows" }, { slug: "workflows", tab: "credentials", label: "Credentials" }] }],
+  },
   { id: "learn", label: "Learn", icon: "learn", groups: [{ items: [{ slug: "db-course" }] }] },
   { id: "setup", label: "Setup", icon: "setup", groups: [{ items: [{ slug: "sidecars" }, { slug: "mcp-connect" }] }] },
 ];

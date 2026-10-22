@@ -17,6 +17,8 @@ function ToolLoading() {
 }
 
 const SiteConnect = dynamic(() => import("@/tools/site/ConnectTab"), { loading: ToolLoading });
+const WorkflowsEditor = dynamic(() => import("@/tools/workflows/WorkflowsTab"), { loading: ToolLoading });
+const WorkflowCredentials = dynamic(() => import("@/tools/workflows/CredentialsTab"), { loading: ToolLoading });
 const SiteScore = dynamic(() => import("@/tools/site/ScoreTab"), { loading: ToolLoading });
 const SiteCopy = dynamic(() => import("@/tools/site/CopyTab"), { loading: ToolLoading });
 const SiteChanges = dynamic(() => import("@/tools/site/ChangesTab"), { loading: ToolLoading });
@@ -275,6 +277,8 @@ const COMPONENTS: Record<string, ComponentType> = {
   cron: CronExplorer,
   office: OfficeTool,
   "site-connect": SiteConnect,
+  "wf-editor": WorkflowsEditor,
+  "wf-credentials": WorkflowCredentials,
   "site-score": SiteScore,
   "site-copy": SiteCopy,
   "site-changes": SiteChanges,
@@ -297,7 +301,7 @@ function MissingTool({ slug }: { slug: string }) {
  * overwrite it and autosave the old values back), manage credentials, or generate secrets.
  */
 const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password"]);
-const NO_DRAFT_PREFIXES = ["cv-", "site-", "craft-"];
+const NO_DRAFT_PREFIXES = ["cv-", "site-", "craft-", "wf-"];
 
 function renderComponent(key: string) {
   const Component = COMPONENTS[key];

@@ -45,6 +45,7 @@ export const TOOL_FAMILIES = [
   { id: "sidecar-services", label: "Sidecar services" },
   { id: "creative-apps", label: "Creative apps" },
   { id: "courses", label: "Courses" },
+  { id: "automation", label: "Automation" },
 ] as const;
 
 export type ToolFamily = (typeof TOOL_FAMILIES)[number]["id"];
@@ -1224,6 +1225,19 @@ export const TOOLS: ToolMeta[] = [
       { id: "website", label: "Website", component: "site-copy", wide: true },
     ],
     keywords: ["cv", "resume", "curriculum vitae", "życiorys", "cv po polsku", "job", "job offer", "application", "recruitment", "linkedin", "tailor", "rodo", "career", "praca", "oferta pracy", "aplikacja"],
+  },
+  {
+    slug: "workflows",
+    name: "Workflows",
+    tagline: "n8n-style automations: connect nodes on a canvas and run them by hand, on a schedule or from a webhook. Code runs sandboxed.",
+    category: "dev",
+    family: "automation",
+    kind: "server",
+    tabs: [
+      { id: "editor", label: "Workflows", component: "wf-editor", wide: true },
+      { id: "credentials", label: "Credentials", component: "wf-credentials" },
+    ],
+    keywords: ["workflow", "automation", "automate", "n8n", "zapier", "make", "integromat", "webhook", "cron", "schedule", "pipeline", "nodes", "flow", "integration", "oauth", "api", "etl", "trigger", "javascript", "code"],
   },
   {
     slug: "site-studio",

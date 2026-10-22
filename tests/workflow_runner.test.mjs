@@ -111,3 +111,18 @@ test("waiting runs are indexed and resume; a busy loop past the time limit is ki
   assert.match(killed.result.error.message, /longer than 2 s/);
   assert.ok(Date.now() - started < 8000);
 });
+
+test("the worker's Node flags deny writes, reads outside the app, child processes, workers and eval", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { pathToFileURL } = await import("node:url");
+  const root = process.cwd();
+  const flags = runner.workerExecArgv([root], pathToFileURL(join(root, "src/lib/workflows/worker/hooks.mjs")).href);
+  const probe = spawnSync(process.execPath, [...flags, join(root, "tests/workflow_worker_probe.mjs")], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
+  const report = JSON.parse(probe.stdout || "{}");
+  assert.equal(report.writeTmp, "ERR_ACCESS_DENIED", probe.stderr);
+  assert.equal(report.readOutside, "ERR_ACCESS_DENIED");
+  assert.equal(report.childProcess, "ERR_ACCESS_DENIED");
+  assert.equal(report.workerThread, "ERR_ACCESS_DENIED");
+  assert.equal(report.eval, "EvalError");
+  assert.equal(report.readInside, "allowed", "the app's own files stay readable");
+});

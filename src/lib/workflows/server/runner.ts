@@ -4,7 +4,7 @@
  * at the wall-clock limit. Persists the run, keeps waiting runs in the trigger index, starts the error workflow of a
  * failed run, orchestrates sub-workflow calls (same account, depth-limited) and streams node progress to the editor.
  */
-import { fork, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync, realpathSync } from "node:fs";
@@ -181,6 +181,21 @@ function workerEntry(): { entry: string; hooks: string; readRoots: string[] } {
   return { entry, hooks: pathToFileURL(hooks).href, readRoots: [...roots] };
 }
 
+/** Node flags of the worker process (tests/workflow_runner.test.mjs checks what they deny). */
+export function workerExecArgv(readRoots: string[], hooks: string): string[] {
+  return [
+    "--permission",
+    ...readRoots.map((dir) => `--allow-fs-read=${dir}`),
+    "--allow-net",
+    `--max-old-space-size=${WORKFLOW_LIMITS.heapMb()}`,
+    "--disallow-code-generation-from-strings",
+    "--disable-warning=ExperimentalWarning",
+    "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+    "--import",
+    hooks,
+  ];
+}
+
 function collectCredentials(accountId: string, workflow: Workflow): Record<string, CredentialData> {
   const out: Record<string, CredentialData> = {};
   for (const node of workflow.nodes) {
@@ -276,19 +291,8 @@ export async function startRun(options: StartRunOptions): Promise<RunOutcome> {
       maxBlobBytes: WORKFLOW_LIMITS.blobMb() * 1024 * 1024,
       progress: Boolean(options.progress),
     };
-    const worker = fork(entry, [], {
-      execPath: process.execPath,
-      execArgv: [
-        "--permission",
-        ...readRoots.map((dir) => `--allow-fs-read=${dir}`),
-        "--allow-net",
-        `--max-old-space-size=${WORKFLOW_LIMITS.heapMb()}`,
-        "--disallow-code-generation-from-strings",
-        "--disable-warning=ExperimentalWarning",
-        "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
-        "--import",
-        hooks,
-      ],
+    // spawn + an "ipc" stdio slot is what fork does; fork's path argument would be traced into the bundle by Next.
+    const worker = spawn(process.execPath, [...workerExecArgv(readRoots, hooks), entry], {
       env: childEnv([], { KNIFE_SSRF_DENY_CIDRS: process.env.KNIFE_SSRF_DENY_CIDRS ?? "", NODE_ENV: process.env.NODE_ENV ?? "production", TZ: "UTC" }),
       serialization: "advanced",
       stdio: ["ignore", "ignore", "pipe", "ipc"],
