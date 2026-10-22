@@ -157,6 +157,8 @@ def main() -> int:
         ("POST", "/api/agent/tool", {"name": "knife_cv_get", "input": {}}), ("POST", "/api/agent/chat", {"messages": []}),
         ("POST", "/api/sql", {"action": "format", "sql": "select 1"}), ("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
         ("GET", "/api/ui/poll?client=AAAAAAAAAAAAAAAA", None), ("GET", "/api/learn", None),
+        ("GET", "/api/workflows", None), ("GET", "/api/workflows/credentials", None), ("GET", "/api/workflows/oauth/start?credential=abcdefabcdef", None),
+        ("POST", "/api/workflows", {"action": "create", "name": "x"}),
     ):
         data = json.dumps(body).encode() if body is not None else None
         headers = {"Content-Type": "application/json", "Origin": BASE, "Accept": "application/json, text/event-stream"} if data else {}
@@ -219,6 +221,49 @@ def main() -> int:
     # The Python lane runs under the public-mode parser sandbox (bubblewrap): a real job must still work.
     ok, text, took = mcp(api, "knife_sql_format", {"sql": "select a,b from t where x=1", "dialect": "postgres"}, ha, "198.51.100.10")
     check(f"Python lane works under the public-mode sandbox (knife_sql_format, {took:.1f} s)", ok and "SELECT" in text.upper(), text[:200])
+
+    # --------------------------------------------------------------------------------------------- workflows
+    status, hdrs, text = raw("POST", "/api/hooks/" + "A" * 24 + "/x", b"{}", {"Content-Type": "application/json"})
+    check("guest webhook call with an unknown token -> 404, sandboxed answer", status == 404 and hdrs.get("content-security-policy", "").startswith("sandbox"), (status, text[:120]))
+
+    def node(name: str, kind: str, parameters: dict, **extra: object) -> dict:
+        return {"id": name.replace(" ", ""), "type": f"core.{kind}", "name": name, "position": [0, 0], "parameters": parameters, **extra}
+
+    def link(a: str, b: str) -> dict:
+        return {"from": {"node": a, "output": 0}, "to": {"node": b, "input": 0}}
+
+    status, body, _ = api.call("POST", "/api/workflows", {"action": "create", "name": "alice hook", "nodes": [
+        node("Hook", "webhook", {"httpMethod": "POST", "path": "page", "responseMode": "responseNode"}),
+        node("Reply", "respond-to-webhook", {"respondWith": "text", "responseText": "<script>alert(document.cookie)</script>", "headers": [{"name": "Content-Type", "value": "text/html"}, {"name": "Set-Cookie", "value": "sk=1"}]}),
+    ], "connections": [link("Hook", "Reply")]}, cookie=alice, ip="198.51.100.10")
+    wf = body.get("workflow", {}) if isinstance(body, dict) else {}
+    check("alice creates a workflow", status == 201 and bool(wf.get("id")), (status, str(body)[:200]))
+    if wf.get("id"):
+        status, body, _ = api.call("PUT", f"/api/workflows/{wf['id']}", {"version": wf["version"], "active": True}, cookie=alice, ip="198.51.100.10")
+        check("alice activates it", status == 200, (status, str(body)[:200]))
+        status, hdrs, text = raw("POST", f"/api/hooks/{wf['hookToken']}/page", b"{}", {"Content-Type": "application/json", "Cookie": alice})
+        check("a non-admin's webhook page is served as text/plain under CSP sandbox, no Set-Cookie",
+              status == 200 and hdrs.get("content-type", "").startswith("text/plain") and hdrs.get("content-security-policy", "").startswith("sandbox") and "set-cookie" not in hdrs, (status, hdrs))
+        for method, path, payload in (("GET", f"/api/workflows/{wf['id']}", None), ("PUT", f"/api/workflows/{wf['id']}", {"version": 2, "name": "pwned"}), ("POST", f"/api/workflows/{wf['id']}/run", {"wait": True}), ("DELETE", f"/api/workflows/{wf['id']}", None)):
+            status, body, _ = api.call(method, path, payload, cookie=bob, ip="198.51.100.20")
+            check(f"bob {method} alice's workflow -> 404", status == 404, (status, str(body)[:160]))
+        status, body, _ = api.call("GET", "/api/workflows", cookie=bob, ip="198.51.100.20")
+        check("bob's workflow list never shows alice's", status == 200 and "alice hook" not in json.dumps(body), str(body)[:200])
+    status, body, _ = api.call("POST", "/api/workflows", {"action": "create", "name": "alice probes", "nodes": [
+        node("Start", "manual-trigger", {}),
+        node("Code", "code", {"jsCode": "return [{ host: [typeof process, typeof require, typeof fetch, typeof WebAssembly].join() }]"}),
+        node("Local", "http-request", {"url": BASE + "/api/account"}),
+    ], "connections": [link("Start", "Code"), link("Code", "Local")]}, cookie=alice, ip="198.51.100.10")
+    probe_wf = body.get("workflow", {}) if isinstance(body, dict) else {}
+    if probe_wf.get("id"):
+        status, body, _ = api.call("POST", f"/api/workflows/{probe_wf['id']}/run", {"wait": True}, cookie=alice, ip="198.51.100.10")
+        result = body if isinstance(body, dict) else {}
+        check("a workflow's HTTP node cannot reach the app's own loopback address", status == 200 and result.get("status") == "error" and result.get("error", {}).get("node") == "Local" and "public address" in json.dumps(result.get("error")), str(body)[:300])
+        status, body, _ = api.call("GET", f"/api/workflows/{probe_wf['id']}/runs", cookie=alice, ip="198.51.100.10")
+        run_id = (body.get("runs") or [{}])[0].get("id", "") if isinstance(body, dict) else ""
+        status, body, _ = api.call("GET", f"/api/workflows/{probe_wf['id']}/runs/{run_id}", cookie=alice, ip="198.51.100.10")
+        host = (((body.get("run") or {}).get("runData") or {}).get("Code") or [{}])[0].get("outputs", [[{}]])[0][0].get("json", {}).get("host") if isinstance(body, dict) else None
+        check("user code sees no process, require, fetch or WebAssembly", host == "undefined,undefined,undefined,undefined", host)
 
     # --------------------------------------------------------------------------------------------- CPU attacks
     def redos() -> tuple[bool, str, float]:
