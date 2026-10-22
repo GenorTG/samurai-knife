@@ -386,7 +386,10 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   bundle's asset folder names stay the same, so the container is neither recreated nor does the root helper's bundle
   check fail. With the helper, root copies the content dir into `/etc/samurai-knife/sidecars/craft-content/` on the
   app's request (`content craft`: only apps whose marker changed, regular files and directories only, names
-  `[A-Za-z0-9._-]`, depth 8, 1.5 GB in all, each app swapped in by rename, apps no longer staged removed). That does not
+  `[A-Za-z0-9._-]`, depth 8, 1.5 GB in all, each app swapped in by rename, apps no longer staged removed). The helper
+  unit (`ProtectSystem=strict`) may write only there and in `/run/knife-sidecar` (`ReadWritePaths`; install.sh creates
+  the folder): before 0.8.1 it could not, and every Craft app failed to start with "content refresh failed (exit 70)"
+  until the installer was re-run. A file-system error now names the path (exit 73). That does not
   widen the host's trust boundary: the files are static, nginx (uid 101, no capabilities, read-only root, no egress)
   only serves them, and they only ever run in browsers on the separate craft origin, which the app's own origin never
   trusts; a compromised app could already serve anything on its own origin. What can hurt the host (image, ports,

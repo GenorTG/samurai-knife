@@ -329,6 +329,8 @@ if [[ "$SIDECARS" == yes ]]; then
   ln -sfn "$LIBEXEC/knife-sidecar-helper" /usr/local/sbin/knife-sidecar
   put "$SRC/deploy/systemd/knife-sidecar.socket" "$UNITS/knife-sidecar.socket"
   put "$SRC/deploy/systemd/knife-sidecar@.service" "$UNITS/knife-sidecar@.service"
+  # Root's copy of the Craft apps' content: the helper unit may write only here under /etc (its ReadWritePaths).
+  install -d -o root -g root -m 0755 "$ETC/sidecars" "$ETC/sidecars/craft-content"
 fi
 systemctl daemon-reload
 # The sandbox again, now under the service's own hardening: a copy of the installed unit with the probe as ExecStart.

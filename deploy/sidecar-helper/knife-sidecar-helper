@@ -518,7 +518,7 @@ def handle(conn, conf, verb, sidecar_id, flags):
         return run_streamed(conn, [conf["DOCKER"], "stats", "--no-stream", "--format", "{{.MemUsage}}", ids[0]], directory, env, timeout)
     if verb == "content":
         with IdLock(conf, sidecar_id):
-            return refresh_content(conf, sidecar_id, lambda text: conn.send("o", text))
+            return refresh_content_checked(conf, sidecar_id, lambda text: conn.send("o", text))
     argv = compose_argv(conf, verb, sidecar_id, flags)
     if VERBS[verb][3]:
         with IdLock(conf, sidecar_id):
@@ -856,6 +856,15 @@ def refresh_content(conf, sidecar_id, say):
     return 0
 
 
+def refresh_content_checked(conf, sidecar_id, say):
+    """refresh_content with file-system errors named (path + reason, exit 73): a read-only /etc under the helper unit's
+    sandbox once surfaced only as "internal error (see the journal)" in the app."""
+    try:
+        return refresh_content(conf, sidecar_id, say)
+    except OSError as error:
+        raise HelperError(f"cannot update {error.filename or content_dir(conf, sidecar_id)}: {error.strerror or error}", 73) from error
+
+
 def normalized_config(conf, compose_text, secret_keys, sidecar_id):
     """Runs `docker compose config` on a copy with DUMMY secrets, as nobody when root, without interpolation."""
     scratch = tempfile.mkdtemp(prefix="knife-sidecar-check-")
@@ -1004,7 +1013,7 @@ def main(argv):
             if not is_root() and not os.environ.get("KNIFE_SIDECAR_HELPER_CONF"):
                 raise HelperError("content installs root-owned files: run it with sudo", 77)
             with IdLock(conf, sidecar_id):
-                return refresh_content(conf, sidecar_id, print)
+                return refresh_content_checked(conf, sidecar_id, print)
         if mode == "hash":
             if sidecar_id not in SIDECARS:
                 raise HelperError(f"unknown sidecar {sidecar_id}")

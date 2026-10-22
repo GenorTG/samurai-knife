@@ -30,7 +30,10 @@ PrivateNetwork=yes
 IPAddressDeny=any
 RestrictAddressFamilies=AF_UNIX
 ProtectSystem=strict
-ReadWritePaths=/run/knife-sidecar
+# Writable: its runtime dir, and root's copy of the Craft apps' static content (the `content` verb swaps app folders
+# in there; the container mounts it read-only). Nothing else under /etc: bundles are installed by the root CLI `sync`,
+# which runs outside this unit. install.sh creates the folder; `-` keeps the unit startable on a host without it.
+ReadWritePaths=/run/knife-sidecar -/etc/samurai-knife/sidecars/craft-content
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

@@ -143,6 +143,17 @@ test("log files: the app writes only its two log folders, knife-update its own, 
   assert.deepEqual(unitLines(updaterUnit, "ReadWritePaths"), ["@APP_ROOT@"], "logs/update is inside the updater's writable tree");
 });
 
+test("sidecar helper unit: writes only its runtime dir and the Craft content dir, which install.sh creates", () => {
+  const unit = read("deploy/systemd/knife-sidecar@.service");
+  assert.deepEqual(unitLines(unit, "ProtectSystem"), ["strict"]);
+  assert.deepEqual(unitLines(unit, "ReadWritePaths"), ["/run/knife-sidecar -/etc/samurai-knife/sidecars/craft-content"], "the content verb swaps app folders there; nothing else under /etc");
+  const helper = read("deploy/sidecar-helper/knife-sidecar-helper");
+  assert.match(helper, /"BUNDLE_ROOT": "\/etc\/samurai-knife\/sidecars"/, "the unit's path is the helper's default content dir parent");
+  assert.match(helper, /os\.path\.join\(conf\["BUNDLE_ROOT"\], f"\{sidecar_id\}-content"\)/);
+  assert.match(INSTALL, /^  install -d -o root -g root -m 0755 "\$ETC\/sidecars" "\$ETC\/sidecars\/craft-content"$/m);
+  assert.match(INSTALL, /^ETC=\/etc\/samurai-knife$/m);
+});
+
 test("the repo: --repo, the checkout's origin, the installed update.conf, then package.json (a re-run from current works)", () => {
   const start = INSTALL.indexOf('if [[ -z "$REPO_URL" ]]; then REPO_URL="$(git -C "$SRC"');
   const end = INSTALL.indexOf("\n", INSTALL.indexOf('problems+=("no --repo given'));

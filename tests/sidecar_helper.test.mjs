@@ -530,3 +530,24 @@ test("content: root copies only changed apps (marker), swaps them in, removes un
   const none = spawnSync("python3", ["-I", HELPER, "content", "learn-db"], { env, encoding: "utf8" });
   assert.match(none.stderr, /has no static content/);
 });
+
+test("content: a target the helper cannot write (read-only /etc under the unit's sandbox) is named, not an internal error", { skip: (!havePython || process.getuid?.() === 0) && "python3 missing or running as root" }, () => {
+  const dir = mkdtempSync(join(work, "content-ro-"));
+  const env = { PATH: process.env.PATH, KNIFE_SIDECAR_HELPER_CONF: helperConf(dir) };
+  const staged = join(dir, "staging", "craft-content");
+  const target = join(dir, "etc", "craft-content");
+  mkdirSync(join(staged, "photocraft"), { recursive: true });
+  writeFileSync(join(staged, "photocraft", ".knife-version"), `1.0.0 ${"a".repeat(64)}\n`);
+  writeFileSync(join(staged, "photocraft", "index.html"), "p1");
+  // The target cannot be created: its parent is read-only (the unit's sandbox gives EROFS, here EACCES).
+  mkdirSync(join(target, ".."), { recursive: true });
+  chmodSync(join(target, ".."), 0o555);
+  try {
+    const result = spawnSync("python3", ["-I", HELPER, "content", "craft"], { env, encoding: "utf8" });
+    assert.equal(result.status, 73, result.stderr);
+    assert.match(result.stderr, /cannot update .*craft-content.*: Permission denied/);
+    assert.doesNotMatch(result.stderr, /Traceback|internal error/);
+  } finally {
+    chmodSync(join(target, ".."), 0o755);
+  }
+});
