@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { CategoryIcon, categoryTint } from "@/components/category-icons";
 import { cx } from "@/lib/format";
@@ -61,30 +61,47 @@ function SectionTitle({ children, count }: { children: React.ReactNode; count?: 
 }
 
 const COLLAPSED_KEY = "knife:nav-collapsed";
+const collapsedListeners = new Set<() => void>();
 
-/** Which sections the person folded away, kept per browser; read after mount (the server always renders them open). */
+function subscribeCollapsed(listener: () => void): () => void {
+  collapsedListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    collapsedListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function readCollapsed(): string {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) ?? "[]";
+  } catch {
+    return "[]";
+  }
+}
+
+/** Which sections the person folded away, kept per browser; the server renders every section open. */
 function useCollapsed(): [Set<string>, (id: string, open: boolean) => void] {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  useEffect(() => {
+  const raw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => "[]");
+  const collapsed = useMemo(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]") as unknown;
-      if (Array.isArray(stored)) setCollapsed(new Set(stored.filter((id): id is string => typeof id === "string")));
+      const stored = JSON.parse(raw) as unknown;
+      return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : []);
     } catch {
-      // unreadable: everything open
+      return new Set<string>();
     }
-  }, []);
-  const toggle = (id: string, open: boolean) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (open) next.delete(id);
-      else next.add(id);
-      try {
-        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
-      } catch {
-        // storage blocked: still works for this page
-      }
-      return next;
-    });
+  }, [raw]);
+  const toggle = (id: string, open: boolean) => {
+    const next = new Set(collapsed);
+    if (open) next.delete(id);
+    else next.add(id);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+    } catch {
+      // storage blocked: the section still toggles natively for this page
+    }
+    for (const listener of collapsedListeners) listener();
+  };
   return [collapsed, toggle];
 }
 
