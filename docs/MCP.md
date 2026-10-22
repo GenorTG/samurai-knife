@@ -49,6 +49,19 @@ pool; an earlier kept version too), `knife_doc_create {format, name, folderId?, 
 trash and permanent deletion stay with the user in the file browser. Every tool acts on the calling account only (another
 account's ids answer "unknown document/folder"), and writes fail with the storage-quota message when the account is full.
 
+## Workflows (`knife_workflow_*`, group `workflows`)
+`knife_workflow_nodes {type?, query?}` (the node catalog; with `type` its parameters, showIf conditions and credential
+slots), `knife_workflow_list`, `knife_workflow_get {id}` (nodes by name, connections, settings, version, webhook URLs),
+`knife_workflow_create {name, nodes, connections}` (agent-style nodes: no ids, positions optional; returns warnings
+about unknown parameters and what keeps it from being activated), `knife_workflow_edit {id, version?, ops}` (add / set /
+connect / disconnect, saved once; a rename rewrites `$('Name')` references), `knife_workflow_remove_nodes` and
+`knife_workflow_delete` (destructive), `knife_workflow_activate {id, active}`, `knife_workflow_run {id, items?,
+startNode?, destinationNode?}` (runs in the worker and waits; `publishes`: a run's nodes may send data out),
+`knife_workflow_runs`, `knife_workflow_run_get {id, runId, node?}` (run data and node errors come back inside the
+untrusted-content envelope: they hold what the called services answered), `knife_workflow_credentials` (ids, names,
+types; never secrets: the user enters keys in the Credentials tab). An open editor reloads a workflow saved this way
+(or warns when it has unsaved changes). `knife_ui_show {slug:"workflows", workflow: id}` opens it for the user.
+
 ## Website (`knife_site_*`, group `site`)
 Score and improve the user's own website from its GitHub repository: `knife_site_status` (start here: connection, the
 repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,

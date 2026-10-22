@@ -169,7 +169,7 @@ export function createWorkflow(accountId: string, draft: WorkflowDraft): Workflo
 }
 
 /** Replaces the editable parts; `version` must be the stored one (409 when someone else saved meanwhile). */
-export function saveWorkflow(accountId: string, id: string, version: number, changes: WorkflowDraft & { active?: boolean }): Workflow {
+export function saveWorkflow(accountId: string, id: string, version: number, changes: Partial<WorkflowDraft> & { active?: boolean }): Workflow {
   const current = requireWorkflow(accountId, id);
   if (current.version !== version) throw new WorkflowStoreError("The workflow changed since you opened it (another tab, the assistant or MCP saved it). Reload to see the latest version.", 409, { version: current.version });
   const parsed = workflowSchema.safeParse({

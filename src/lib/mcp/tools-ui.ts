@@ -30,7 +30,7 @@ export const UI_BRIDGE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "write",
     description:
-      "Bring the user's open Smart Knife tab to a page so they SEE your result: slug (e.g. 'cv-studio'), optional tab ('profile', 'jobs', 'variants', 'applications', 'showcase' for cv-studio), optional deep links: job (offer id, Job offers tab), variant (CV version id, CV versions tab), focus (profile id-path, Profile tab), doc (office document id). note = one short line shown to the user ('Tailored your CV for Addepto'). Goes to the most recently active tab (or clientId from knife_ui_state). Changes you make with knife_* tools appear live anyway; use this to point at them.",
+      "Bring the user's open Smart Knife tab to a page so they SEE your result: slug (e.g. 'cv-studio'), optional tab ('profile', 'jobs', 'variants', 'applications', 'showcase' for cv-studio), optional deep links: job (offer id, Job offers tab), variant (CV version id, CV versions tab), focus (profile id-path, Profile tab), doc (office document id), workflow (workflow id: opens it in the workflow editor, slug 'workflows'). note = one short line shown to the user ('Tailored your CV for Addepto'). Goes to the most recently active tab (or clientId from knife_ui_state). Changes you make with knife_* tools appear live anyway; use this to point at them.",
     schema: z.object({
       slug: z.string().min(1).max(80),
       tab: z.string().max(40).optional(),
@@ -38,6 +38,7 @@ export const UI_BRIDGE_TOOLS: KnifeToolDefinition[] = [
       variant: z.string().max(64).optional(),
       focus: z.string().max(300).optional(),
       doc: z.string().max(64).optional(),
+      workflow: z.string().max(64).optional(),
       note: z.string().max(300).optional(),
       clientId: z.string().max(64).optional(),
     }).strict(),

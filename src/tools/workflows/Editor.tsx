@@ -299,6 +299,39 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     [workflow, settings, id, name, nodes, connections],
   );
 
+  // Changes made elsewhere (the assistant, MCP, another tab) show up here: a clean editor reloads them, an editor with
+  // unsaved changes says so instead of overwriting them.
+  const live = useRef({ dirty, version: workflow?.version ?? 0, saving });
+  useEffect(() => {
+    live.current = { dirty, version: workflow?.version ?? 0, saving };
+  });
+  useEffect(() => {
+    let warned = 0;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || live.current.saving || !live.current.version) return;
+      workflowsApi.get(id).then(
+        ({ workflow: stored, hooks: urls }) => {
+          if (stored.version <= live.current.version) return;
+          if (live.current.dirty) {
+            if (warned === stored.version) return;
+            warned = stored.version;
+            setNotice({ tone: "warn", text: "This workflow was changed elsewhere (the assistant or another tab) while you have unsaved changes here.", reload: true });
+            return;
+          }
+          setWorkflow(stored);
+          setHooks(urls);
+          setName(stored.name);
+          setNodes(stored.nodes);
+          setConnections(stored.connections);
+          setSettings(stored.settings);
+          setNotice({ tone: "info", text: "Updated: this workflow was changed elsewhere (the assistant or another tab)." });
+        },
+        () => undefined,
+      );
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [id]);
+
   const saveRef = useRef(save);
   useEffect(() => {
     saveRef.current = save;

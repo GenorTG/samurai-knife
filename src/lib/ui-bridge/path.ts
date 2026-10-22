@@ -6,7 +6,7 @@ import { canonicalSlug, findTool, resolveAlias } from "../registry";
  * "show" request can never navigate outside the app. Pure.
  */
 
-export const SHOW_PARAMS = ["job", "focus", "variant", "doc"] as const;
+export const SHOW_PARAMS = ["job", "focus", "variant", "doc", "workflow"] as const;
 export type ShowParam = (typeof SHOW_PARAMS)[number];
 
 export class ShowPathError extends Error {}

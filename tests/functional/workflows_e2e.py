@@ -155,6 +155,17 @@ def run(page: Page, base: str, browser_name: str) -> None:
     check(f"{tag} the code editor (CodeMirror) is there", code_panel.locator(".cm-gutters").count() > 0)
     code_panel.get_by_role("button", name="Close node panel").click()
 
+    # A change saved elsewhere (the assistant, MCP, another tab) appears in the open editor by itself.
+    wf_id = page.url.split("workflow=")[1].split("&")[0]
+    with urllib.request.urlopen(f"{base}/api/workflows/{wf_id}", timeout=30) as resp:
+        stored = json.loads(resp.read().decode())["workflow"]
+    renamed = {"version": stored["version"], "name": f"Renamed by the assistant {browser_name}"}
+    req = urllib.request.Request(f"{base}/api/workflows/{wf_id}", data=json.dumps(renamed).encode(), method="PUT", headers={"content-type": "application/json", "Origin": base})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        check(f"{tag} saved from outside", resp.status == 200)
+    expect(page.get_by_label("Workflow name")).to_have_value(renamed["name"], timeout=15_000)
+    check(f"{tag} the open editor picks up the outside change", True)
+
     # Credentials: saved, listed, the secret never comes back.
     page.goto(f"{base}/tools/workflows?tab=credentials", wait_until="domcontentloaded")
     hydrated(page)
