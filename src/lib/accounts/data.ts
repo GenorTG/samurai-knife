@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { cvPaths, removeAccountPath, invalidateUsage, storageUsage } from "@/lib/storage/quota";
 import { accountScope } from "@/lib/storage/scope";
+import { removeAccountTriggers } from "@/lib/workflows/server/trigger-index";
 
 /**
  * Every place under $KNIFE_DATA_DIR that belongs to one account, as owned by `accountScope` (src/lib/storage/scope.ts).
@@ -14,8 +15,10 @@ import { accountScope } from "@/lib/storage/scope";
  *   usage/<id>.json                                                                     token ledger
  *   workspace/<id>.json.enc                                                             tool drafts
  *   site/<id>.json                                                                      website studio
+ *   craft-files/<id>/                                                                   Craft apps files
+ *   workflows/<id>/                                                                     workflows, runs, credentials
  * plus the account record in accounts.json, its sessions in sessions.json and its MCP keys in mcp-keys.json (removed by
- * the caller, accounts/flows.ts purgeAccount).
+ * the caller, accounts/flows.ts purgeAccount), and its entries in the workflow trigger index (removed here).
  */
 export function accountDataPaths(accountId: string): string[] {
   return [...accountScope(accountId).locations(), ...cvPaths(accountId)];
@@ -36,5 +39,6 @@ export function deleteAccountData(accountId: string): string[] {
     removed.push(path.slice(root.length + 1));
   }
   invalidateUsage(accountId);
+  removeAccountTriggers(accountId);
   return removed;
 }

@@ -189,6 +189,23 @@ export function saveWorkflow(accountId: string, id: string, version: number, cha
   return persist(accountId, parsed.data);
 }
 
+/** The editor's unsaved state as a runnable workflow (same checks as a save, nothing written). */
+export function draftWorkflow(accountId: string, id: string, draft: WorkflowDraft): Workflow {
+  const current = requireWorkflow(accountId, id);
+  const parsed = workflowSchema.safeParse({
+    ...current,
+    name: draft.name ?? current.name,
+    nodes: draft.nodes ?? current.nodes,
+    connections: draft.connections ?? current.connections,
+    settings: draft.settings ?? current.settings,
+  });
+  if (!parsed.success) throw new WorkflowStoreError(parsed.error.issues.map((issue) => `${issue.path.join(".") || "workflow"}: ${issue.message}`).join("; "));
+  const problems = structuralProblems(parsed.data);
+  if (problems.length) throw new WorkflowStoreError(problems[0].message, 400, problems);
+  checkCredentialRefs(accountId, parsed.data.nodes);
+  return parsed.data;
+}
+
 export function rotateHookToken(accountId: string, id: string): Workflow {
   const current = requireWorkflow(accountId, id);
   return persist(accountId, { ...current, hookToken: newHookToken(), updatedAt: now(), version: current.version + 1 });

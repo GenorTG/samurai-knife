@@ -80,6 +80,10 @@ const NAMESPACES: Record<string, NamespacePolicy> = {
   sensitive: { maxKeys: 20_000, preAuth: false, persist: /^sensitive:/ },
   "mcp-key": { maxKeys: 20_000, preAuth: false },
   outbound: { maxKeys: 50_000, preAuth: false },
+  // Workflow webhooks (docs/WORKFLOWS.md "Triggers"): callers are anonymous by design.
+  hook: { maxKeys: 50_000, preAuth: true },
+  "hook-wf": { maxKeys: 20_000, preAuth: false },
+  "wf-runs": { maxKeys: 20_000, preAuth: false },
 };
 const DEFAULT_POLICY: NamespacePolicy = { maxKeys: 20_000, preAuth: true };
 
@@ -552,4 +556,9 @@ export const LIMITS = {
   loginAccountDay: (id: string): Limit => ({ key: `login-day:${id}`, max: 200, windowMs: 24 * HOUR, quiet: true }),
   /** `GET /api/github/start` for sign-in/sign-up (no session): per client address. */
   githubStartIp: (ip: string): Limit => addressLimit("github:start", ip, 20, 10 * MINUTE),
+  /** Workflow webhook / resume calls (anonymous callers): per client address, and per workflow once the token matched. */
+  hookIp: (ip: string): Limit => addressLimit("hook", ip, envInt("KNIFE_WF_HOOK_IP_PER_MIN", 300), MINUTE),
+  hookWorkflow: (key: string): Limit => ({ key: `hook-wf:${key}`, max: envInt("KNIFE_WF_HOOK_PER_MIN", 120), windowMs: MINUTE }),
+  /** Runs started by triggers (schedule, webhook, resume) per account. */
+  workflowRuns: (id: string): Limit => ({ key: `wf-runs:${id}`, max: envInt("KNIFE_WF_RUNS_PER_HOUR", 1000), windowMs: HOUR, account: id }),
 };
