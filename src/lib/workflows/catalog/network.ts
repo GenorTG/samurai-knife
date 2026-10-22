@@ -1,0 +1,97 @@
+/** Network nodes: metadata only (implementations: src/lib/workflows/nodes/). */
+import type { NodeMeta } from "../types";
+
+/** Credential types the HTTP Request node's "generic" authentication accepts. */
+export const GENERIC_AUTH_TYPES = ["httpHeaderAuth", "httpBasicAuth", "httpBearerAuth", "httpQueryAuth", "httpCustomAuth", "oAuth2Api"];
+
+export const NETWORK_NODES: NodeMeta[] = [
+  {
+    type: "core.http-request",
+    label: "HTTP Request",
+    keywords: ["api", "rest", "fetch", "curl", "get", "post", "webhook", "call"],
+    group: "network",
+    description: "Calls any HTTP API: every method, query, headers, JSON / form / multipart / raw / file body, credentials.",
+    inputs: 1,
+    outputs: ["main"],
+    params: [
+      { name: "method", label: "Method", type: "options", default: "GET", options: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((value) => ({ value, label: value })) },
+      { name: "url", label: "URL", type: "string", default: "", placeholder: "https://api.example.com/items", required: true },
+      {
+        name: "authentication",
+        label: "Authentication",
+        type: "options",
+        default: "none",
+        options: [
+          { value: "none", label: "None" },
+          { value: "credential", label: "A saved credential" },
+        ],
+      },
+      { name: "sendQuery", label: "Send query parameters", type: "boolean", default: false },
+      { name: "query", label: "Query parameters", type: "keyValue", default: [], showIf: { sendQuery: [true] } },
+      { name: "sendHeaders", label: "Send headers", type: "boolean", default: false },
+      { name: "headers", label: "Headers", type: "keyValue", default: [], showIf: { sendHeaders: [true] } },
+      { name: "sendBody", label: "Send a body", type: "boolean", default: false },
+      {
+        name: "contentType",
+        label: "Body content type",
+        type: "options",
+        default: "json",
+        showIf: { sendBody: [true] },
+        options: [
+          { value: "json", label: "JSON" },
+          { value: "form", label: "Form (urlencoded)" },
+          { value: "multipart", label: "Form-data (multipart, files)" },
+          { value: "raw", label: "Raw text" },
+          { value: "binary", label: "A file of the item" },
+        ],
+      },
+      { name: "bodyMode", label: "JSON from", type: "options", default: "fields", showIf: { sendBody: [true], contentType: ["json"] }, options: [{ value: "fields", label: "Fields below" }, { value: "json", label: "JSON text" }] },
+      { name: "bodyFields", label: "Body fields", type: "keyValue", default: [], showIf: { sendBody: [true], contentType: ["form", "multipart"] } },
+      { name: "jsonFields", label: "Body fields", type: "keyValue", default: [], showIf: { sendBody: [true], contentType: ["json"], bodyMode: ["fields"] } },
+      { name: "jsonBody", label: "JSON body", type: "json", default: "{}", showIf: { sendBody: [true], contentType: ["json"], bodyMode: ["json"] } },
+      { name: "multipartFiles", label: "Files (field = file field of the item)", type: "keyValue", default: [], showIf: { sendBody: [true], contentType: ["multipart"] } },
+      { name: "rawBody", label: "Body", type: "string", rows: 6, default: "", showIf: { sendBody: [true], contentType: ["raw"] } },
+      { name: "rawContentType", label: "Content-Type", type: "string", default: "text/plain", showIf: { sendBody: [true], contentType: ["raw"] } },
+      { name: "binaryProperty", label: "File field", type: "string", default: "data", showIf: { sendBody: [true], contentType: ["binary"] } },
+      {
+        name: "options",
+        label: "Options",
+        type: "collection",
+        default: {},
+        fields: [
+          { name: "response", label: "Response format", type: "options", default: "auto", options: [{ value: "auto", label: "Detect" }, { value: "json", label: "JSON" }, { value: "text", label: "Text" }, { value: "file", label: "File" }] },
+          { name: "fullResponse", label: "Include status and headers", type: "boolean", default: false },
+          { name: "neverError", label: "Never fail on 4xx/5xx", type: "boolean", default: false },
+          { name: "followRedirects", label: "Follow redirects", type: "boolean", default: true },
+          { name: "maxRedirects", label: "Max redirects", type: "number", default: 5, min: 0, max: 10 },
+          { name: "timeout", label: "Timeout (ms)", type: "number", default: 30000, min: 1000, max: 300000 },
+          { name: "splitIntoItems", label: "Split a JSON list answer into items", type: "boolean", default: true },
+          { name: "outputField", label: "Put a text/file answer in", type: "string", default: "data" },
+          { name: "batchSize", label: "Items per batch (0 = all at once)", type: "number", default: 0, min: 0 },
+          { name: "batchInterval", label: "Pause between batches (ms)", type: "number", default: 0, min: 0, max: 60000 },
+        ],
+      },
+    ],
+    credentials: [{ name: "auth", label: "Credential", types: GENERIC_AUTH_TYPES, required: true, showIf: { authentication: ["credential"] } }],
+    hue: 250,
+  },
+  {
+    type: "core.graphql",
+    label: "GraphQL",
+    keywords: ["api", "query", "mutation"],
+    group: "network",
+    description: "Sends a GraphQL query or mutation.",
+    inputs: 1,
+    outputs: ["main"],
+    params: [
+      { name: "endpoint", label: "Endpoint", type: "string", default: "", placeholder: "https://api.example.com/graphql", required: true },
+      { name: "query", label: "Query", type: "code", language: "text", rows: 10, default: "query {\n  viewer {\n    login\n  }\n}" },
+      { name: "variables", label: "Variables (JSON)", type: "json", default: "{}" },
+      { name: "operationName", label: "Operation name", type: "string", default: "" },
+      { name: "authentication", label: "Authentication", type: "options", default: "none", options: [{ value: "none", label: "None" }, { value: "credential", label: "A saved credential" }] },
+      { name: "headers", label: "Headers", type: "keyValue", default: [] },
+    ],
+    credentials: [{ name: "auth", label: "Credential", types: GENERIC_AUTH_TYPES, required: true, showIf: { authentication: ["credential"] } }],
+    hue: 250,
+  },
+];

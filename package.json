@@ -22,6 +22,7 @@
     "email-lists": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --import ./tests/ts-resolve.mjs scripts/email-lists.ts"
   },
   "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
     "@modelcontextprotocol/server": "^2.2.0",
     "@noble/hashes": "^2.4.0",
     "@tesseract.js-data/eng": "^1.0.0",
@@ -36,6 +37,7 @@
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
+    "quickjs-emscripten-core": "^0.32.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sql.js": "^1.14.2",
