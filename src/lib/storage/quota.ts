@@ -35,7 +35,7 @@ function recountMs(): number {
 }
 const CACHE_KEY = Symbol.for("samurai-knife.storage-usage.v1");
 
-export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "workspace" | "site" | "craft" | "jobs";
+export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "workspace" | "site" | "craft" | "workflows" | "jobs";
 
 export interface StorageUsage {
   usedBytes: number;
@@ -130,6 +130,7 @@ function walk(accountId: string): Cached {
       workspace: pathBytes(scope.workspaceFile),
       site: pathBytes(scope.siteFile),
       craft: pathBytes(scope.craftFiles),
+      workflows: pathBytes(scope.workflows),
     },
     at: Date.now(),
   };
@@ -155,6 +156,7 @@ function areaOf(accountId: string, path: string): Exclude<StorageArea, "jobs"> {
   if (path === scope.workspaceFile) return "workspace";
   if (path === scope.siteFile) return "site";
   if (path === scope.craftFiles || path.startsWith(scope.craftFiles + sep)) return "craft";
+  if (path === scope.workflows || path.startsWith(scope.workflows + sep)) return "workflows";
   return "cv";
 }
 

@@ -104,6 +104,8 @@ export interface NodeRun {
   /** Items per output index. */
   outputs: Item[][];
   error?: RunError;
+  /** Stored runs: the real item count per output (`outputs` may hold only the first items). */
+  outputCounts?: number[];
   /** Data was cut to keep the stored run small. */
   trimmed?: boolean;
   logs?: string[];
