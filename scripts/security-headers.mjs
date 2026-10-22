@@ -183,6 +183,44 @@ export function extraFrameOrigins(env = process.env) {
   return { origins, dropped };
 }
 
+/**
+ * Responses that must carry their own, stricter Content-Security-Policy than the app's. The app's headers are set when a
+ * request arrives (below), and a production Next server keeps a header that is already set, so a route's own CSP would
+ * be dropped silently. Such routes name their policy in `X-Knife-Csp` instead; it replaces the app's policy when the
+ * headers are written. Only sandboxing policies are taken (a route can tighten, never loosen). Webhook answers
+ * (src/lib/workflows/server/hooks.ts) get the strictest sandbox from the start, so they fail closed.
+ */
+export const OWN_CSP_HEADER = "x-knife-csp";
+export const HOOK_PATH = /^\/api\/hooks(?:-test)?\//;
+export const HOOK_CSP = "sandbox; default-src 'none'; form-action 'none'; frame-ancestors 'none'";
+
+export function applyOwnCsp(response) {
+  if (response.knifeOwnCsp) return;
+  response.knifeOwnCsp = true;
+  const writeHead = response.writeHead;
+  response.writeHead = function patchedWriteHead(...args) {
+    let own = this.getHeader?.(OWN_CSP_HEADER);
+    const object = args.slice(1).find((arg) => arg && typeof arg === "object" && !Array.isArray(arg));
+    if (object) {
+      for (const key of Object.keys(object)) {
+        if (key.toLowerCase() === OWN_CSP_HEADER) {
+          own = object[key];
+          delete object[key];
+        }
+      }
+    }
+    if (own !== undefined) {
+      this.removeHeader(OWN_CSP_HEADER);
+      const value = String(own);
+      if (/\bsandbox\b/.test(value)) {
+        if (object) for (const key of Object.keys(object)) if (key.toLowerCase() === "content-security-policy") delete object[key];
+        this.setHeader("Content-Security-Policy", value);
+      }
+    }
+    return writeHead.apply(this, args);
+  };
+}
+
 function install() {
   const dev = process.env.KNIFE_SERVE_MODE === "dev";
   const dataDir = process.env.KNIFE_DATA_DIR?.trim() || join(homedir(), ".local", "share", "samurai-knife");
@@ -244,6 +282,8 @@ function install() {
     const patched = function emit(event, request, response, ...rest) {
       if (event === "request" && response && typeof response.setHeader === "function") {
         for (const [name, value] of forRequest(request)) response.setHeader(name, value);
+        if (HOOK_PATH.test(String(request?.url ?? ""))) response.setHeader("Content-Security-Policy", HOOK_CSP);
+        applyOwnCsp(response);
       }
       return original.call(this, event, request, response, ...rest);
     };

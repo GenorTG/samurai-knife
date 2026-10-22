@@ -49,6 +49,8 @@ function answer(response: HookResponse, rich = false): Response {
     if (RENDERED.test(headers.get("content-type") ?? "")) headers.set("content-type", "text/plain; charset=utf-8");
     headers.set("Content-Security-Policy", "sandbox; default-src 'none'; form-action 'none'; frame-ancestors 'none'");
   }
+  // The production server keeps the app's CSP header unless the route names its own (scripts/security-headers.mjs).
+  headers.set("X-Knife-Csp", headers.get("Content-Security-Policy") ?? "");
   const status = response.status >= 200 && response.status <= 599 ? response.status : 200;
   const body = [204, 205, 304].includes(status) ? null : response.bodyBase64 !== undefined ? Buffer.from(response.bodyBase64, "base64") : (response.body ?? null);
   return new Response(body, { status, headers });

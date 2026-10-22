@@ -24,6 +24,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox",
+        // Applied by scripts/security-headers.mjs in production (which keeps the app's CSP otherwise).
+        "X-Knife-Csp": "default-src 'none'; sandbox",
       },
     });
   } catch (error) {
