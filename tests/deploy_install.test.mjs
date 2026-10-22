@@ -143,9 +143,11 @@ test("log files: the app writes only its two log folders, knife-update its own, 
   assert.deepEqual(unitLines(updaterUnit, "ReadWritePaths"), ["@APP_ROOT@"], "logs/update is inside the updater's writable tree");
 });
 
-test("sidecar helper unit: writes only its runtime dir and the Craft content dir, which install.sh creates", () => {
+test("sidecar helper unit: reads the app's staged content, writes only its runtime dir and the Craft content dir (install.sh creates it)", () => {
   const unit = read("deploy/systemd/knife-sidecar@.service");
   assert.deepEqual(unitLines(unit, "ProtectSystem"), ["strict"]);
+  assert.deepEqual(unitLines(unit, "CapabilityBoundingSet"), ["CAP_DAC_READ_SEARCH"], "root must read the app's 0700 staging dir; nothing more");
+  assert.deepEqual(unitLines(unit, "AmbientCapabilities"), [], "root needs no ambient set");
   assert.deepEqual(unitLines(unit, "ReadWritePaths"), ["/run/knife-sidecar -/etc/samurai-knife/sidecars/craft-content"], "the content verb swaps app folders there; nothing else under /etc");
   const helper = read("deploy/sidecar-helper/knife-sidecar-helper");
   assert.match(helper, /"BUNDLE_ROOT": "\/etc\/samurai-knife\/sidecars"/, "the unit's path is the helper's default content dir parent");

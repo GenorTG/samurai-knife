@@ -388,8 +388,10 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   app's request (`content craft`: only apps whose marker changed, regular files and directories only, names
   `[A-Za-z0-9._-]`, depth 8, 1.5 GB in all, each app swapped in by rename, apps no longer staged removed). The helper
   unit (`ProtectSystem=strict`) may write only there and in `/run/knife-sidecar` (`ReadWritePaths`; install.sh creates
-  the folder): before 0.8.1 it could not, and every Craft app failed to start with "content refresh failed (exit 70)"
-  until the installer was re-run. A file-system error now names the path (exit 73). That does not
+  the folder), and reads the app's 0700 staging dir with its one capability, `CAP_DAC_READ_SEARCH` (root without
+  capabilities is "other" there). Before 0.8.1 the write, and before 0.8.2 the read, failed: every Craft app on a helper
+  install stopped with "content refresh failed" until the installer was re-run. A file-system error names the path
+  (exit 73). That does not
   widen the host's trust boundary: the files are static, nginx (uid 101, no capabilities, read-only root, no egress)
   only serves them, and they only ever run in browsers on the separate craft origin, which the app's own origin never
   trusts; a compromised app could already serve anything on its own origin. What can hurt the host (image, ports,

@@ -21,9 +21,12 @@ RuntimeMaxSec=35min
 RuntimeDirectory=knife-sidecar
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-# The helper only talks to /run/docker.sock: no network, no capabilities (root owns the docker socket), read-only system.
+# The helper only talks to /run/docker.sock: no network, one read-only capability (below; root owns the docker socket), read-only system.
 NoNewPrivileges=yes
-CapabilityBoundingSet=
+# One capability: CAP_DAC_READ_SEARCH, so root can read what the app staged for the `content` verb under the app's
+# 0700 data dir ($STAGING_DIR/<id>-content). Without it root is "other" there (Permission denied). It grants reading
+# only: writes stay limited by ProtectSystem/ReadWritePaths, and nothing else (no chown, no DAC override for writes).
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 PrivateTmp=yes
 PrivateDevices=yes
 PrivateNetwork=yes
