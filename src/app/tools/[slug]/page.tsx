@@ -23,7 +23,10 @@ export default async function ToolPage({ params, searchParams }: PageProps<"/too
   await requireSignIn(`/tools/${encodeURIComponent(slug)}${queryString(await searchParams)}`);
   // Retired slugs (tools folded into a suite) are permanent bookmarks: send
   // them to the suite, on the tab that used to be the standalone tool.
-  if (resolveAlias(slug)) permanentRedirect(toolHref(slug));
+  if (resolveAlias(slug)) {
+    const tab = (await searchParams).tab;
+    permanentRedirect(toolHref(slug, typeof tab === "string" ? tab : null));
+  }
   const tool = findTool(slug);
   if (!tool) notFound();
 

@@ -1,6 +1,6 @@
 # Tool suites
 
-The first pass turned 100 registry entries into 36 (27 suites, 91 tabs, 9 standalone). Later additions (the database labs, CV studio, office documents and sidecars) bring it to 40 entries today: 30 suites with 106 tabs and 10 standalone tools. Every
+The first pass turned 100 registry entries into 36 (27 suites, 91 tabs, 9 standalone). Later additions (the database labs, CV studio, office documents, sidecars and the Craft apps) brought it to 42 entries; the 0.6 menu pass merged small neighbouring suites (CSS, web, dates, tables, JSON and config, IDs and secrets, Lottie into the image inspector) and placeholder text into the text kit: 32 entries today, 25 suites with 128 tabs and 7 standalone tools. Every
 folded slug is a permanent alias (`SLUG_ALIASES` in `src/lib/registry.ts`) that
 the `/tools/[slug]` route redirects (308) to `/tools/<suite>?tab=<tab>`, so no
 bookmark, favorite or recent entry breaks. Favorites and history stored in
@@ -39,47 +39,56 @@ default tab).
 | Suite slug | Suite name | Tabs (component = old slug) |
 | --- | --- | --- |
 | `pdf` | PDF toolkit | `pdf`* (Tools), `pdf-editor` (Editor and OCR, full-width) |
-| `csv` | CSV workbench | `csv`*, `csv-select-columns`, `csv-merge`, `csv-pivot`, `tsv-markdown`, `fixed-width` |
-| `csv-profile` | Table inspector | `csv-profile`*, `duplicate-rows`, `delimiter-detect`, `table-compare` |
-| `json` | JSON workbench | `json`*, `jsonpath`, `json-pointer`, `json-diagram`, `json-schema`, `ndjson` |
-| `yaml-json` | Config formats | `yaml-json`*, `ini`, `xml-xpath` |
+| `csv` | Tables and CSV | `csv`*, `csv-select-columns`, `csv-merge`, `csv-pivot`, `tsv-markdown`, `fixed-width`; from 0.6 also the former suite `csv-profile` (Profile, Duplicates, Delimiter, Compare: `csv-profile`, `duplicate-rows`, `delimiter-detect`, `table-compare`) |
+| `json` | JSON and config | `json`*, `jsonpath`, `json-pointer`, `json-diagram`, `json-schema`, `ndjson`; from 0.6 also the former suite `yaml-json` (`yaml-json`, `ini`, `xml-xpath`) |
 | `svg-optimize` | SVG workshop | `svg-optimize`*, `svg-sanitize`, `svg-viewbox`, `svg-paths`, `svg-symbol-sprite`, `svg-to-png` |
 | `image-resize` | Image export | `image-resize`*, `image-scrub`, `responsive-images`, `favicon-packager`, `image-to-data-uri` |
 | `image-crop` | Image crop and layout | `image-crop`*, `transparent-trim`, `contact-sheet` |
-| `image-compare` | Image inspector | `image-compare`*, `alpha-inspector` |
-| `epoch` | Dates and time | `epoch`*, `date-format`, `duration-math`, `iso-week`, `date-distribution` |
-| `meeting-timezones` | Scheduling | `meeting-timezones`*, `business-overlap`, `dst-explorer`, `workday-calculator`, `cron`, `rrule-preview` (tab `recurrence`) |
+| `image-compare` | Image inspector | `image-compare`*, `alpha-inspector`, `lottie-inspector` (tab `lottie`, 0.6) |
+| `dates` | Dates and scheduling (0.6) | the former suites `epoch` (`epoch`, `date-format`, `duration-math`, `iso-week`, `date-distribution`) and `meeting-timezones` (`meeting-timezones`, `business-overlap`, `dst-explorer`, `workday-calculator`, `cron`, `rrule-preview` = tab `recurrence`) |
 | `heading-audit` | HTML accessibility audit | `heading-audit`*, `link-text-audit`, `form-label-audit`, `landmark-audit` (shared `html-audit.ts`) |
 | `reading-grade` | Writing analysis | `reading-grade`*, `sentence-complexity`, `punctuation-check`, `word-frequency` |
-| `text` | Text kit | `text`*, `line-wrap`, `smart-quotes` |
+| `text` | Text kit | `text`*, `line-wrap`, `smart-quotes`, `placeholder-text` (Generate) |
 | `characters` | Character, encoding and binary inspector | `characters`*, `encoding-detect`, `hex-viewer` (tab `hex`) |
-| `css-grid` | CSS layout and type | `css-grid`*, `css-clamp`, `type-scale` |
-| `box-shadow` | CSS effects | `box-shadow`*, `border-radius`, `css-easing` |
-| `css-var-resolver` | CSS variables and tokens | `css-var-resolver`*, `design-tokens` |
-| `http-headers` | HTTP workbench | `http-headers`*, `csp-builder`, `curl-builder`, `multipart-decoder` |
-| `robots-txt` | Crawler files | `robots-txt`*, `sitemap-xml` |
-| `url` | URL workbench | `url`*, `idn-inspector` |
-| `ids` | IDs and hashes | `ids`*, `snowflake-decode` |
+| `css` | CSS studio (0.6) | the former suites `box-shadow` (`box-shadow`, `border-radius`, `css-easing`), `css-grid` (`css-grid`, `css-clamp`, `type-scale`), `css-var-resolver` (`css-var-resolver`, `design-tokens`) and the standalone `color` (tab `colour`) |
+| `web` | Web workbench (0.6) | the former suites `http-headers` (`http-headers`, `csp-builder`, `curl-builder`, `multipart-decoder`), `url` (`url`, `idn-inspector`) and `robots-txt` (`robots-txt`, `sitemap-xml`) |
+| `ids` | IDs, tokens and passwords | `ids`*, `snowflake-decode`; from 0.6 also the former suite `jwt` (`jwt`, `password`) |
 | `semver` | Versions and packages | `semver`*, `npm-lockfile` |
 | `markdown` | Markdown | `markdown`* (Preview), `markdown-organizer` (tab `organize`) |
-| `jwt` | Security | `jwt`*, `password` |
 | `stacktrace` | Logs and traces | `stacktrace`*, `ansi-strip` (tab `ansi`) |
 | `batch-rename` | File names and manifests | `batch-rename`*, `filename-normalizer`, `file-manifest-diff` |
 | `sql-lab` | SQL lab | `sql-format` (Format, was standalone), `sql-convert`, `sql-validate`, `sql-build`, `sql-schema`, `sql-run` (Run, full-width, sql.js), `db-connect` (Connection) |
 | `nosql-lab` | NoSQL and vector lab | `nosql-mongo`, `nosql-chroma`, `nosql-redis` |
 
-## Standalone (8) and why
+## Standalone (7) and why
 
 | Slug | Reason |
 | --- | --- |
 | `regex` | A full lab of its own; nothing else shares its input. |
 | `diff` | One big self-contained tool, two inputs. |
-| `qr` | Output tool (SVG/PNG) with no sibling. |
-| `color` | Already multi-mode (convert, contrast, ramp); merging adds nothing. |
+| `qr` | Output tool (SVG/PNG) with no sibling; listed under Images > Simple in the menu. |
 | `file-compressor` | Binary in/out; its only neighbors are PDF (server) and image tools (different formats). |
-| `placeholder-text` | Generator with no input; no neighbor. |
-| `lottie-inspector` | Animation JSON; no sibling after `json` (it would hide in the JSON suite). |
 | `mcp-connect` | Connection/setup page for the MCP server, not a working tool. |
+| `office`, `sidecars` | Pages of the sidecar services, not tools. |
+
+Merged in 0.6: `color` (into `css`, tab `colour`), `lottie-inspector` (into `image-compare`, tab `lottie`), `placeholder-text`
+(into `text`, tab `generate`).
+
+## Merging suites (0.6)
+
+A suite can be folded into another: its tabs keep their ids, its slug becomes an alias to the new suite's first tab of it,
+and `toolHref(slug, tab)` carries a requested `?tab=` over when the target has it, so `/tools/css-grid?tab=clamp` lands on
+`/tools/css?tab=clamp`. Aliases that pointed at a merged suite are retargeted. `tests/nav.test.mjs` pins every alias and
+these redirects.
+
+## Menu (0.6)
+
+The sidebar is laid out in `src/lib/nav.ts`, not derived from categories: sections by task (Images, Documents, Video and
+audio, Data, Text, Web and dev, Learn, Setup), Images and Documents split into Simple and Advanced, and every Craft app on
+its own line under Advanced (PhotoCraft, VectorCraft, LightCraft, FigCraft and CADCraft with the images; PdfCraft,
+WordCraft, GridCraft, DeckCraft and DesignCraft with the documents; FilmCraft, EffectCraft and SoundCraft under Video and
+audio). Sections fold away and remember it per browser. `tests/nav.test.mjs` checks that every entry is live and every tool
+is reachable.
 
 ## Mechanism
 

@@ -322,16 +322,17 @@ with sync_playwright() as pw:
     msgs = send(page, key, 'CALL:list_tools:{"query":"cron"}')
     lt = tool_result(msgs, "list_tools")
     top = (lt.get("matches") or [{}])[0].get("open_tool", {})
-    check("list_tools ranks the Cron tab first with ready open_tool args", top == {"slug": "meeting-timezones", "tab": "cron"}, lt)
+    check("list_tools ranks the Cron tab first with ready open_tool args", top == {"slug": "dates", "tab": "cron"}, lt)
 
     msgs = send(page, key, 'CALL:open_tool:{"slug":"cron"}')
     res = tool_result(msgs, "open_tool")
-    page.wait_for_url("**/tools/meeting-timezones?tab=cron")
-    check("open_tool resolves the retired slug 'cron' to its suite tab", res.get("ok") is True and res.get("opened") == "meeting-timezones", res)
+    page.wait_for_url("**/tools/dates?tab=cron")
+    check("open_tool resolves the retired slug 'cron' to its suite tab", res.get("ok") is True and res.get("opened") == "dates", res)
 
+    # The retired suite slug (merged into `dates` in 0.6) with one of its tabs still lands there.
     msgs = send(page, key, 'CALL:open_tool:{"slug":"meeting-timezones","tab":"recurrence"}')
     res = tool_result(msgs, "open_tool")
-    check("open_tool switches tabs inside the same suite", res.get("ok") is True and "tab=recurrence" in page.url, (res, page.url))
+    check("open_tool switches tabs inside the same suite", res.get("ok") is True and "/tools/dates?tab=recurrence" in page.url, (res, page.url))
 
     msgs = send(page, key, 'CALL:open_tool:{"slug":"meeting-timezones","tab":"nope"}')
     res = tool_result(msgs, "open_tool")
@@ -357,7 +358,7 @@ with sync_playwright() as pw:
     check("upload_file refuses a non-file control", res.get("ok") is False, res)
 
     msgs = send(page, key, 'CALL:open_tool:{"slug":"jwt","tab":"password"}')
-    page.wait_for_url("**/tools/jwt?tab=password")
+    page.wait_for_url("**/tools/ids?tab=password")  # Security (jwt) merged into ids in 0.6
     msgs = send(page, key, "CALL:page_snapshot:{}")
     snap = tool_result(msgs, "page_snapshot")
     check("snapshot of Security > Passwords exposes controls", len(snap.get("controls", [])) >= 2, snap.get("controls", [])[:6])

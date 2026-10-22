@@ -24,7 +24,9 @@ export function KindBadge({ kind }: { kind: ToolMeta["kind"] }) {
       ? "Sends prompts and tool inputs to the model endpoint you configure"
       : isSidecar
         ? "Runs in an optional docker service on this server (installed from the page)"
-        : "Runs on the server (Python venv)";
+          : kind === "server"
+            ? "Runs on this app's server"
+            : "Runs on the server (Python venv)";
   const className = isClient
     ? "rounded-md border border-line-strong px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-faint uppercase"
     : "rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-accent-soft uppercase";

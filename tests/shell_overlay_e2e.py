@@ -111,7 +111,7 @@ def main() -> int:
             expect(page.get_by_role("combobox", name="Search tools")).to_be_focused()
             page.keyboard.type("jwt")
             page.keyboard.press("Enter")
-            wait_path("/tools/jwt")
+            wait_path("/tools/ids")  # JWT is a tab of "IDs, tokens and passwords" since 0.6
             expect(palette).to_have_count(0)
 
         check("typing in the palette and Enter still opens the tool and closes the palette", palette_still_navigates)

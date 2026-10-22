@@ -204,7 +204,7 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
           {!compact && service.installed ? <RemoveControls sidecar={sidecar} /> : null}
         </div>
         {!service.installed ? (
-          <p className="text-xs text-faint">
+          <p className="text-xs text-faint [overflow-wrap:anywhere]">
             Downloads {service.image} (about {service.requirements.diskGb} GB on disk, {service.requirements.ramGb} GB RAM recommended), runs it with docker compose as
             project samurai-knife-{service.id}, bound to this machine&apos;s app address only. Licence {service.license}.
           </p>

@@ -6,6 +6,7 @@ has the overview; this is the reference for working on the code.
 ## Layout
 
 - `src/lib/registry.ts` — **source of truth**: `TOOLS` (slug, name, tagline, category, family, kind, keywords, optional `tabs`) and `SLUG_ALIASES`. Metadata only, no React, no side effects (imported by server and client).
+- `src/lib/nav.ts` — the sidebar's layout (sections by task, Simple / Advanced groups, each Craft app on its own line); `src/components/shell/Sidebar.tsx` renders it. A new tool must be added there too (`tests/nav.test.mjs` fails otherwise).
 - `src/tools/registry-client.tsx` — component key → lazy component map; unregistered tools render a placeholder. A suite (entry with `tabs`) renders one component per tab inside `src/components/SuiteShell.tsx` (accessible tabs, `?tab=<id>` sync).
 - `src/tools/<ToolName>.tsx` — one tool per file, `"use client"` for browser tools.
 - `src/components/ui.tsx` — shared primitives (Button, Panel, Field, Dropzone, Notice, Stat, OutputBlock…). Extend it; do not restyle per tool.
