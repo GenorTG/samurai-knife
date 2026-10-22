@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useMemo, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { CategoryIcon, categoryTint } from "@/components/category-icons";
+import { BetaBadge } from "@/components/ToolShell";
 import { cx } from "@/lib/format";
 import { NAV } from "@/lib/nav";
 import { TOOLS, type ToolMeta, type ToolTab } from "@/lib/registry";
@@ -42,6 +43,7 @@ function NavLink({
       )}
     >
       <span className="truncate">{entry.label ?? tab?.label ?? tool.name}</span>
+      {tool.beta ? <BetaBadge compact /> : null}
       {!tab && tool.tabs && tool.tabs.length > 1 ? (
         <span className="ml-auto shrink-0 font-mono text-[10px] text-faint tabular-nums">
           {tool.tabs.length}

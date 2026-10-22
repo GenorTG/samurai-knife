@@ -120,29 +120,65 @@ export function CopyButton({
   );
 }
 
-function subscribeFullscreen(onChange: () => void): () => void {
-  document.addEventListener("fullscreenchange", onChange);
-  return () => document.removeEventListener("fullscreenchange", onChange);
+/*
+ * In-page full screen: one element at a time covers the whole page (sidebar, top bar and assistant stay behind it) while
+ * staying in the page, so drawers and dialogs rendered inside it keep working (a Craft app's file chooser, "My files").
+ * Not the browser's Fullscreen API: that shows the element alone and loses everything around it. The element gets
+ * `data-page-fullscreen` (globals.css lays it out), a child marked `data-page-fill` takes the remaining height.
+ */
+let pageFullscreenElement: HTMLElement | null = null;
+const pageFullscreenListeners = new Set<() => void>();
+
+export function setPageFullscreen(element: HTMLElement | null): void {
+  if (pageFullscreenElement === element) return;
+  pageFullscreenElement?.removeAttribute("data-page-fullscreen");
+  pageFullscreenElement = element;
+  if (element) {
+    element.setAttribute("data-page-fullscreen", "");
+    document.documentElement.setAttribute("data-page-fullscreen", "");
+  } else {
+    document.documentElement.removeAttribute("data-page-fullscreen");
+  }
+  for (const listener of pageFullscreenListeners) listener();
 }
 
-/**
- * Puts `target` (an embedded app or editor) in full screen with the Fullscreen API; Esc leaves it (the browser's own
- * key, not ours). Renders nothing on the server and where the browser cannot (iPhone Safari): "Open in new tab" stays.
- */
+function subscribePageFullscreen(onChange: () => void): () => void {
+  pageFullscreenListeners.add(onChange);
+  return () => pageFullscreenListeners.delete(onChange);
+}
+
+/** Whether `target` fills the page, and the switch. Esc leaves (unless a dialog is open: Esc closes that first); unmounting leaves too. */
+export function usePageFullscreen(target: RefObject<HTMLElement | null>): { active: boolean; enter: () => void; exit: () => void } {
+  const active = useSyncExternalStore(subscribePageFullscreen, () => pageFullscreenElement !== null && pageFullscreenElement === target.current, () => false);
+  useEffect(() => {
+    if (!active) return;
+    const element = target.current;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector('[role="dialog"]')) setPageFullscreen(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (pageFullscreenElement === element && !element?.isConnected) setPageFullscreen(null);
+    };
+  }, [active, target]);
+  useEffect(() => () => {
+    if (pageFullscreenElement && !pageFullscreenElement.isConnected) setPageFullscreen(null);
+  }, []);
+  return {
+    active,
+    enter: () => setPageFullscreen(target.current),
+    exit: () => {
+      if (pageFullscreenElement === target.current) setPageFullscreen(null);
+    },
+  };
+}
+
+/** Full screen inside the page for `target` (see usePageFullscreen); the same button leaves it. */
 export function FullscreenButton({ target, size = "sm", label = "Full screen" }: { target: RefObject<HTMLElement | null>; size?: ButtonProps["size"]; label?: string }) {
-  const supported = useSyncExternalStore(subscribeFullscreen, () => document.fullscreenEnabled, () => false);
-  const active = useSyncExternalStore(subscribeFullscreen, () => document.fullscreenElement !== null && document.fullscreenElement === target.current, () => false);
-  if (!supported) return null;
+  const { active, enter, exit } = usePageFullscreen(target);
   return (
-    <Button
-      size={size}
-      aria-pressed={active}
-      title="Esc leaves full screen"
-      onClick={() => {
-        if (active) void document.exitFullscreen().catch(() => {});
-        else void target.current?.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-      }}
-    >
+    <Button size={size} aria-pressed={active} title={active ? "Back to the page (Esc)" : "Fill the page with it; Esc or Exit full screen comes back"} onClick={active ? exit : enter}>
       {active ? "Exit full screen" : label}
     </Button>
   );

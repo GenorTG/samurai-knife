@@ -86,6 +86,8 @@ export interface ToolMeta {
   tabs?: ToolTab[];
   /** Sidecar service (src/lib/services/definitions.ts) the tool needs; it shows an install card until it is installed. */
   sidecar?: string;
+  /** New and still settling: shown with a "beta" badge (page header, sidebar, launcher). Remove the flag once it is proven. */
+  beta?: boolean;
 }
 
 export const CATEGORIES: { id: ToolCategory; label: string }[] = [
@@ -1233,6 +1235,7 @@ export const TOOLS: ToolMeta[] = [
     category: "dev",
     family: "automation",
     kind: "server",
+    beta: true,
     tabs: [
       { id: "editor", label: "Workflows", component: "wf-editor", wide: true },
       { id: "credentials", label: "Credentials", component: "wf-credentials" },
@@ -1287,6 +1290,7 @@ export const TOOLS: ToolMeta[] = [
     family: "creative-apps",
     kind: "sidecar",
     sidecar: "craft",
+    beta: true,
     // One tab per app of the `craft` sidecar (src/lib/services/definitions.ts ARTCRAFT_APPS); tab ids are the app ids.
     tabs: [
       { id: "photocraft", label: "PhotoCraft", component: "craft-photocraft", wide: true },

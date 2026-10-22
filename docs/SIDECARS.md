@@ -503,8 +503,16 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   the README's `allow` (`fullscreen; clipboard-read; clipboard-write`, SoundCraft also `autoplay` so the first click
   starts sound; no app asks for the microphone or camera: SoundCraft's web build has no recording, and the craft
   origin's Permissions-Policy turns both off anyway), `referrerpolicy=no-referrer`. `role=status` says "Loading <App>…" until the frame loaded, then
-  "<App> loaded from <origin>." "Open in new tab" (`rel=noopener noreferrer`) opens the same URL; the wgpu apps get a
-  "Force WebGL2" checkbox (`?webgl`). A heartbeat (`touch`, 60 s) keeps the idle stop away while a tab is open.
+  "<App> loaded from <origin>." The tab is a workspace: one toolbar row (name and version, status, the save note,
+  Force WebGL2, My files, Updates for admins, Full screen, Open in new tab), the app filling the window below it
+  (`100dvh` minus the top bar; the page scrolls it into view once it loads) and one credit line under it. **Full
+  screen** is in the page (ui.tsx `usePageFullscreen`): the workspace covers the top bar, sidebar and assistant, the
+  app frame is not reloaded, and the file chooser and My files open over it; Exit full screen or Esc (when no drawer is
+  open) comes back. Never the browser's Fullscreen API, which would show the iframe alone without Smart Knife's
+  drawers. **Open in new tab** opens this page (`/tools/artcraft?tab=<app>&full=1`, `rel=noopener noreferrer`) full
+  screen in a new tab, so Save and Open still reach the account; the bare app URL is never offered (without the bridge
+  a save would only download). The wgpu apps get a "Force WebGL2" checkbox (`?webgl`). A heartbeat (`touch`, 60 s)
+  keeps the idle stop away while a tab is open. Craft apps (like Workflows) carry the registry's `beta` flag.
 - **Secure context.** WebGPU, the async clipboard and OPFS need https (or localhost). Over the plain-http Tailscale
   address the page says so: the wgpu apps fall back to WebGL2 by themselves (verified in Firefox: every app starts),
   LightCraft keeps its library in IndexedDB instead of OPFS and EffectCraft has no OPFS disk cache or service worker.
@@ -580,7 +588,8 @@ editor session is open). An image bump or a new sidecar repeats the check: drop 
   PhotoCraft opens a PNG through the file input and Quick-Exports it (same pixels), PdfCraft opens a PDF and saves it
   (2 pages, text kept), WordCraft opens a .docx, gets a typed paragraph and saves it (all three paragraphs in the
   download), GridCraft opens a CSV, gets a formula and exports CSV (rows kept, value computed), unpacked size and
-  container memory after all thirteen (metrics), "Open in new tab", stop -> lazy start, remove + purge. ~5 min with a
+  container memory after all thirteen (metrics), in-page full screen (same frame, My files over it, Esc order), "Open
+  in new tab" (this page full screen, My files reachable), stop -> lazy start, remove + purge. ~5 min with a
   cached image (downloads ~187 MB of zips); screenshots in `.tmp/craft-e2e/`. Last run 2026-10-21: 70/70.
 - Unit: `tests/office_library.test.mjs` (storage scope, quota, folders, trash, versions, callback room-making,
   `knife_doc_*` isolation, retention).

@@ -40,6 +40,22 @@ export function KindBadge({ kind }: { kind: ToolMeta["kind"] }) {
   );
 }
 
+/** "beta" next to a tool that is new and still settling (registry `beta`). */
+export function BetaBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      title="Beta: new and still settling. It may change or misbehave; keep your own copies of important work."
+      className={
+        compact
+          ? "shrink-0 rounded border border-warn/40 bg-warn/10 px-1 font-mono text-[9px] leading-4 tracking-wider text-[color-mix(in_oklab,var(--c-warn)_80%,var(--c-ink))] uppercase"
+          : "rounded-md border border-warn/40 bg-warn/10 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-[color-mix(in_oklab,var(--c-warn)_80%,var(--c-ink))] uppercase"
+      }
+    >
+      beta
+    </span>
+  );
+}
+
 export function ToolShell({
   tool,
   children,
@@ -56,6 +72,7 @@ export function ToolShell({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <h1 className="text-2xl font-semibold tracking-tight text-ink">{tool.name}</h1>
             <KindBadge kind={tool.kind} />
+            {tool.beta ? <BetaBadge /> : null}
           </div>
           <p className="mt-1.5 max-w-3xl text-[15px] text-muted">{tool.tagline}</p>
         </div>

@@ -439,3 +439,31 @@ html {
     transition: padding-right 180ms var(--ease-out);
   }
 }
+
+/* In-page full screen (ui.tsx usePageFullscreen): the element covers the page, above the top bar, sidebar and the
+   assistant (z-50), and stays in the page so drawers rendered inside it (z-40, its own stacking context) still open.
+   Unlayered on purpose: beats the element's own utility classes (height, border, radius). */
+html[data-page-fullscreen] {
+  overflow: hidden;
+}
+[data-page-fullscreen]:not(html) {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0;
+  padding: 0.5rem;
+  background: var(--c-bg);
+}
+[data-page-fullscreen]:not(html) [data-page-fill] {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}

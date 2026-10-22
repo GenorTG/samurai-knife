@@ -94,6 +94,8 @@ export function DocEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Re
 
 function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: ReturnType<typeof useSidecar>; onClose: () => void }) {
   const holder = useRef<HTMLDivElement>(null);
+  // Full screen covers the page with the whole editor panel (status, Download, Close), not the editor alone.
+  const panel = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<EditorPhase>({ kind: "starting" });
   const [saved, setSaved] = useState<string | null>(null);
   const [live, setLive] = useState<LiveState | null>(null);
@@ -212,7 +214,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           : `Could not open the editor: ${phase.message}`;
 
   return (
-    <div className="space-y-3" data-wide="true">
+    <div ref={panel} className="space-y-3" data-wide="true">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-ink">{doc.name}</h2>
@@ -223,7 +225,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           </p>
         </div>
         <div className="flex gap-2">
-          {phase.kind === "ready" ? <FullscreenButton target={holder} size="md" /> : null}
+          {phase.kind === "ready" ? <FullscreenButton target={panel} size="md" /> : null}
           <DownloadLink doc={doc} />
           <Button
             variant="primary"
@@ -256,7 +258,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           {liveLabel(live)}
         </p>
       ) : null}
-      <div ref={holder} className={phase.kind === "error" ? "hidden" : "h-[calc(100vh-15rem)] min-h-[32rem] overflow-hidden rounded-tool border border-line bg-white [&:fullscreen]:rounded-none [&:fullscreen]:border-0"} />
+      <div ref={holder} data-page-fill className={phase.kind === "error" ? "hidden" : "h-[calc(100vh-15rem)] min-h-[32rem] overflow-hidden rounded-tool border border-line bg-white"} />
     </div>
   );
 }

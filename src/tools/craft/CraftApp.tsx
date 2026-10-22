@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, ButtonLink, FullscreenButton, Notice, Panel } from "@/components/ui";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Button, ButtonLink, Notice, usePageFullscreen } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
 import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
 import { craftFileDownloadUrl, ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, saveCraftFile, touchService, type CraftFile } from "@/tools/sidecars/client";
@@ -176,6 +176,61 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
   const secure = secureOrigin(stage.origin);
   const status =
     bridgeState.kind === "connecting" ? `Preparing ${app.name}…` : bridgeState.kind === "failed" ? `${app.name} is not loaded.` : loadedSrc === src ? `${app.name} loaded from ${stage.origin}.` : `Loading ${app.name}…`;
+
+  // The workspace: toolbar + app, sized to the window. Full screen covers the page with it (in the page, so the file
+  // chooser and My files keep working); `?full=1` (Open in new tab) starts that way.
+  const workspace = useRef<HTMLDivElement>(null);
+  const fullscreen = usePageFullscreen(workspace);
+  const { enter: enterFullscreen } = fullscreen;
+  const startedFull = useRef(false);
+  useEffect(() => {
+    if (startedFull.current) return;
+    startedFull.current = true;
+    if (new URLSearchParams(window.location.search).get("full") === "1") enterFullscreen();
+  }, [enterFullscreen]);
+  const wasFull = useRef(false);
+  useEffect(() => {
+    if (wasFull.current && !fullscreen.active) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("full")) {
+        url.searchParams.delete("full");
+        window.history.replaceState(window.history.state, "", url);
+      }
+    }
+    wasFull.current = fullscreen.active;
+  }, [fullscreen.active]);
+  // Once the app is up, bring the whole workspace into view (the page header scrolls away; the tabs stay one scroll up).
+  // html scroll-padding-top (4.5rem, the sticky top bar) places it; the height above leaves 0.5rem under it.
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (loadedSrc === null || scrolled.current) return;
+    scrolled.current = true;
+    if (!fullscreen.active && window.scrollY < 8) workspace.current?.scrollIntoView({ block: "start" });
+  }, [loadedSrc, fullscreen.active]);
+
+  const notes: ReactNode[] = [];
+  if (bridgeState.kind === "failed") {
+    notes.push(
+      <Notice key="bridge" tone="error">
+        {bridgeState.message} {app.name} only loads once its files can go to your account (and a browser shared with someone else is cleared first).{" "}
+        <Button size="sm" onClick={retry}>
+          Try again
+        </Button>
+      </Notice>,
+    );
+  }
+  if (bridgeState.kind === "ready" && bridgeState.wiped) notes.push(<p key="wiped">Another account used the Craft apps in this browser before you: their local data was cleared.</p>);
+  if (!secure) {
+    notes.push(
+      <p key="secure">
+        {app.webgpu
+          ? `This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so ${app.name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve the Craft apps over https for WebGPU.`
+          : `This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve the Craft apps over https for the full storage.`}
+      </p>,
+    );
+  }
+  if (app.note) notes.push(<p key="note">{app.note}</p>);
+
   return (
     <>
       <iframe
@@ -190,78 +245,49 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
         aria-hidden="true"
         tabIndex={-1}
       />
-      <div className="space-y-3" data-craft-app={app.id}>
-        <Panel
-          title={`${app.name} ${stage.version}`}
-          right={
-            <div className="flex flex-wrap items-center gap-3">
-              {app.webgpu ? (
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" checked={webgl} onChange={(event) => setWebgl(event.target.checked)} />
-                  Force WebGL2
-                </label>
-              ) : null}
-              <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)}>
-                My files
-              </Button>
-              {canManage ? (
-                <Button size="sm" variant="ghost" onClick={() => setUpdatesOpen(true)}>
-                  Updates
-                </Button>
-              ) : null}
-              <FullscreenButton target={frame} />
-              <ButtonLink href={src} external size="sm">
-                Open in new tab
-              </ButtonLink>
-            </div>
-          }
-          bodyClassName="space-y-2 p-3 sm:p-3"
-        >
-          <p role="status" className="text-sm text-muted">
+      <div ref={workspace} className="flex h-[calc(100dvh-5rem)] min-h-[560px] flex-col gap-2" data-craft-app={app.id} data-wide="true">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-tool border border-line bg-surface px-3 py-2 shadow-card">
+          <h2 className="shrink-0 text-[13px] font-semibold tracking-tight text-ink">
+            {app.name} <span className="font-normal text-faint">{stage.version}</span>
+          </h2>
+          <p role="status" className="min-w-0 truncate text-xs text-muted">
             {status}
           </p>
-          {bridgeState.kind === "failed" ? (
-            <Notice tone="error">
-              {bridgeState.message} {app.name} only loads once its files can go to your account (and a browser shared with someone else is cleared first).{" "}
-              <Button size="sm" onClick={retry}>
-                Try again
-              </Button>
-            </Notice>
-          ) : null}
-          {bridgeState.kind === "ready" && bridgeState.wiped ? <p className="text-xs text-faint">Another account used the Craft apps in this browser before you: their local data was cleared.</p> : null}
-          {!secure ? (
-            <p className="text-xs text-faint">
-              {app.webgpu
-                ? `This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so ${app.name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve the Craft apps over https for WebGPU.`
-                : `This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve the Craft apps over https for the full storage.`}
-            </p>
-          ) : null}
-          {app.note ? <p className="text-xs text-faint">{app.note}</p> : null}
-          <p className="text-xs text-faint">Save and Export in the app keep the file in your account (My files); Download there puts a copy on this computer. Open offers your files and this computer.</p>
           {note ? (
-            <p role="status" aria-live="polite" data-craft-saved className={`flex flex-wrap items-center gap-2 text-sm ${note.kind === "error" ? "text-danger" : "text-muted"}`}>
-              {note.kind === "saving" ? `Saving ${note.name} to your files…` : note.kind === "error" ? note.message : `Saved ${note.file.name} to your files.`}
+            <p role="status" aria-live="polite" data-craft-saved className={`flex min-w-0 items-center gap-2 text-xs ${note.kind === "error" ? "text-danger" : "text-good"}`}>
+              <span className="truncate">{note.kind === "saving" ? `Saving ${note.name} to your files…` : note.kind === "error" ? note.message : `Saved ${note.file.name} to your files.`}</span>
               {note.kind === "saved" ? (
-                <a className="underline underline-offset-2 hover:text-ink" href={craftFileDownloadUrl(note.file.id)} download={note.file.name}>
+                <a className="shrink-0 underline underline-offset-2 hover:text-ink" href={craftFileDownloadUrl(note.file.id)} download={note.file.name}>
                   Download
                 </a>
               ) : null}
             </p>
           ) : null}
-          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-faint" data-craft-credit>
-            <span>
-              {app.name} {stage.version} by the ArtCraft team and contributors · {app.license} ·
-            </span>
-            <a className="underline underline-offset-2 hover:text-ink" href={app.repo} target="_blank" rel="noopener noreferrer">
-              source
-            </a>
-            <span>·</span>
-            <Button size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs underline underline-offset-2" onClick={() => setNoticesOpen(true)}>
-              licences &amp; notices
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {app.webgpu ? (
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <input type="checkbox" checked={webgl} onChange={(event) => setWebgl(event.target.checked)} />
+                Force WebGL2
+              </label>
+            ) : null}
+            <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)} title="Save and Export in the app keep the file here; Open offers these and this computer">
+              My files
             </Button>
-            <span>· Not affiliated with or endorsed by the ArtCraft team.</span>
-          </p>
-        </Panel>
+            {canManage ? (
+              <Button size="sm" variant="ghost" onClick={() => setUpdatesOpen(true)}>
+                Updates
+              </Button>
+            ) : null}
+            <Button size="sm" aria-pressed={fullscreen.active} title={fullscreen.active ? "Back to the page (Esc)" : "Fill the page with the app; your files keep working"} onClick={fullscreen.active ? fullscreen.exit : fullscreen.enter}>
+              {fullscreen.active ? "Exit full screen" : "Full screen"}
+            </Button>
+            {/* A new tab of this page (full screen), never the bare app: only here do Save and Open reach the account. */}
+            <ButtonLink href={`/tools/artcraft?tab=${encodeURIComponent(app.id)}&full=1`} external size="sm">
+              Open in new tab
+            </ButtonLink>
+          </div>
+        </div>
+        {notes.length ? <div className="space-y-1 text-xs text-faint">{notes}</div> : null}
         <CraftNotices app={app} open={noticesOpen} onClose={() => setNoticesOpen(false)} />
         {canManage ? <CraftUpdates open={updatesOpen} onClose={() => setUpdatesOpen(false)} /> : null}
         <CraftFilesDrawer open={filesOpen} onClose={() => setFilesOpen(false)} highlight={note?.kind === "saved" ? note.file.id : null} />
@@ -291,11 +317,26 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
               setLoadedSrc(src);
               attach();
             }}
-            className="block h-[calc(100dvh-15rem)] min-h-[560px] w-full rounded-tool border border-line bg-black [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
+            data-page-fill
+            className="block min-h-0 w-full flex-1 rounded-tool border border-line bg-black"
           />
         ) : (
-          <div className="h-[calc(100dvh-15rem)] min-h-[560px] w-full rounded-tool border border-line bg-black" aria-hidden="true" />
+          <div data-page-fill className="min-h-0 w-full flex-1 rounded-tool border border-line bg-black" aria-hidden="true" />
         )}
+        <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-faint" data-craft-credit>
+          <span>Save and Export keep files in your account (My files) · Open offers your files or this computer ·</span>
+          <span>
+            {app.name} {stage.version} by the ArtCraft team and contributors · {app.license} ·
+          </span>
+          <a className="underline underline-offset-2 hover:text-ink" href={app.repo} target="_blank" rel="noopener noreferrer">
+            source
+          </a>
+          <span>·</span>
+          <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-ink" onClick={() => setNoticesOpen(true)}>
+            licences &amp; notices
+          </button>
+          <span>· Not affiliated with or endorsed by the ArtCraft team.</span>
+        </p>
       </div>
     </>
   );

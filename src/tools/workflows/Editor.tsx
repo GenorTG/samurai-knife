@@ -475,7 +475,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
   const activation = workflow.active ? [] : activationProblems({ nodes, connections });
 
   return (
-    <div ref={shell} className="relative flex h-[calc(100dvh-11rem)] min-h-[520px] flex-col overflow-hidden rounded-tool border border-line bg-surface [&:fullscreen]:h-screen [&:fullscreen]:rounded-none" data-workflow-editor={workflow.id}>
+    <div ref={shell} className="relative flex h-[calc(100dvh-11rem)] min-h-[520px] flex-col overflow-hidden rounded-tool border border-line bg-surface" data-workflow-editor={workflow.id}>
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Button size="sm" variant="ghost" onClick={() => (!dirty || window.confirm("Leave without saving your changes?")) && onBack()}>
           ← Workflows

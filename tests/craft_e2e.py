@@ -12,7 +12,8 @@ page in Firefox (thirteen pinned zips downloaded, sha256-checked, unpacked; an u
   the old and the typed text); GridCraft: open a CSV (File > Open > Browse…), add a formula, File > Export > CSV (the
   download holds the rows and the computed value);
 - the unpacked size per app and the container's memory after all thirteen apps were loaded (metrics line);
-- "Open in new tab" serves the same app top-level; stop -> reopen = lazy start; remove + purge leaves no container,
+- Full screen covers the page with the app (in the page: My files still opens); "Open in new tab" is this page full
+  screen with the bridge (the account's files), never the bare app; stop -> reopen = lazy start; remove + purge leaves no container,
   network, volume or data.
 
 WebGL2 in Firefox needs a display: the suite re-runs itself under `xvfb-run` (Firefox then uses llvmpipe; headless
@@ -449,6 +450,9 @@ def main() -> int:
                 state = wait_app(page, app)
                 METRICS[f"{app}_start_s"] = round(time.monotonic() - t1, 1)
                 time.sleep(3)
+                view_box = page.evaluate("() => { const r = document.querySelector('[data-craft-app=%s]').getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, scrollY: Math.round(scrollY) }; }" % app)
+                check(f"{app}: the workspace is brought into view and fits the window (toolbar under the top bar, app to the bottom)",
+                      view_box["scrollY"] > 0 and 56 <= view_box["top"] <= 80 and view_box["vh"] - 24 <= view_box["bottom"] <= view_box["vh"], json.dumps(view_box))
                 frame_el.scroll_into_view_if_needed()
                 png = frame_el.screenshot(path=str(shots / f"10-{app}.png"))
                 colours = drawn(png)
@@ -470,20 +474,32 @@ def main() -> int:
                     drawer.get_by_role("button", name=f"Close {NAMES[app]}: licences & notices").click()
                 full = page.locator(f"[data-craft-app={app}]").get_by_role("button", name="Full screen")
                 if app in ("photocraft", "lightcraft"):
-                    # Full screen: the iframe itself becomes the fullscreen element and fills the viewport; leaving it restores the tab.
+                    # Full screen inside the page: the workspace (toolbar + app) covers the page, the app is not reloaded,
+                    # My files still opens over it, and Exit full screen (or Esc) restores the tab.
+                    page.evaluate("() => { window.__craftFrame = document.querySelector('[data-craft-app=%s] iframe'); }" % app)
                     full.click()
-                    page.wait_for_function("() => document.fullscreenElement?.tagName === 'IFRAME'", timeout=10_000)
-                    fs = page.evaluate("() => { const r = document.fullscreenElement.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight, title: document.fullscreenElement.title }; }")
+                    page.wait_for_function("() => document.querySelector('[data-craft-app=%s]')?.hasAttribute('data-page-fullscreen')" % app, timeout=10_000)
+                    fs = page.evaluate("""() => { const box = document.querySelector('[data-craft-app=%s]'); const r = box.getBoundingClientRect(); const f = box.querySelector('iframe').getBoundingClientRect();
+                      return { w: Math.round(r.width), h: Math.round(r.height), fh: Math.round(f.height), vw: innerWidth, vh: innerHeight, browserFs: document.fullscreenElement !== null,
+                        same: box.querySelector('iframe') === window.__craftFrame, top: document.elementFromPoint(innerWidth / 2, 20)?.closest('[data-craft-app]') !== null }; }""" % app)
                     shot = page.screenshot(path=str(shots / f"15-{app}-fullscreen.png"))
-                    check(f"{app}: Full screen puts the app's iframe over the whole screen", fs["w"] >= fs["vw"] - 2 and fs["h"] >= fs["vh"] - 2 and NAMES[app] in fs["title"] and drawn(shot) > 40, json.dumps(fs))
-                    page.evaluate("() => document.exitFullscreen()")
-                    page.wait_for_function("() => document.fullscreenElement === null", timeout=10_000)
-                    try:  # the page may be busy: Playwright's Firefox runs the cross-origin app in the same process (no Fission)
-                        page.wait_for_function("() => [...document.querySelectorAll('[data-craft-app=%s] button[aria-pressed]')].some((b) => b.getAttribute('aria-pressed') === 'false')" % app, timeout=10_000)
-                    except Exception:
-                        pass
-                    after = page.evaluate("""() => { const box = document.querySelector('[data-craft-app=%s]'); const b = [...box.querySelectorAll('button')].map((x) => [x.textContent, x.getAttribute('aria-pressed')]); return { buttons: b, fs: String(document.fullscreenElement), active: document.activeElement?.tagName }; }""" % app)
-                    check(f"{app}: leaving full screen restores the tab (button back to 'Full screen')", full.is_visible() and full.get_attribute("aria-pressed") == "false", json.dumps(after))
+                    check(f"{app}: Full screen covers the page with the workspace (no browser full screen, same app frame, toolbar on top)",
+                          fs["w"] >= fs["vw"] - 2 and fs["h"] >= fs["vh"] - 2 and fs["fh"] > fs["vh"] - 160 and not fs["browserFs"] and fs["same"] and fs["top"] and drawn(shot) > 40, json.dumps(fs))
+                    page.locator(f"[data-craft-app={app}]").get_by_role("button", name="My files").click()
+                    files_dialog = page.get_by_role("dialog", name=re.compile("files", re.I))
+                    files_dialog.wait_for(timeout=10_000)
+                    check(f"{app}: My files opens over the full-screen app", files_dialog.is_visible())
+                    page.keyboard.press("Escape")
+                    check(f"{app}: with a drawer open, Esc does not leave full screen", page.locator(f"[data-craft-app={app}][data-page-fullscreen]").count() == 1)
+                    page.get_by_role("button", name="Close Craft files").click()
+                    files_dialog.wait_for(state="hidden", timeout=10_000)
+                    page.keyboard.press("Escape")
+                    page.wait_for_function("() => !document.querySelector('[data-craft-app=%s]').hasAttribute('data-page-fullscreen')" % app, timeout=10_000)
+                    check(f"{app}: Esc leaves full screen; the tab is restored with the same app frame (button back to 'Full screen')",
+                          full.is_visible() and full.get_attribute("aria-pressed") == "false" and page.evaluate("() => document.querySelector('[data-craft-app=%s] iframe') === window.__craftFrame" % app))
+                    full.click()
+                    page.locator(f"[data-craft-app={app}]").get_by_role("button", name="Exit full screen").click()
+                    check(f"{app}: Exit full screen leaves it too", page.locator(f"[data-craft-app={app}][data-page-fullscreen]").count() == 0)
                 else:
                     check(f"{app}: Full screen button offered", full.is_visible())
 
@@ -734,23 +750,27 @@ def main() -> int:
                 check("a held app stays on its version through 'check and update all'", grid["active"] == "0.9.0" and grid["available"] == "0.9.1" and grid["hold"], json.dumps(grid)[:200])
                 page.get_by_role("button", name="Close Craft apps updates").click()
 
-            # "Open in new tab" = the same app, top-level on the craft origin.
+            # "Open in new tab" = this page in a new tab, full screen at once, with the bridge: Open lists the account's files.
             page.goto(f"{url}/tools/artcraft?tab=designcraft")
             page.locator("main [role=status]", has_text="DesignCraft loaded from").first.wait_for(timeout=120_000)
             link = page.get_by_role("link", name="Open in new tab")
-            check("Open in new tab: target=_blank, rel noopener noreferrer, the craft URL", link.get_attribute("target") == "_blank" and "noopener" in (link.get_attribute("rel") or "") and (link.get_attribute("href") or "") == f"{origin}/designcraft/", link.get_attribute("href") or "")
+            check("Open in new tab: target=_blank, rel noopener noreferrer, Smart Knife's own page (never the bare app)",
+                  link.get_attribute("target") == "_blank" and "noopener" in (link.get_attribute("rel") or "") and (link.get_attribute("href") or "") == "/tools/artcraft?tab=designcraft&full=1", link.get_attribute("href") or "")
             with context.expect_page() as popup_info:
                 link.click()
             popup = popup_info.value
             popup.wait_for_load_state()
-            ready = {}
-            for _ in range(120):
-                ready = popup.evaluate(APP_READY_JS)
-                if ready["ready"] or ready["failed"]:
-                    break
-                time.sleep(1)
+            popup.locator("main [role=status]", has_text="DesignCraft loaded from").first.wait_for(timeout=120_000)
+            ready = wait_app(popup, "designcraft")
             popup.screenshot(path=str(shots / "40-designcraft-new-tab.png"))
-            check("DesignCraft starts top-level in its own tab", bool(ready.get("ready")), json.dumps(ready)[:200])
+            check("the new tab runs DesignCraft full screen inside Smart Knife (the bridge with it)",
+                  bool(ready.get("ready")) and popup.locator("[data-craft-app=designcraft][data-page-fullscreen]").count() == 1, json.dumps(ready)[:200])
+            popup.locator("[data-craft-app=designcraft]").get_by_role("button", name="My files").click()
+            check("the new tab reaches the account's files (My files lists them)", popup.get_by_role("dialog", name=re.compile("files", re.I)).is_visible())
+            popup.get_by_role("button", name="Close Craft files").click()
+            popup.locator("[data-craft-app=designcraft]").get_by_role("button", name="Exit full screen").click()
+            popup.wait_for_function("() => !location.search.includes('full=1')", timeout=10_000)
+            check("leaving full screen in the new tab drops ?full=1 from the address", True)
             popup.close()
 
             # Stop, then open a tab again: lazy start.

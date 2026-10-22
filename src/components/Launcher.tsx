@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { CategoryTile } from "@/components/category-icons";
 import { FavoriteButton } from "@/components/ToolActions";
-import { KindBadge } from "@/components/ToolShell";
+import { BetaBadge, KindBadge } from "@/components/ToolShell";
 import { Select } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { useToolPreferences } from "@/lib/tool-preferences";
@@ -368,6 +368,7 @@ function ToolCard({
           </span>
           <span className="mt-2 flex items-center gap-2">
             <KindBadge kind={tool.kind} />
+            {tool.beta ? <BetaBadge compact /> : null}
             <span className="truncate font-mono text-[10px] tracking-wider text-faint uppercase">
               {categoryLabel(tool.category)} · {familyLabel(tool.family)}
             </span>
