@@ -122,6 +122,17 @@ export const TEMPLATES: Template[] = [
       ]),
   },
   {
+    id: "ask-ai",
+    name: "Ask AI about each item",
+    description: "Sample items, one model call per item with your saved provider profile.",
+    build: () =>
+      chain([
+        { type: "core.manual-trigger" },
+        { type: "core.code", name: "Sample texts", parameters: { jsCode: "return [{ text: 'The delivery was late but the support team fixed it fast.' }, { text: 'Great product, would buy again.' }];\n" } },
+        { type: "core.ai-chat", parameters: { instructions: "You are concise.", prompt: "=Summarize in five words: {{ $json.text }}", outputField: "summary" } },
+      ]),
+  },
+  {
     id: "code-transform",
     name: "Transform data with code",
     description: "Manual trigger, sample data, a JavaScript Code node.",

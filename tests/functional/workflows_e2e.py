@@ -166,6 +166,18 @@ def run(page: Page, base: str, browser_name: str) -> None:
     expect(page.get_by_label("Workflow name")).to_have_value(renamed["name"], timeout=15_000)
     check(f"{tag} the open editor picks up the outside change", True)
 
+    # An AI node with the account's saved provider profile (the mock provider), run from the editor.
+    page.get_by_role("button", name="← Workflows").click()
+    open_template(page, "Ask AI about each item")
+    page.locator('[data-wf-node="Ask AI"]').wait_for(timeout=60_000)
+    page.locator('[data-wf-node="Ask AI"]').dblclick()
+    ai_panel = page.get_by_role("dialog", name="Node Ask AI")
+    expect(ai_panel.get_by_label("Provider profile")).to_contain_text("mock-model", timeout=15_000)
+    ai_panel.get_by_role("button", name="Run up to here").click()
+    expect(ai_panel.locator("section[aria-label=Output]")).to_contain_text("ECHO: Summarize in five words", timeout=60_000)
+    check(f"{tag} AI node answers through the saved provider profile (profile picker lists it)", True)
+    ai_panel.get_by_role("button", name="Close node panel").click()
+
     # Credentials: saved, listed, the secret never comes back.
     page.goto(f"{base}/tools/workflows?tab=credentials", wait_until="domcontentloaded")
     hydrated(page)
@@ -184,6 +196,20 @@ def main() -> int:
     with ScratchServer() as server:
         server.start(env={"KNIFE_WF_SCHEDULER": "off"})
         print(f"scratch server {server.url} data {server.data_dir}", flush=True)
+        import socket
+        import subprocess
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            mock_port = sock.getsockname()[1]
+        mock = subprocess.Popen(["node", str(ROOT / "tests" / "mock_provider.mjs"), str(mock_port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{mock_port}/v1/models", timeout=2).read()
+                break
+            except OSError:
+                time.sleep(0.1)
+        req = urllib.request.Request(f"{server.url}/api/account/provider", data=json.dumps({"baseUrl": f"http://127.0.0.1:{mock_port}/v1", "model": "mock-model", "apiKey": "mock-key"}).encode(), method="PUT", headers={"content-type": "application/json", "Origin": server.url})
+        urllib.request.urlopen(req, timeout=30).read()
         for path in ("/tools/workflows", "/api/workflows", "/tools/workflows?tab=credentials"):
             try:
                 urllib.request.urlopen(server.url + path, timeout=180).read()
@@ -212,6 +238,7 @@ def main() -> int:
                 finally:
                     context.close()
                     browser.close()
+        mock.kill()
     print(f"\n{PASSES} passed, {len(FAILS)} failed")
     if FAILS:
         print(f"{len(FAILS)} FAILED: {FAILS}")

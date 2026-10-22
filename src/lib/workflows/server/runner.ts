@@ -11,7 +11,9 @@ import { existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isPublicMode } from "@/lib/accounts/mode";
-import { getAccount, type Account } from "@/lib/accounts/store";
+import { activeProfileIdOf, getAccount, providerProfileConfig, providerProfilesOf, type Account } from "@/lib/accounts/store";
+import { recordRound } from "@/lib/accounts/usage-ledger";
+import { normalizeUsage } from "@/lib/usage";
 import { childEnv } from "@/lib/child-env";
 import { nodeMeta } from "../catalog/index";
 import type { CredentialData } from "../engine/node-api";
@@ -201,10 +203,25 @@ export function workerExecArgv(readRoots: string[], hooks: string): string[] {
   ];
 }
 
+/** AI nodes set to a provider profile get it as their `provider` credential ("" = the account's active profile). */
+function profileCredential(account: Account, wanted: unknown): CredentialData | null {
+  const id = typeof wanted === "string" && wanted ? wanted : activeProfileIdOf(account);
+  const config = id ? providerProfileConfig(account, id) : undefined;
+  if (!config || !id) return null;
+  const name = providerProfilesOf(account).find((profile) => profile.id === id)?.name ?? "profile";
+  return { id: `profile:${id}`, type: "aiProvider", name, data: { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, extraHeaders: config.extraHeaders ?? {}, ...(config.reasoningEffort ? { reasoningEffort: config.reasoningEffort } : {}) } };
+}
+
 function collectCredentials(accountId: string, workflow: Workflow): Record<string, CredentialData> {
   const out: Record<string, CredentialData> = {};
+  const account = getAccount(accountId);
   for (const node of workflow.nodes) {
     if (node.disabled) continue;
+    if (account && nodeMeta(node.type)?.group === "ai" && node.parameters.source !== "credential") {
+      const profile = profileCredential(account, node.parameters.profile);
+      if (profile) out[credentialKey(node.name, "provider")] = profile;
+      continue;
+    }
     for (const [slot, id] of Object.entries(node.credentials ?? {})) {
       const stored = id ? getCredential(accountId, id) : null;
       if (stored) out[credentialKey(node.name, slot)] = { id: stored.id, type: stored.type, name: stored.name, data: stored.data };
@@ -340,6 +357,9 @@ export async function startRun(options: StartRunOptions): Promise<RunOutcome> {
             break;
           case "respond":
             options.onRespond?.(message.response);
+            break;
+          case "usage":
+            recordRound(account.id, { model: message.model, usage: normalizeUsage(message.usage), ms: message.ms, failed: message.failed });
             break;
           case "credential-update":
             if (Object.values(job.credentials).some((credential) => credential.id === message.id)) updateCredentialData(account.id, message.id, message.data);

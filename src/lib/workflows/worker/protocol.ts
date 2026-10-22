@@ -58,6 +58,7 @@ export type FromWorker =
   | { t: "respond"; response: HookResponse }
   | { t: "call"; id: number; call: SubWorkflowCall; blobs: BlobPayload[] }
   | { t: "credential-update"; id: string; data: Record<string, unknown> }
+  | { t: "usage"; model: string; usage?: Record<string, unknown>; ms: number; failed: boolean }
   | { t: "done"; result: RunResult; blobs: BlobPayload[] }
   | { t: "fatal"; message: string };
 

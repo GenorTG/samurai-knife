@@ -138,6 +138,17 @@ export const CREDENTIAL_TYPES: CredentialType[] = [
     ],
   },
   {
+    type: "aiProvider",
+    label: "AI provider (endpoint, key, model)",
+    description: "An OpenAI-compatible endpoint for the AI nodes when they should not use one of your saved provider profiles (OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Ollama, LM Studio, a gateway…).",
+    fields: [
+      { name: "baseUrl", label: "Base URL", type: "string", required: true, placeholder: "https://api.openai.com/v1" },
+      { name: "apiKey", label: "API key", type: "password", secret: true },
+      { name: "model", label: "Model", type: "string", required: true, placeholder: "gpt-4o-mini" },
+      { name: "extraHeaders", label: "Extra headers (JSON object)", type: "text", secret: true, placeholder: '{ "HTTP-Referer": "https://example.com" }' },
+    ],
+  },
+  {
     type: "jwtAuth",
     label: "JWT key",
     description: "Key for the JWT node: a shared secret (HS…) or a PEM key pair (RS…/ES256).",

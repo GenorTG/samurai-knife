@@ -144,7 +144,9 @@ export type ParamType =
   | "collection"
   | "notice"
   | "dateTime"
-  | "color";
+  | "color"
+  /** One of the account's saved AI provider profiles ("" = the active one). */
+  | "providerProfile";
 
 export interface ParamOption {
   value: string;

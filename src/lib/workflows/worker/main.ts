@@ -106,6 +106,9 @@ async function run(job: RunJob): Promise<void> {
     respond(response) {
       void send({ t: "respond", response });
     },
+    reportUsage(round) {
+      void send({ t: "usage", ...round });
+    },
   };
   let result: RunResult;
   try {

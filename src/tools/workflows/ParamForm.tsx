@@ -6,7 +6,9 @@
  * JavaScript evaluated per item when the node runs).
  */
 import dynamic from "next/dynamic";
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
+import { fetchAccount } from "@/lib/agent-client/api";
+import type { ProviderProfileInfo } from "@/lib/agent-client/types";
 import { Button, Select, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { paramVisible } from "@/lib/workflows/editor-model";
@@ -27,6 +29,39 @@ const OPERATOR_LABELS: Record<string, string> = {
   lengthGt: "length greater than", lengthLt: "length less than", lengthGte: "length at least", lengthLte: "length at most",
 };
 const TYPE_LABELS: Record<string, string> = { string: "Text", number: "Number", dateTime: "Date & time", boolean: "Boolean", array: "List", object: "Object" };
+
+let profilesRequest: Promise<ProviderProfileInfo[]> | null = null;
+
+function loadProfiles(): Promise<ProviderProfileInfo[]> {
+  profilesRequest ??= fetchAccount().then((result) => (result.ok ? result.value.providerProfiles : []), () => []);
+  return profilesRequest;
+}
+
+/** The account's saved AI provider profiles (keys never come here: names, models and hints only). */
+function ProfileSelect({ value, onChange, label }: { value: unknown; onChange: (value: unknown) => void; label: string }) {
+  const [profiles, setProfiles] = useState<ProviderProfileInfo[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadProfiles().then((list) => alive && setProfiles(list));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const active = profiles?.find((profile) => profile.active);
+  return (
+    <div className="space-y-1">
+      <Select aria-label={label} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{active ? `The active profile (now: ${active.name} · ${active.model})` : "The active profile"}</option>
+        {(profiles ?? []).map((profile) => (
+          <option key={profile.id} value={profile.id}>
+            {profile.name} · {profile.model}
+          </option>
+        ))}
+      </Select>
+      {profiles && !profiles.length ? <p className="text-[11px] text-warn">No provider saved yet: add one in the assistant&apos;s settings (it becomes a profile), or use an AI provider credential.</p> : null}
+    </div>
+  );
+}
 
 export interface FieldFocus {
   onFocusField?: (name: string) => void;
@@ -236,6 +271,8 @@ function FieldInput({ param, value, onChange, label, focus }: { param: NodeParam
       return <TextInput aria-label={label} type="datetime-local" value={typeof value === "string" ? value.slice(0, 16) : ""} onChange={(event) => onChange(event.target.value ? new Date(event.target.value).toISOString() : "")} />;
     case "color":
       return <input aria-label={label} type="color" value={String(value ?? "#3366ff")} onChange={(event) => onChange(event.target.value)} />;
+    case "providerProfile":
+      return <ProfileSelect value={value} onChange={onChange} label={label} />;
     default:
       return null;
   }

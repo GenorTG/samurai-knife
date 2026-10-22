@@ -66,6 +66,8 @@ export interface EngineServices {
   /** First Respond to Webhook (or the end of the run, per the webhook's mode) answers the caller. */
   respond?(response: HookResponse): void;
   sendEmail?(message: Record<string, unknown>, credential: CredentialData): Promise<Record<string, unknown>>;
+  /** One model round of an AI node (the server adds it to the account's token ledger). */
+  reportUsage?(round: { model: string; usage?: Record<string, unknown>; ms: number; failed: boolean }): void;
   now(): number;
   sandboxLimits?: Partial<SandboxLimits>;
 }

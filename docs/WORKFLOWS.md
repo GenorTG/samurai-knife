@@ -114,3 +114,20 @@ up to 60 s, 2 s per expression, 1 s per regex in a condition. Engine: 5000 node 
 - A resume URL is claimed before its run starts (one resume per URL); disabled accounts run nothing; when the account's
   storage is full a run is kept without its node data (a waiting run fails instead).
 - Run history counts toward the quota (area `workflows`).
+
+## AI
+
+AI Agent, Ask AI (n8n's Basic LLM Chain), Information Extractor and Text Classifier (`src/lib/workflows/nodes/ai.ts`)
+call an OpenAI-compatible `/chat/completions` through the run's policy-checked HTTP client. The model comes from:
+
+- a saved provider profile of the account (`source: "profile"`, `profile` = a profile id or empty for the active one):
+  the server resolves it when the run starts and hands it to the node as its `provider` credential (the key never
+  enters the workflow or the editor); profiles were checked by the same rules as the assistant's provider;
+- or an "AI provider" credential (endpoint, key, model typed for this workflow; `source: "credential"`).
+
+`model` on the node overrides the provider's model. The agent's tools are rows on the node (no sub-node wiring): HTTP
+request (a URL template whose host is fixed by the author; the model fills `{placeholders}`, URL-encoded, plus a JSON
+body for POST/PUT/PATCH), JavaScript (sandboxed, the arguments in `input`), a sub-workflow of the same account, a
+calculator, the clock. Memory "per session key" keeps the last N messages in the workflow's static data. JSON answers
+are parsed (fenced or surrounded by prose) and retried once when unreadable. A run makes at most 200 model calls. Every
+call's token usage goes to the account's usage ledger (the same counters as the assistant).

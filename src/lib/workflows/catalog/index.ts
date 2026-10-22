@@ -3,11 +3,12 @@
  * (src/lib/workflows/nodes/index.ts) must cover exactly these types: tests/workflow_engine.test.mjs checks it.
  */
 import type { NodeMeta } from "../types";
+import { AI_NODES } from "./ai";
 import { DATA_NODES } from "./data";
 import { FLOW_NODES } from "./flow";
 import { NETWORK_NODES } from "./network";
 
-export const NODE_CATALOG: readonly NodeMeta[] = [...FLOW_NODES, ...DATA_NODES, ...NETWORK_NODES];
+export const NODE_CATALOG: readonly NodeMeta[] = [...FLOW_NODES, ...DATA_NODES, ...NETWORK_NODES, ...AI_NODES];
 
 const BY_TYPE = new Map(NODE_CATALOG.map((meta) => [meta.type, meta]));
 

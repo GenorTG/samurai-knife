@@ -10,6 +10,10 @@ Waves: **1** = the engine release; **2** = next; **3** = with the AI phase or la
 demand); **P** = needs a raw protocol client (TCP/binary driver), decided case by case; **-** = not offered, with the reason.
 Any HTTP API not listed works from day one through HTTP Request + a credential.
 
+**Delivered (0.7):** every wave 1 core node except XML, HTML, RSS Read, Send Email and Data Table (next); AI Agent
+(tools: HTTP request, JavaScript, sub-workflow, calculator, clock; memory per session), Ask AI (Basic LLM Chain),
+Information Extractor and Text Classifier, all on the account's provider profiles or an AI provider credential.
+
 ## Core nodes
 
 | Node | Wave | Notes |
