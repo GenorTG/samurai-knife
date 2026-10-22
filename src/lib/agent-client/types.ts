@@ -62,11 +62,19 @@ export interface ProviderInfo {
   openClawResponses: boolean;
 }
 
+/** A saved provider profile (hints only, never the key); `active` = the assistant's provider. */
+export interface ProviderProfileInfo extends ProviderInfo {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 export interface AccountInfo {
   id: string;
   displayName: string;
   requiresPassword: boolean;
   provider: ProviderInfo | null;
+  providerProfiles: ProviderProfileInfo[];
 }
 
 export interface AccountChoice {

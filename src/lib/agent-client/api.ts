@@ -15,6 +15,7 @@ import type {
   ToolCall,
   ToolRunResult,
   WireMessage,
+  ProviderProfileInfo,
 } from "./types";
 import type { ConversationContent, DurableConversation } from "./conversation-store";
 
@@ -122,8 +123,37 @@ export async function fetchAccount(): Promise<ApiResult<AccountInfo>> {
       displayName: str(body.displayName) ?? id,
       requiresPassword: body.requiresPassword === true,
       provider: parseProvider(body.provider),
+      providerProfiles: parseProfiles(body.providerProfiles),
     },
   };
+}
+
+function parseProfiles(value: unknown): ProviderProfileInfo[] {
+  if (!Array.isArray(value)) return [];
+  const out: ProviderProfileInfo[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const provider = parseProvider(entry);
+    const id = str(entry.id);
+    const name = str(entry.name);
+    if (provider && id && name) out.push({ ...provider, id, name, active: entry.active === true });
+  }
+  return out;
+}
+
+type ProfileAction =
+  | { action: "create"; name: string; provider: ProviderInput; activate?: boolean; from?: string }
+  | { action: "update"; id: string; name: string; provider: ProviderInput }
+  | { action: "duplicate"; id: string; name: string }
+  | { action: "activate"; id: string }
+  | { action: "delete"; id: string };
+
+/** POST /api/account/provider-profiles: saved provider profiles (create, update, duplicate, activate, delete). */
+export async function changeProfile(body: ProfileAction): Promise<ApiResult<null>> {
+  const r = await call("/api/account/provider-profiles", { method: "POST", body });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok) return { ok: false, failure: failureFrom(r.res, r.body) };
+  return { ok: true, value: null };
 }
 
 export async function saveProvider(input: ProviderInput): Promise<ApiResult<null>> {
@@ -133,8 +163,8 @@ export async function saveProvider(input: ProviderInput): Promise<ApiResult<null
   return { ok: true, value: null };
 }
 
-export async function testProvider(): Promise<ApiResult<ProviderTestResult>> {
-  const r = await call("/api/account/provider/test", { method: "POST", body: {} });
+export async function testProvider(profileId?: string): Promise<ApiResult<ProviderTestResult>> {
+  const r = await call("/api/account/provider/test", { method: "POST", body: profileId ? { profileId } : {} });
   if ("failure" in r) return { ok: false, failure: r.failure };
   const { res, body } = r;
   if (!isRecord(body)) return { ok: false, failure: failureFrom(res, body) };

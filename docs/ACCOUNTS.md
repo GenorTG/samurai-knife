@@ -51,6 +51,15 @@ SHA-256 of the raw token only).
   hand edits) is resealed by the first read. The CLI reads and writes the same format. A sealed file without the key file
   is an error, never an empty key. This protects a copy of `accounts.json` alone (a backup, one misdirected file read),
   not someone who can read the whole data directory. Back up `provider-keys.key` with `accounts.json`.
+- Provider profiles: `providerProfiles` (up to 20 `{id, name, config}`, config = the `provider` shape) and
+  `activeProviderProfile`. `provider` is always the active profile's config (the assistant and CLI read only `provider`);
+  the first saved provider becomes a profile "Default", and an older account with a provider and no profiles shows it as
+  `default`. Profile secrets are sealed the same way with `<id>:profile:<profileId>:…` as additional data.
+  `POST /api/account/provider-profiles {action}`: `create` (`from` = profile whose key/headers are kept when omitted;
+  `activate`), `update`, `duplicate`, `activate`, `delete` (deleting the active one activates the next, or leaves no
+  provider); `GET` lists hints only. Every config passes the same checks as `PUT /api/account/provider`
+  (`src/lib/accounts/provider-input.ts`). `POST /api/account/provider/test {profileId?}` tests one profile (no body = the
+  active provider). Workflow AI nodes pick any profile.
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.

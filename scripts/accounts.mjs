@@ -87,7 +87,7 @@ function withV2Fields(account, legacy = true) {
 }
 
 // Provider secrets at rest: the format of src/lib/accounts/secret-box.ts (`enc:v1:<iv>:<tag>:<ciphertext>`, base64url,
-// AAD `<account>:apiKey` / `<account>:header:<lower-cased name>`).
+// AAD `<account>:apiKey` / `<account>:header:<lower-cased name>`; a saved profile's secrets use `<account>:profile:<id>` as the owner).
 const KEY_FILE = join(dir, "provider-keys.key");
 const SEALED = "enc:v1:";
 let secretKey = null;
@@ -129,13 +129,20 @@ function openValue(value, context) {
     return fail(`a provider secret (${context}) does not decrypt with ${KEY_FILE}`);
   }
 }
-function mapSecrets(account, fn) {
-  if (!account.provider) return account;
-  const provider = { ...account.provider, apiKey: fn(account.provider.apiKey, `${account.id}:apiKey`) };
-  if (account.provider.extraHeaders) {
-    provider.extraHeaders = Object.fromEntries(Object.entries(account.provider.extraHeaders).map(([name, value]) => [name, fn(value, `${account.id}:header:${name.toLowerCase()}`)]));
+function mapConfig(config, owner, fn) {
+  const out = { ...config, apiKey: fn(config.apiKey, `${owner}:apiKey`) };
+  if (config.extraHeaders) {
+    out.extraHeaders = Object.fromEntries(Object.entries(config.extraHeaders).map(([name, value]) => [name, fn(value, `${owner}:header:${name.toLowerCase()}`)]));
   }
-  return { ...account, provider };
+  return out;
+}
+function mapSecrets(account, fn) {
+  const out = { ...account };
+  if (account.provider) out.provider = mapConfig(account.provider, account.id, fn);
+  if (Array.isArray(account.providerProfiles)) {
+    out.providerProfiles = account.providerProfiles.map((profile) => ({ ...profile, config: mapConfig(profile.config, `${account.id}:profile:${profile.id}`, fn) }));
+  }
+  return out;
 }
 
 function writeStore(store) {
@@ -553,6 +560,16 @@ const commands = {
       model: model.trim(),
       ...(extraHeaders && Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
     };
+    // `provider` is the active saved profile's config (src/lib/accounts/store.ts): keep that profile in step, or make one.
+    const profiles = Array.isArray(account.providerProfiles) ? account.providerProfiles : [];
+    const active = profiles.find((profile) => profile.id === account.activeProviderProfile);
+    if (active) active.config = account.provider;
+    else {
+      if (profiles.length >= 20) fail(`${account.id} already has 20 saved provider profiles: delete one in the app first`);
+      const id = randomBytes(6).toString("hex");
+      account.providerProfiles = [...profiles, { id, name: "Default", config: account.provider }];
+      account.activeProviderProfile = id;
+    }
     writeStore(store);
     console.log(`provider saved for ${account.id}: ${account.provider.baseUrl} model=${account.provider.model} key=${keyHint(apiKey)}`);
   },

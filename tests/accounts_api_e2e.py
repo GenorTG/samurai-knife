@@ -140,6 +140,41 @@ check("omitting apiKey keeps the stored key", s == 200 and j["provider"]["hasKey
 s, j, _, text = call("POST", "/api/account/provider/test")
 check("provider test -> ok, modelCount 2", s == 200 and j == {"ok": True, "status": 200, "modelCount": 2}, (s, text))
 
+# 3b. Saved provider profiles --------------------------------------------------------
+s, j, _, _ = call("GET", "/api/account/provider-profiles")
+check("profiles: the provider shows as one active Default profile",
+      s == 200 and len(j["profiles"]) == 1 and j["profiles"][0]["name"] == "Default" and j["profiles"][0]["active"] is True
+      and j["profiles"][0]["hasKey"] is True, (s, j))
+default_id = j["profiles"][0]["id"] if s == 200 and j["profiles"] else "default"
+s, j, _, text = call("POST", "/api/account/provider-profiles", {
+    "action": "create", "name": "Wrong key", "activate": True,
+    "provider": {"baseUrl": f"{MOCK}/v1", "model": "mock-model", "apiKey": "sk-profile-wrong-9876"}})
+wrong_id = (j or {}).get("profileId")
+check("profiles: create + activate a second one, key masked, never echoed",
+      s == 201 and wrong_id and j["account"]["provider"]["keyHint"] == "…9876" and "sk-profile-wrong" not in text
+      and [p["active"] for p in j["account"]["providerProfiles"]] == [False, True], (s, text))
+s, j, _, _ = call("POST", "/api/account/provider/test")
+check("profiles: test uses the active (wrong-key) profile -> ok:false", s == 200 and j["ok"] is False, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider/test", {"profileId": default_id})
+check("profiles: test a named profile -> ok", s == 200 and j["ok"] is True, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider/test", {"profileId": "nope00"})
+check("profiles: test an unknown profile -> 404", s == 404, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "duplicate", "id": wrong_id, "name": "Copy"})
+check("profiles: duplicate keeps the key", s == 201 and j["account"]["providerProfiles"][2]["keyHint"] == "…9876", (s, j))
+copy_id = (j or {}).get("profileId")
+s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "activate", "id": default_id})
+check("profiles: activate Default again", s == 200 and j["account"]["provider"]["keyHint"] == "…", (s, j))
+for pid in (wrong_id, copy_id):
+    s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "delete", "id": pid})
+check("profiles: delete the extras", s == 200 and len(j["account"]["providerProfiles"]) == 1, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "explode"})
+check("profiles: unknown action -> 400", s == 400, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "activate", "id": "zzzz99"})
+check("profiles: activate unknown -> 404", s == 404, (s, j))
+s, j, _, _ = call("POST", "/api/account/provider-profiles", {"action": "create", "name": "Evil",
+                  "provider": {"baseUrl": "http://evil.example/v1", "model": "m"}}, origin="http://evil.example")
+check("profiles: cross-origin create -> 403", s == 403, (s, j))
+
 # 4. Chat roundtrip with tool calls ------------------------------------------------
 s, j, _, _ = call("GET", "/api/agent/tools")
 tools = j["tools"] if j else []

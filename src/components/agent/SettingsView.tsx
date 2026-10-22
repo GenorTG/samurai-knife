@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
-import { saveProvider, testProvider } from "@/lib/agent-client/api";
+import { changeProfile, saveProvider, testProvider } from "@/lib/agent-client/api";
 import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
 import { UsagePanel } from "./UsagePanel";
 import type { AccountInfo, ProviderInput } from "@/lib/agent-client/types";
@@ -36,19 +36,123 @@ function parseHeaders(text: string): { ok: true; headers: Record<string, string>
 
 type Status = { tone: "good" | "error" | "info"; text: string } | null;
 
-export function SettingsView({
-  account,
-  firstRun,
-  onSaved,
-  onBack,
-  onLogout,
-}: {
+interface SettingsProps {
   account: AccountInfo;
   firstRun: boolean;
   onSaved: () => Promise<void>;
   onBack: () => void;
   onLogout: () => Promise<void>;
-}) {
+}
+
+/** Provider settings: saved profiles on top (switch, new, rename, duplicate, delete), the active one's form below. */
+export function SettingsView(props: SettingsProps) {
+  const active = props.account.providerProfiles.find((profile) => profile.active)?.id ?? "none";
+  // A fresh form per active profile: its fields start from that profile. The status line lives here so it survives the
+  // remount (the first Save creates the "Default" profile, which changes the key).
+  const [status, setStatus] = useState<Status>(null);
+  return <ProviderForm key={active} {...props} status={status} setStatus={setStatus} />;
+}
+
+function ProfileBar({ account, buildInput, onChanged, setStatus }: { account: AccountInfo; buildInput: () => ProviderInput | string; onChanged: () => Promise<void>; setStatus: (status: Status) => void }) {
+  const profiles = account.providerProfiles;
+  const active = profiles.find((profile) => profile.active) ?? null;
+  const [naming, setNaming] = useState<null | "new" | "rename">(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const run = async (work: () => ReturnType<typeof changeProfile>, done: string) => {
+    setBusy(true);
+    setStatus(null);
+    const result = await work();
+    setBusy(false);
+    if (!result.ok) {
+      const f = result.failure;
+      setStatus({ tone: "error", text: f.kind === "error" ? f.message : "Could not change the profile." });
+      return false;
+    }
+    setNaming(null);
+    setStatus({ tone: "good", text: done });
+    await onChanged();
+    return true;
+  };
+  const submitName = async () => {
+    const clean = name.trim();
+    if (!clean) return setStatus({ tone: "error", text: "Give the profile a name." });
+    const input = buildInput();
+    if (typeof input === "string") return setStatus({ tone: "error", text: input });
+    if (naming === "new") await run(() => changeProfile({ action: "create", name: clean, provider: input, activate: true, ...(active ? { from: active.id } : {}) }), `Profile ${clean} created and in use.`);
+    else if (naming === "rename" && active) await run(() => changeProfile({ action: "update", id: active.id, name: clean, provider: input }), `Saved as ${clean}.`);
+  };
+  return (
+    <div className="space-y-2 rounded-lg border border-line p-3" data-provider-profiles>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted">
+          Profile
+          <select
+            className="sk-input min-w-0 flex-1 px-2 py-1 text-xs"
+            aria-label="Provider profile"
+            value={active?.id ?? ""}
+            disabled={busy || profiles.length === 0}
+            onChange={(event) => void run(() => changeProfile({ action: "activate", id: event.target.value }), "Profile switched: the assistant uses it from the next message.")}
+          >
+            {profiles.length === 0 ? <option value="">No saved profile yet</option> : null}
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name} · {profile.model}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button size="sm" disabled={busy} onClick={() => { setNaming("new"); setName(""); }}>
+          New
+        </Button>
+        {active ? (
+          <>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setNaming("rename"); setName(active.name); }}>
+              Rename
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => changeProfile({ action: "duplicate", id: active.id, name: `${active.name} copy`.slice(0, 60) }), `Copied as ${active.name} copy.`)}>
+              Duplicate
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm(`Delete the profile ${active.name}? Its key is removed too.`)) void run(() => changeProfile({ action: "delete", id: active.id }), `Deleted ${active.name}.`);
+              }}
+            >
+              Delete
+            </Button>
+          </>
+        ) : null}
+      </div>
+      {naming ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <TextInput autoFocus aria-label="Profile name" value={name} maxLength={60} onChange={(event) => setName(event.target.value)} placeholder="e.g. Local LM Studio" className="min-w-0 flex-1" />
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void submitName()}>
+            {naming === "new" ? "Create from the fields below" : "Save name"}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setNaming(null)}>
+            Cancel
+          </Button>
+        </div>
+      ) : null}
+      <p className="text-xs text-faint">
+        Several endpoints, keys and models, kept on the server. The selected one is the assistant&apos;s; workflow AI nodes can use any of them.
+      </p>
+    </div>
+  );
+}
+
+function ProviderForm({
+  account,
+  firstRun,
+  onSaved,
+  onBack,
+  onLogout,
+  status,
+  setStatus,
+}: SettingsProps & { status: Status; setStatus: (status: Status) => void }) {
   const provider = account.provider;
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? PRESETS[0].baseUrl);
   const [model, setModel] = useState(provider?.model ?? PRESETS[0].model);
@@ -58,7 +162,6 @@ export function SettingsView({
   const [clearHeaders, setClearHeaders] = useState(false);
   const [effort, setEffort] = useState<"" | "low" | "medium" | "high">(provider?.reasoningEffort ?? "");
   const [openClawResponses, setOpenClawResponses] = useState(provider?.openClawResponses ?? false);
-  const [status, setStatus] = useState<Status>(null);
   const [working, setWorking] = useState<"save" | "test" | null>(null);
 
   const preset = presetFor(baseUrl);
@@ -157,6 +260,8 @@ export function SettingsView({
     <form onSubmit={save} className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-4" aria-label="Provider settings">
       {firstRun ? <Notice tone="info">Connect a model provider (any OpenAI-compatible API) to start. Your key stays on the server.</Notice> : null}
       <Notice tone="info">Conversation history is saved on this Knife server per account and provider. The compact action journal stores page paths and tool names, not field values or file names. Clear conversation removes the saved history and starts a fresh OpenClaw session.</Notice>
+
+      <ProfileBar account={account} buildInput={buildInput} onChanged={onSaved} setStatus={setStatus} />
 
       <div role="group" aria-label="Provider preset" className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (

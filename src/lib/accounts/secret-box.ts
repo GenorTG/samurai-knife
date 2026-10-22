@@ -59,7 +59,11 @@ export function open(key: Buffer, sealed: string, context: string): string {
   return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
 }
 
-/** AAD for one secret: `<account>:apiKey` or `<account>:header:<lower-cased name>`. */
-export function secretContext(accountId: string, field: "apiKey" | { header: string }): string {
-  return typeof field === "string" ? `${accountId}:apiKey` : `${accountId}:header:${field.header.toLowerCase()}`;
+/**
+ * AAD for one secret: `<account>:apiKey` or `<account>:header:<lower-cased name>`; a saved provider profile's secrets
+ * add `:profile:<id>` after the account, so a sealed value cannot be moved between profiles either.
+ */
+export function secretContext(accountId: string, field: "apiKey" | { header: string }, profileId?: string): string {
+  const owner = profileId ? `${accountId}:profile:${profileId}` : accountId;
+  return typeof field === "string" ? `${owner}:apiKey` : `${owner}:header:${field.header.toLowerCase()}`;
 }

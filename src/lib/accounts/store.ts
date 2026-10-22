@@ -60,6 +60,18 @@ const providerSchema = z.object({
   openClawResponses: z.boolean().optional(),
 });
 
+/**
+ * A saved provider profile (endpoint, key, model…) with a name. The account's `provider` is always the active profile's
+ * config (every existing caller keeps reading `provider`); the workflow AI node can pick any profile by id.
+ */
+export const PROFILE_ID = /^[a-z0-9]{1,24}$/;
+const profileSchema = z.object({
+  id: z.string().regex(PROFILE_ID),
+  name: z.string().min(1).max(60),
+  config: providerSchema,
+});
+export const MAX_PROVIDER_PROFILES = 20;
+
 /** A single-use link token: only its SHA-256 (hex) is stored. */
 const tokenSchema = z.object({ hash: z.string().regex(/^[0-9a-f]{64}$/), expiresAt: z.string() });
 
@@ -68,6 +80,9 @@ const accountSchema = z.object({
   displayName: z.string().min(1).max(80),
   passwordHash: z.string().optional(),
   provider: providerSchema.nullable(),
+  /** Saved provider profiles; `activeProviderProfile` names the one `provider` mirrors (null: none saved yet). */
+  providerProfiles: z.array(profileSchema).max(MAX_PROVIDER_PROFILES).default([]),
+  activeProviderProfile: z.string().regex(PROFILE_ID).nullable().default(null),
   createdAt: z.string(),
   email: z.string().nullable().default(null),
   emailVerifiedAt: z.string().nullable().default(null),
@@ -124,6 +139,7 @@ const storeSchema = z.object({
 }, { message: "two accounts are linked to the same GitHub user" });
 
 export type ProviderConfig = z.infer<typeof providerSchema>;
+export type ProviderProfile = z.infer<typeof profileSchema>;
 export type Account = z.infer<typeof accountSchema>;
 export type AccountStore = z.infer<typeof storeSchema>;
 export type AccountRole = Account["role"];
@@ -185,14 +201,16 @@ function sealSecrets(store: AccountStore): AccountStore {
   return {
     ...store,
     accounts: store.accounts.map((account) => {
-      const provider = account.provider;
-      if (!provider) return account;
-      const headers = provider.extraHeaders
-        ? Object.fromEntries(Object.entries(provider.extraHeaders).map(([name, value]) => [name, sealValue(value, secretContext(account.id, { header: name }))]))
-        : undefined;
+      const sealConfig = (provider: ProviderConfig, profileId?: string): ProviderConfig => {
+        const headers = provider.extraHeaders
+          ? Object.fromEntries(Object.entries(provider.extraHeaders).map(([name, value]) => [name, sealValue(value, secretContext(account.id, { header: name }, profileId))]))
+          : undefined;
+        return { ...provider, apiKey: sealValue(provider.apiKey, secretContext(account.id, "apiKey", profileId)), ...(headers ? { extraHeaders: headers } : {}) };
+      };
       return {
         ...account,
-        provider: { ...provider, apiKey: sealValue(provider.apiKey, secretContext(account.id, "apiKey")), ...(headers ? { extraHeaders: headers } : {}) },
+        provider: account.provider ? sealConfig(account.provider) : null,
+        providerProfiles: (account.providerProfiles ?? []).map((profile) => ({ ...profile, config: sealConfig(profile.config, profile.id) })),
       };
     }),
   };
@@ -216,13 +234,15 @@ function openSecrets(store: AccountStore): boolean {
       throw new Error(`accounts.json: a provider secret (${context}) does not decrypt with provider-keys.key`);
     }
   };
-  for (const account of store.accounts) {
-    const provider = account.provider;
-    if (!provider) continue;
-    provider.apiKey = openValue(provider.apiKey, secretContext(account.id, "apiKey"));
+  const openConfig = (accountId: string, provider: ProviderConfig, profileId?: string) => {
+    provider.apiKey = openValue(provider.apiKey, secretContext(accountId, "apiKey", profileId));
     if (provider.extraHeaders) {
-      for (const name of Object.keys(provider.extraHeaders)) provider.extraHeaders[name] = openValue(provider.extraHeaders[name], secretContext(account.id, { header: name }));
+      for (const name of Object.keys(provider.extraHeaders)) provider.extraHeaders[name] = openValue(provider.extraHeaders[name], secretContext(accountId, { header: name }, profileId));
     }
+  };
+  for (const account of store.accounts) {
+    if (account.provider) openConfig(account.id, account.provider);
+    for (const profile of account.providerProfiles ?? []) openConfig(account.id, profile.config, profile.id);
   }
   return plaintext;
 }
@@ -405,13 +425,125 @@ export function getDefaultAccount(): Account {
   return structuredClone(found);
 }
 
+/**
+ * Sets the account's provider (the active profile). With saved profiles the active one is updated too; the first
+ * provider saved becomes the profile "Default", so `provider` and the profiles never disagree.
+ */
 export function setProvider(id: string, provider: ProviderConfig | null): Account | undefined {
   return mutateStore((store) => {
     const account = store.accounts.find((candidate) => candidate.id === id);
     if (!account) return undefined;
     account.provider = provider;
+    if (!provider) {
+      account.activeProviderProfile = null;
+      return account;
+    }
+    const active = account.providerProfiles.find((profile) => profile.id === account.activeProviderProfile);
+    if (active) active.config = structuredClone(provider);
+    else if (account.providerProfiles.length < MAX_PROVIDER_PROFILES) {
+      const profile = { id: newProfileId(account.providerProfiles), name: account.providerProfiles.length ? "Profile" : "Default", config: structuredClone(provider) };
+      account.providerProfiles.push(profile);
+      account.activeProviderProfile = profile.id;
+    }
     return account;
   });
+}
+
+function newProfileId(existing: { id: string }[]): string {
+  for (;;) {
+    const id = randomBytes(6).toString("hex");
+    if (!existing.some((profile) => profile.id === id)) return id;
+  }
+}
+
+/**
+ * The account's provider profiles. An account that set a provider before profiles existed shows it as "Default"
+ * (materialized on its next profile change), so every caller sees the same list.
+ */
+export function providerProfilesOf(account: Account): ProviderProfile[] {
+  if (account.providerProfiles.length) return account.providerProfiles;
+  return account.provider ? [{ id: "default", name: "Default", config: account.provider }] : [];
+}
+
+export function activeProfileIdOf(account: Account): string | null {
+  if (account.providerProfiles.length) return account.activeProviderProfile;
+  return account.provider ? "default" : null;
+}
+
+export class ProfileError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function materializeProfiles(account: Account): void {
+  if (!account.providerProfiles.length && account.provider) {
+    account.providerProfiles = [{ id: "default", name: "Default", config: structuredClone(account.provider) }];
+    account.activeProviderProfile = "default";
+  }
+}
+
+/** Creates (no id) or replaces a profile; `activate` also makes it the account's provider. Returns the account and the id. */
+export function saveProviderProfile(id: string, input: { profileId?: string; name: string; config: ProviderConfig; activate?: boolean }): { account: Account; profileId: string } {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) throw new ProfileError("account_not_found", 404);
+    materializeProfiles(account);
+    let profile = input.profileId ? account.providerProfiles.find((candidate) => candidate.id === input.profileId) : undefined;
+    if (input.profileId && !profile) throw new ProfileError("Unknown profile.", 404);
+    if (!profile) {
+      if (account.providerProfiles.length >= MAX_PROVIDER_PROFILES) throw new ProfileError(`At most ${MAX_PROVIDER_PROFILES} profiles.`, 409);
+      profile = { id: newProfileId(account.providerProfiles), name: input.name, config: structuredClone(input.config) };
+      account.providerProfiles.push(profile);
+    } else {
+      profile.name = input.name;
+      profile.config = structuredClone(input.config);
+    }
+    if (input.activate || account.activeProviderProfile === profile.id || !account.provider) {
+      account.activeProviderProfile = profile.id;
+      account.provider = structuredClone(profile.config);
+    }
+    return { account, profileId: profile.id };
+  });
+}
+
+/** Makes a saved profile the account's provider (the assistant uses it from the next message on). */
+export function activateProviderProfile(id: string, profileId: string): Account {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) throw new ProfileError("account_not_found", 404);
+    materializeProfiles(account);
+    const profile = account.providerProfiles.find((candidate) => candidate.id === profileId);
+    if (!profile) throw new ProfileError("Unknown profile.", 404);
+    account.activeProviderProfile = profile.id;
+    account.provider = structuredClone(profile.config);
+    return account;
+  });
+}
+
+/** Deletes a profile; deleting the active one activates the next saved profile, or leaves no provider. */
+export function deleteProviderProfile(id: string, profileId: string): Account {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) throw new ProfileError("account_not_found", 404);
+    materializeProfiles(account);
+    const index = account.providerProfiles.findIndex((candidate) => candidate.id === profileId);
+    if (index < 0) throw new ProfileError("Unknown profile.", 404);
+    account.providerProfiles.splice(index, 1);
+    if (account.activeProviderProfile === profileId) {
+      const next = account.providerProfiles[0];
+      account.activeProviderProfile = next?.id ?? null;
+      account.provider = next ? structuredClone(next.config) : null;
+    }
+    return account;
+  });
+}
+
+/** One profile's config (server-side only: holds the key), or undefined. */
+export function providerProfileConfig(account: Account, profileId: string): ProviderConfig | undefined {
+  return providerProfilesOf(account).find((profile) => profile.id === profileId)?.config;
 }
 
 /** Accounts that can sign in (have a password). Safe to show on a login form; empty in public mode (no user list leaks). */
@@ -432,11 +564,19 @@ export interface PublicProvider {
   openClawResponses: boolean;
 }
 
+export interface PublicProviderProfile extends PublicProvider {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 export interface PublicAccount {
   id: string;
   displayName: string;
   requiresPassword: boolean;
   provider: PublicProvider | null;
+  /** Saved provider profiles (no keys: hints only), the active one marked. */
+  providerProfiles: PublicProviderProfile[];
   /** The signed-in user's own address (only ever returned to that user). */
   email: string | null;
   emailVerified: boolean;
@@ -454,25 +594,29 @@ export function maskKey(key: string): string | null {
   return key.length >= 12 ? `…${key.slice(-4)}` : "…";
 }
 
+export function toPublicProvider(provider: ProviderConfig): PublicProvider {
+  return {
+    baseUrl: provider.baseUrl,
+    model: provider.model,
+    hasKey: provider.apiKey.length > 0,
+    keyHint: maskKey(provider.apiKey),
+    extraHeaderNames: Object.keys(provider.extraHeaders ?? {}),
+    reasoningEffort: provider.reasoningEffort ?? null,
+    openClawResponses: provider.openClawResponses === true,
+  };
+}
+
 /** The only account shape that may leave the server. Never includes the key, the hash or a token. */
 export function toPublicAccount(account: Account, mode: "private" | "public" = "private"): PublicAccount {
   const { provider } = account;
   const change = account.emailChange;
+  const active = activeProfileIdOf(account);
   return {
     id: account.id,
     displayName: account.displayName,
     requiresPassword: Boolean(account.passwordHash),
-    provider: provider
-      ? {
-          baseUrl: provider.baseUrl,
-          model: provider.model,
-          hasKey: provider.apiKey.length > 0,
-          keyHint: maskKey(provider.apiKey),
-          extraHeaderNames: Object.keys(provider.extraHeaders ?? {}),
-          reasoningEffort: provider.reasoningEffort ?? null,
-          openClawResponses: provider.openClawResponses === true,
-        }
-      : null,
+    provider: provider ? toPublicProvider(provider) : null,
+    providerProfiles: providerProfilesOf(account).map((profile) => ({ ...toPublicProvider(profile.config), id: profile.id, name: profile.name, active: profile.id === active })),
     email: account.email,
     emailVerified: account.emailVerifiedAt !== null,
     pendingEmail: change && Date.parse(change.expiresAt) > Date.now() ? change.email : null,
