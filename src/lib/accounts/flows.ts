@@ -21,7 +21,7 @@ import { clientPrefix, prefixTag } from "@/lib/accounts/ip-prefix";
 import { recordSecurityEvent } from "@/lib/security/events";
 import { checkEmailPolicy, checkEmailPolicySync, EMAIL_POLICY_MESSAGE } from "@/lib/accounts/email-policy";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
-import { legalVersion } from "@/lib/legal/legal";
+import { legalVersion, recordLegalVersion } from "@/lib/legal/legal";
 import {
   accountDeletedMail,
   changeEmailMail,
@@ -126,6 +126,7 @@ export async function register(input: { username: string; email: string; passwor
   const terms = legalVersion();
   if (!input.acceptTerms) return fail(400, "terms_required", { message: TERMS_REQUIRED });
   if (input.acceptTerms !== terms) return fail(409, "terms_changed", { message: TERMS_CHANGED });
+  recordLegalVersion();
   const username = input.username.trim();
   if (!ACCOUNT_ID_PATTERN.test(username)) {
     return fail(400, "The username needs 1-32 characters: lowercase letters, digits, - and _ (starting with a letter or digit).");

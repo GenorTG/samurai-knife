@@ -13,7 +13,17 @@ conclusions below change: see "If money is involved".
 - Texts: `$KNIFE_LEGAL_DIR/<doc>.<lang>.md` if present, else the defaults in `legal/`. Values: `$KNIFE_LEGAL_DIR/legal.json`
   fills `{{placeholders}}` (`legal/README.md` lists them). `KNIFE_LEGAL_DIR` defaults to `$KNIFE_DATA_DIR/legal`; the
   systemd install uses `/etc/samurai-knife/legal` (root:knife, read-only to the app). Nothing of an instance is in git.
-- Version: legal.json `version`, else a hash over every rendered page. `GET /api/legal` returns it.
+- Version: legal.json `version`, else a fingerprint (hash) over every rendered page with the effective date left out.
+  `GET /api/legal` returns it with the edition and the instance's history.
+- Editions and history: `legal/versions.json` lists the editions of the defaults (number, date, app version, digest of
+  the four files) and what the current edition covers; `legal/editions/<n>/` keeps earlier texts (`?edition=<n>`). The
+  instance records each version the first time it is shown or accepted (legal pages, /register, every sign-up) in
+  `$KNIFE_DATA_DIR/legal-history/<key>.json` (exact texts, first-shown time, app version, per-document digests; first
+  write wins); the pages list them and `?version=<fingerprint>` (also on the download) reads one. The effective date
+  shown is legal.json `effectiveDate` or the first-shown day, whichever is later. When the Terms text differs from the
+  previous recorded version, the Terms page says that older accounts are bound from first-shown + `changeNoticeDays`
+  (Terms § 15.4). Account settings show the accepted version with a link to it (or, for an acceptance from before the
+  history, the edition in force that day).
 - Sign-up: one checkbox ("I accept the Terms … have read the privacy notice") gates the password form and "Sign up with
   GitHub". `POST /api/account/register` needs `acceptTerms` = the current version (400 `terms_required`, 409
   `terms_changed`); "Sign up with GitHub" carries it in the sealed OAuth state, and a new GitHub user who came from
@@ -22,8 +32,26 @@ conclusions below change: see "If money is involved".
 - The assistant widget says it is an AI system under the message box (AI Act art. 50(1)/(5)) and links to the Terms.
 - Renderer (`src/lib/legal/legal.ts`): raw HTML in a text is shown as text, links only http(s)/mailto/same-site, no
   images, `## Heading {#id}` gives a stable anchor. Missing placeholders show as `[name?]` plus a warning on the page.
-- Tests: `tests/legal.test.mjs`, the register/GitHub checks in `tests/github_app.test.mjs`,
+- Tests: `tests/legal.test.mjs` (also the guards in "Changing the texts"), the register/GitHub checks in `tests/github_app.test.mjs`,
   `tests/functional/accounts_public_e2e.py` and `tests/functional/github_app_e2e.py`.
+
+## Changing the texts
+
+A feature that stores new personal data, sets a new cookie or browser storage entry, or sends data to a new recipient
+needs the privacy notice (and, for a new service or rule, the Terms) changed **in the same release**. The repo is held to
+it by `tests/legal.test.mjs`:
+
+- a cookie constant (`*COOKIE = "knife_…"`, `COOKIE_NAME`) or a `StorageArea` (src/lib/storage/quota.ts) missing from
+  `legal/versions.json` `covers` fails, and every covered cookie must appear in both privacy texts;
+- a change of `legal/*.md` without a matching digest in `legal/versions.json` fails, printing the new digest;
+- the newest edition must be named, with its app version, in each text's change history (Terms § 17 `{#history}`,
+  privacy § 15 `{#versions}`).
+
+Steps for a new edition: copy the released texts (from the last tag) to `legal/editions/<n>/`, edit `legal/*.md` in both
+languages, add a row to the privacy notice's "what each version added" table and a line to both change histories, add
+`{ edition: n+1, published, app, digest }` on top of `legal/versions.json` (the test prints the digest), update `covers`.
+Until the edition is released, further edits only update its digest. After deploying, e-mail existing users about
+material changes (Terms § 15.2, privacy § 14).
 
 ## What applies to a private, non-commercial operator in Poland
 
@@ -100,16 +128,17 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
   - Updates: the server asks `api.github.com` once a day for each app's releases and downloads new release zips from
     `github.com` (no user data is sent; requests carry only a fixed User-Agent). The licences & notices view always
     shows the texts of the version actually served.
-- Privacy notice, not changed automatically (a text change is a new legal version that existing users should hear
-  about): an instance that offers ArtCraft would add two rows to "Cookies and browser storage": `knife_craft` (cookie on
-  the ArtCraft host, only with `KNIFE_CRAFT_PUBLIC_URL`: lets the browser load the apps, up to 12 hours) and the apps'
-  own browser storage on the ArtCraft host (preferences, LightCraft's photo library, EffectCraft's projects and media,
-  the documents the other apps keep for recovery, in local storage, IndexedDB or OPFS; kept until the user clears it;
-  never sent to the server), plus `knife:account` in that storage (an opaque tag of the account that used it last, so
-  another account's data is cleared on a shared browser). Both are strictly necessary for a tool the user opens (art.
-  399 ust. 3 PKE). The office editor's `knife_office` cookie is missing from the table today too.
-- Craft files (since 0.5): what a person saves in a Craft app is stored on the server in their account
-  (`craft-files/<account>/`, sealed at rest, counted by the quota, deleted with the account or by the person in "My
-  files"). The privacy notice's list of stored content (next to office documents) should name it; nothing is shared
-  with the ArtCraft team or anyone else.
+- Privacy notice (edition 2, Smart Knife 0.8.0): § 2 says the apps are third-party programs served unmodified on their
+  own address and that update checks go to GitHub without user data; § 3 lists Craft files (`craft-files/<account>/`,
+  sealed, quota, deleted with the account or in "My files"); § 6 lists `knife_craft` (up to 12 hours, only with
+  `KNIFE_CRAFT_PUBLIC_URL`), the apps' own storage on the craft host (local storage, IndexedDB, OPFS; never sent to the
+  server) and `knife:account` (opaque account tag, so another account's data is cleared on a shared browser), all
+  strictly necessary for a tool the user opens (art. 399 ust. 3 PKE), and the office editor's `knife_office` (6 hours).
+  The Terms (§ 4.5, § 12.1) say the Operator is not their author, their licences apply, and the ArtCraft team is not a
+  party and does not endorse the Service.
+- Workflows (edition 2): § 3 rows for workflows, run history (100 runs / 14 days, `RUNS_KEPT`/`RUN_DAYS_KEPT` in
+  src/lib/workflows/server/store.ts: change the texts with them), credentials, and webhook requests (headers incl. the
+  forwarded IP; art. 14 data of callers, basis 6(1)(f)); § 4 recipients the workflows contact under the user's own
+  relationship; Terms § 7.9–7.10 (no spam, attacks, phishing pages, credentials without right) and § 8.5–8.6 (AI nodes;
+  the user discloses AI to people a workflow lets talk to a model, AI Act art. 50(1)).
 

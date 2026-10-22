@@ -1,6 +1,6 @@
 # {{siteName}} Terms of Service
 
-Effective from: {{effectiveDate}}. The Polish version (Regulamin) is binding; this English version is for information.
+Effective from: {{effectiveDate}}. For Accounts created earlier, changes take effect as section 15 says. The Polish version (Regulamin) is binding; this English version is for information.
 
 ## 1. Operator and contact {#operator}
 
@@ -12,9 +12,11 @@ Effective from: {{effectiveDate}}. The Polish version (Regulamin) is binding; th
 
 - **User**: a person who has created an Account.
 - **Account**: a User's individual account in the Service, protected by a password or by signing in with GitHub.
-- **Content**: everything a User saves or sends in the Service: profile and CV data, job offers, documents, conversations with the AI assistant, settings, repository code and files.
+- **Content**: everything a User saves or sends in the Service: profile and CV data, job offers, documents, files saved from the Craft apps, conversations with the AI assistant, workflows with their run history and credentials, settings, repository code and files.
 - **AI assistant**: the built-in chat assistant, which uses the language model the User chose (section 8).
 - **AI provider**: the third-party provider of a language model that the User connected to their Account (for example with their own API key).
+- **Workflow**: an automation the User builds from nodes (such as an HTTP request, code, an AI node), run by hand, on a schedule, or when its webhook address is called.
+- **Craft apps**: open-source programs by the ArtCraft team (such as PhotoCraft, VectorCraft, FilmCraft) that the Operator offers in the Service unmodified.
 
 ## 3. Nature of the Service {#nature}
 
@@ -29,8 +31,10 @@ Where enabled on this instance, the Operator provides:
 1. tools that run in the browser (text, JSON, images, PDF, SQL, encodings and more); some of them compute on the Operator's server (for example OCR and PDF processing, SQL formatting), and their working files are deleted when the job ends;
 2. storage of Content in the Account, within a storage limit set by the Operator (1 GiB by default), in particular: the CV studio (profile, CV versions, job offers, application tracking), an office document library with an editor, a database course with a practice database, and a website studio that works with the User's GitHub repository (including site audits);
 3. the AI assistant (section 8);
-4. access to the Account for the User's own programs and agents through MCP keys the User creates;
-5. "Sign in with GitHub", if the Operator enabled it.
+4. workflows: building, running and the run history of automations, which run on the Operator's server in an isolated environment and within limits (time, number of runs, data size), with credentials for the services the User chooses and webhook addresses the User may give to other people;
+5. the Craft apps, which run in the browser and can save files to the Account. The Operator is not their author and offers them as their authors released them; the programs themselves are under their licences (MIT or Apache-2.0), shown in each app together with their authors. The ArtCraft team is not a party to the contract and does not endorse the Service;
+6. access to the Account for the User's own programs and agents through MCP keys the User creates;
+7. "Sign in with GitHub", if the Operator enabled it.
 
 ## 5. Technical requirements {#requirements}
 
@@ -54,7 +58,9 @@ In particular, you must not:
 5. store other people's personal data without a legal basis, or special categories of data (such as health data) without need;
 6. use results of the Service or the AI assistant to make decisions about other people (such as screening job candidates);
 7. send spam or resell access to the Service;
-8. breach the terms of the AI provider or of GitHub when you use them through the Service.
+8. breach the terms of the AI provider or of GitHub when you use them through the Service;
+9. use workflows to send spam, attack other services, circumvent their security or limits, scrape other people's content in bulk, or serve content on the Service's address that impersonates other services (phishing);
+10. store passwords, keys or tokens in credentials that you have no right to use.
 
 ## 8. AI assistant {#ai}
 
@@ -62,11 +68,13 @@ In particular, you must not:
 2. The assistant uses the language model of **the AI provider you chose and configured** in your Account settings. The conversation, and data the assistant reads from open tools and pages at your request, are sent to that AI provider. That provider's terms and privacy policy apply to this transmission and processing; it may be located outside the European Economic Area. Any fees charged by the AI provider are yours.
 3. The assistant's answers may be wrong, incomplete or out of date. At your request it can act in your tools, within the trust mode you chose; irreversible actions require your confirmation. Check results before you rely on them.
 4. If you publish AI-generated text on matters of public interest, you may have to disclose that it was generated artificially (Article 50(4) of the AI Act).
+5. AI nodes in workflows (such as AI Agent) send the workflow's data to the AI provider named in the node's profile or credential; sections 8.2 and 8.3 apply accordingly. A workflow runs without you watching: you are responsible for what the workflow and the model do on your behalf.
+6. If your workflow lets other people communicate with an AI model (for example it answers messages through a webhook), you tell them that they are communicating with an AI system (Article 50(1) of the AI Act).
 
 ## 9. Your Content {#content}
 
 1. You keep all rights to your Content.
-2. You grant the Operator a free, non-exclusive licence, without territorial limits, for as long as the Content is stored in the Service and **only to provide the Service**, covering: storing and copying it (on the Operator's storage, backups), changing its format (such as document conversion, PDF, OCR), displaying it to you, and sending it to services you choose (AI provider, GitHub, e-mail). The licence ends when the Content is deleted, subject to the backups described in the privacy notice.
+2. You grant the Operator a free, non-exclusive licence, without territorial limits, for as long as the Content is stored in the Service and **only to provide the Service**, covering: storing and copying it (on the Operator's storage, backups), changing its format (such as document conversion, PDF, OCR), displaying it to you, and sending it to services you choose (AI provider, GitHub, e-mail, the addresses and services your workflows contact). The licence ends when the Content is deleted, subject to the backups described in the privacy notice.
 3. You confirm that you have the right to process your Content in the Service.
 4. The Operator does not review Content and has no general obligation to monitor it (Article 8 DSA). Content is stored encrypted.
 
@@ -86,7 +94,7 @@ In particular, you must not:
 
 ## 12. Liability {#liability}
 
-1. To the extent permitted by law, the Operator is liable only for damage caused intentionally or through gross negligence. In particular the Operator is not liable for: data lost through failures, interruptions of the Service, the content of the AI assistant's answers and the tools' results, third-party services (AI provider, GitHub, Google), the consequences of how you use results, and fees charged by your AI provider.
+1. To the extent permitted by law, the Operator is liable only for damage caused intentionally or through gross negligence. In particular the Operator is not liable for: data lost through failures, interruptions of the Service, the content of the AI assistant's answers and the tools' results, third-party services (AI provider, GitHub, Google and the services your workflows contact), the consequences of what your workflows do, how the Craft apps (third-party software) work, the consequences of how you use results, and fees charged by your AI provider.
 2. Section 12.1 does not limit liability where mandatory law does not allow it, including for damage caused intentionally.
 3. You are responsible for breaches of these Terms and of the law when you use the Service.
 
@@ -106,9 +114,15 @@ In particular, you must not:
 1. The Operator may change these Terms for good reason, in particular changes in the law, changes to the Service's features, or security.
 2. The Operator announces a change by e-mail and in the Service at least **{{changeNoticeDays}} days** before it takes effect. If you do not accept it, you can end the contract by deleting your Account before that date. Continuing to use the Service after the change takes effect means you accept it.
 3. Changes required by law, or urgently needed for security, may take effect immediately.
+4. Every version of these Terms and of the privacy notice has a label (an edition and a fingerprint, a short code computed from the full text) and a publication date, shown at the bottom of the page. Earlier versions remain available in the Service, and your Account settings show the version you accepted. A new version applies at once to Accounts created after it was published, and to Accounts created earlier when the period in section 15.2 has passed, unless section 15.3 applies; until then the previous version applies to them.
 
 ## 16. Final provisions {#final}
 
 1. Polish law applies to the contract. Disputes are settled by the court competent under the general rules.
 2. These Terms do not exclude or limit the protection given to a consumer by the mandatory law of the country where they habitually reside, where that law applies.
 3. If one provision is invalid, the others remain valid.
+
+## 17. Change history {#history}
+
+- **Edition 2** (22 October 2026, {{siteName}} 0.8.0): adds workflows and the Craft apps (sections 2, 4.4–4.5), rules for workflows (7.9–7.10), AI nodes (8.5–8.6), extends the licence and the liability exclusions to workflows and the Craft apps (9.2, 12.1), and describes document versions (15.4).
+- **Edition 1** (21 October 2026, {{siteName}} 0.1): first version.

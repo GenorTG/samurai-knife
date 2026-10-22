@@ -5,7 +5,7 @@ import { loadApp } from "@/lib/github-app/config";
 import { back, requestBase } from "@/lib/github-app/http";
 import { clearStateCookie, exchangeCode, GithubFlowError, identity, STATE_COOKIE, takeFlow, userInstallations } from "@/lib/github-app/oauth";
 import { linkInstallations } from "@/lib/site/service";
-import { legalVersion } from "@/lib/legal/legal";
+import { legalVersion, recordLegalVersion } from "@/lib/legal/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +45,7 @@ export async function GET(request: Request): Promise<Response> {
     }
     // A new account needs the Terms accepted on the sign-up page, in the version that is current now.
     const accepted = flow.purpose === "register" && flow.terms ? flow.terms : null;
+    if (accepted) recordLegalVersion();
     const result = signInWithGithub(who, clientIp(request), accepted, legalVersion());
     if (result.kind === "refused") {
       const page = result.code === "terms_required" || result.code === "terms_changed" ? "/register" : "/login";

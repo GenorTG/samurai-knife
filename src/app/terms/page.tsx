@@ -7,5 +7,6 @@ export const dynamic = "force-dynamic";
 /** Public in both modes (no requireSignIn): the text must be readable before an account exists. */
 export default async function Page({ searchParams }: PageProps<"/terms">) {
   const params = await searchParams;
-  return <LegalDocument doc="terms" lang={typeof params.lang === "string" ? params.lang : undefined} />;
+  const text = (name: string) => (typeof params[name] === "string" ? (params[name] as string) : undefined);
+  return <LegalDocument doc="terms" lang={text("lang")} version={text("version")} edition={text("edition")} />;
 }
