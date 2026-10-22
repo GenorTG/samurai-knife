@@ -63,3 +63,54 @@ Per account, sealed (`writeAccountFile`), counted in the account's storage quota
 `$KNIFE_DATA_DIR/workflows/<account>/` with `workflows/<id>.json`, `runs/<workflowId>/<runId>.json` (kept: the last 100
 per workflow and 14 days by default), `credentials.json`, `tables/` (Data Table node), `static.json` (Remove Duplicates
 across runs, polling cursors).
+
+## Code map
+
+- `src/lib/workflows/types.ts` model (zod), `catalog/` node metadata (isomorphic), `nodes/` implementations (worker
+  only), `engine/` executor + expressions + sandbox prelude, `sandbox/quickjs.ts`, `credential-types.ts`,
+  `validate.ts`, `editor-model.ts`, `import.ts` (n8n exports), `client.ts` (browser API client).
+- `src/lib/workflows/worker/`: the worker process (`main.ts`, `http.ts`, `protocol.ts`, `hooks.mjs` resolution hooks).
+  It runs the TypeScript sources with Node's type stripping, not a bundle: code it imports uses erasable TypeScript
+  only (no enums, namespaces, parameter properties) and explicit `…/index` imports for directories.
+- `src/lib/workflows/server/`: `store.ts` (sealed per-account files), `trigger-index.ts`, `runner.ts` (worker processes,
+  gate, live events), `hooks.ts` (webhook + resume routes), `scheduler.ts`, `oauth.ts`, `http.ts` (route errors).
+- `src/app/api/workflows/…`, `src/app/api/hooks/…`, `src/app/api/hooks-test/…`; UI `src/tools/workflows/` (suite
+  `workflows`, tabs `editor` and `credentials`).
+
+## API
+
+| Route | Does |
+| --- | --- |
+| `GET/POST /api/workflows` | list (workflows, credential hints, queue) / `{action:"create"}` |
+| `GET/PUT/DELETE /api/workflows/<id>` | read (with webhook URLs, recent runs) / save (`version` must match, 409 otherwise; `active` activates) / delete |
+| `POST /api/workflows/<id>/run` | `{startNode?, destinationNode?, draft?, items?, wait?}` -> 202 `{runId}` or, with `wait`, the result |
+| `GET /api/workflows/<id>/runs`, `GET/POST/DELETE …/runs/<runId>` | history; one run (node data trimmed); `{action:"cancel"}`; delete |
+| `GET …/runs/<runId>/events?after=N` | live progress (long poll, 20 s) |
+| `POST/DELETE /api/workflows/<id>/listen` | wait (about 110 s) for one call of a test URL, which runs the posted draft |
+| `POST /api/workflows/<id>/token` | new webhook URLs |
+| `GET/POST /api/workflows/credentials` | hints / create, update (blank secret = keep), delete |
+| `GET /api/workflows/oauth/start?credential=`, `…/oauth/callback` | OAuth2 with the user's own app (PKCE) |
+| `* /api/hooks/<token>/<path>`, `* /api/hooks-test/<token>/<path>`, `GET/POST /api/hooks/resume/<token>` | webhooks, test webhooks, Wait resume |
+
+## Limits (environment)
+
+`KNIFE_WF_WORKERS` (4 worker processes at once), `KNIFE_WF_PER_ACCOUNT` (2), `KNIFE_WF_QUEUE` (50 waiting runs) and
+`KNIFE_WF_QUEUE_PER_ACCOUNT` (10), `KNIFE_WF_TIMEOUT_SEC` (300 per run), `KNIFE_WF_HEAP_MB` (512 per worker),
+`KNIFE_WF_BLOB_MB` (128 of files per run), `KNIFE_WF_HOOK_MAX_BYTES` (16 MB request body), `KNIFE_WF_HOOK_IP_PER_MIN`
+(300), `KNIFE_WF_HOOK_PER_MIN` (120 per workflow), `KNIFE_WF_RUNS_PER_HOUR` (1000 triggered runs per account),
+`KNIFE_WF_SCHEDULER=off` (no schedules or timed resumes in this process). Sandbox: 64 MB heap, 256 KB stack, Code node
+up to 60 s, 2 s per expression, 1 s per regex in a condition. Engine: 5000 node executions, 50,000 items and about
+64 MB per node output, sub-workflows 5 deep.
+
+## Security notes
+
+- The worker's flags (`workerExecArgv` in `runner.ts`): `--permission`, `--allow-fs-read=<app root, node_modules>`,
+  `--allow-net`, `--max-old-space-size`, `--disallow-code-generation-from-strings`; started with `spawn` + an IPC slot
+  (a `fork(path)` call would be traced into the Next bundle). `tests/workflow_runner.test.mjs` runs a probe under the
+  same flags: writes, reads outside the app, child processes, worker threads and `eval` are refused.
+- Webhook answers: the caller's `Cookie` is dropped before the run sees the request; `Set-Cookie`, CSP, HSTS, framing
+  and CORS-credential headers from a run are dropped; every answer carries `Content-Security-Policy: sandbox`. In public
+  mode a non-admin's workflow answers HTML/SVG/XML as `text/plain` (no pages on the instance's domain).
+- A resume URL is claimed before its run starts (one resume per URL); disabled accounts run nothing; when the account's
+  storage is full a run is kept without its node data (a waiting run fails instead).
+- Run history counts toward the quota (area `workflows`).

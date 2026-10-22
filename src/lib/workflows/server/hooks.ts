@@ -6,17 +6,20 @@
  * The routes share the app's origin, so: the caller's `Cookie` header never reaches the run (a browser visiting a
  * hook URL would otherwise hand its Smart Knife session to whoever wrote the workflow), a run can never set a cookie,
  * and every answer is served under `Content-Security-Policy: sandbox` (an HTML answer renders as an opaque origin
- * without scripts: no access to the app's pages or APIs).
+ * without scripts: no access to the app's pages or APIs). In public mode a non-admin's workflow cannot answer with a
+ * page at all (HTML, SVG and XML go out as text/plain): no phishing pages on the instance's domain.
  */
 import { timingSafeEqual } from "node:crypto";
 import { readBodyCapped } from "@/lib/accounts/http";
+import { isPublicMode } from "@/lib/accounts/mode";
+import { getAccount } from "@/lib/accounts/store";
 import { clientIp } from "@/lib/accounts/network";
 import { consumeLimits, LIMITS } from "@/lib/accounts/rate-limit";
 import { nodeMeta } from "../catalog/index";
 import type { HookResponse, Item, Workflow, WorkflowNode } from "../types";
 import { matchHookPath } from "../validate";
 import { appBaseUrl, startRun } from "./runner";
-import { findByTokenHash, findWaitByResumeHash } from "./trigger-index";
+import { addWait, findByTokenHash, findWaitByResumeHash, removeWait } from "./trigger-index";
 import { getCredential, getRun, getWorkflow, tokenHash } from "./store";
 import type { BlobPayload } from "../worker/protocol";
 import { randomBytes } from "node:crypto";
@@ -31,10 +34,21 @@ const SAFE_HEADERS: [string, string][] = [
   ["Cache-Control", "no-store"],
 ];
 
-function answer(response: HookResponse): Response {
+const RENDERED = /^\s*(?:text\/html|application\/xhtml\+xml|image\/svg\+xml|text\/xml|application\/xml|[a-z]+\/[a-z.+-]*\+xml)\b/i;
+
+/** May this account's workflows answer webhooks with pages (HTML/SVG/XML)? Private mode and admins only. */
+function mayRender(account: string): boolean {
+  return !isPublicMode() || getAccount(account)?.role === "admin";
+}
+
+function answer(response: HookResponse, rich = false): Response {
   const headers = new Headers();
   for (const [name, value] of Object.entries(response.headers)) if (!BLOCKED_RESPONSE_HEADERS.test(name)) headers.set(name, value);
   for (const [name, value] of SAFE_HEADERS) headers.set(name, value);
+  if (!rich) {
+    if (RENDERED.test(headers.get("content-type") ?? "")) headers.set("content-type", "text/plain; charset=utf-8");
+    headers.set("Content-Security-Policy", "sandbox; default-src 'none'; form-action 'none'; frame-ancestors 'none'");
+  }
   const status = response.status >= 200 && response.status <= 599 ? response.status : 200;
   const body = [204, 205, 304].includes(status) ? null : response.bodyBase64 !== undefined ? Buffer.from(response.bodyBase64, "base64") : (response.body ?? null);
   return new Response(body, { status, headers });
@@ -251,7 +265,7 @@ export async function handleHook(request: Request, token: string, path: string, 
   }
   if (mode === "responseNode") {
     const first = await Promise.race([respondedPromise, run.then(() => null, () => null)]);
-    if (first) return answer(first);
+    if (first) return answer(first, mayRender(entry.account));
     return jsonAnswer(500, { error: "no_response", message: "The workflow finished without reaching a Respond to Webhook node." });
   }
   try {
@@ -274,11 +288,17 @@ export async function handleResume(request: Request, token: string): Promise<Res
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) return notFound();
   const wait = findWaitByResumeHash(tokenHash(token));
   if (!wait) return jsonAnswer(404, { error: "not_waiting", message: "No run waits for this address (it already resumed, expired or was deleted)." });
+  // Claimed at once (no await before this): a second call to the same URL finds nothing to resume.
+  removeWait(wait.runId);
   const workflow = getWorkflow(wait.account, wait.workflowId);
   const record = workflow ? getRun(wait.account, wait.workflowId, wait.runId) : null;
   if (!workflow || !record || record.status !== "waiting") return notFound();
   const built = await requestItem(request, new URL(request.url), {}, false);
-  if (built instanceof Response) return built;
+  if (built instanceof Response) {
+    // A refused body (too large, bad JSON) leaves the run waiting for a proper call.
+    addWait(wait);
+    return built;
+  }
   void startRun({ accountId: wait.account, workflow, mode: "resume", resume: { record, items: [built.item] }, triggerBlobs: built.blobs }).catch((error: unknown) =>
     console.error(`[workflows] resume failed: ${error instanceof Error ? error.message : String(error)}`),
   );

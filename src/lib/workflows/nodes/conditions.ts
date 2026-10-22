@@ -20,6 +20,23 @@ export interface ConditionSet {
 export interface ConditionOptions {
   ignoreCase?: boolean;
   looseTypes?: boolean;
+  /** Runs a user regex (the workflow worker passes a sandboxed, time-limited one; the default is the host engine). */
+  regex?: (pattern: string, flags: string, text: string) => boolean;
+}
+
+/** `/body/flags` or a bare pattern -> its source and flags (`g` dropped: `test` must not keep state). */
+export function regexParts(pattern: unknown, ignoreCase: boolean): { source: string; flags: string } {
+  const text = String(pattern ?? "");
+  const literal = /^\/(.*)\/([dgimsuvy]*)$/s.exec(text);
+  const source = literal ? literal[1] : text;
+  let flags = literal ? literal[2].replace("g", "") : "";
+  if (ignoreCase && !flags.includes("i")) flags += "i";
+  try {
+    new RegExp(source, flags);
+  } catch (error) {
+    throw new NodeError(`Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return { source, flags };
 }
 
 export const OPERATORS: Record<string, string[]> = {
@@ -68,14 +85,9 @@ function asBoolean(value: unknown, loose: boolean, side: string): boolean {
   throw new NodeError(`The ${side} value ${JSON.stringify(value)} is not true/false.`);
 }
 
-function regexOf(pattern: unknown, ignoreCase: boolean): RegExp {
-  const text = String(pattern ?? "");
-  const literal = /^\/(.*)\/([dgimsuvy]*)$/s.exec(text);
-  try {
-    return literal ? new RegExp(literal[1], literal[2].replace("g", "") + (ignoreCase && !literal[2].includes("i") ? "i" : "")) : new RegExp(text, ignoreCase ? "i" : "");
-  } catch (error) {
-    throw new NodeError(`Invalid regular expression: ${error instanceof Error ? error.message : String(error)}`);
-  }
+function regexTest(pattern: unknown, ignoreCase: boolean, text: string, options: ConditionOptions): boolean {
+  const { source, flags } = regexParts(pattern, ignoreCase);
+  return options.regex ? options.regex(source, flags, text) : new RegExp(source, flags).test(text);
 }
 
 export function evaluateCondition(condition: Condition, options: ConditionOptions = {}): boolean {
@@ -111,8 +123,8 @@ export function evaluateCondition(condition: Condition, options: ConditionOption
       case "notStartsWith": return !l.startsWith(r);
       case "endsWith": return l.endsWith(r);
       case "notEndsWith": return !l.endsWith(r);
-      case "regex": return regexOf(r, ic).test(l);
-      case "notRegex": return !regexOf(r, ic).test(l);
+      case "regex": return regexTest(r, ic, l, options);
+      case "notRegex": return !regexTest(r, ic, l, options);
     }
   }
   if (type === "number") {

@@ -82,11 +82,20 @@ export class Sandbox {
   private readonly limits: SandboxLimits;
   private broken = false;
   private disposed = false;
+  /** The time limit the current deadline came from (for the error message). */
+  private limitMs: number;
 
   constructor(runtime: QuickJSRuntime, ctx: QuickJSContext, limits: SandboxLimits) {
     this.runtime = runtime;
     this.ctx = ctx;
     this.limits = limits;
+    this.limitMs = limits.timeoutMs;
+  }
+
+  /** A fresh deadline from now (per evaluation: each expression of a node gets its own time). */
+  setDeadline(ms: number): void {
+    this.limitMs = ms;
+    this.runtime.setInterruptHandler(shouldInterruptAfterDeadline(Date.now() + ms));
   }
 
   /** Makes `globalThis[name]` a deep copy of `value` (JSON round trip). */
@@ -210,7 +219,7 @@ export class Sandbox {
     const message = typeof record?.message === "string" ? record.message : typeof dumped === "string" ? dumped : JSON.stringify(dumped) ?? "error";
     if (name === "InternalError" || message === "interrupted") {
       this.broken = true;
-      if (message === "interrupted") return new SandboxError("timeout", `The code ran longer than ${this.limits.timeoutMs / 1000} s.`);
+      if (message === "interrupted") return new SandboxError("timeout", `The code ran longer than ${this.limitMs / 1000} s.`);
       if (/out of memory/i.test(message)) return new SandboxError("memory", `The code used more than ${Math.round(this.limits.memoryBytes / 1048576)} MB.`);
       if (/stack overflow/i.test(message)) return new SandboxError("stack", "The code recursed too deeply.");
       return new SandboxError("code", message);

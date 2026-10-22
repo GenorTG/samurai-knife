@@ -5,6 +5,7 @@
  * days / weeks / months at a time of day, or a cron expression, all in the workflow's time zone.
  */
 import { consumeLimits, LIMITS } from "@/lib/accounts/rate-limit";
+import { getAccount } from "@/lib/accounts/store";
 import { matchesCronDate, parseCron, type ParsedCron } from "@/lib/cron";
 import type { Item } from "../types";
 import { removeWait, activeSchedules, dueWaits, lastFired, markFired } from "./trigger-index";
@@ -114,6 +115,7 @@ const checked = new Map<string, number>();
 export async function schedulerTick(now = Date.now()): Promise<number> {
   let started = 0;
   for (const entry of activeSchedules()) {
+    if (getAccount(entry.account)?.status !== "active") continue;
     const zone = entry.timezone || serverZone();
     for (const schedule of entry.schedules) {
       schedule.rules.forEach((rule, index) => {

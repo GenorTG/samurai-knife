@@ -1,6 +1,7 @@
 /** Triggers and flow-control node implementations (metadata: src/lib/workflows/catalog/flow.ts). */
 import { NodeError, type ExecuteContext, type NodeImpl, type NodeOutcome } from "../engine/node-api";
 import type { HookResponse, Item, JsonObject } from "../types";
+import { SandboxError } from "../sandbox/quickjs";
 import { evaluateConditions, type ConditionOptions } from "./conditions";
 import { getPath, isPlainObject, jsonParam, keyValues, stableKey } from "./util";
 
@@ -12,32 +13,61 @@ const passTrigger = (type: string): NodeImpl => ({
   },
 });
 
-function conditionOptions(ctx: ExecuteContext, index: number): ConditionOptions {
+function conditionOptions(ctx: ExecuteContext, index: number, regex?: ConditionOptions["regex"]): ConditionOptions {
   const options = ctx.param<Record<string, unknown>>("options", index) ?? {};
-  return { ignoreCase: Boolean(options.ignoreCase), looseTypes: Boolean(options.looseTypes) };
+  return { ignoreCase: Boolean(options.ignoreCase), looseTypes: Boolean(options.looseTypes), regex };
+}
+
+/**
+ * User regexes of the condition nodes run in the sandbox with 1 s each (QuickJS checks its deadline inside the regex
+ * engine), never on the worker's own thread, where a catastrophic pattern would hold the worker until the hard kill.
+ */
+async function withRegex<T>(ctx: ExecuteContext, body: (regex: ConditionOptions["regex"]) => T): Promise<T> {
+  if (!/"[a-zA-Z]+:(?:not)?[rR]egex"/.test(JSON.stringify(ctx.node.parameters))) return body(undefined);
+  const box = await ctx.openSandbox({ timeoutMs: 10_000 });
+  try {
+    box.exec("globalThis.__re = (s, f, t) => new RegExp(s, f).test(t);");
+    const regex = (source: string, flags: string, text: string): boolean => {
+      box.setJson("__a", [source, flags, text]);
+      box.setDeadline(1000);
+      try {
+        return box.run("__re(__a[0], __a[1], __a[2])") === true;
+      } catch (error) {
+        if (error instanceof SandboxError && error.kind !== "code") throw new NodeError(`The regular expression /${source}/ took too long on this item (over 1 s).`);
+        throw error;
+      }
+    };
+    return body(regex);
+  } finally {
+    box.dispose();
+  }
 }
 
 const ifNode: NodeImpl = {
   type: "core.if",
   async execute(ctx) {
-    const yes: Item[] = [];
-    const no: Item[] = [];
-    ctx.items.forEach((item, index) => {
-      (evaluateConditions(ctx.param("conditions", index), conditionOptions(ctx, index)) ? yes : no).push({ ...item, pairedItem: index });
+    return withRegex(ctx, (regex) => {
+      const yes: Item[] = [];
+      const no: Item[] = [];
+      ctx.items.forEach((item, index) => {
+        (evaluateConditions(ctx.param("conditions", index), conditionOptions(ctx, index, regex)) ? yes : no).push({ ...item, pairedItem: index });
+      });
+      return [yes, no];
     });
-    return [yes, no];
   },
 };
 
 const filterNode: NodeImpl = {
   type: "core.filter",
   async execute(ctx) {
-    const kept: Item[] = [];
-    const discarded: Item[] = [];
-    ctx.items.forEach((item, index) => {
-      (evaluateConditions(ctx.param("conditions", index), conditionOptions(ctx, index)) ? kept : discarded).push({ ...item, pairedItem: index });
+    return withRegex(ctx, (regex) => {
+      const kept: Item[] = [];
+      const discarded: Item[] = [];
+      ctx.items.forEach((item, index) => {
+        (evaluateConditions(ctx.param("conditions", index), conditionOptions(ctx, index, regex)) ? kept : discarded).push({ ...item, pairedItem: index });
+      });
+      return ctx.param<boolean>("discardedOutput") ? [kept, discarded] : [kept, []];
     });
-    return ctx.param<boolean>("discardedOutput") ? [kept, discarded] : [kept, []];
   },
 };
 
@@ -61,10 +91,11 @@ const switchNode: NodeImpl = {
     const options = ctx.param<Record<string, unknown>>("options") ?? {};
     const fallback = options.fallbackOutput === "extra";
     const outputs: Item[][] = Array.from({ length: Math.max(1, ruleCount) + (fallback ? 1 : 0) }, () => []);
+    return withRegex(ctx, (regex) => {
     ctx.items.forEach((item, index) => {
       const rules = ctx.param<unknown[]>("rules", index) ?? [];
       const opts = ctx.param<Record<string, unknown>>("options", index) ?? {};
-      const conditionOpts = { ignoreCase: Boolean(opts.ignoreCase), looseTypes: Boolean(opts.looseTypes) };
+      const conditionOpts = { ignoreCase: Boolean(opts.ignoreCase), looseTypes: Boolean(opts.looseTypes), regex };
       let matched = false;
       for (let rule = 0; rule < rules.length; rule += 1) {
         const entry = rules[rule];
@@ -76,6 +107,7 @@ const switchNode: NodeImpl = {
       if (!matched && fallback) outputs[outputs.length - 1].push({ ...item, pairedItem: index });
     });
     return outputs;
+    });
   },
 };
 

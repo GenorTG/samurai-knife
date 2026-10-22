@@ -30,6 +30,7 @@ export const WORKFLOW_LIMITS = {
   workers: () => intEnv("KNIFE_WF_WORKERS", 4, 1, 64),
   perAccount: () => intEnv("KNIFE_WF_PER_ACCOUNT", 2, 1, 32),
   queue: () => intEnv("KNIFE_WF_QUEUE", 50, 0, 10_000),
+  queuePerAccount: () => intEnv("KNIFE_WF_QUEUE_PER_ACCOUNT", 10, 0, 10_000),
   timeoutSec: () => intEnv("KNIFE_WF_TIMEOUT_SEC", 300, 5, 3600),
   heapMb: () => intEnv("KNIFE_WF_HEAP_MB", 512, 64, 8192),
   blobMb: () => intEnv("KNIFE_WF_BLOB_MB", 128, 1, 4096),
@@ -89,6 +90,10 @@ async function acquire(account: string, nested: boolean): Promise<() => void> {
   }
   if (tryTake(state, account)) return release;
   if (state.queue.length >= WORKFLOW_LIMITS.queue()) throw new RunRefusedError("Too many workflow runs are waiting; try again in a minute.");
+  // One account cannot fill the instance's queue.
+  if (state.queue.filter((waiter) => waiter.account === account).length >= WORKFLOW_LIMITS.queuePerAccount()) {
+    throw new RunRefusedError("Too many of your workflow runs are waiting already; try again in a minute.", 429);
+  }
   await new Promise<void>((resolve) => state.queue.push({ account, resolve }));
   return release;
 }
@@ -248,6 +253,8 @@ export interface RunOutcome {
 export async function startRun(options: StartRunOptions): Promise<RunOutcome> {
   const account = getAccount(options.accountId);
   if (!account) throw new RunRefusedError("Unknown account.", 404);
+  // A disabled (or not yet verified) account's schedules, webhooks and waits do not run.
+  if (account.status !== "active") throw new RunRefusedError("This account is not active.", 403);
   const depth = options.depth ?? 0;
   if (depth > WORKFLOW_LIMITS.maxDepth) throw new RunRefusedError(`Sub-workflows are nested more than ${WORKFLOW_LIMITS.maxDepth} deep.`, 400);
   const workflow = options.workflow;

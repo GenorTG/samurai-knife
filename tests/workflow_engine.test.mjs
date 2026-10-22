@@ -359,3 +359,18 @@ test("partial run up to a node; disabled nodes pass items through; sub-workflow 
   assert.deepEqual(out(sub, "Call"), [{ done: 0 }, { done: 1 }]);
   assert.equal(calls.length, 2);
 });
+
+test("a catastrophic regex in a condition stops after its time limit instead of holding the worker", async () => {
+  const started = Date.now();
+  const result = await run(
+    wf(
+      [trigger(), node("Data", "code", { jsCode: "return [{ s: 'a'.repeat(40) + '!' }]" }), node("Check", "if", { conditions: { conditions: [{ leftValue: "={{ $json.s }}", operator: "string:regex", rightValue: "^(a+)+$" }] } })],
+      [link("Start", "Data"), link("Data", "Check")],
+    ),
+  );
+  assert.equal(result.status, "error");
+  assert.match(result.error.message, /took too long/);
+  assert.ok(Date.now() - started < 8000, `${Date.now() - started} ms`);
+  const fine = await run(wf([trigger(), node("Check", "filter", { conditions: { conditions: [{ leftValue: "abc", operator: "string:regex", rightValue: "/B/i" }] } })], [link("Start", "Check")]));
+  assert.equal(fine.runData.Check[0].outputs[0].length, 1, "a normal regex still matches (flags kept)");
+});

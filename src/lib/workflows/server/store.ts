@@ -7,7 +7,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { readAccountText } from "@/lib/storage/sealed";
-import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
+import { QuotaExceededError, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, assertSegment, ensurePrivateDir, safeJoin } from "@/lib/storage/scope";
 import { nodeMeta } from "../catalog/index";
 import { credentialType, type CredentialField } from "../credential-types";
@@ -311,9 +311,22 @@ function summaryOf(record: RunRecord): RunSummary {
   return { id, workflowId, mode, status, startedAt, finishedAt, ...(error ? { error } : {}), ...(lastNode ? { lastNode } : {}), ...(customData && Object.keys(customData).length ? { customData } : {}), ...(waitUntil ? { waitUntil } : {}) };
 }
 
+/** Stores a run (node data trimmed). When the account's storage is full, the run is kept without its node data. */
 export function saveRun(accountId: string, record: RunRecord): void {
   const dir = runsDir(accountId, record.workflowId);
-  writeJson(accountId, runPath(accountId, record.workflowId, record.id), { ...record, runData: trimRunData(record.runData) }, false);
+  const path = runPath(accountId, record.workflowId, record.id);
+  try {
+    writeJson(accountId, path, { ...record, runData: trimRunData(record.runData) });
+  } catch (error) {
+    if (!(error instanceof QuotaExceededError)) throw error;
+    // Waiting runs need their state to resume; without room they fail rather than wait forever.
+    const failed = record.status === "waiting" ? { status: "error" as const, error: { message: "Your storage is full: the waiting run could not be kept." }, finishedAt: new Date().toISOString() } : {};
+    const { waiting: _w, waitingBlobs: _b, ...rest } = record;
+    void _w;
+    void _b;
+    writeJson(accountId, path, { ...rest, ...failed, runData: {}, customData: { ...record.customData, storage: "full: node data not kept" } }, false);
+    record = { ...record, ...failed };
+  }
   const indexPath = safeJoin(dir, "index.json");
   const index = readJson<RunSummary[]>(accountId, indexPath, []).filter((entry) => entry.id !== record.id);
   index.unshift(summaryOf(record));

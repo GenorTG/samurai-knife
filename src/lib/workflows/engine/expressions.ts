@@ -97,6 +97,9 @@ export interface ScopeData {
   meta: ScopeMeta;
 }
 
+/** Time limit of one expression evaluation (one item, one parameter). */
+const EXPRESSION_MS = 2_000;
+
 const SCOPE_NAMES = "$json, $binary, $itemIndex, $runIndex, $input, $, $node, $items, $now, $today, $workflow, $execution, $vars, $prevNode, $if, $ifEmpty, $min, $max";
 
 function formatPart(value: unknown): string {
@@ -122,7 +125,7 @@ export class ExpressionScope {
   }
 
   static async open(data: ScopeData, limits: Partial<SandboxLimits> = {}): Promise<ExpressionScope> {
-    const box = await openSandbox({ timeoutMs: 5_000, ...limits });
+    const box = await openSandbox({ timeoutMs: 10_000, ...limits });
     try {
       box.setJson("__data", data);
       box.exec(SANDBOX_PRELUDE);
@@ -152,6 +155,7 @@ export class ExpressionScope {
         this.box.exec(`__fx[${slot}] = function (__i) { const { ${SCOPE_NAMES} } = __scope(__i); return (\n${code}\n); };`);
         this.compiled.set(code, slot);
       }
+      this.box.setDeadline(EXPRESSION_MS);
       return this.box.run(`__fx[${slot}](${itemIndex})`);
     } catch (error) {
       if (error instanceof SandboxError) {
