@@ -495,4 +495,14 @@ html[data-page-fullscreen] {
     flex: 1;
     flex-direction: column;
   }
+
+  /* SuiteShell adds a plain wrapper between <main> and its tab panel. Make
+     that wrapper participate in the height chain too; otherwise the iframe's
+     flex height is indefinite and Craft paints its controls over a black void. */
+  main:has([data-craft-app]) > div:has([role="tabpanel"]) {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
 }
