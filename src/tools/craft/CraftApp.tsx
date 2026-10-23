@@ -7,7 +7,6 @@ import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
 import { craftFileDownloadUrl, ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, saveCraftFile, touchService, type CraftFile } from "@/tools/sidecars/client";
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
 import { useSidecar } from "@/tools/sidecars/useSidecar";
-import { CraftNotices } from "./CraftNotices";
 import { CraftUpdates } from "./CraftUpdates";
 import { CraftFilesDrawer, CraftOpenChooser } from "./CraftFiles";
 import { useCraftBridge, type OpenRequest, type PickedFile, type SaveRequest } from "./useCraftBridge";
@@ -141,7 +140,6 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
   const [webgl, setWebgl] = useState(false);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [noticesOpen, setNoticesOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [note, setNote] = useState<SavedNote>(null);
@@ -199,15 +197,6 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
     }
     wasFull.current = fullscreen.active;
   }, [fullscreen.active]);
-  // Once the app is up, bring the whole workspace into view (the page header scrolls away; the tabs stay one scroll up).
-  // html scroll-padding-top (4.5rem, the sticky top bar) places it; the height above leaves 0.5rem under it.
-  const scrolled = useRef(false);
-  useEffect(() => {
-    if (loadedSrc === null || scrolled.current) return;
-    scrolled.current = true;
-    if (!fullscreen.active && window.scrollY < 8) workspace.current?.scrollIntoView({ block: "start" });
-  }, [loadedSrc, fullscreen.active]);
-
   const notes: ReactNode[] = [];
   if (bridgeState.kind === "failed") {
     notes.push(
@@ -245,7 +234,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
         aria-hidden="true"
         tabIndex={-1}
       />
-      <div ref={workspace} className="flex h-[calc(100dvh-5rem)] min-h-[560px] flex-col gap-2" data-craft-app={app.id} data-wide="true">
+      <div ref={workspace} className="flex h-full min-h-0 flex-col gap-2" data-craft-app={app.id} data-wide="true">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-tool border border-line bg-surface px-3 py-2 shadow-card">
           <h2 className="shrink-0 text-[13px] font-semibold tracking-tight text-ink">
             {app.name} <span className="font-normal text-faint">{stage.version}</span>
@@ -281,6 +270,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
             <Button size="sm" aria-pressed={fullscreen.active} title={fullscreen.active ? "Back to the page (Esc)" : "Fill the page with the app; your files keep working"} onClick={fullscreen.active ? fullscreen.exit : fullscreen.enter}>
               {fullscreen.active ? "Exit full screen" : "Full screen"}
             </Button>
+            <ButtonLink href="/credits" external size="sm">Credits</ButtonLink>
             {/* A new tab of this page (full screen), never the bare app: only here do Save and Open reach the account. */}
             <ButtonLink href={`/tools/artcraft?tab=${encodeURIComponent(app.id)}&full=1`} external size="sm">
               Open in new tab
@@ -288,7 +278,6 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
           </div>
         </div>
         {notes.length ? <div className="space-y-1 text-xs text-faint">{notes}</div> : null}
-        <CraftNotices app={app} open={noticesOpen} onClose={() => setNoticesOpen(false)} />
         {canManage ? <CraftUpdates open={updatesOpen} onClose={() => setUpdatesOpen(false)} /> : null}
         <CraftFilesDrawer open={filesOpen} onClose={() => setFilesOpen(false)} highlight={note?.kind === "saved" ? note.file.id : null} />
         <CraftOpenChooser
@@ -323,20 +312,6 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
         ) : (
           <div data-page-fill className="min-h-0 w-full flex-1 rounded-tool border border-line bg-black" aria-hidden="true" />
         )}
-        <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-faint" data-craft-credit>
-          <span>Save and Export keep files in your account (My files) · Open offers your files or this computer ·</span>
-          <span>
-            {app.name} {stage.version} by the ArtCraft team and contributors · {app.license} ·
-          </span>
-          <a className="underline underline-offset-2 hover:text-ink" href={app.repo} target="_blank" rel="noopener noreferrer">
-            source
-          </a>
-          <span>·</span>
-          <button type="button" className="cursor-pointer underline underline-offset-2 hover:text-ink" onClick={() => setNoticesOpen(true)}>
-            licences &amp; notices
-          </button>
-          <span>· Not affiliated with or endorsed by the ArtCraft team.</span>
-        </p>
       </div>
     </>
   );

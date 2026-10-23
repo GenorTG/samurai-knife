@@ -467,3 +467,32 @@ html[data-page-fullscreen] {
   height: auto;
   min-height: 0;
 }
+
+/* Embedded workspaces use the space below the global 3.5rem navigation. Hide
+   the redundant suite picker and tool heading only while their iframe is open. */
+@media (min-width: 768px) {
+  main:has([data-craft-app]),
+  main:has([data-office-editor]) {
+    display: flex;
+    height: calc(100dvh - 3.5rem);
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.5rem;
+  }
+
+  main:has([data-craft-app]) > header,
+  main:has([data-office-editor]) > header,
+  main:has([data-craft-app]) .sk-tablist,
+  main:has([data-office-editor]) .sk-tablist {
+    display: none;
+  }
+
+  main:has([data-craft-app]) [role="tabpanel"],
+  main:has([data-office-editor]) [role="tabpanel"] {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+}

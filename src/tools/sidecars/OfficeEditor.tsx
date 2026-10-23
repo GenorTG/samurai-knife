@@ -214,7 +214,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           : `Could not open the editor: ${phase.message}`;
 
   return (
-    <div ref={panel} className="space-y-3" data-wide="true">
+    <div ref={panel} className="flex h-full min-h-0 flex-col gap-2" data-wide="true" data-office-editor>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-ink">{doc.name}</h2>
@@ -258,7 +258,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
           {liveLabel(live)}
         </p>
       ) : null}
-      <div ref={holder} data-page-fill className={phase.kind === "error" ? "hidden" : "h-[calc(100vh-15rem)] min-h-[32rem] overflow-hidden rounded-tool border border-line bg-white"} />
+      <div ref={holder} data-page-fill className={phase.kind === "error" ? "hidden" : "min-h-0 w-full flex-1 overflow-hidden rounded-tool border border-line bg-white"} />
     </div>
   );
 }
