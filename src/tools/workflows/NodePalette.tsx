@@ -18,7 +18,7 @@ export function NodePalette({ onAdd, onClose }: { onAdd: (meta: NodeMeta) => voi
     <aside aria-label="Nodes" className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-line bg-surface" data-node-palette>
       <div className="flex items-center gap-2 border-b border-line px-3 py-2">
         <p className="flex-1 font-mono text-[11px] font-semibold tracking-[0.14em] text-faint uppercase">Nodes</p>
-        <button type="button" onClick={onClose} aria-label="Hide the node list" title="Hide the node list" className="cursor-pointer rounded px-1.5 text-faint hover:bg-raised hover:text-ink">
+        <button autoComplete="off" type="button" onClick={onClose} aria-label="Hide the node list" title="Hide the node list" className="cursor-pointer rounded px-1.5 text-faint hover:bg-raised hover:text-ink">
           «
         </button>
       </div>
@@ -43,6 +43,7 @@ export function NodePalette({ onAdd, onClose }: { onAdd: (meta: NodeMeta) => voi
           <li key={meta.type}>
             {header ? <p className="px-2 pt-3 pb-1 font-mono text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">{header}</p> : null}
             <button
+              autoComplete="off"
               type="button"
               draggable
               onDragStart={(event) => {

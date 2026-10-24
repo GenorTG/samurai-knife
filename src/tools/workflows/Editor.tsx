@@ -114,6 +114,7 @@ function tidyPositions(nodes: WorkflowNode[], connections: Connection[]): Workfl
 function ToolButton({ label, onClick, disabled, children, pressed }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode; pressed?: boolean }) {
   return (
     <button
+      autoComplete="off"
       type="button"
       aria-label={label}
       title={label}
@@ -893,7 +894,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Run history">
             {runs.map((entry) => (
               <li key={entry.id} className={cx("flex items-center gap-2 px-3 py-2", run?.runId === entry.id && "bg-accent/8")}>
-                <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => void showRun(entry.id)}>
+                <button autoComplete="off" type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => void showRun(entry.id)}>
                   <span className="flex items-center gap-2">
                     <Badge tone={entry.status === "success" ? "good" : entry.status === "error" ? "danger" : entry.status === "waiting" ? "warn" : "neutral"}>{entry.status}</Badge>
                     <span className="text-xs text-muted">{entry.mode}</span>
