@@ -468,27 +468,33 @@ html[data-page-fullscreen] {
   min-height: 0;
 }
 
-/* Embedded workspaces use the space below the global 3.5rem navigation. Hide
-   the redundant suite picker and tool heading only while their iframe is open. */
+/* Embedded workspaces use the space below the global 3.5rem navigation, without the redundant suite picker and tool
+   heading. Workspace tools (registry `workspace`, set on <main> by ToolShell) get it from the server render, so nothing
+   of the regular page shows before the app; the office editor gets it once a document is open. */
 @media (min-width: 768px) {
-  main:has([data-craft-app]),
+  main[data-workspace],
   main:has([data-office-editor]) {
     display: flex;
     height: calc(100dvh - 3.5rem);
     min-height: 0;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
     padding: 0.5rem;
   }
 
-  main:has([data-craft-app]) > header,
+  main[data-workspace]:has([data-craft-app]),
+  main:has([data-office-editor]) {
+    overflow: hidden;
+  }
+
+  main[data-workspace] > header,
   main:has([data-office-editor]) > header,
-  main:has([data-craft-app]) .sk-tablist,
+  main[data-workspace] .sk-tablist,
   main:has([data-office-editor]) .sk-tablist {
     display: none;
   }
 
-  main:has([data-craft-app]) [role="tabpanel"],
+  main[data-workspace] [role="tabpanel"],
   main:has([data-office-editor]) [role="tabpanel"] {
     display: flex;
     min-height: 0;
@@ -499,7 +505,7 @@ html[data-page-fullscreen] {
   /* SuiteShell adds a plain wrapper between <main> and its tab panel. Make
      that wrapper participate in the height chain too; otherwise the iframe's
      flex height is indefinite and Craft paints its controls over a black void. */
-  main:has([data-craft-app]) > div:has([role="tabpanel"]) {
+  main[data-workspace] > div {
     display: flex;
     min-height: 0;
     flex: 1;

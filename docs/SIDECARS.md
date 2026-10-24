@@ -505,7 +505,10 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   origin's Permissions-Policy turns both off anyway), `referrerpolicy=no-referrer`. `role=status` says "Loading <App>…" until the frame loaded, then
   "<App> loaded from <origin>." The tab is a workspace: one toolbar row (name and version, status, the save note,
   Force WebGL2, My files, Updates for admins, Full screen, Open in new tab), the app filling the window below it
-  (`100dvh` minus the top bar; the page scrolls it into view once it loads) and one credit line under it. **Full
+  (`100dvh` minus the top bar). On desktop the page is a workspace from its first paint (registry `workspace`,
+  `main[data-workspace]`): no tool heading or suite tabs (the sidebar lists the apps), and while the server is checked
+  or started the same toolbar and an empty app area stand in, so the app takes their place without a jump. Credits
+  live on `/credits`, linked from the toolbar. **Full
   screen** is in the page (ui.tsx `usePageFullscreen`): the workspace covers the top bar, sidebar and assistant, the
   app frame is not reloaded, and the file chooser and My files open over it; Exit full screen or Esc (when no drawer is
   open) comes back. Never the browser's Fullscreen API, which would show the iframe alone without Smart Knife's

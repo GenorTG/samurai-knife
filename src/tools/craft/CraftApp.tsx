@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Button, ButtonLink, Notice, usePageFullscreen } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
 import { ARTCRAFT_APPS, type SidecarSite } from "@/lib/services/definitions";
-import { craftFileDownloadUrl, ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, saveCraftFile, touchService, type CraftFile } from "@/tools/sidecars/client";
+import { craftFileDownloadUrl, ensureService, errorText, getCraftLaunch, getOp, isAdminRequired, saveCraftFile, touchService, type CraftFile, type OpView } from "@/tools/sidecars/client";
 import { OpProgress, SidecarCard } from "@/tools/sidecars/SidecarCard";
 import { useSidecar } from "@/tools/sidecars/useSidecar";
 import { CraftUpdates } from "./CraftUpdates";
@@ -90,6 +90,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   }, [ready]);
 
   const service = sidecar.service;
+  if (!service && !sidecar.error) return <CraftPlaceholder app={app} status="Checking the Craft apps server…" op={null} />;
   if (!service || !service.installed || !service.runtime.ok) {
     return (
       <SidecarCard
@@ -118,15 +119,24 @@ export default function CraftApp({ app: appId }: { app: string }) {
   }
 
   if (stage.kind !== "ready") {
-    return (
-      <div className="space-y-3">
-        <p role="status" className="text-sm text-muted">Starting the Craft apps server…</p>
-        <OpProgress op={op} />
-      </div>
-    );
+    return <CraftPlaceholder app={app} status="Starting the Craft apps server…" op={op} />;
   }
 
   return <CraftFrame app={app} stage={stage} canManage={Boolean(service.canManage)} />;
+}
+
+/** Same shape as the running workspace (toolbar + app area) while the app is not up yet, so it takes its place without a jump. */
+function CraftPlaceholder({ app, status, op }: { app: SidecarSite; status: string; op: OpView | null }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-tool border border-line bg-surface px-3 py-2 shadow-card">
+        <h2 className="shrink-0 text-[13px] font-semibold tracking-tight text-ink">{app.name}</h2>
+        <p role="status" className="min-w-0 truncate text-xs text-muted">{status}</p>
+      </div>
+      <OpProgress op={op} />
+      <div className="min-h-0 w-full flex-1 rounded-tool border border-line bg-black" aria-hidden="true" />
+    </div>
+  );
 }
 
 type SavedNote = { kind: "saved"; file: CraftFile } | { kind: "saving"; name: string } | { kind: "error"; message: string } | null;

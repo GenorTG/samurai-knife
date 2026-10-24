@@ -88,6 +88,11 @@ export interface ToolMeta {
   sidecar?: string;
   /** New and still settling: shown with a "beta" badge (page header, sidebar, launcher). Remove the flag once it is proven. */
   beta?: boolean;
+  /**
+   * The page is an app workspace (an embedded app filling the window): on desktop it renders without the tool
+   * heading and suite tabs from the first paint, so the page never shows them and then jumps (globals.css `main[data-workspace]`).
+   */
+  workspace?: boolean;
 }
 
 export const CATEGORIES: { id: ToolCategory; label: string }[] = [
@@ -1291,6 +1296,7 @@ export const TOOLS: ToolMeta[] = [
     kind: "sidecar",
     sidecar: "craft",
     beta: true,
+    workspace: true,
     // One tab per app of the `craft` sidecar (src/lib/services/definitions.ts ARTCRAFT_APPS); tab ids are the app ids.
     tabs: [
       { id: "photocraft", label: "PhotoCraft", component: "craft-photocraft", wide: true },

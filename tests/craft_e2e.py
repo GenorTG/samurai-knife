@@ -450,9 +450,12 @@ def main() -> int:
                 state = wait_app(page, app)
                 METRICS[f"{app}_start_s"] = round(time.monotonic() - t1, 1)
                 time.sleep(3)
-                view_box = page.evaluate("() => { const r = document.querySelector('[data-craft-app=%s]').getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, scrollY: Math.round(scrollY) }; }" % app)
-                check(f"{app}: the workspace is brought into view and fits the window (toolbar under the top bar, app to the bottom)",
-                      view_box["scrollY"] > 0 and 56 <= view_box["top"] <= 80 and view_box["vh"] - 24 <= view_box["bottom"] <= view_box["vh"], json.dumps(view_box))
+                view_box = page.evaluate("""() => { const r = document.querySelector('[data-craft-app=%s]').getBoundingClientRect(); const m = document.querySelector('main');
+                    const shown = (el) => !!el && getComputedStyle(el).display !== 'none';
+                    return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, scrollY: Math.round(scrollY), workspace: m.hasAttribute('data-workspace'),
+                             header: shown(m.querySelector(':scope > header')), tabs: shown(m.querySelector('.sk-tablist')) }; }""" % app)
+                check(f"{app}: the workspace fits the window without the tool heading or tabs (toolbar under the top bar, app to the bottom)",
+                      view_box["workspace"] and not view_box["header"] and not view_box["tabs"] and view_box["scrollY"] == 0 and 56 <= view_box["top"] <= 80 and view_box["vh"] - 24 <= view_box["bottom"] <= view_box["vh"], json.dumps(view_box))
                 frame_el.scroll_into_view_if_needed()
                 png = frame_el.screenshot(path=str(shots / f"10-{app}.png"))
                 colours = drawn(png)
@@ -460,18 +463,8 @@ def main() -> int:
                 bad = [line for line in console if BAD_CONSOLE.search(line) and not BENIGN.search(line)]
                 check(f"{app}: no console message about CSP, MIME or the sandbox", not bad, " | ".join(bad[:3])[:400])
                 METRICS[f"{app}_console_errors"] = sum(1 for line in console if line.startswith("[error]") or line.startswith("[pageerror]"))
-                credit = page.locator(f"[data-craft-app={app}] [data-craft-credit]").inner_text()
-                check(f"{app}: credit line names the ArtCraft team, the licence and no endorsement", "by the ArtCraft team and contributors" in credit and "MIT OR Apache-2.0" in credit and "Not affiliated with or endorsed" in credit, credit[:200])
-                if app in ("photocraft", "soundcraft"):
-                    page.locator(f"[data-craft-app={app}]").get_by_role("button", name="licences & notices").click()
-                    drawer = page.get_by_role("dialog", name=f"{NAMES[app]}: licences & notices")
-                    drawer.locator("summary", has_text="LICENSE-MIT").wait_for(timeout=60_000)
-                    names = drawer.locator("summary").all_inner_texts()
-                    drawer.locator("summary", has_text="NOTICE").first.click()
-                    notice = drawer.locator("details[open] pre").first.inner_text()
-                    page.screenshot(path=str(shots / f"16-{app}-notices.png"))
-                    check(f"{app}: notices show both licences, the repository NOTICE and its third-party files", any("LICENSE-MIT" in n for n in names) and any("LICENSE-APACHE" in n for n in names) and any(n.startswith("NOTICE") for n in names) and len(names) >= 4 and "ArtCraft" in notice, " | ".join(names)[:300])
-                    drawer.get_by_role("button", name=f"Close {NAMES[app]}: licences & notices").click()
+                credits = page.locator(f"[data-craft-app={app}]").get_by_role("link", name="Credits")
+                check(f"{app}: the toolbar links the central Credits page", credits.get_attribute("href") == "/credits", str(credits.get_attribute("href")))
                 full = page.locator(f"[data-craft-app={app}]").get_by_role("button", name="Full screen")
                 if app in ("photocraft", "lightcraft"):
                     # Full screen inside the page: the workspace (toolbar + app) covers the page, the app is not reloaded,
