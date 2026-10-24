@@ -82,6 +82,13 @@ across runs, polling cursors).
   editor has the node list (`NodePalette.tsx`: search, click adds after the one selected node, drag drops on the
   canvas), the "+ Add node" picker and canvas tools: undo/redo (Ctrl Z, Ctrl Shift Z / Ctrl Y; edits to one node within
   a second are one step), zoom, fit, tidy up (columns by distance from the triggers), duplicate (Ctrl D), delete.
+- Mouse and keys (`ContextMenu.tsx`, the list is the editor's "Keyboard and mouse" drawer): right-click menus for the
+  canvas (add here, paste here, select all, fit, 100%, tidy, undo/redo), a node (open, run up to it, add after,
+  duplicate, copy, cut, deactivate, delete), a selection and a connection (add a node in between, delete);
+  double-click on the canvas or Tab adds a node; left or middle drag pans, Shift drag selects; Ctrl A/C/X/V, D
+  deactivates, Enter/F2 opens, 1 fit, 0 100%, +/- zoom, Ctrl Enter runs. Copy and paste go through the clipboard
+  events (they work on plain http) as `smart-knife-workflow-nodes/1` JSON; paste also takes nodes copied in n8n.
+  Plain keys act only while the canvas or nothing has focus.
 
 ## API
 

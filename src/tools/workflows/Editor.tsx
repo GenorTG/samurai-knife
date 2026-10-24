@@ -3,6 +3,7 @@
 /**
  * The workflow editor (docs/WORKFLOWS.md): React Flow canvas over the workflow model (the model is the source of truth;
  * the canvas is derived from it), node list + picker, canvas tools (undo/redo, zoom, fit, tidy up, duplicate, delete),
+ * right-click menus (canvas, node, selection, connection), copy/paste (also n8n's clipboard JSON), mouse and keys,
  * node panel, run with live per-node status, test webhooks, run history, settings, credentials, export. Unsaved changes
  * run as they are (the run posts the draft). On desktop it fills the page below the top bar (registry `workspace`).
  */
@@ -24,7 +25,8 @@ import { Badge, Button, Drawer, Field, FullscreenButton, Notice, Select, TextAre
 import { cx } from "@/lib/format";
 import { nodeMeta } from "@/lib/workflows/catalog/index";
 import { workflowsApi, WorkflowApiError, type Draft, type HookUrls, type PublicCredential, type RunRecord, type RunSummary, type WorkflowSummary } from "@/lib/workflows/client";
-import { addConnection, createNode, newNodeId, removeNodes, renameNode, uniqueName } from "@/lib/workflows/editor-model";
+import { addConnection, createNode, newNodeId, removeNodes, renameNode, renameReferences, uniqueName } from "@/lib/workflows/editor-model";
+import { fromN8n } from "@/lib/workflows/import";
 import { outputLabels, type Connection, type NodeMeta, type Workflow, type WorkflowNode, type WorkflowSettings } from "@/lib/workflows/types";
 import { activationProblems, structuralProblems } from "@/lib/workflows/validate";
 import { NodeCard, type CardNode, type NodeStatus } from "./NodeCard";
@@ -32,6 +34,7 @@ import { NodePanel } from "./NodePanel";
 import { NodePicker } from "./NodePicker";
 import { NODE_DRAG_TYPE, NodePalette } from "./NodePalette";
 import { CredentialsManager } from "./CredentialsTab";
+import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 const NODE_TYPES = { wf: NodeCard };
 
@@ -111,6 +114,39 @@ function tidyPositions(nodes: WorkflowNode[], connections: Connection[]): Workfl
   return nodes.map((node) => ({ ...node, position: placed.get(node.id) ?? node.position }));
 }
 
+/** Clipboard text for copied nodes (Ctrl C, the menu); paste also takes n8n's copied-nodes JSON. */
+const CLIP_FORMAT = "smart-knife-workflow-nodes/1";
+
+function parseClip(text: string): Snapshot | null {
+  try {
+    const data = JSON.parse(text) as Record<string, unknown>;
+    if (data.format === CLIP_FORMAT && Array.isArray(data.nodes) && Array.isArray(data.connections)) return { nodes: data.nodes as WorkflowNode[], connections: data.connections as Connection[] };
+    const converted = fromN8n(data);
+    return converted ? { nodes: converted.nodes, connections: converted.connections } : null;
+  } catch {
+    return null;
+  }
+}
+
+const SHORTCUTS: [string, string][] = [
+  ["Right-click", "Menu for the canvas, a node, the selection or a connection"],
+  ["Double-click the canvas / Tab", "Add a node (Tab: after the selected node)"],
+  ["Double-click a node / Enter", "Open the node"],
+  ["Drag, middle-button drag, Space + drag", "Move around the canvas"],
+  ["Wheel / pinch", "Zoom"],
+  ["Shift + drag", "Select several nodes"],
+  ["Ctrl click", "Add to or remove from the selection"],
+  ["Ctrl A", "Select all"],
+  ["Ctrl C / Ctrl X / Ctrl V", "Copy, cut, paste nodes (paste also takes nodes copied in n8n)"],
+  ["Ctrl D", "Duplicate"],
+  ["D", "Deactivate / activate the selected nodes"],
+  ["Delete / Backspace", "Delete the selection"],
+  ["Ctrl Z / Ctrl Shift Z", "Undo / redo"],
+  ["1 / 0 / + / −", "Fit to view / 100% / zoom in / out"],
+  ["Ctrl S", "Save"],
+  ["Ctrl Enter", "Run the workflow"],
+];
+
 function ToolButton({ label, onClick, disabled, children, pressed }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode; pressed?: boolean }) {
   return (
     <button
@@ -149,6 +185,7 @@ const ICONS = {
   tidy: "M4 6h5v4H4zM15 4h5v4h-5zM15 16h5v4h-5zM9 8h3v10h3M12 6h3",
   duplicate: "M8 8h11v11H8zM5 16V5h11",
   remove: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  keys: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8",
 } as const;
 
 function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
@@ -168,7 +205,9 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
   const [selectedEdges, setSelectedEdges] = useState<Set<string>>(new Set());
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
   const [openNode, setOpenNode] = useState<string | null>(null);
-  const [picker, setPicker] = useState<null | { position: [number, number]; from?: { node: string; output: number } }>(null);
+  const [picker, setPicker] = useState<null | { position: [number, number]; from?: { node: string; output: number }; between?: Connection }>(null);
+  const [menu, setMenu] = useState<null | { x: number; y: number; at: [number, number]; target: { kind: "pane" } | { kind: "node"; id: string } | { kind: "edge"; id: string } | { kind: "selection" } }>(null);
+  const clip = useRef<string | null>(null);
   const [run, setRun] = useState<RunView | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [credentials, setCredentials] = useState<PublicCredential[]>([]);
@@ -176,6 +215,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
   const [listening, setListening] = useState(false);
   const [panel, setPanel] = useState<"runs" | "settings" | "credentials" | null>(null);
   const [palette, setPalette] = useState(true);
+  const [keysOpen, setKeysOpen] = useState(false);
   // Undo/redo: snapshots of nodes + connections before each change (a burst of edits to one node is one step).
   const undoStack = useRef<{ past: Snapshot[]; future: Snapshot[]; lastKey: string; lastAt: number }>({ past: [], future: [], lastKey: "", lastAt: 0 });
   const [, setHistoryTick] = useState(0);
@@ -392,10 +432,17 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     return [center.x - 96, center.y - 30];
   };
 
-  const insertNode = (meta: NodeMeta, spot: [number, number], from?: { node: string; output: number }, open = true) => {
+  const insertNode = (meta: NodeMeta, spot: [number, number], from?: { node: string; output: number }, open = true, between?: Connection) => {
     const node = createNode(meta, nodes.map((n) => n.name), spot);
     const nextNodes = [...nodes, node];
-    const nextConnections = from && meta.inputs > 0 ? addConnection(nextNodes, connections, { from, to: { node: node.name, input: 0 } }) : connections;
+    let nextConnections = connections;
+    if (between) {
+      // Into a connection: from -> new node -> to (the old connection goes when the new node can pass items on).
+      const passes = meta.inputs > 0 && outputLabels(meta, node.parameters).length > 0;
+      if (passes) nextConnections = nextConnections.filter((connection) => connection !== between);
+      if (meta.inputs > 0) nextConnections = addConnection(nextNodes, nextConnections, { from: between.from, to: { node: node.name, input: 0 } });
+      if (passes) nextConnections = addConnection(nextNodes, nextConnections, { from: { node: node.name, output: 0 }, to: between.to });
+    } else if (from && meta.inputs > 0) nextConnections = addConnection(nextNodes, connections, { from, to: { node: node.name, input: 0 } });
     change({ nodes: nextNodes, connections: nextConnections });
     setSelectedNodes(new Set([node.id]));
     setSelectedEdges(new Set());
@@ -403,8 +450,185 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
   };
 
   const addNode = (meta: NodeMeta) => {
-    insertNode(meta, picker?.position ?? canvasCenter(), picker?.from);
+    insertNode(meta, picker?.position ?? canvasCenter(), picker?.from, true, picker?.between);
     setPicker(null);
+  };
+
+  /** The picker for a node after `after` (connected, to its right), else at `spot` / the middle of the canvas. */
+  const pickAfter = (after?: WorkflowNode, spot?: [number, number]) => {
+    const afterMeta = after ? nodeMeta(after.type) : undefined;
+    if (after && afterMeta && outputLabels(afterMeta, after.parameters).length > 0) setPicker({ position: [after.position[0] + 300, after.position[1]], from: { node: after.name, output: 0 } });
+    else setPicker({ position: spot ?? canvasCenter() });
+  };
+
+  const selectedList = () => nodes.filter((node) => selectedNodes.has(node.id));
+
+  const copyText = (chosen: WorkflowNode[]): string => {
+    const names = new Set(chosen.map((node) => node.name));
+    return JSON.stringify({ format: CLIP_FORMAT, nodes: chosen, connections: connections.filter((c) => names.has(c.from.node) && names.has(c.to.node)) });
+  };
+
+  /** Copies the selection to the system clipboard when the page may (https or a copy event) and always to the editor. */
+  const copySelection = (cut = false, event?: ClipboardEvent) => {
+    const chosen = selectedList();
+    if (!chosen.length) return false;
+    const text = copyText(chosen);
+    clip.current = text;
+    if (event?.clipboardData) event.clipboardData.setData("text/plain", text);
+    else void navigator.clipboard?.writeText(text).catch(() => undefined);
+    setNotice({ tone: "info", text: `${cut ? "Cut" : "Copied"} ${chosen.length} node${chosen.length === 1 ? "" : "s"}.` });
+    if (cut) removeSelected();
+    return true;
+  };
+
+  /** Pastes copied nodes (new ids and names, references between them renamed), top-left at `at` or offset from the originals. */
+  const pasteNodes = (text: string | null, at?: [number, number]) => {
+    const data = text ? parseClip(text) : null;
+    if (!data?.nodes.length) {
+      setNotice({ tone: "warn", text: "Nothing to paste: copy nodes here or in n8n first." });
+      return;
+    }
+    const left = Math.min(...data.nodes.map((node) => node.position[0]));
+    const top = Math.min(...data.nodes.map((node) => node.position[1]));
+    const shift: [number, number] = at ? [at[0] - left, at[1] - top] : [40, 120];
+    const taken = nodes.map((node) => node.name);
+    const renamed = new Map<string, string>();
+    for (const node of data.nodes) {
+      const name = uniqueName(node.name, taken);
+      taken.push(name);
+      renamed.set(node.name, name);
+    }
+    const pasted = data.nodes.map((node) => {
+      let parameters = structuredClone(node.parameters ?? {});
+      for (const [from, to] of renamed) if (from !== to) parameters = renameReferences(parameters, from, to) as Record<string, unknown>;
+      return { ...structuredClone(node), parameters, id: newNodeId(), name: renamed.get(node.name) as string, position: [Math.round((node.position[0] + shift[0]) / 20) * 20, Math.round((node.position[1] + shift[1]) / 20) * 20] as [number, number] };
+    });
+    const links = data.connections
+      .filter((connection) => renamed.has(connection.from.node) && renamed.has(connection.to.node))
+      .map((connection) => ({ from: { ...connection.from, node: renamed.get(connection.from.node) as string }, to: { ...connection.to, node: renamed.get(connection.to.node) as string } }));
+    change({ nodes: [...nodes, ...pasted], connections: [...connections, ...links] });
+    setSelectedNodes(new Set(pasted.map((node) => node.id)));
+    setSelectedEdges(new Set());
+  };
+
+  /** From the menu (no paste event): the system clipboard when the browser allows reading it, else the editor's copy. */
+  const pasteFromMenu = async (at: [number, number]) => {
+    let text: string | null = null;
+    try {
+      text = (await navigator.clipboard?.readText()) ?? null;
+    } catch {
+      text = null;
+    }
+    pasteNodes(text && parseClip(text) ? text : clip.current, at);
+  };
+
+  /** Deactivates the nodes (skipped in runs, like n8n), or activates them when all are already deactivated. */
+  const toggleDisabled = (chosen: WorkflowNode[]) => {
+    if (!chosen.length) return;
+    const ids = new Set(chosen.map((node) => node.id));
+    const disable = chosen.some((node) => !node.disabled);
+    change({ nodes: nodes.map((node) => (ids.has(node.id) ? { ...node, disabled: disable || undefined } : node)) });
+  };
+
+  const runUpTo = (nodeName: string) => {
+    const meta = nodeMeta(byName.get(nodeName)?.type ?? "");
+    void startRun(meta?.inputs === 0 ? { startNode: nodeName, destinationNode: nodeName } : { destinationNode: nodeName });
+  };
+
+  const selectAll = () => {
+    setSelectedNodes(new Set(nodes.map((node) => node.id)));
+    setSelectedEdges(new Set());
+  };
+
+  const openMenu = (event: MouseEvent | React.MouseEvent, target: NonNullable<typeof menu>["target"]) => {
+    event.preventDefault();
+    const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    if (target.kind === "node" && !selectedNodes.has(target.id)) {
+      setSelectedNodes(new Set([target.id]));
+      setSelectedEdges(new Set());
+    } else if (target.kind === "edge") {
+      setSelectedEdges(new Set([target.id]));
+      setSelectedNodes(new Set());
+    }
+    setMenu({ x: event.clientX, y: event.clientY, at: [point.x - 96, point.y - 30], target });
+  };
+
+  const menuEntries = (): { label: string; entries: MenuEntry[] } => {
+    if (!menu) return { label: "", entries: [] };
+    const target = menu.target;
+    const undoRedo: MenuEntry[] = [
+      { label: "Undo", hint: "Ctrl Z", disabled: !undoStack.current.past.length, run: () => restore("undo") },
+      { label: "Redo", hint: "Ctrl Shift Z", disabled: !undoStack.current.future.length, run: () => restore("redo") },
+    ];
+    if (target.kind === "edge") {
+      const edge = flowEdges.find((entry) => entry.id === target.id);
+      const connection = edge?.data?.connection as Connection | undefined;
+      if (!connection) return { label: "Connection", entries: [] };
+      return {
+        label: "Connection",
+        entries: [
+          { kind: "heading", label: `${connection.from.node} → ${connection.to.node}` },
+          { label: "Add a node in between…", run: () => setPicker({ position: menu.at, between: connection }) },
+          { kind: "separator" },
+          { label: "Delete connection", hint: "Del", danger: true, run: () => change({ connections: connections.filter((entry) => entry !== connection) }) },
+        ],
+      };
+    }
+    const chosen = target.kind === "node" ? (selectedNodes.has(target.id) ? selectedList() : nodes.filter((node) => node.id === target.id)) : target.kind === "selection" ? selectedList() : [];
+    if (chosen.length > 1) {
+      const allOff = chosen.every((node) => node.disabled);
+      return {
+        label: "Selection",
+        entries: [
+          { kind: "heading", label: `${chosen.length} nodes` },
+          { label: "Duplicate", hint: "Ctrl D", run: duplicateSelected },
+          { label: "Copy", hint: "Ctrl C", run: () => copySelection() },
+          { label: "Cut", hint: "Ctrl X", run: () => copySelection(true) },
+          { label: allOff ? "Activate" : "Deactivate", hint: "D", run: () => toggleDisabled(chosen) },
+          { label: "Tidy up", run: tidyUp },
+          { kind: "separator" },
+          { label: `Delete ${chosen.length} nodes`, hint: "Del", danger: true, run: removeSelected },
+        ],
+      };
+    }
+    if (chosen.length === 1) {
+      const node = chosen[0];
+      const meta = nodeMeta(node.type);
+      const passes = Boolean(meta && outputLabels(meta, node.parameters).length > 0);
+      return {
+        label: `Node ${node.name}`,
+        entries: [
+          { kind: "heading", label: node.name },
+          { label: "Open", hint: "Enter", run: () => setOpenNode(node.name) },
+          { label: meta?.inputs === 0 ? "Run from this trigger" : "Run up to this node", disabled: running || node.disabled, run: () => runUpTo(node.name) },
+          { label: "Add a node after…", hint: "Tab", disabled: !passes, run: () => pickAfter(node) },
+          { kind: "separator" },
+          { label: "Duplicate", hint: "Ctrl D", run: duplicateSelected },
+          { label: "Copy", hint: "Ctrl C", run: () => copySelection() },
+          { label: "Cut", hint: "Ctrl X", run: () => copySelection(true) },
+          { label: node.disabled ? "Activate" : "Deactivate", hint: "D", run: () => toggleDisabled([node]) },
+          { kind: "separator" },
+          { label: "Delete", hint: "Del", danger: true, run: removeSelected },
+        ],
+      };
+    }
+    return {
+      label: "Canvas",
+      entries: [
+        { label: "Add a node here…", hint: "Tab", run: () => setPicker({ position: menu.at }) },
+        { label: "Paste here", hint: "Ctrl V", run: () => void pasteFromMenu([menu.at[0] + 96, menu.at[1] + 30]) },
+        { kind: "separator" },
+        { label: "Select all", hint: "Ctrl A", disabled: !nodes.length, run: selectAll },
+        { label: "Fit to view", hint: "1", disabled: !nodes.length, run: () => void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 }) },
+        { label: "Zoom to 100%", hint: "0", run: () => void flow.zoomTo(1, { duration: 150 }) },
+        { label: "Tidy up", disabled: nodes.length < 2, run: tidyUp },
+        { kind: "separator" },
+        ...undoRedo,
+        { kind: "separator" },
+        { label: palette ? "Hide the node list" : "Show the node list", run: () => setPalette((value) => !value) },
+        { label: "Keyboard and mouse…", run: () => setKeysOpen(true) },
+      ],
+    };
   };
 
   /** From the node list: after the one selected node (connected, to its right), else in the middle of the canvas. */
@@ -518,9 +742,9 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     return () => window.clearInterval(timer);
   }, [id]);
 
-  const keys = useRef({ save, restore, duplicateSelected });
+  const keys = useRef({ save, restore, duplicateSelected, copySelection, pasteNodes, selectAll, toggleDisabled, selectedList, pickAfter, open: (name: string) => setOpenNode(name), run: () => {}, flow });
   useEffect(() => {
-    keys.current = { save, restore, duplicateSelected };
+    keys.current = { save, restore, duplicateSelected, copySelection, pasteNodes, selectAll, toggleDisabled, selectedList, pickAfter, open: (name: string) => setOpenNode(name), run: () => void startRun(), flow };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -539,10 +763,61 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
       } else if (key === "d") {
         event.preventDefault();
         keys.current.duplicateSelected();
+      } else if (key === "a" && onCanvas(event.target)) {
+        event.preventDefault();
+        keys.current.selectAll();
+      } else if (key === "enter") {
+        event.preventDefault();
+        keys.current.run();
       }
     };
+    /** Plain keys only when the canvas (or nothing) has focus: Tab and Enter keep their usual meaning on buttons and fields. */
+    const onCanvas = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return !element || element === document.body || Boolean(shell.current && element.closest(".react-flow") && shell.current.contains(element));
+    };
+    const onPlainKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (typingIn(event.target) || !onCanvas(event.target) || document.querySelector('[aria-modal="true"], [data-workflow-menu]')) return;
+      const k = keys.current;
+      const chosen = k.selectedList();
+      if (event.key === "Tab" && !event.shiftKey) k.pickAfter(chosen.length === 1 ? chosen[0] : undefined);
+      else if ((event.key === "Enter" || event.key === "F2") && chosen.length === 1) k.open(chosen[0].name);
+      else if (event.key.toLowerCase() === "d" && !event.shiftKey && chosen.length) k.toggleDisabled(chosen);
+      else if (event.key === "1") void k.flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 });
+      else if (event.key === "0") void k.flow.zoomTo(1, { duration: 150 });
+      else if (event.key === "+" || event.key === "=") void k.flow.zoomIn({ duration: 150 });
+      else if (event.key === "-") void k.flow.zoomOut({ duration: 150 });
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    // Copy/cut/paste through the clipboard events: they work on plain http too, where navigator.clipboard is missing.
+    const onCopy = (event: ClipboardEvent, cut: boolean) => {
+      if (typingIn(event.target) || !onCanvas(document.activeElement) || (window.getSelection()?.toString() ?? "") !== "") return;
+      if (keys.current.copySelection(cut, event)) event.preventDefault();
+    };
+    const copy = (event: ClipboardEvent) => onCopy(event, false);
+    const cut = (event: ClipboardEvent) => onCopy(event, true);
+    const paste = (event: ClipboardEvent) => {
+      if (typingIn(event.target) || !onCanvas(document.activeElement) || document.querySelector('[aria-modal="true"]')) return;
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (!parseClip(text)) return;
+      event.preventDefault();
+      keys.current.pasteNodes(text);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onPlainKey, true);
+    document.addEventListener("copy", copy);
+    document.addEventListener("cut", cut);
+    document.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onPlainKey, true);
+      document.removeEventListener("copy", copy);
+      document.removeEventListener("cut", cut);
+      document.removeEventListener("paste", paste);
+    };
   }, []);
   useEffect(() => {
     if (!dirty) return;
@@ -777,6 +1052,15 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
             event.dataTransfer.dropEffect = "copy";
           }}
           onDrop={onDrop}
+          onDoubleClick={(event) => {
+            if (!(event.target instanceof Element) || !event.target.classList.contains("react-flow__pane")) return;
+            const point = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+            setPicker({ position: [point.x - 96, point.y - 30] });
+          }}
+          onMouseDown={(event) => {
+            // Middle-button drag pans the canvas: keep the browser's autoscroll cursor out of it.
+            if (event.button === 1) event.preventDefault();
+          }}
         >
           <ReactFlow
             nodes={flowNodes}
@@ -792,6 +1076,12 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
               return Boolean(connection && connection.from.node !== connection.to.node && (nodeMeta(byName.get(connection.to.node)?.type ?? "")?.inputs ?? 0) > 0);
             }}
             onNodeDoubleClick={(_, node) => setOpenNode(node.data.node.name)}
+            onPaneContextMenu={(event) => openMenu(event, { kind: "pane" })}
+            onNodeContextMenu={(event, node) => openMenu(event, { kind: "node", id: node.id })}
+            onEdgeContextMenu={(event, edge) => openMenu(event, { kind: "edge", id: edge.id })}
+            onSelectionContextMenu={(event) => openMenu(event, { kind: "selection" })}
+            panOnDrag={[0, 1]}
+            zoomOnDoubleClick={false}
             deleteKeyCode={["Backspace", "Delete"]}
             multiSelectionKeyCode={["Shift", "Meta", "Control"]}
             snapToGrid
@@ -850,6 +1140,10 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
               <ToolButton label="Delete the selection (Delete)" disabled={!hasSelection} onClick={removeSelected}>
                 <Icon d={ICONS.remove} />
               </ToolButton>
+              <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
+              <ToolButton label="Keyboard and mouse" onClick={() => setKeysOpen(true)}>
+                <Icon d={ICONS.keys} />
+              </ToolButton>
             </div>
             {run ? (
               <Badge tone={run.status === "success" ? "good" : run.status === "error" ? "danger" : run.status === "running" ? "accent" : "warn"}>
@@ -859,7 +1153,18 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
         </div>
       </div>
-      {picker ? <NodePicker onPick={addNode} onClose={() => setPicker(null)} triggersOnly={!nodes.length} noTriggers={Boolean(picker.from)} /> : null}
+      {menu ? <ContextMenu x={menu.x} y={menu.y} {...menuEntries()} onClose={() => setMenu(null)} /> : null}
+      <Drawer open={keysOpen} title="Keyboard and mouse" onClose={() => setKeysOpen(false)}>
+        <dl className="divide-y divide-line rounded-lg border border-line text-[13px]" aria-label="Editor shortcuts">
+          {SHORTCUTS.map(([keysLabel, does]) => (
+            <div key={keysLabel} className="flex gap-3 px-3 py-2">
+              <dt className="w-44 shrink-0 font-mono text-[12px] text-ink">{keysLabel}</dt>
+              <dd className="text-muted">{does}</dd>
+            </div>
+          ))}
+        </dl>
+      </Drawer>
+      {picker ? <NodePicker onPick={addNode} onClose={() => setPicker(null)} triggersOnly={!nodes.length} noTriggers={Boolean(picker.from || picker.between)} /> : null}
       {open && openMeta ? (
         <NodePanel
           key={open.id}
