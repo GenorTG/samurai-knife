@@ -191,6 +191,51 @@ def run(page: Page, base: str, browser_name: str) -> None:
     check(f"{tag} credential saved and listed", True)
     check(f"{tag} the secret never comes back to the page", "secret-value-0123456789" not in page.content())
 
+    # One full-window page: no tool heading/tabs, sidebar hidden from the first paint, no page scroll; node list, canvas
+    # tools and credentials inside the editor.
+    page.goto(f"{base}/tools/workflows", wait_until="commit")
+    page.wait_for_selector("aside[data-sidebar]", state="attached")
+    first = page.evaluate("() => getComputedStyle(document.querySelector('aside[data-sidebar]')).display")
+    hydrated(page)
+    open_template(page, "Blank")
+    page.wait_for_timeout(800)
+    box = page.evaluate("""() => { const e = document.querySelector('[data-workflow-editor]').getBoundingClientRect(); const m = document.querySelector('main');
+        return { first: null, sidebar: getComputedStyle(document.querySelector('aside[data-sidebar]')).display, header: getComputedStyle(m.querySelector(':scope > header')).display,
+                 tabs: getComputedStyle(m.querySelector('.sk-tablist')).display, scroll: document.documentElement.scrollHeight - innerHeight, top: Math.round(e.top), bottom: Math.round(e.bottom), vh: innerHeight }; }""")
+    check(f"{tag} workspace: sidebar hidden from the first paint, no heading/tabs, editor fills the window without page scroll",
+          first == "none" and box["sidebar"] == "none" and box["header"] == "none" and box["tabs"] == "none" and box["scroll"] <= 0 and box["top"] <= 80 and box["vh"] - 16 <= box["bottom"] <= box["vh"], {**box, "first": first})
+    page.keyboard.press("b")
+    check(f"{tag} the sidebar toggle shows the sidebar for the visit", page.evaluate("() => getComputedStyle(document.querySelector('aside[data-sidebar]')).display") == "block")
+    page.keyboard.press("b")
+    nodes = page.locator(".react-flow__node")
+    edges = page.locator(".react-flow__edge")
+    start_nodes, start_edges = nodes.count(), edges.count()
+    nodes.first.click()
+    page.locator("[data-node-palette]").get_by_role("button", name="Code", exact=True).click()
+    code_panel = page.get_by_role("dialog", name="Node Code")
+    code_panel.wait_for()
+    page.keyboard.press("Escape")
+    expect(code_panel).to_be_hidden(timeout=5_000)
+    check(f"{tag} node list adds the node after the selected one (connected) and Escape closes its panel", nodes.count() == start_nodes + 1 and edges.count() == start_edges + 1, (nodes.count(), edges.count()))
+    tools = page.get_by_role("toolbar", name="Canvas tools")
+    tools.get_by_role("button", name="Undo (Ctrl Z)").click()
+    after_undo = nodes.count()
+    page.keyboard.press("Control+Shift+Z")
+    expect(nodes).to_have_count(start_nodes + 1, timeout=5_000)
+    check(f"{tag} undo removes the added node, Ctrl Shift Z brings it back", after_undo == start_nodes, after_undo)
+    page.locator('[data-wf-node="Code"]').click()
+    tools.get_by_role("button", name="Duplicate the selected nodes (Ctrl D)").click()
+    expect(nodes).to_have_count(start_nodes + 2, timeout=5_000)
+    tools.get_by_role("button", name="Delete the selection (Delete)").click()
+    expect(nodes).to_have_count(start_nodes + 1, timeout=5_000)
+    tools.get_by_role("button", name="Tidy up (arrange the nodes)").click()
+    check(f"{tag} duplicate, delete and tidy up work from the canvas toolbar", True)
+    page.get_by_role("button", name="Credentials", exact=True).click()
+    drawer = page.get_by_role("dialog", name="Credentials")
+    expect(drawer.get_by_text(f"My API key {browser_name}")).to_be_visible(timeout=15_000)
+    check(f"{tag} credentials open inside the editor (drawer lists the saved one)", True)
+    drawer.get_by_role("button", name="Close Credentials").click()
+
 
 def main() -> int:
     with ScratchServer() as server:
