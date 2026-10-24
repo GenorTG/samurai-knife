@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ARTCRAFT_APPS, SIDECARS } from "@/lib/services/definitions";
+import { CraftNotices } from "@/tools/craft/CraftNotices";
 
 export const metadata = { title: "Credits" };
 
@@ -9,14 +10,14 @@ export default function CreditsPage() {
     <main className="mx-auto w-full max-w-5xl space-y-8 px-5 py-8 sm:px-8">
       <header className="space-y-2 border-b border-line pb-5">
         <h1 className="text-3xl font-semibold tracking-tight">Credits &amp; open-source notices</h1>
-        <p className="max-w-3xl text-muted">Attributions, source repositories and licence information for the third-party applications embedded in Smart Knife. Each project remains the work of its own authors; Smart Knife is not affiliated with or endorsed by them.</p>
+        <p className="max-w-3xl text-muted">Attributions, source repositories, and bundled licence and notice texts for the third-party applications embedded in Smart Knife. Each project remains the work of its own authors; Smart Knife is not affiliated with or endorsed by them.</p>
         <Link className="text-sm text-accent-soft underline underline-offset-2" href="/tools/artcraft">Back to Craft apps</Link>
       </header>
 
       <section className="space-y-4">
         <div>
           <h2 className="text-xl font-semibold">ArtCraft apps</h2>
-          <p className="text-sm text-muted">Official, unmodified web builds, served by this instance. Each app’s bundled NOTICE and third-party licence texts are available from its source repository.</p>
+          <p className="text-sm text-muted">Official, unmodified web builds served by this instance. Expand an app to read the licence and notice texts for the active version, including any third-party licences named by its NOTICE.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {ARTCRAFT_APPS.map((app) => (
@@ -24,7 +25,10 @@ export default function CreditsPage() {
               <h3 className="font-semibold">{app.name}</h3>
               <p className="mt-1 text-sm text-muted">{app.kind} · {app.version}</p>
               <p className="mt-2 text-sm">ArtCraft team and contributors · {app.license}</p>
-              <a className="mt-3 inline-block text-sm text-accent-soft underline underline-offset-2" href={app.repo} target="_blank" rel="noopener noreferrer">Source and bundled notices</a>
+              <a className="mt-3 inline-block text-sm text-accent-soft underline underline-offset-2" href={app.repo} target="_blank" rel="noopener noreferrer">Source repository</a>
+              <div className="mt-4">
+                <CraftNotices app={app} />
+              </div>
             </article>
           ))}
         </div>
