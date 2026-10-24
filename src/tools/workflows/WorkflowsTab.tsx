@@ -1,12 +1,13 @@
 "use client";
 
-/** Workflows tab: the account's workflows (create, import, open, delete) and the editor (`?workflow=<id>`). */
+/** Workflows tab: the account's workflows (create, import, open, delete), their credentials (drawer) and the editor (`?workflow=<id>`). */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Badge, Button, EmptyState, Notice, Panel } from "@/components/ui";
+import { Badge, Button, Drawer, EmptyState, Notice, Panel } from "@/components/ui";
 import { workflowsApi, type WorkflowSummary } from "@/lib/workflows/client";
 import { TEMPLATES } from "@/lib/workflows/editor-model";
 import { fromN8n } from "@/lib/workflows/import";
+import { CredentialsManager } from "./CredentialsTab";
 import { Editor } from "./Editor";
 
 const TRIGGER_LABELS: Record<string, string> = { manual: "Manual", schedule: "Schedule", webhook: "Webhook", subworkflow: "Sub-workflow", error: "Error", chat: "Chat" };
@@ -29,6 +30,7 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "good" | "info"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => {
@@ -78,6 +80,9 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
         title="Workflows"
         right={
           <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="ghost" onClick={() => setCredentialsOpen(true)}>
+              Credentials
+            </Button>
             <Button size="sm" onClick={() => fileInput.current?.click()}>
               Import JSON
             </Button>
@@ -162,6 +167,9 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
           ))}
         </ul>
       </Panel>
+      <Drawer open={credentialsOpen} title="Credentials" onClose={() => setCredentialsOpen(false)}>
+        <CredentialsManager />
+      </Drawer>
     </div>
   );
 }

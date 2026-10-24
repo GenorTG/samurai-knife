@@ -93,6 +93,11 @@ export interface ToolMeta {
    * heading and suite tabs from the first paint, so the page never shows them and then jumps (globals.css `main[data-workspace]`).
    */
   workspace?: boolean;
+  /**
+   * Desktop: the tool sidebar starts hidden on this page (from the server render, no flash); the sidebar toggle (`b`)
+   * shows it for the visit without changing the stored preference (globals.css `main[data-hide-sidebar]`).
+   */
+  hideSidebar?: boolean;
 }
 
 export const CATEGORIES: { id: ToolCategory; label: string }[] = [
@@ -1241,6 +1246,8 @@ export const TOOLS: ToolMeta[] = [
     family: "automation",
     kind: "server",
     beta: true,
+    workspace: true,
+    hideSidebar: true,
     tabs: [
       { id: "editor", label: "Workflows", component: "wf-editor", wide: true },
       { id: "credentials", label: "Credentials", component: "wf-credentials" },

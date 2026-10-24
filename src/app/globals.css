@@ -468,6 +468,14 @@ html[data-page-fullscreen] {
   min-height: 0;
 }
 
+/* Tools with registry `hideSidebar` start without the tool sidebar (decided by the server render, so it never shows
+   first and then disappears); the sidebar toggle adds data-peek for the visit. */
+@media (min-width: 1024px) {
+  body:has(main[data-hide-sidebar]) aside[data-sidebar]:not([data-peek]) {
+    display: none;
+  }
+}
+
 /* Embedded workspaces use the space below the global 3.5rem navigation, without the redundant suite picker and tool
    heading. Workspace tools (registry `workspace`, set on <main> by ToolShell) get it from the server render, so nothing
    of the regular page shows before the app; the office editor gets it once a document is open. */

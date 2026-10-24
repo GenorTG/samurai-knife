@@ -76,6 +76,12 @@ across runs, polling cursors).
   gate, live events), `hooks.ts` (webhook + resume routes), `scheduler.ts`, `oauth.ts`, `http.ts` (route errors).
 - `src/app/api/workflows/…`, `src/app/api/hooks/…`, `src/app/api/hooks-test/…`; UI `src/tools/workflows/` (suite
   `workflows`, tabs `editor` and `credentials`).
+- The page is one workspace (registry `workspace` + `hideSidebar`): on desktop no tool heading or tabs, the tool sidebar
+  starts hidden (`b` shows it for the visit), and the editor fills the window below the top bar without page scroll.
+  Credentials open in a drawer from the list and the editor (`CredentialsManager`); `?tab=credentials` still works. The
+  editor has the node list (`NodePalette.tsx`: search, click adds after the one selected node, drag drops on the
+  canvas), the "+ Add node" picker and canvas tools: undo/redo (Ctrl Z, Ctrl Shift Z / Ctrl Y; edits to one node within
+  a second are one step), zoom, fit, tidy up (columns by distance from the triggers), duplicate (Ctrl D), delete.
 
 ## API
 

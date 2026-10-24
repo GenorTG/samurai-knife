@@ -57,6 +57,9 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
   const router = useRouter();
   const collapsed = useSidebarCollapsed();
   const [drawerAt, setDrawerAt] = useState<string | null>(null);
+  // Pages that hide the sidebar (registry `hideSidebar`): the toggle shows it for this page only, the stored choice stays.
+  const [peekAt, setPeekAt] = useState<string | null>(null);
+  const peek = peekAt === pathname;
   const drawerOpen = drawerAt === pathname;
   const chord = useRef<number>(0);
 
@@ -67,7 +70,8 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
   useEffect(() => {
     const toggleSidebar = () => {
       if (window.matchMedia("(min-width: 1024px)").matches) {
-        setSidebarCollapsed(!collapsed);
+        if (document.querySelector("main[data-hide-sidebar]")) setPeekAt((v) => (v === pathname ? null : pathname));
+        else setSidebarCollapsed(!collapsed);
       } else {
         setDrawerAt((v) => (v === pathname ? null : pathname));
       }
@@ -176,9 +180,11 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
 
       <div className="flex min-h-0 flex-1">
         <aside
+          data-sidebar
+          data-peek={peek ? "" : undefined}
           className={cx(
             "sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 overflow-y-auto overscroll-contain border-r border-line bg-surface/40 xl:w-72",
-            collapsed ? "" : "lg:block",
+            collapsed && !peek ? "" : "lg:block",
           )}
         >
           <Sidebar activeSlug={activeSlug} />

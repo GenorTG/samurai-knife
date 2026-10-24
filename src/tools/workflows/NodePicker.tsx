@@ -6,7 +6,7 @@ import { cx } from "@/lib/format";
 import { NODE_CATALOG } from "@/lib/workflows/catalog/index";
 import type { NodeGroup, NodeMeta } from "@/lib/workflows/types";
 
-const GROUP_LABELS: Record<NodeGroup, string> = {
+export const GROUP_LABELS: Record<NodeGroup, string> = {
   trigger: "Triggers",
   flow: "Flow",
   data: "Data",
@@ -32,17 +32,30 @@ function score(meta: NodeMeta, query: string): number {
   return 0;
 }
 
+/** Catalog entries matching `query` (best first), or grouped in ORDER while browsing; `header` starts each group. */
+export function nodeResults(query: string, filter: { triggersOnly?: boolean; noTriggers?: boolean } = {}): { meta: NodeMeta; header: string | null }[] {
+  const q = query.trim();
+  const list = NODE_CATALOG.filter((meta) => (filter.triggersOnly ? meta.inputs === 0 : filter.noTriggers ? meta.inputs > 0 : true))
+    .map((meta) => ({ meta, score: score(meta, q) }))
+    .filter((entry) => entry.score > 0);
+  const sorted = q ? list.sort((a, b) => b.score - a.score).map((entry) => entry.meta) : list.sort((a, b) => ORDER.indexOf(a.meta.group) - ORDER.indexOf(b.meta.group)).map((entry) => entry.meta);
+  // A group heading before the first node of each group (browsing only, not while searching).
+  return sorted.map((meta, index) => ({ meta, header: !q && (index === 0 || sorted[index - 1].group !== meta.group) ? GROUP_LABELS[meta.group] : null }));
+}
+
+/** The node's icon chip (trigger bolt or initial, tinted by the catalog hue). */
+export function NodeIcon({ meta, size = "size-6" }: { meta: NodeMeta; size?: string }) {
+  return (
+    <span aria-hidden className={cx("inline-flex shrink-0 items-center justify-center rounded-md text-[12px] font-bold", size)} style={{ color: `oklch(from var(--c-accent) l c ${meta.hue ?? 220})`, backgroundColor: `oklch(from var(--c-accent) l c ${meta.hue ?? 220} / 0.14)` }}>
+      {meta.inputs === 0 ? "⚡" : meta.label.slice(0, 1)}
+    </span>
+  );
+}
+
 export function NodePicker({ onPick, onClose, triggersOnly = false, noTriggers = false }: { onPick: (meta: NodeMeta) => void; onClose: () => void; triggersOnly?: boolean; noTriggers?: boolean }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const results = useMemo(() => {
-    const list = NODE_CATALOG.filter((meta) => (triggersOnly ? meta.inputs === 0 : noTriggers ? meta.inputs > 0 : true))
-      .map((meta) => ({ meta, score: score(meta, query.trim()) }))
-      .filter((entry) => entry.score > 0);
-    const sorted = query.trim() ? list.sort((a, b) => b.score - a.score).map((entry) => entry.meta) : list.sort((a, b) => ORDER.indexOf(a.meta.group) - ORDER.indexOf(b.meta.group)).map((entry) => entry.meta);
-    // A group heading before the first node of each group (browsing only, not while searching).
-    return sorted.map((meta, index) => ({ meta, header: !query.trim() && (index === 0 || sorted[index - 1].group !== meta.group) ? GROUP_LABELS[meta.group] : null }));
-  }, [query, triggersOnly, noTriggers]);
+  const results = useMemo(() => nodeResults(query, { triggersOnly, noTriggers }), [query, triggersOnly, noTriggers]);
   const pick = (meta: NodeMeta | undefined) => meta && onPick(meta);
   return (
     <div role="dialog" aria-modal="true" aria-label="Add a node" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -86,8 +99,8 @@ export function NodePicker({ onPick, onClose, triggersOnly = false, noTriggers =
                   onClick={() => pick(meta)}
                   className={cx("flex w-full cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 text-left", index === active ? "bg-accent/12" : "hover:bg-raised")}
                 >
-                  <span aria-hidden className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[12px] font-bold" style={{ color: `oklch(from var(--c-accent) l c ${meta.hue ?? 220})`, backgroundColor: `oklch(from var(--c-accent) l c ${meta.hue ?? 220} / 0.14)` }}>
-                    {meta.inputs === 0 ? "⚡" : meta.label.slice(0, 1)}
+                  <span className="mt-0.5">
+                    <NodeIcon meta={meta} />
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-semibold text-ink">

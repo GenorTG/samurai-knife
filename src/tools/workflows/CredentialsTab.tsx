@@ -6,7 +6,7 @@
  * to the provider; the token lands on the server).
  */
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button, EmptyState, Field, Notice, Panel, Select, TextArea, TextInput } from "@/components/ui";
+import { Badge, Button, ButtonLink, EmptyState, Field, Notice, Panel, Select, TextArea, TextInput } from "@/components/ui";
 import { workflowsApi, type PublicCredential } from "@/lib/workflows/client";
 import { CREDENTIAL_TYPES, credentialType, oauthPreset, type CredentialField } from "@/lib/workflows/credential-types";
 
@@ -183,18 +183,31 @@ export function connectOAuth(credentialId: string): Promise<boolean> {
   });
 }
 
+/** The credentials tab on its own (old bookmarks: `?tab=credentials`); the Workflows page opens the same manager in a drawer. */
 export default function CredentialsTab() {
+  return (
+    <div className="space-y-4">
+      <Panel title="Credentials" right={<ButtonLink href="/tools/workflows" size="sm">← Workflows</ButtonLink>}>
+        <CredentialsManager />
+      </Panel>
+    </div>
+  );
+}
+
+/** List, add, edit, connect (OAuth2) and delete the account's workflow credentials. `onChange` after every change. */
+export function CredentialsManager({ onChange }: { onChange?: () => void }) {
   const [credentials, setCredentials] = useState<PublicCredential[] | null>(null);
   const [editing, setEditing] = useState<PublicCredential | "new" | null>(null);
   const [message, setMessage] = useState<{ tone: "good" | "error" | "info"; text: string } | null>(null);
   const load = useCallback(async () => {
     try {
       setCredentials((await workflowsApi.credentials()).credentials);
+      onChange?.();
     } catch (caught) {
       setMessage({ tone: "error", text: caught instanceof Error ? caught.message : String(caught) });
       setCredentials([]);
     }
-  }, []);
+  }, [onChange]);
   useEffect(() => {
     let alive = true;
     workflowsApi.credentials().then(
@@ -211,88 +224,84 @@ export default function CredentialsTab() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <Panel
-        title="Credentials"
-        right={
-          editing ? null : (
-            <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-              New credential
-            </Button>
-          )
-        }
-      >
-        <p className="mb-4 text-[13px] text-muted">
-          Keys, tokens and logins your workflow nodes use (HTTP Request, Webhook auth, JWT, TOTP…). They are sealed in your account and never shown again after saving; a run hands each node only the credential it names.
-        </p>
-        {message ? (
-          <div className="mb-3">
-            <Notice tone={message.tone}>{message.text}</Notice>
-          </div>
-        ) : null}
-        {editing ? (
-          <CredentialForm
-            initial={editing === "new" ? undefined : editing}
-            onCancel={() => setEditing(null)}
-            onSaved={(credential) => {
-              setEditing(null);
-              setMessage({ tone: "good", text: `Saved "${credential.name}".${credential.connected === false ? " Press Connect to sign in with the provider." : ""}` });
-              void load();
-            }}
-          />
-        ) : credentials === null ? (
-          <p role="status" className="text-sm text-muted">Loading credentials…</p>
-        ) : credentials.length === 0 ? (
-          <EmptyState title="No credentials yet" action={<Button variant="primary" onClick={() => setEditing("new")}>New credential</Button>}>
-            Add an API key, a bearer token, a login or an OAuth2 app (Google, Meta, Microsoft…) for your workflows.
-          </EmptyState>
-        ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Credentials">
-            {credentials.map((credential) => (
-              <li key={credential.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{credential.name}</p>
-                  <p className="text-xs text-muted">
-                    {credentialType(credential.type)?.label ?? credential.type} · updated {new Date(credential.updatedAt).toLocaleString("en-GB")}
-                  </p>
-                </div>
-                {credential.connected !== undefined ? <Badge tone={credential.connected ? "good" : "warn"}>{credential.connected ? "Connected" : "Not connected"}</Badge> : null}
-                {credential.type === "oAuth2Api" ? (
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      const ok = await connectOAuth(credential.id);
-                      setMessage(ok ? { tone: "good", text: `"${credential.name}" is connected.` } : { tone: "info", text: "The sign-in window closed before connecting." });
-                      void load();
-                    }}
-                  >
-                    {credential.connected ? "Reconnect" : "Connect"}
-                  </Button>
-                ) : null}
-                <Button size="sm" variant="ghost" onClick={() => setEditing(credential)}>
-                  Edit
-                </Button>
+    <div data-credentials-manager>
+      {editing ? null : (
+        <div className="mb-3 flex justify-end">
+          <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
+            New credential
+          </Button>
+        </div>
+      )}
+      <p className="mb-4 text-[13px] text-muted">
+        Keys, tokens and logins your workflow nodes use (HTTP Request, Webhook auth, JWT, TOTP…). They are sealed in your account and never shown again after saving; a run hands each node only the credential it names.
+      </p>
+      {message ? (
+        <div className="mb-3">
+          <Notice tone={message.tone}>{message.text}</Notice>
+        </div>
+      ) : null}
+      {editing ? (
+        <CredentialForm
+          initial={editing === "new" ? undefined : editing}
+          onCancel={() => setEditing(null)}
+          onSaved={(credential) => {
+            setEditing(null);
+            setMessage({ tone: "good", text: `Saved "${credential.name}".${credential.connected === false ? " Press Connect to sign in with the provider." : ""}` });
+            void load();
+          }}
+        />
+      ) : credentials === null ? (
+        <p role="status" className="text-sm text-muted">Loading credentials…</p>
+      ) : credentials.length === 0 ? (
+        <EmptyState title="No credentials yet" action={<Button variant="primary" onClick={() => setEditing("new")}>New credential</Button>}>
+          Add an API key, a bearer token, a login or an OAuth2 app (Google, Meta, Microsoft…) for your workflows.
+        </EmptyState>
+      ) : (
+        <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Credentials">
+          {credentials.map((credential) => (
+            <li key={credential.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-ink">{credential.name}</p>
+                <p className="text-xs text-muted">
+                  {credentialType(credential.type)?.label ?? credential.type} · updated {new Date(credential.updatedAt).toLocaleString("en-GB")}
+                </p>
+              </div>
+              {credential.connected !== undefined ? <Badge tone={credential.connected ? "good" : "warn"}>{credential.connected ? "Connected" : "Not connected"}</Badge> : null}
+              {credential.type === "oAuth2Api" ? (
                 <Button
                   size="sm"
-                  variant="danger"
                   onClick={async () => {
-                    if (!window.confirm(`Delete the credential "${credential.name}"? Nodes using it will fail until you choose another.`)) return;
-                    try {
-                      const { usedBy } = await workflowsApi.deleteCredential(credential.id);
-                      setMessage({ tone: usedBy.length ? "info" : "good", text: usedBy.length ? `Deleted. It was used by: ${usedBy.join(", ")}.` : "Deleted." });
-                    } catch (caught) {
-                      setMessage({ tone: "error", text: caught instanceof Error ? caught.message : String(caught) });
-                    }
+                    const ok = await connectOAuth(credential.id);
+                    setMessage(ok ? { tone: "good", text: `"${credential.name}" is connected.` } : { tone: "info", text: "The sign-in window closed before connecting." });
                     void load();
                   }}
                 >
-                  Delete
+                  {credential.connected ? "Reconnect" : "Connect"}
                 </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setEditing(credential)}>
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={async () => {
+                  if (!window.confirm(`Delete the credential "${credential.name}"? Nodes using it will fail until you choose another.`)) return;
+                  try {
+                    const { usedBy } = await workflowsApi.deleteCredential(credential.id);
+                    setMessage({ tone: usedBy.length ? "info" : "good", text: usedBy.length ? `Deleted. It was used by: ${usedBy.join(", ")}.` : "Deleted." });
+                  } catch (caught) {
+                    setMessage({ tone: "error", text: caught instanceof Error ? caught.message : String(caught) });
+                  }
+                  void load();
+                }}
+              >
+                Delete
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

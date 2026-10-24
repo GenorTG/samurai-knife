@@ -5,7 +5,7 @@
  * on the right, all from the latest run shown on the canvas. Clicking an input column inserts it as an expression into
  * the parameter edited last.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, Button, CopyButton, Drawer, Field, Notice, SegmentedControl, Select, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
 import type { PublicCredential, RunRecord, HookUrls } from "@/lib/workflows/client";
@@ -66,6 +66,11 @@ export function NodePanel({
   const [inputPick, setInputPick] = useState(0);
   const [outputPick, setOutputPick] = useState(0);
   const [creating, setCreating] = useState<{ slot: string; types: string[] } | null>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  // Opened from the node list or the canvas: take focus so Escape closes it and Tab stays inside.
+  useEffect(() => {
+    if (!dialog.current?.contains(document.activeElement)) dialog.current?.focus({ preventScroll: true });
+  }, []);
   const incoming = connections.filter((c) => c.to.node === node.name);
   const sources = incoming.map((c) => ({ label: incoming.length > 1 ? `${c.from.node}${c.to.input ? ` → input ${c.to.input + 1}` : ""}` : c.from.node, run: lastRun(record, c.from.node), output: c.from.output }));
   const source = sources[Math.min(inputPick, Math.max(0, sources.length - 1))];
@@ -93,7 +98,7 @@ export function NodePanel({
   const hookPath = normalizeHookPath(node.parameters.path);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Node ${node.name}`} className="fixed inset-0 z-40 flex bg-black/45 p-2 sm:p-4" onKeyDown={(event) => event.key === "Escape" && !creating && onClose()}>
+    <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Node ${node.name}`} className="fixed inset-0 z-40 flex bg-black/45 p-2 outline-none sm:p-4" onKeyDown={(event) => event.key === "Escape" && !creating && onClose()}>
       <div className="sk-pop flex min-h-0 w-full flex-col overflow-hidden rounded-tool border border-line-strong bg-bg shadow-pop">
         <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
           <input

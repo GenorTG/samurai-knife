@@ -66,7 +66,7 @@ export function ToolShell({
   return (
     // `sk-tool-main` lets a tool widen the shell from CSS (see globals.css),
     // so the shell never needs to know slugs or tab ids.
-    <main className="sk-tool-main w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8" data-workspace={tool.workspace ? "" : undefined}>
+    <main className="sk-tool-main w-full px-4 py-5 sm:px-6 sm:py-6 xl:px-8" data-workspace={tool.workspace ? "" : undefined} data-hide-sidebar={tool.hideSidebar ? "" : undefined}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-line pb-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
