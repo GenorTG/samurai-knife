@@ -62,9 +62,6 @@ function failureFrom(res: Response, body: unknown): ApiFailure {
   if (res.status === 409 && code === "provider_not_configured") {
     return { kind: "provider_not_configured" };
   }
-  if (res.status === 409 && code === "continuation_lost") {
-    return { kind: "continuation_lost" };
-  }
   return { kind: "error", status: res.status, message: code ?? `HTTP ${res.status}` };
 }
 
@@ -105,7 +102,6 @@ function parseProvider(value: unknown): ProviderInfo | null {
       value.reasoningEffort === "low" || value.reasoningEffort === "medium" || value.reasoningEffort === "high"
         ? value.reasoningEffort
         : null,
-    openClawResponses: value.openClawResponses === true,
   };
 }
 
@@ -200,19 +196,14 @@ export async function fetchConversation(): Promise<ApiResult<DurableConversation
   if (!r.res.ok || !isRecord(r.body) || !Array.isArray(r.body.messages) || !Array.isArray(r.body.actions)) {
     return { ok: false, failure: failureFrom(r.res, r.body) };
   }
-  const sessionId = str(r.body.sessionId);
-  if (!sessionId) return { ok: false, failure: { kind: "error", status: 502, message: "Conversation response had no session id." } };
   return { ok: true, value: {
     version: 1,
     messages: r.body.messages as DurableConversation["messages"],
     actions: r.body.actions.filter((item): item is string => typeof item === "string"),
-    responseId: str(r.body.responseId),
-    sessionId,
-    pendingCallIds: Array.isArray(r.body.pendingCallIds) ? r.body.pendingCallIds.filter((id): id is string => typeof id === "string") : [],
   } };
 }
 
-/** Saves the browser-owned part only; the continuation state is advanced by /api/agent/chat. */
+/** Saves the browser-owned part only; the taint flag is the server's (/api/agent/chat). */
 export async function saveConversation(content: ConversationContent): Promise<ApiResult<null>> {
   const r = await call("/api/agent/conversation", { method: "PUT", body: content });
   if ("failure" in r) return { ok: false, failure: r.failure };
@@ -255,7 +246,6 @@ export interface ChatRequest {
   tools?: FunctionToolDef[];
   temperature?: number;
   maxTokens?: number;
-  previousResponseId?: string | null;
 }
 
 export async function chat(request: ChatRequest, signal?: AbortSignal): Promise<ApiResult<ChatReply>> {
@@ -280,7 +270,6 @@ export async function chat(request: ChatRequest, signal?: AbortSignal): Promise<
       message,
       finishReason: str(body.finishReason),
       usage: parseUsage(body.usage),
-      ...(str(body.responseId) ? { responseId: str(body.responseId) as string } : {}),
       ...(untrustedHeader(res) ? { untrusted: true } : {}),
     },
   };
@@ -417,7 +406,6 @@ export async function chatStream(
         finishReason: str(event.finishReason),
         usage: parseUsage(event.usage),
         ...(typeof event.ms === "number" ? { ms: event.ms } : {}),
-        ...(str(event.responseId) ? { responseId: str(event.responseId) as string } : {}),
       };
     }
   };

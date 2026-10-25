@@ -60,10 +60,7 @@ export interface LoopOptions {
   /** Conversation so far, ending with the new user message. */
   history: TranscriptMessage[];
   accountName: string;
-  openClawResponses?: boolean;
-  previousResponseId?: string | null;
   recentActions?: string[];
-  onResponseId?: (responseId: string) => void;
   onAction?: (action: string) => void;
   signal: AbortSignal;
   navigate: UiToolContext["navigate"];
@@ -163,17 +160,6 @@ export function toWire(transcript: TranscriptMessage[]): WireMessage[] {
   return slim.slice(start);
 }
 
-/**
- * OpenClaw Responses continuation: what the gateway session has not seen yet. While the chain holds, every
- * assistant message came from that session, so the delta is every wire message after the last one: tool
- * results (real, cancelled or interrupted) for its calls, then user and steering messages. Derived from the
- * transcript, not tracked in memory, so a turn after Stop or a reload sends exactly the same delta.
- */
-export function continuationDelta(transcript: TranscriptMessage[]): WireMessage[] {
-  const wire = repairTranscript(transcript).filter((m): m is WireMessage => m.role !== "notice");
-  return wire.slice(wire.map((m) => m.role).lastIndexOf("assistant") + 1);
-}
-
 /* --------------------------------------------------------------- tool calls */
 
 let idCounter = 0;
@@ -242,7 +228,7 @@ const DENIED = JSON.stringify({
  * What the approval policy knows (see server-tool-policy.ts): the user's own texts of THIS turn (the message that started
  * the run and any steering, from `turnStart`), and whether third-party text entered the conversation at all: any stored
  * message, or the server's sticky flag for this conversation (`stickyUntrusted`, from /api/agent/chat), which also
- * covers what the browser no longer holds (the capped transcript, an OpenClaw session seeded earlier).
+ * covers what the browser no longer holds (the capped transcript).
  */
 export function turnContext(conversation: readonly TranscriptMessage[], turnStart: number, effects: Record<string, KnifeToolEffectInfo>, stickyUntrusted = false): TurnContext {
   const userTexts = conversation.slice(turnStart).flatMap((m) => (m.role === "user" ? [typeof m.content === "string" ? m.content : ""] : []));
@@ -292,11 +278,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const working: TranscriptMessage[] = [...options.history];
   /** This turn = the user's message that started the run and everything after it (steering included). */
   const turnStart = Math.max(0, working.length - 1);
-  const responses = options.openClawResponses === true;
   /** The server says this conversation already holds third-party text (sticky until Clear; see turnContext). */
   let stickyUntrusted = false;
-  /** Responses mode: head of the gateway continuation chain (null = the next round seeds a fresh session). */
-  let head = responses ? options.previousResponseId ?? null : null;
   const append = (m: TranscriptMessage) => {
     working.push(m);
     onMessage(m);
@@ -308,35 +291,16 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     for (const content of texts) append({ role: "user", content });
     return texts.length > 0;
   };
-  /**
-   * One model call. Responses mode sends the delta chained to `head`; when the server answers
-   * continuation_lost (expired id, a dropped tool result, a failed round) it reseeds a fresh gateway
-   * session with the full history, once. `extra` (the wrap-up note) is sent but not kept in the transcript.
-   */
+  /** One model call with the whole (slimmed) history. `extra` (the wrap-up note) is sent but not kept in the transcript. */
   const callModel = async (
-    base: Omit<ChatRequest, "messages" | "previousResponseId">,
+    base: Omit<ChatRequest, "messages">,
     system: string,
     handlers: StreamHandlers | null,
     extra: WireMessage[] = [],
   ): Promise<ApiResult<ChatReply>> => {
-    const attempt = (messages: WireMessage[], previousResponseId: string | null): Promise<ApiResult<ChatReply>> => {
-      const request: ChatRequest = {
-        ...base,
-        messages: [{ role: "system", content: system }, ...messages, ...extra],
-        ...(responses ? { previousResponseId } : {}),
-      };
-      return handlers ? chatStream(request, handlers, signal) : chat(request, signal);
-    };
-    let result = await attempt(responses && head ? continuationDelta(working) : toWire(working), head);
-    if (responses && head && !result.ok && result.failure.kind === "continuation_lost") {
-      head = null;
-      result = await attempt(toWire(working), null);
-    }
+    const request: ChatRequest = { ...base, messages: [{ role: "system", content: system }, ...toWire(working), ...extra] };
+    const result = await (handlers ? chatStream(request, handlers, signal) : chat(request, signal));
     if (result.ok && result.value.untrusted) stickyUntrusted = true;
-    if (responses && result.ok) {
-      head = result.value.responseId ?? null;
-      if (head) options.onResponseId?.(head);
-    }
     return result;
   };
 

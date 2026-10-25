@@ -1,6 +1,5 @@
 import * as z from "zod/v4";
 import { jsonError } from "@/lib/accounts/http";
-import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
 import { baseUrlProblem, normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
 import type { Account, ProviderConfig } from "@/lib/accounts/store";
 import { providerPolicy, providerUrlProblem, strictHeaders } from "@/lib/net/outbound";
@@ -18,6 +17,7 @@ export const providerInputSchema = z.object({
   extraHeaders: z.record(z.string(), z.string()).optional(),
   // Omitted: keep stored value. "": clear (provider default).
   reasoningEffort: z.enum(["", "low", "medium", "high"]).optional(),
+  // Sent by pages loaded before the Responses continuation was removed (2026-10-25): accepted and ignored.
   openClawResponses: z.boolean().optional(),
 }).strict();
 
@@ -37,11 +37,6 @@ export async function providerFromInput(account: Account, input: ProviderInput, 
   // Checked again on every request (DNS can change); refusing here gives the user the reason at once.
   const addressProblem = await baseUrlProblem(baseUrl, providerPolicy(account));
   if (addressProblem) return { response: jsonError(`baseUrl: ${addressProblem}`, 400, { code: "address_not_allowed" }) };
-  const openClawResponses = input.openClawResponses ?? current?.openClawResponses ?? false;
-  if (openClawResponses) {
-    const problem = openClawResponsesProblem(baseUrl, input.model);
-    if (problem) return { response: jsonError(problem, 400) };
-  }
   const effortValue = input.reasoningEffort === undefined ? current?.reasoningEffort : input.reasoningEffort || undefined;
   return {
     config: {
@@ -56,7 +51,6 @@ export async function providerFromInput(account: Account, input: ProviderInput, 
           ? { extraHeaders: current.extraHeaders }
           : {}),
       ...(effortValue ? { reasoningEffort: effortValue } : {}),
-      openClawResponses,
     },
   };
 }

@@ -110,7 +110,7 @@ actions ask one-by-one in All/Most/Risky; None explicitly disables prompts. Outb
 
 Once third-party text entered the conversation (an envelope, a page read, a tool with `untrustedOutput`), in this turn
 or ANY earlier one, the conversation is tainted until the user clears it: `/api/agent/chat` checks every round's
-messages, keeps the flag in the conversation file (server-owned like the OpenClaw continuation state; a transcript PUT
+messages, keeps the flag in the conversation file (server-owned; a transcript PUT
 never touches it) and returns `x-knife-untrusted: 1`; the widget also scans its whole transcript. While tainted, in
 every mode but None and never waived by "allow this run": an outbound request to a host the user did not type asks,
 and every publishing write asks. "Typed" = in the user's own messages of the current turn outside what looks pasted:

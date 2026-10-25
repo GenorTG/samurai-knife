@@ -106,7 +106,6 @@ SUITES: list[Suite] = [
     Suite("github_app", py(f"{F}/github_app_e2e.py"), "static", timeout=900),
     Suite("ui_gaps", py("tests/ui_gaps_e2e.py", "{url}", "{mock}"), mock=True, data_env=True),
     Suite("agent_widget", py("tests/agent_widget_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
-    Suite("agent_responses", py("tests/agent_responses_e2e.py", "{url}"), timeout=900),
     Suite("agent_trust_modes", py("tests/agent_trust_modes_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
     Suite("agent_interaction", py("tests/agent_interaction_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
     Suite("agent_chain", py("tests/agent_chain_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
@@ -126,7 +125,6 @@ SUITES: list[Suite] = [
     Suite("real_sql", py("tests/agent_sql_real_e2e.py", "{url}"), real=True, timeout=2400),
     Suite("real_ocr_chain", py("tests/agent_ocr_chain_real_e2e.py", "{url}", "--runs", "1"), real=True, timeout=1800),
     Suite("real_wait", py("tests/agent_wait_real_e2e.py", "{url}"), real=True, timeout=1800),
-    Suite("real_responses", py("tests/agent_responses_real_e2e.py", "{url}"), real=True, timeout=1800),
     Suite("real_cv", py("tests/cv_agent_real_e2e.py", "{url}"), real=True, timeout=1800),
 ]
 

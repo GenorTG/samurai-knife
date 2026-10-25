@@ -211,7 +211,7 @@ in `mail-outbox/` (test/private transport) and `mail-errors.log` lines. A new pe
   every account). The office save's "drop the oldest versions" step looks at the quota only (`canStore`): low disk never
   deletes a user's history.
 - Never refused (bookkeeping, still counted): document metadata, folder list, CV snapshots of an accepted save, the
-  token ledger, course progress, the assistant's continuation state. Deleting is never refused.
+  token ledger, course progress, the assistant conversation's taint flag. Deleting is never refused.
 - Retention caps so nothing grows without bound: CV snapshots 40 and 20 MB per account, 5 conversation files (one per
   provider/model) per account, 25 kept versions per document, trash purged 30 days after trashing.
 - Shown on `/account` (Storage panel, `GET /api/account/storage` -> `{usedBytes, quotaBytes, fraction, areas}`), in the
@@ -258,7 +258,7 @@ office) and that an administrator has to run the GitHub showcase (CV studio). A 
 
 ## Outbound requests (`src/lib/net/`)
 
-The provider base URL is the user's own choice, so every provider request (Test, chat, streamed chat, OpenClaw Responses)
+The provider base URL is the user's own choice, so every provider request (Test, model list, chat, streamed chat)
 and every page fetch (job posting, company website) goes through `safeFetch`: the host is resolved once, every address
 must pass the policy, the connection is pinned to a checked address (no DNS rebinding), redirects are errors for
 providers (re-checked per hop, max 5, for pages), and the time and size caps hold.

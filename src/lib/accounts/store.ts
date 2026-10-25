@@ -57,7 +57,7 @@ const providerSchema = z.object({
   model: z.string().min(1),
   extraHeaders: z.record(z.string(), z.string()).optional(),
   reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
-  openClawResponses: z.boolean().optional(),
+  // `openClawResponses` in accounts written before 2026-10-25 (the removed Responses continuation) is stripped on read.
 });
 
 /**
@@ -561,7 +561,6 @@ export interface PublicProvider {
   keyHint: string | null;
   extraHeaderNames: string[];
   reasoningEffort: "low" | "medium" | "high" | null;
-  openClawResponses: boolean;
 }
 
 export interface PublicProviderProfile extends PublicProvider {
@@ -602,7 +601,6 @@ export function toPublicProvider(provider: ProviderConfig): PublicProvider {
     keyHint: maskKey(provider.apiKey),
     extraHeaderNames: Object.keys(provider.extraHeaders ?? {}),
     reasoningEffort: provider.reasoningEffort ?? null,
-    openClawResponses: provider.openClawResponses === true,
   };
 }
 

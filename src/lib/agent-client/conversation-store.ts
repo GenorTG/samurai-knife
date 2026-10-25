@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { readAccountText } from "@/lib/storage/sealed";
 import * as z from "zod/v4";
@@ -26,15 +26,11 @@ export const conversationContentSchema = z.object({
 });
 
 /**
- * The whole file. `sessionId`, `responseId` and `pendingCallIds` are the OpenClaw continuation
- * state and `untrusted` the conversation's taint; all are owned by the server alone (`/api/agent/chat`);
- * a PUT never touches them.
+ * The whole file. `untrusted` is the conversation's taint, owned by the server alone (`/api/agent/chat`); a PUT never
+ * touches it. Files written before 2026-10-25 also hold `responseId`/`sessionId`/`pendingCallIds` (the removed
+ * Responses continuation): zod strips them on read and the next write drops them.
  */
 export const conversationSchema = conversationContentSchema.extend({
-  responseId: z.string().max(256).nullable(),
-  sessionId: z.string().uuid(),
-  // Function calls the head response asked for; the next delta must answer all of them. Absent in pre-2026-10-11 files.
-  pendingCallIds: z.array(z.string().max(256)).max(64).default([]),
   // Third-party text has entered this conversation (server-tool-policy.ts): sticky until Clear. Absent in older files.
   untrusted: z.boolean().default(false),
 });
@@ -46,31 +42,16 @@ export interface ConversationContent {
 }
 
 export interface DurableConversation extends ConversationContent {
-  responseId: string | null;
-  sessionId: string;
-  pendingCallIds: string[];
   /** Server-owned taint flag (see conversationSchema); optional for values built by older callers. */
   untrusted?: boolean;
 }
 
 export function emptyConversation(): DurableConversation {
-  return {
-    version: 1,
-    messages: [],
-    actions: [],
-    responseId: null,
-    sessionId: randomUUID(),
-    pendingCallIds: [],
-    untrusted: false,
-  };
+  return { version: 1, messages: [], actions: [], untrusted: false };
 }
 
 export function providerConversationId(baseUrl: string, model: string): string {
   return createHash("sha256").update(baseUrl).update("\0").update(model).digest("hex").slice(0, 32);
-}
-
-export function openClawUser(accountId: string, providerId: string, sessionId: string): string {
-  return `samurai-knife:${accountId}:${providerId}:${sessionId}`;
 }
 
 /**
@@ -118,7 +99,7 @@ export function readConversation(accountId: string, providerId: string): Durable
 
 /**
  * `enforce` = the write carries the user's transcript (a PUT) and is refused with QuotaExceededError when it would not
- * fit; the server's own continuation bookkeeping (a few ids) is never refused mid-round.
+ * fit; the server's own bookkeeping (the taint flag) is never refused mid-round.
  */
 export function writeConversation(accountId: string, providerId: string, value: DurableConversation, options: { enforce?: boolean } = {}): void {
   const parsed = conversationSchema.parse(value as unknown);
@@ -127,7 +108,7 @@ export function writeConversation(accountId: string, providerId: string, value: 
 
 /**
  * Read-modify-write. Synchronous on purpose: Node runs it without interleaving, so a transcript PUT
- * and a continuation commit from a concurrent chat round can never overwrite each other's fields.
+ * and the taint update from a concurrent chat round can never overwrite each other's fields.
  */
 function updateConversation<T>(accountId: string, providerId: string, mutate: (value: DurableConversation) => T, options: { enforce?: boolean } = {}): T {
   const value = readConversation(accountId, providerId);
@@ -140,7 +121,7 @@ export function resetConversation(accountId: string, providerId: string): void {
   writeConversation(accountId, providerId, emptyConversation());
 }
 
-/** Browser-owned fields only; the continuation state is kept as stored. */
+/** Browser-owned fields only; the taint flag is kept as stored. */
 export function saveConversationContent(accountId: string, providerId: string, content: ConversationContent): void {
   updateConversation(accountId, providerId, (value) => {
     value.messages = content.messages;
@@ -148,76 +129,10 @@ export function saveConversationContent(accountId: string, providerId: string, c
   }, { enforce: true });
 }
 
-/* ------------------------------------------------------------------ OpenClaw continuation state machine
- *
- * Invariant: a gateway session receives the full history exactly once (the seed), afterwards only deltas
- * chained by previous_response_id. Therefore:
- *   - a seed (no previous id) always runs in a FRESH session (new `user` scope), never one that already
- *     holds part of the conversation;
- *   - a delta is accepted only if it chains from the stored head and answers every call the head left
- *     pending; anything else (head moved, results dropped) breaks the chain and the browser reseeds;
- *   - only a round that completed advances the head; a failed, aborted or unresolvable round breaks it,
- *     and so does a round that bypassed the continuation (Responses mode switched off).
- */
-
-export type RoundStart =
-  | { ok: true; sessionId: string; previousResponseId: string | null }
-  | { ok: false };
-
-export function beginResponsesRound(
-  accountId: string,
-  providerId: string,
-  previousResponseId: string | null,
-  answeredCallIds: readonly string[],
-): RoundStart {
-  return updateConversation(accountId, providerId, (value): RoundStart => {
-    if (previousResponseId === null) {
-      value.sessionId = randomUUID();
-      value.responseId = null;
-      value.pendingCallIds = [];
-      return { ok: true, sessionId: value.sessionId, previousResponseId: null };
-    }
-    const answered = new Set(answeredCallIds);
-    if (value.responseId !== previousResponseId || value.pendingCallIds.some((id) => !answered.has(id))) {
-      value.responseId = null;
-      value.pendingCallIds = [];
-      return { ok: false };
-    }
-    return { ok: true, sessionId: value.sessionId, previousResponseId };
-  });
-}
-
-/** Advance the head. Dropped when the session was rotated meanwhile (Clear, or a reseed from another round). */
-export function commitResponsesRound(
-  accountId: string,
-  providerId: string,
-  sessionId: string,
-  responseId: string,
-  pendingCallIds: readonly string[],
-): void {
-  updateConversation(accountId, providerId, (value) => {
-    if (value.sessionId !== sessionId) return;
-    value.responseId = responseId;
-    value.pendingCallIds = [...pendingCallIds];
-  });
-}
-
-/** Forget the head so the next round reseeds. With a sessionId, only if that session is still current. */
-export function breakContinuation(accountId: string, providerId: string, sessionId?: string): void {
-  const current = readConversation(accountId, providerId);
-  if (current.responseId === null && current.pendingCallIds.length === 0) return; // nothing to break: skip the write
-  updateConversation(accountId, providerId, (value) => {
-    if (sessionId !== undefined && value.sessionId !== sessionId) return;
-    value.responseId = null;
-    value.pendingCallIds = [];
-  });
-}
-
 /**
  * The conversation's sticky taint (server-tool-policy.ts): `seen` = this round's messages carry third-party text. Set
- * once and kept until Clear (resetConversation), because the model keeps seeing that text in later turns (and an
- * OpenClaw session keeps it after the browser's transcript cap dropped it). Writes only on the first change. Returns
- * the flag after the update.
+ * once and kept until Clear (resetConversation), because the model keeps seeing that text in later turns. Writes only
+ * on the first change. Returns the flag after the update.
  */
 export function noteUntrusted(accountId: string, providerId: string, seen: boolean): boolean {
   const current = readConversation(accountId, providerId);

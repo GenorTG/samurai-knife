@@ -42,13 +42,13 @@ def http_json(method: str, path: str, body: object | None = None) -> tuple[int, 
 
 
 def storage_key(page: Page) -> str:
-    return page.evaluate("fetch('/api/agent/conversation').then(r => r.json()).then(c => c.sessionId)")
+    # One stored conversation per account and provider: the key only keeps the helpers' signatures.
+    return "conversation"
 
 
 def stored_messages(page: Page, key: str) -> list[dict]:
     # The quiet per-turn token footer is telemetry, not conversation (tests/agent_usage_e2e.py covers it).
     conversation = page.evaluate("fetch('/api/agent/conversation').then(r => r.json())")
-    assert conversation["sessionId"] == key, "durable conversation session changed unexpectedly"
     return [m for m in conversation["messages"] if not (m["role"] == "notice" and m.get("level") == "usage")]
 
 
@@ -73,7 +73,6 @@ def send(page: Page, key: str, text: str) -> list[dict]:
             const r = await fetch('/api/agent/conversation');
             if (!r.ok) return false;
             const c = await r.json();
-            if (c.sessionId !== session) return false;
             const m = c.messages;
             if (m.filter(x => x.role === 'user').length <= n) return false;
             const l = m[m.length - 1];
@@ -413,7 +412,7 @@ with sync_playwright() as pw:
             const r = await fetch('/api/agent/conversation');
             if (!r.ok) return false;
             const c = await r.json();
-            return c.messages.length === 0 && c.actions.length === 0 && c.responseId === null && c.sessionId !== previous;
+            return c.messages.length === 0 && c.actions.length === 0;
         }""",
         arg=key, timeout=SLOW, polling=250,
     )

@@ -4,7 +4,6 @@ import { useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { changeProfile, saveProvider, testProvider } from "@/lib/agent-client/api";
-import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
 import { UsagePanel } from "./UsagePanel";
 import type { AccountInfo, ProviderInput } from "@/lib/agent-client/types";
 
@@ -161,7 +160,6 @@ function ProviderForm({
   const [headersText, setHeadersText] = useState("");
   const [clearHeaders, setClearHeaders] = useState(false);
   const [effort, setEffort] = useState<"" | "low" | "medium" | "high">(provider?.reasoningEffort ?? "");
-  const [openClawResponses, setOpenClawResponses] = useState(provider?.openClawResponses ?? false);
   const [working, setWorking] = useState<"save" | "test" | null>(null);
 
   const preset = presetFor(baseUrl);
@@ -173,8 +171,7 @@ function ProviderForm({
     clearKey ||
     headersText.trim() !== "" ||
     clearHeaders ||
-    effort !== (provider?.reasoningEffort ?? "") ||
-    openClawResponses !== (provider?.openClawResponses ?? false);
+    effort !== (provider?.reasoningEffort ?? "");
 
   function choosePreset(id: string) {
     const p = PRESETS.find((x) => x.id === id);
@@ -187,8 +184,6 @@ function ProviderForm({
   function buildInput(): ProviderInput | string {
     if (!baseUrl.trim()) return "Enter a base URL.";
     if (!model.trim()) return "Enter a model name.";
-    const responsesProblem = openClawResponses ? openClawResponsesProblem(baseUrl, model) : null;
-    if (responsesProblem) return responsesProblem;
     const input: ProviderInput = { baseUrl: baseUrl.trim(), model: model.trim() };
     if (clearKey) input.apiKey = "";
     else if (apiKey !== "") input.apiKey = apiKey;
@@ -197,7 +192,6 @@ function ProviderForm({
     if (Object.keys(parsed.headers).length > 0) input.extraHeaders = parsed.headers;
     else if (clearHeaders) input.extraHeaders = {};
     input.reasoningEffort = effort;
-    input.openClawResponses = openClawResponses;
     return input;
   }
 
@@ -259,7 +253,7 @@ function ProviderForm({
   return (
     <form onSubmit={save} className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-4" aria-label="Provider settings">
       {firstRun ? <Notice tone="info">Connect a model provider (any OpenAI-compatible API) to start. Your key stays on the server.</Notice> : null}
-      <Notice tone="info">Conversation history is saved on this Knife server per account and provider. The compact action journal stores page paths and tool names, not field values or file names. Clear conversation removes the saved history and starts a fresh OpenClaw session.</Notice>
+      <Notice tone="info">Conversation history is saved on this Knife server per account and provider. The compact action journal stores page paths and tool names, not field values or file names. Clear conversation removes the saved history.</Notice>
 
       <ProfileBar account={account} buildInput={buildInput} onChanged={onSaved} setStatus={setStatus} />
 
@@ -313,7 +307,7 @@ function ProviderForm({
         </label>
       ) : null}
 
-      <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.extraHeaderNames.length || provider?.reasoningEffort || provider?.openClawResponses)}>
+      <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.extraHeaderNames.length || provider?.reasoningEffort)}>
         <summary className="cursor-pointer text-xs text-muted select-none">Extra headers and advanced (optional)</summary>
         <div className="mt-2 space-y-2">
           <label className="flex items-center justify-between gap-2 text-xs text-muted">
@@ -331,10 +325,6 @@ function ProviderForm({
             </select>
           </label>
           <p className="text-xs text-faint">Sent as reasoning_effort; only set it if your provider accepts it.</p>
-          <label className="flex items-start gap-2 text-xs text-muted">
-            <input type="checkbox" checked={openClawResponses} onChange={(e) => setOpenClawResponses(e.target.checked)} />
-            <span><span className="block text-ink">Use OpenClaw Responses continuation</span><span className="text-faint">For an OpenClaw gateway configured at /v1 with model openclaw/&lt;agent&gt;. Uses delta-only turns and one durable gateway session.</span></span>
-          </label>
           {provider?.extraHeaderNames.length ? (
             <p className="text-xs text-faint">Stored: {provider.extraHeaderNames.join(", ")} (values hidden).</p>
           ) : null}

@@ -59,7 +59,6 @@ export interface ProviderInfo {
   keyHint: string | null;
   extraHeaderNames: string[];
   reasoningEffort: ReasoningEffort | null;
-  openClawResponses: boolean;
 }
 
 /** A saved provider profile (hints only, never the key); `active` = the assistant's provider. */
@@ -88,7 +87,6 @@ export interface ProviderInput {
   apiKey?: string;
   extraHeaders?: Record<string, string>;
   reasoningEffort?: ReasoningEffort | "";
-  openClawResponses?: boolean;
 }
 
 export interface ProviderTestResult {
@@ -105,8 +103,6 @@ export interface ChatReply {
   usage?: Usage | null;
   /** Server-side wall time of the round in ms. */
   ms?: number;
-  /** OpenResponses continuation identifier (OpenClaw provider mode only). */
-  responseId?: string;
   /** The server's sticky flag: third-party text has entered this conversation (header `x-knife-untrusted: 1`). */
   untrusted?: boolean;
 }
@@ -114,8 +110,6 @@ export interface ChatReply {
 export type ApiFailure =
   | { kind: "login_required"; accounts: AccountChoice[] }
   | { kind: "provider_not_configured" }
-  /** OpenClaw Responses mode: the server dropped the continuation chain; resend the full history without a response id. */
-  | { kind: "continuation_lost" }
   | { kind: "error"; message: string; status: number };
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; failure: ApiFailure };

@@ -1,4 +1,4 @@
-// Durable assistant conversations are isolated by account/provider and reset to a fresh gateway thread.
+// Durable assistant conversations are isolated by account/provider, sealed at rest, and reset by Clear.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,22 +9,18 @@ const dataDir = mkdtempSync(join(tmpdir(), "knife-agent-conversation-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 test.after(() => rmSync(dataDir, { recursive: true, force: true }));
 
-const { openClawUser, providerConversationId, readConversation, resetConversation, writeConversation } = await import("../src/lib/agent-client/conversation-store.ts");
+const { providerConversationId, readConversation, resetConversation, writeConversation } = await import("../src/lib/agent-client/conversation-store.ts");
 const { readAccountText } = await import("../src/lib/storage/sealed.ts");
+const { writeAccountFile } = await import("../src/lib/storage/quota.ts");
 
-test("conversation state is scoped per account and provider and reset rotates the OpenClaw thread", () => {
-  const providerId = providerConversationId("http://gateway/v1", "openclaw/agent");
-  const otherProviderId = providerConversationId("http://gateway/v1", "openclaw/other-agent");
+test("conversation state is scoped per account and provider, sealed at rest, and Clear empties it", () => {
+  const providerId = providerConversationId("http://gateway/v1", "model-a");
+  const otherProviderId = providerConversationId("http://gateway/v1", "model-b");
   const initial = readConversation("genor", providerId);
-  assert.equal(readConversation("genor", providerId).sessionId, initial.sessionId, "an empty provider scope retains its first session ID");
-  const openClawUserId = openClawUser("genor", providerId, initial.sessionId);
-  assert.equal(openClawUserId, openClawUser("genor", providerId, initial.sessionId));
-  assert.notEqual(openClawUserId, openClawUser("genor", otherProviderId, initial.sessionId));
   writeConversation("genor", providerId, {
     ...initial,
     messages: [{ role: "user", content: "continue this work" }],
     actions: ["/tools/text: Open text"],
-    responseId: "resp_1",
   });
 
   assert.equal(readConversation("genor", providerId).messages.length, 1);
@@ -39,9 +35,27 @@ test("conversation state is scoped per account and provider and reset rotates th
   const reset = readConversation("genor", providerId);
   assert.deepEqual(reset.messages, []);
   assert.deepEqual(reset.actions, []);
-  assert.equal(reset.responseId, null);
-  assert.notEqual(reset.sessionId, initial.sessionId);
-  assert.notEqual(openClawUserId, openClawUser("genor", providerId, reset.sessionId));
+});
+
+test("a file written with the removed Responses continuation fields still loads, and the next write drops them", () => {
+  const providerId = providerConversationId("http://gateway/v1", "openclaw/agent");
+  readConversation("old", providerId); // creates the account's conversation folder
+  const path = join(dataDir, "conversations", "old", providerId + ".json");
+  writeAccountFile("old", path, JSON.stringify({
+    version: 1,
+    messages: [{ role: "user", content: "from before" }],
+    actions: [],
+    responseId: "resp_9",
+    sessionId: "6f1c1a3e-2b9b-4c3e-9a51-0e0b8c7d9f10",
+    pendingCallIds: ["call_1"],
+    untrusted: true,
+  }) + "\n");
+  const loaded = readConversation("old", providerId);
+  assert.equal(loaded.messages[0].content, "from before");
+  assert.equal(loaded.untrusted, true);
+  assert.equal("responseId" in loaded || "sessionId" in loaded || "pendingCallIds" in loaded, false, "stripped on read");
+  writeConversation("old", providerId, loaded);
+  assert.doesNotMatch(readAccountText("old", path), /responseId|sessionId|pendingCallIds/);
 });
 
 test("untrusted taint is server-owned and sticky: kept across turns and transcript saves, cleared only by Clear", async () => {

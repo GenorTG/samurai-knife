@@ -66,8 +66,8 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
   const accountIdRef = useRef<string | null>(null);
   const scopeIdRef = useRef<string | null>(null);
   const actionsRef = useRef<string[]>([]);
-  const responseIdRef = useRef<string | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
+  /** The server copy of this scope's conversation is loaded (nothing to save into before, or right after a Clear). */
+  const loadedRef = useRef(false);
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
   const abortRef = useRef<AbortController | null>(null);
   /** The running (or starting) turn is being discarded by Clear: no "Stopped." notice, no queue pause. */
@@ -94,8 +94,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     if (scopeIdRef.current !== scopeId) {
       scopeIdRef.current = scopeId;
       actionsRef.current = [];
-      responseIdRef.current = null;
-      sessionIdRef.current = null;
+      loadedRef.current = false;
       setMessages(readChat(scopeId));
     }
     setAccount({ kind: "ready", account: info });
@@ -112,8 +111,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
         const remote = await fetchConversation();
         if (remote.ok) {
           actionsRef.current = remote.value.actions;
-          responseIdRef.current = remote.value.responseId;
-          sessionIdRef.current = remote.value.sessionId;
+          loadedRef.current = true;
           if (remote.value.messages.length > 0) {
             const restored = remote.value.messages as TranscriptMessage[];
             saveChat(scopeId, restored);
@@ -131,11 +129,11 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     else setAccount({ kind: "error", message: f.kind === "error" ? f.message : "Unexpected response." });
   }, [applyAccount]);
 
-  // Transcript + journal only: the continuation (responseId/sessionId) is advanced by /api/agent/chat itself.
+  // Transcript + journal only: the taint flag is the server's (/api/agent/chat).
   const enqueueConversationSave = useCallback((history: TranscriptMessage[], actions: string[]): Promise<void> => {
     const pending = persistQueueRef.current.then(async () => {
       // No server copy loaded yet for this scope (or it was just cleared): nothing to save into.
-      if (sessionIdRef.current) await saveConversation({ version: 1, messages: history, actions });
+      if (loadedRef.current) await saveConversation({ version: 1, messages: history, actions });
     });
     persistQueueRef.current = pending;
     return pending;
@@ -166,8 +164,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     return subscribeChat(scopeId, (removed) => {
       if (removed) {
         actionsRef.current = [];
-        responseIdRef.current = null;
-        sessionIdRef.current = null;
+        loadedRef.current = false;
         if (abortRef.current) {
           discardRef.current = true;
           abortRef.current.abort();
@@ -253,8 +250,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
         const durable = await fetchConversation();
         if (durable.ok) {
           actionsRef.current = durable.value.actions;
-          responseIdRef.current = durable.value.responseId;
-          sessionIdRef.current = durable.value.sessionId;
+          loadedRef.current = true;
         }
         // Under the lock the stored transcript is ours to repair (a crashed run may have left unpaired tool calls).
         const scopeId = scopeIdRef.current ?? id;
@@ -268,12 +264,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
           history,
           accountName: account.account.displayName,
           signal: controller.signal,
-          openClawResponses: account.account.provider?.openClawResponses === true,
-          previousResponseId: responseIdRef.current,
           recentActions: actionsRef.current,
-          onResponseId: (responseId) => {
-            responseIdRef.current = responseId;
-          },
           onAction: (action) => {
             if (actionsRef.current.at(-1) !== action) actionsRef.current = [...actionsRef.current, action].slice(-40);
             enqueueConversationSave(readChat(scopeId), actionsRef.current);
@@ -357,8 +348,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     const scopeId = scopeIdRef.current;
     if (scopeId) clearChat(scopeId);
     actionsRef.current = [];
-    responseIdRef.current = null;
-    sessionIdRef.current = null;
+    loadedRef.current = false;
     persistQueueRef.current = persistQueueRef.current.then(async () => { await resetConversation(); });
     clearArtifacts();
     clearQueue();
@@ -390,8 +380,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     accountIdRef.current = null;
     scopeIdRef.current = null;
     actionsRef.current = [];
-    responseIdRef.current = null;
-    sessionIdRef.current = null;
+    loadedRef.current = false;
     setMessages([]);
     await refreshAccount();
   }, [refreshAccount]);

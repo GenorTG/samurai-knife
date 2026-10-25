@@ -1,23 +1,8 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
-import { openClawResponsesProblem } from "@/lib/accounts/openclaw-target";
-import {
-  CONTINUATION_LOST,
-  forwardChat,
-  forwardChatStream,
-  forwardResponses,
-  forwardResponsesStream,
-  type ResponsesSettlement,
-} from "@/lib/accounts/provider";
+import { forwardChat, forwardChatStream } from "@/lib/accounts/provider";
 import { getAccount } from "@/lib/accounts/store";
-import {
-  beginResponsesRound,
-  breakContinuation,
-  commitResponsesRound,
-  noteUntrusted,
-  providerConversationId,
-  type RoundStart,
-} from "@/lib/agent-client/conversation-store";
+import { noteUntrusted, providerConversationId } from "@/lib/agent-client/conversation-store";
 import { recordRound } from "@/lib/accounts/usage-ledger";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 import { toolContextFor } from "@/lib/accounts/authz";
@@ -75,6 +60,7 @@ const bodySchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(1).max(64_000).optional(),
   stream: z.boolean().optional(),
+  // Sent by pages loaded before the Responses continuation was removed (2026-10-25): accepted and ignored.
   previousResponseId: z.string().max(256).nullable().optional(),
 }).strict();
 
@@ -106,7 +92,6 @@ export async function POST(request: Request): Promise<Response> {
     tools: parsed.data.tools,
     temperature: parsed.data.temperature,
     maxTokens: parsed.data.maxTokens,
-    previousResponseId: parsed.data.previousResponseId,
   };
   const accountId = auth.account.id;
   const providerId = providerConversationId(provider.baseUrl, provider.model);
@@ -123,42 +108,6 @@ export async function POST(request: Request): Promise<Response> {
     if (untrusted) response.headers.set(UNTRUSTED_HEADER, "1");
     return response;
   };
-  if (provider.openClawResponses) {
-    // Stored before the PUT validated it, or hand-edited: refuse instead of sending a request the gateway cannot route.
-    const problem = openClawResponsesProblem(provider.baseUrl, provider.model);
-    if (problem) return jsonError(problem, 409);
-    const answered = parsed.data.messages.flatMap((m) => (m.role === "tool" ? [m.tool_call_id] : []));
-    let start: RoundStart;
-    try {
-      start = beginResponsesRound(accountId, providerId, parsed.data.previousResponseId ?? null, answered);
-    } catch {
-      return jsonError("conversation_store_unavailable", 500);
-    }
-    if (!start.ok) return jsonError(CONTINUATION_LOST, 409);
-    const { sessionId } = start;
-    const onSettled = (round: ResponsesSettlement): void => {
-      recordRound(accountId, { model: provider.model, usage: round.ok ? round.usage : null, ms: round.ms, failed: !round.ok && !round.aborted });
-      try {
-        if (round.ok) commitResponsesRound(accountId, providerId, sessionId, round.responseId, round.pendingCallIds);
-        else breakContinuation(accountId, providerId, sessionId);
-      } catch {
-        // The round itself is answered either way; an unwritable store surfaces on the next conversation request.
-      }
-    };
-    const responsesInput = { ...input, previousResponseId: start.previousResponseId };
-    if (parsed.data.stream) {
-      const streamed = await forwardResponsesStream(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
-      return streamed.ok ? mark(streamed.response) : jsonError(streamed.error, streamed.status);
-    }
-    const outcome = await forwardResponses(provider, accountId, sessionId, responsesInput, request.signal, onSettled, net);
-    return outcome.ok ? mark(json(outcome.result)) : jsonError(outcome.error, outcome.status);
-  }
-  // A round that bypasses the continuation (Responses mode off) leaves the gateway session behind: drop its head.
-  try {
-    breakContinuation(accountId, providerId);
-  } catch {
-    // Conversation store problems are reported by /api/agent/conversation; a stateless round does not depend on it.
-  }
   if (parsed.data.stream) {
     const streamed = await forwardChatStream(provider, input, request.signal, (round) =>
       recordRound(accountId, { model: provider.model, ...round }), net,
