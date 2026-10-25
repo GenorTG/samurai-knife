@@ -13,6 +13,7 @@
 //    - Open: `input[type=file]` clicks become {type:"open", id, accept, multiple}; the parent shows its own chooser (the
 //      account's files, or this computer) and answers {type:"files", id, files:[{name, mime, bytes}]} or {type:"cancel", id},
 //      which the bridge puts into the input and announces with input/change (or cancel) events, as the browser would.
+// 4. The assistant: {type:"agent", id, method, args} calls into the app's own agent API when it has one (agentCall).
 // App code shares this origin and can reach this frame: the parent treats every message as untrusted and only ever
 // reads files for the app after the person picked them in Smart Knife's own UI.
 (() => {
@@ -39,6 +40,7 @@
       else if (message.type === "attach") port.postMessage({ type: "attached", ok: attach() });
       else if (message.type === "files") deliver(message.id, message.files);
       else if (message.type === "cancel") cancel(message.id);
+      else if (message.type === "agent") void agentCall(message);
     } catch (error) {
       port.postMessage({ type: "error", message: String((error && error.message) || error).slice(0, 300) });
     }
@@ -76,6 +78,84 @@
     if (self.caches) for (const key of await caches.keys()) await caches.delete(key);
     if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
       for (const registration of await navigator.serviceWorker.getRegistrations()) await registration.unregister();
+    }
+  }
+
+  /* ------------------------------------------------------------------------------------- the assistant's calls */
+
+  // 4. {type:"agent", id, method, args} -> the app's own agent API `window.<app>` (VectorCraft, FilmCraft and EffectCraft
+  //    ship one: the desktop control channel as promises), answered with {type:"agent-result", id, ok, result|error}.
+  //    Only these methods; results go back as JSON (size-capped), never as live objects. Two carry bytes: readFile's
+  //    Uint8Array comes back as {bytes: ArrayBuffer} (transferred), and "import" takes [{name, mime, bytes}] and hands
+  //    them to whichever import call the app has (importFiles(File[]), openFile(name, bytes) or addFile(File)).
+  //    "probe" says whether the API answers yet: apps define it before they run and reject calls until then.
+  const AGENT_METHODS = new Set(["probe", "request", "execute", "commands", "inspect", "screenshot", "files", "readFile", "import", "info"]);
+  const AGENT_TIMEOUT_MS = 60_000;
+  const PROBE_TIMEOUT_MS = 5_000;
+  const AGENT_MAX_CHARS = 16 * 1024 * 1024;
+
+  function withTimeout(promise, ms) {
+    let timer;
+    return Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer within ${ms / 1000} s`)), ms); }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  function importer(api) {
+    if (typeof api.importFiles === "function") return (files) => api.importFiles(files);
+    if (typeof api.openFile === "function") return async (files) => { for (const f of files) await api.openFile(f.name, new Uint8Array(await f.arrayBuffer())); return { opened: files.map((f) => f.name) }; };
+    if (typeof api.addFile === "function") return async (files) => { const added = []; for (const f of files) added.push(await api.addFile(f, f.name)); return { added }; };
+    return null;
+  }
+
+  async function agentCall(message) {
+    const id = message.id;
+    const method = String(message.method || "");
+    const reply = (body, transfer) => port.postMessage(Object.assign({ type: "agent-result", id }, body), transfer || []);
+    if (!Number.isInteger(id)) return;
+    if (!AGENT_METHODS.has(method)) return reply({ ok: false, error: "unknown method" });
+    const w = appWindow();
+    const api = w ? w[APP] : null;
+    const present = Boolean(api && typeof api.request === "function" && typeof api.inspect === "function");
+    if (method === "probe") {
+      if (!present) return reply({ ok: true, result: { api: false } });
+      try {
+        await withTimeout(api.inspect(), PROBE_TIMEOUT_MS);
+      } catch (error) {
+        return reply({ ok: true, result: { api: false, waiting: String((error && error.message) || error).slice(0, 200) } });
+      }
+      const methods = [...AGENT_METHODS].filter((name) => name !== "probe" && name !== "import" && typeof api[name] === "function");
+      if (importer(api)) methods.push("import");
+      return reply({ ok: true, result: { api: true, methods } });
+    }
+    if (!present) return reply({ ok: false, error: "no-api" });
+    let run;
+    if (method === "import") {
+      const list = Array.isArray(message.args) && Array.isArray(message.args[0]) ? message.args[0] : [];
+      const files = list.filter((f) => f && f.bytes instanceof ArrayBuffer).slice(0, 20).map((f) => new File([f.bytes], String(f.name || "file").slice(0, 200), { type: String(f.mime || "") }));
+      const take = importer(api);
+      if (!take) return reply({ ok: false, error: "this app cannot import files" });
+      if (!files.length) return reply({ ok: false, error: "no file to import" });
+      run = () => take(files);
+    } else {
+      if (typeof api[method] !== "function") return reply({ ok: false, error: `this app has no ${method}()` });
+      const args = Array.isArray(message.args) ? message.args.slice(0, 2) : [];
+      run = () => api[method](...args);
+    }
+    try {
+      const result = await withTimeout(run(), AGENT_TIMEOUT_MS);
+      if (method === "readFile") {
+        if (!(result instanceof Uint8Array)) return reply({ ok: false, error: "the app returned no bytes" });
+        if (result.byteLength > MAX_SAVE) return reply({ ok: false, error: `the file is too large (${result.byteLength} bytes)` });
+        const bytes = result.slice().buffer;
+        return reply({ ok: true, result: { bytes } }, [bytes]);
+      }
+      const text = JSON.stringify(result === undefined ? null : result);
+      if (text.length > AGENT_MAX_CHARS) return reply({ ok: false, error: `the answer is too large (${text.length} characters)` });
+      reply({ ok: true, result: JSON.parse(text) });
+    } catch (error) {
+      reply({ ok: false, error: String((error && error.message) || error).slice(0, 500) });
     }
   }
 

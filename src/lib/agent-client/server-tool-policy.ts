@@ -39,8 +39,9 @@ export interface TurnContext {
 /** Response header of /api/agent/chat: "1" when the conversation holds third-party text (sticky until Clear). */
 export const UNTRUSTED_HEADER = "x-knife-untrusted";
 
-/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV studio). */
-export const PAGE_READS: ReadonlySet<string> = new Set(["page_snapshot", "read_text"]);
+/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV studio); every
+ *  answer of a Craft app too (its code is third-party, and a project or media file may come from someone else). */
+export const PAGE_READS: ReadonlySet<string> = new Set(["page_snapshot", "read_text", "craft_commands", "craft_inspect", "craft_execute", "craft_request", "craft_files"]);
 
 /** The message shapes both the widget transcript and the chat route's body share. */
 export type PolicyMessage =

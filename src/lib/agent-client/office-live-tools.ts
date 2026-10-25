@@ -1,6 +1,6 @@
 import { activeLiveBridge, connectedLiveEditor, type OfficeLiveBridge } from "@/lib/office/live-bridge";
 import { errorText, forceSaveDoc, getDoc } from "@/tools/sidecars/client";
-import { LIVE_TOOL_EDITORS, liveRisk, toLiveCall } from "@/lib/office/live-protocol";
+import { CHART_TYPES, HIGHLIGHTS, LIVE_TOOL_EDITORS, liveRisk, toLiveCall } from "@/lib/office/live-protocol";
 import type { Assessment } from "./approval-policy";
 import type { TrustMode } from "./interaction";
 import type { FunctionToolDef, ToolRunResult } from "./types";
@@ -106,6 +106,100 @@ export const LIVE_TOOL_DEFS: FunctionToolDef[] = [
     {},
     [],
   ),
+  // Word: formatting, tables, lists, header and footer, track changes.
+  def(
+    "doc_live_format",
+    "Word: character formatting. Target: quote (the first occurrence of that text; all:true = every occurrence), or elements from..to (whole paragraphs), or neither = the user's selection. Set any of bold, italic, underline, strikeout, color \"#rrggbb\", highlight (a colour name), size (points), font.",
+    {
+      quote: { type: "string" },
+      all: { type: "boolean" },
+      match_case: { type: "boolean" },
+      from: { type: "integer", minimum: 0, description: PARAGRAPH_INDEX },
+      to: { type: "integer", minimum: 0 },
+      bold: { type: "boolean" },
+      italic: { type: "boolean" },
+      underline: { type: "boolean" },
+      strikeout: { type: "boolean" },
+      color: { type: "string", description: "#rrggbb" },
+      highlight: { type: "string", enum: [...HIGHLIGHTS] },
+      size: { type: "number", minimum: 1, maximum: 400 },
+      font: { type: "string" },
+    },
+    [],
+  ),
+  def(
+    "doc_live_insert_table",
+    "Word: insert a table (rows of cell texts; the first row is a bold header unless header:false) before element index, or at the end.",
+    {
+      rows: { type: "array", minItems: 1, maxItems: 200, items: { type: "array", minItems: 1, maxItems: 30, items: { type: "string" } } },
+      header: { type: "boolean", description: "Default true." },
+      index: { type: "integer", minimum: 0, description: PARAGRAPH_INDEX },
+    },
+    ["rows"],
+  ),
+  def(
+    "doc_live_insert_list",
+    "Word: insert a bulleted (or numbered:true) list, one item per paragraph, before element index or at the end.",
+    { items: { type: "array", minItems: 1, maxItems: 200, items: { type: "string" } }, numbered: { type: "boolean" }, index: { type: "integer", minimum: 0, description: PARAGRAPH_INDEX } },
+    ["items"],
+  ),
+  def(
+    "doc_live_header_footer",
+    "Word: set the page header and/or footer text (replaces what is there; \"\" empties it). The user confirms it.",
+    { header: { type: "string" }, footer: { type: "string" } },
+    [],
+  ),
+  def("doc_live_track_changes", "Word: turn track changes on or off (with it on, your edits show as suggestions the user accepts or rejects).", { on: { type: "boolean" } }, ["on"]),
+  // Spreadsheets: formats, column widths, charts, sorting.
+  def(
+    "doc_live_cells_format",
+    "Spreadsheet: format a range: bold, italic, underline, wrap, font_size, font_color / fill \"#rrggbb\", number_format (\"0.00\", \"#,##0\", \"0%\", \"yyyy-mm-dd\", \"[$€-x-euro2] #,##0.00\"), align.",
+    {
+      range: { type: "string" },
+      sheet: { type: "string" },
+      bold: { type: "boolean" },
+      italic: { type: "boolean" },
+      underline: { type: "boolean" },
+      wrap: { type: "boolean" },
+      font_size: { type: "number" },
+      font_color: { type: "string" },
+      fill: { type: "string" },
+      number_format: { type: "string" },
+      align: { type: "string", enum: ["left", "center", "right", "justify"] },
+    },
+    ["range"],
+  ),
+  def("doc_live_column_width", "Spreadsheet: set the width of a column or a span (\"B\", \"A:D\") in characters.", { columns: { type: "string" }, width: { type: "number", minimum: 0, maximum: 255 }, sheet: { type: "string" } }, ["columns", "width"]),
+  def(
+    "doc_live_add_chart",
+    "Spreadsheet: add a chart of a data block with its header row (e.g. \"A1:B6\": categories in the first column, one series per further column). at = top-left cell of the chart (default: right of the data).",
+    {
+      range: { type: "string" },
+      type: { type: "string", enum: [...CHART_TYPES], description: "Default bar." },
+      title: { type: "string" },
+      at: { type: "string" },
+      sheet: { type: "string" },
+      width_mm: { type: "number" },
+      height_mm: { type: "number" },
+      series_in_rows: { type: "boolean", description: "Series are rows instead of columns." },
+    },
+    ["range"],
+  ),
+  def(
+    "doc_live_sort",
+    "Spreadsheet: sort the rows of a block by one column (by = its letter). header (default true) keeps the first row in place.",
+    { range: { type: "string" }, by: { type: "string" }, descending: { type: "boolean" }, header: { type: "boolean" }, sheet: { type: "string" } },
+    ["range", "by"],
+  ),
+  // Presentations: slide text, notes, delete.
+  def(
+    "doc_live_slide_text",
+    "Presentation: replace the text of one shape on a slide (index and shape from doc_live_read {what:\"structure\"}: each slide lists its text shapes). The user confirms it.",
+    { index: { type: "integer", minimum: 0 }, shape: { type: "integer", minimum: 0 }, text: { type: "string" } },
+    ["index", "shape", "text"],
+  ),
+  def("doc_live_slide_notes", "Presentation: set the speaker notes of a slide (replaces them).", { index: { type: "integer", minimum: 0 }, text: { type: "string" } }, ["index", "text"]),
+  def("doc_live_delete_slide", "Presentation: delete a slide (returns its texts). The user confirms it.", { index: { type: "integer", minimum: 0 } }, ["index"]),
 ];
 
 export function isLiveTool(name: string): boolean {
@@ -149,12 +243,15 @@ export function assessLiveCall(name: string, args: Record<string, unknown>, mode
   if (risk === "read") return NO;
   const where = docName ? ` in “${docName}”` : "";
   if (risk === "destructive") {
-    const title =
-      name === "doc_live_delete"
-        ? `Delete paragraphs${where}?`
-        : name === "doc_live_replace"
-          ? `Replace every “${String(args.search ?? "").slice(0, 40)}”${where}?`
-          : `Overwrite cells${where}?`;
+    const slide = typeof args.index === "number" ? ` ${args.index + 1}` : "";
+    const titles: Record<string, string> = {
+      doc_live_delete: `Delete paragraphs${where}?`,
+      doc_live_replace: `Replace every “${String(args.search ?? "").slice(0, 40)}”${where}?`,
+      doc_live_delete_slide: `Delete slide${slide}${where}?`,
+      doc_live_slide_text: `Replace text on slide${slide}${where}?`,
+      doc_live_header_footer: `Replace the header or footer${where}?`,
+    };
+    const title = titles[name] ?? `Overwrite cells${where}?`;
     return { ask: true, destructive: true, title, detail: `${detail} (undo with Ctrl+Z in the editor)` };
   }
   if (mode === "destructive") return NO;

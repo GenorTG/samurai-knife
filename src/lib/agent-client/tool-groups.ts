@@ -30,6 +30,8 @@ export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: "nosql", prefixes: ["knife_mongo_", "knife_chroma_", "knife_redis_"], pagePattern: /(?!)/ /* no page of its own since the NoSQL lab was removed (2026-10-25): load_tools only */, summary: "NoSQL and vector: MongoDB, Chroma and Redis operation specs to client code, validation and explanation" },
   // Browser-side (office-live-tools.ts); besides being loaded, each tool is offered only while an editor of its type is connected.
   { id: "office_live", prefixes: ["doc_live_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "live edits in the document open in the office editor", loadable: false },
+  // Browser-side (craft-live-tools.ts); offered only while a Craft app with an agent API is connected.
+  { id: "craft_live", prefixes: ["craft_"], pagePattern: /^\/tools\/artcraft(\/|$)/, summary: "read and drive the Craft app open on the page (commands, UI, screenshots, files)", loadable: false },
 ];
 
 export const LOAD_TOOLS_NAME = "load_tools";

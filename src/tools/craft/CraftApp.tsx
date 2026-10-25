@@ -10,6 +10,7 @@ import { useSidecar } from "@/tools/sidecars/useSidecar";
 import { CraftUpdates } from "./CraftUpdates";
 import { CraftFilesDrawer, CraftOpenChooser } from "./CraftFiles";
 import { useCraftBridge, type OpenRequest, type PickedFile, type SaveRequest } from "./useCraftBridge";
+import { clearCraftPresence, setCraftPresence } from "@/lib/craft/live";
 
 const SERVICE = "craft";
 
@@ -146,6 +147,11 @@ type SavedNote = { kind: "saved"; file: CraftFile } | { kind: "saving"; name: st
  * "Craft files"), the app frame once the bridge is ready. Fails closed: without the bridge the app does not load, or a
  * browser shared by several accounts could show the previous account's work.
  */
+const PROBE_EVERY_MS = 1500;
+/** No `window.<app>` after this long: the app has no agent API. One that exists but is still starting gets longer. */
+const PROBE_FOR_MS = 60_000;
+const PROBE_STARTING_MS = 5 * 60_000;
+
 function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extract<Stage, { kind: "ready" }>; canManage: boolean }) {
   const [webgl, setWebgl] = useState(false);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
@@ -167,13 +173,46 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
     },
     [app.id],
   );
-  const { frame: bridgeFrame, state: bridgeState, attempt: bridgeAttempt, onBridgeLoad, attach, deliver, cancel, retry } = useCraftBridge({
+  const { frame: bridgeFrame, state: bridgeState, attempt: bridgeAttempt, onBridgeLoad, attach, deliver, cancel, retry, agentCall } = useCraftBridge({
     origin: stage.origin,
     accountTag: stage.accountTag,
     onSave: (request) => void onSave(request),
     onTooBig: (name, size) => setNote({ kind: "error", message: `${name} (${formatBytes(size)}) is larger than your files take (50 MB): it was downloaded instead.` }),
     onOpen: (request) => setOpenRequest(request),
   });
+  // The assistant (craft_* tools): once the app has loaded, ask the bridge whether it has an agent API. A wasm app
+  // defines `window.<app>` only after it starts, so this asks again for a while; each load of the app frame starts over.
+  const [loads, setLoads] = useState(0);
+  const [agent, setAgent] = useState<"probing" | "no-api" | "connected">("probing");
+  useEffect(() => {
+    if (loads === 0) return;
+    const base = { appId: app.id, appName: app.name, version: stage.version };
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now();
+    setCraftPresence({ ...base, state: "probing" });
+    const probe = async () => {
+      const reply = await agentCall("probe", []);
+      if (stopped) return;
+      const result = (reply.ok ? reply.result : null) as { api?: unknown; methods?: unknown; waiting?: unknown } | null;
+      if (result?.api === true) {
+        const methods = Array.isArray(result.methods) ? result.methods.filter((m): m is string => typeof m === "string").slice(0, 40) : [];
+        setCraftPresence({ ...base, state: "connected", methods, call: agentCall });
+        setAgent("connected");
+      } else if (Date.now() - started > (result?.waiting ? PROBE_STARTING_MS : PROBE_FOR_MS)) {
+        setCraftPresence({ ...base, state: "no-api" });
+        setAgent("no-api");
+      } else {
+        timer = setTimeout(() => void probe(), PROBE_EVERY_MS);
+      }
+    };
+    timer = setTimeout(() => void probe(), PROBE_EVERY_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      clearCraftPresence(app.id);
+    };
+  }, [loads, app.id, app.name, stage.version, agentCall]);
   // The chooser took the focus: give it back to the app, so its next click or shortcut (Ctrl+S) reaches it.
   const closeChooser = () => {
     setOpenRequest(null);
@@ -263,6 +302,11 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
             </p>
           ) : null}
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            {agent === "connected" ? (
+              <span data-craft-agent="connected" className="text-xs text-good" title={`The assistant can read and drive ${app.name} (craft_* tools); it asks before acting, as your trust setting says.`}>
+                Assistant ready
+              </span>
+            ) : null}
             {app.webgpu ? (
               <label className="flex items-center gap-2 text-xs text-muted">
                 <input type="checkbox" checked={webgl} onChange={(event) => setWebgl(event.target.checked)} />
@@ -315,6 +359,8 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
             onLoad={() => {
               setLoadedSrc(src);
               attach();
+              setLoads((value) => value + 1);
+              setAgent("probing");
             }}
             data-page-fill
             className="block min-h-0 w-full flex-1 rounded-tool border border-line bg-black"

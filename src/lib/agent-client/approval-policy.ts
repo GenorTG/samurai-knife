@@ -4,6 +4,7 @@ import { describeActionTarget, fieldWouldBeCleared, fieldWouldBeOverwritten, fil
 import type { TrustMode } from "./interaction";
 import { activeLiveBridge } from "@/lib/office/live-bridge";
 import { assessLiveCall, isLiveTool } from "./office-live-tools";
+import { assessCraftCall, isCraftTool } from "./craft-live-tools";
 import type { Assessment } from "./server-tool-policy";
 
 /**
@@ -32,6 +33,8 @@ export function assessCall(name: string, args: Args, rawArgs: string, mode: Trus
   const detail = describeCall(name, rawArgs);
   // Edits inside the open office document: acting calls; delete / replace-all / overwriting cells are destructive.
   if (isLiveTool(name)) return assessLiveCall(name, args, mode, detail, activeLiveBridge()?.docName ?? "");
+  // Calls into the open Craft app: commands and input act; ids that lose work (delete, close, revert…) are destructive.
+  if (isCraftTool(name)) return assessCraftCall(name, args, mode, detail);
 
   switch (name) {
     case "open_tool": {

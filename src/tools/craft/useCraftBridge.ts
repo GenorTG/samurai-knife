@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CraftReply } from "@/lib/craft/live";
 
 /**
  * The Smart Knife side of the Craft bridge (sidecars/craft/knife-bridge/bridge.js, docs/SIDECARS.md "Craft files"): a
  * hidden iframe of ours on the craft origin, a MessagePort to it, the account check that must finish before the app
  * loads, then the app's Save and Open requests. Every message from the port is untrusted (app code shares the craft
  * origin with the bridge): types, sizes and names are checked here, and files only ever go to the app after the person
- * picked them in our own chooser.
+ * picked them in our own chooser. The assistant's calls into the app (`agentCall`) go the same way and come back as
+ * plain JSON, matched by id.
  */
 
 export type BridgeState = { kind: "connecting" } | { kind: "ready"; wiped: boolean } | { kind: "failed"; message: string };
@@ -33,6 +35,10 @@ export interface PickedFile {
 
 const MAX_SAVE = 50 * 1024 * 1024;
 const CONNECT_TIMEOUT_MS = 20_000;
+/** The bridge gives up after 60 s; this only catches a bridge that never answers. */
+const AGENT_TIMEOUT_MS = 70_000;
+
+type Pending = { resolve: (reply: CraftReply) => void; timer: ReturnType<typeof setTimeout> };
 
 export function useCraftBridge(options: {
   origin: string;
@@ -47,6 +53,16 @@ export function useCraftBridge(options: {
   const handlers = useRef(options);
   const [state, setState] = useState<BridgeState>({ kind: "connecting" });
   const [attempt, setAttempt] = useState(0);
+  const pending = useRef(new Map<number, Pending>());
+  const nextId = useRef(1);
+
+  const settleAll = useCallback((error: string) => {
+    for (const [id, entry] of pending.current) {
+      clearTimeout(entry.timer);
+      entry.resolve({ ok: false, error });
+      pending.current.delete(id);
+    }
+  }, []);
 
   useEffect(() => {
     handlers.current = options;
@@ -61,13 +77,15 @@ export function useCraftBridge(options: {
       clearTimeout(timer);
       port.current?.close();
       port.current = null;
+      settleAll("the Craft app was closed");
     };
-  }, [attempt, origin]);
+  }, [attempt, origin, settleAll]);
 
   const onBridgeLoad = useCallback(() => {
     const target = frame.current?.contentWindow;
     if (!target) return;
     port.current?.close();
+    settleAll("the Craft bridge reconnected");
     const channel = new MessageChannel();
     port.current = channel.port1;
     channel.port1.onmessage = (event: MessageEvent) => {
@@ -93,6 +111,21 @@ export function useCraftBridge(options: {
           if (!Number.isInteger(message.id)) return;
           handlers.current.onOpen({ id: message.id as number, accept: String(message.accept ?? "").slice(0, 500), multiple: message.multiple === true });
           break;
+        case "agent-result": {
+          const id = message.id;
+          const entry = typeof id === "number" ? pending.current.get(id) : undefined;
+          if (!entry) return;
+          pending.current.delete(id as number);
+          clearTimeout(entry.timer);
+          // readFile's bytes are the only binary result: an ArrayBuffer up to the save limit, nothing else passes.
+          const result = message.result as { bytes?: unknown } | null;
+          if (message.ok === true && result && typeof result === "object" && "bytes" in result && !(result.bytes instanceof ArrayBuffer && result.bytes.byteLength <= MAX_SAVE)) {
+            entry.resolve({ ok: false, error: "the app sent an invalid file" });
+            break;
+          }
+          entry.resolve(message.ok === true ? { ok: true, result: message.result } : { ok: false, error: String(message.error ?? "the app reported an error").slice(0, 500) });
+          break;
+        }
         case "error":
           setState((current) => (current.kind === "connecting" ? { kind: "failed", message: String(message.message ?? "bridge error").slice(0, 300) } : current));
           break;
@@ -100,7 +133,7 @@ export function useCraftBridge(options: {
     };
     // Only to the craft origin: if the frame shows anything else (an error page), nothing is sent.
     target.postMessage({ type: "knife-bridge:hello" }, origin, [channel.port2]);
-  }, [origin, accountTag]);
+  }, [origin, accountTag, settleAll]);
 
   /** After each load of the app frame (an app may reload itself, e.g. with ?webgl). */
   const attach = useCallback(() => port.current?.postMessage({ type: "attach" }), []);
@@ -111,10 +144,29 @@ export function useCraftBridge(options: {
 
   const cancel = useCallback((id: number) => port.current?.postMessage({ type: "cancel", id }), []);
 
+  /** Call the app's agent API (`window.<app>[method](...args)`) through the bridge; never rejects. */
+  const agentCall = useCallback((method: string, args: unknown[] = [], signal?: AbortSignal, transfer: Transferable[] = []): Promise<CraftReply> => {
+    const target = port.current;
+    if (!target) return Promise.resolve({ ok: false, error: "the Craft bridge is not connected" });
+    if (signal?.aborted) return Promise.resolve({ ok: false, error: "Stopped by the user." });
+    const id = nextId.current++;
+    return new Promise<CraftReply>((resolve) => {
+      const done = (reply: CraftReply) => {
+        if (!pending.current.delete(id)) return;
+        clearTimeout(timer);
+        resolve(reply);
+      };
+      const timer = setTimeout(() => done({ ok: false, error: "the Craft app did not answer" }), AGENT_TIMEOUT_MS);
+      pending.current.set(id, { resolve, timer });
+      signal?.addEventListener("abort", () => done({ ok: false, error: "Stopped by the user." }), { once: true });
+      target.postMessage({ type: "agent", id, method, args }, transfer);
+    });
+  }, []);
+
   const retry = useCallback(() => {
     setState({ kind: "connecting" });
     setAttempt((value) => value + 1);
   }, []);
 
-  return { frame, state, attempt, onBridgeLoad, attach, deliver, cancel, retry };
+  return { frame, state, attempt, onBridgeLoad, attach, deliver, cancel, retry, agentCall };
 }

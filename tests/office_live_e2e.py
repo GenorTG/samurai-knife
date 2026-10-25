@@ -134,10 +134,16 @@ def live(page: Page, cmd: str, args: dict | None = None) -> dict:
 
 
 def wait_live(page: Page, timeout_ms: int = 90_000) -> str:
-    page.wait_for_function(
-        "() => /connected \\(|unavailable/.test(document.querySelector('[data-agent-region=\"office-live-status\"]')?.textContent ?? '')",
-        timeout=timeout_ms,
-    )
+    try:
+        page.wait_for_function(
+            "() => /connected \\(|unavailable/.test(document.querySelector('[data-agent-region=\"office-live-status\"]')?.textContent ?? '')",
+            timeout=timeout_ms,
+        )
+    except Exception:
+        page.screenshot(path=str(SHOTS / "wait-live-timeout.png"))
+        status = page.locator('[data-agent-region="office-live-status"]')
+        print("live status at timeout:", status.inner_text() if status.count() else "(no status region)", flush=True)
+        raise
     return page.locator('[data-agent-region="office-live-status"]').inner_text()
 
 
@@ -416,6 +422,47 @@ def main() -> int:
             check("closing saved the trust-mode edits and an edit made just before Close", any(p["text"] == "Approved line one about revenue." for p in final) and any(p["text"] == "Risky mode line." for p in final) and final[-1]["text"] == "Last-second line.",
                   {"rotated": bool(rotated), "after_s": round(time.monotonic() - t_close, 1), "paragraphs": [p["text"] for p in final], "library": listing})
 
+            # -------------------------------------------------------------- word: formatting, tables, lists, header, tracking
+            status, body = api.call("POST", "/api/office/docs", {"action": "upload", "name": "Live format.docx", "data": py_docx(MAKE_DOCX)["b64"]})
+            fmt_doc = body["doc"]
+            ready, state = open_doc(page, url, fmt_doc["id"])
+            check("second docx opens and connects", state.startswith("Assistant live editing: connected (word"), state)
+            r = live(page, "format_text", {"quote": "revenue", "bold": True, "color": {"r": 192, "g": 0, "b": 0}, "highlight": "yellow"})
+            check("format_text on a quote: bold, colour, highlight", r["ok"] and r["data"]["formatted"] == 1, r)
+            r = live(page, "format_text", {"from": 0, "italic": True, "size": 20, "font": "Arial"})
+            check("format_text on a paragraph: italic, size, font", r["ok"] and r["data"]["formatted"] == 1, r)
+            r = live(page, "format_text", {"quote": "nowhere to be found", "bold": True})
+            check("format_text on missing text is refused", not r["ok"] and "not found" in r["error"], r)
+            r = live(page, "insert_table", {"rows": [["Region", "Sales"], ["North", "120"], ["South", "95"]], "header": True})
+            check("insert_table: 3x2 at the end", r["ok"] and r["data"]["rows"] == 3 and r["data"]["cols"] == 2, r)
+            r = live(page, "insert_list", {"items": ["First bullet", "Second bullet"]})
+            check("insert_list: bullets", r["ok"] and r["data"]["inserted"] == 2, r)
+            r = live(page, "insert_list", {"items": ["Step one", "Step two"], "numbered": True})
+            check("insert_list: numbered", r["ok"] and r["data"]["numbered"] is True, r)
+            r = live(page, "set_header_footer", {"header": "Knife header text", "footer": "Knife footer text"})
+            check("set_header_footer", r["ok"] and r["data"].get("header") == "Knife header text", r)
+            r = live(page, "track_changes", {"on": True})
+            check("track_changes on", r["ok"] and r["data"]["tracking"] is True, r)
+            r = live(page, "insert_text", {"text": "Tracked addition.", "where": "end"})
+            r = live(page, "get_structure")
+            types = [i["type"] for i in r["data"]["items"]]
+            check("structure: the table is one element", "table" in types, types)
+            page.screenshot(path=str(SHOTS / "docx-format.png"))
+            ok, detail = force_save(api, fmt_doc["id"])
+            check("formatted docx force-saved", ok, detail)
+            raw = download(api, fmt_doc["id"])
+            names = zip_names(raw)
+            body_xml = zip_text(raw, "word/document.xml")
+            headers = " ".join(zip_text(raw, n) for n in names if re.match(r"word/header\d*\.xml$", n))
+            footers = " ".join(zip_text(raw, n) for n in names if re.match(r"word/footer\d*\.xml$", n))
+            settings = zip_text(raw, "word/settings.xml")
+            check("saved docx: bold, red and highlighted run", re.search(r"<w:b/>", body_xml) is not None and re.search(r'<w:color w:val="C00000"', body_xml, re.I) is not None and 'w:highlight w:val="yellow"' in body_xml, body_xml[:300])
+            check("saved docx: the table with its cells", "<w:tbl>" in body_xml and "North" in body_xml and "Sales" in body_xml)
+            check("saved docx: list paragraphs are numbered", body_xml.count("<w:numPr>") >= 4, body_xml.count("<w:numPr>"))
+            check("saved docx: header and footer text", "Knife header text" in headers and "Knife footer text" in footers, (headers[:200], footers[:200]))
+            check("saved docx: track changes on, the addition is a revision", "<w:trackRevisions" in settings and "<w:ins " in body_xml and "Tracked addition." in body_xml, settings[:200])
+            close_editor(page)
+
             # -------------------------------------------------------------- spreadsheet
             status, body = api.call("POST", "/api/office/docs", {"action": "create", "format": "xlsx", "name": "Live sheet"})
             xlsx = body["doc"]
@@ -451,6 +498,34 @@ def main() -> int:
             workbook = zip_text(raw, "xl/workbook.xml")
             check("saved xlsx: formula, numbers and labels", "<f>SUM(B2:B3)</f>" in first and "apples" in shared and re.search(r"<v>10</v>", first) is not None, first[:400])
             check("saved xlsx: the new sheet", 'name="Summary"' in workbook and len(sheets) == 2, workbook[:300])
+            # Formats, a column width, sorting and a chart on Sheet1.
+            r = live(page, "cells_format", {"sheet": "Sheet1", "range": "A1:B1", "bold": True, "fill": {"r": 255, "g": 242, "b": 204}, "align": "center"})
+            check("cells_format: header bold, filled, centred", r["ok"] and set(r["data"]["set"]) == {"bold", "fill", "align"}, r)
+            r = live(page, "cells_format", {"sheet": "Sheet1", "range": "B2:B4", "number_format": "0.00"})
+            check("cells_format: number format", r["ok"] and r["data"]["set"] == ["number_format"], r)
+            r = live(page, "column_width", {"sheet": "Sheet1", "columns": "A", "first": 0, "last": 0, "width": 24})
+            check("column_width", r["ok"], r)
+            r = live(page, "sort_range", {"sheet": "Sheet1", "range": "A2:B3", "key": "B2", "descending": False, "header": False})
+            check("sort_range by Qty ascending", r["ok"], r)
+            r = live(page, "cells_read", {"sheet": "Sheet1", "range": "A2:B3"})
+            check("after sorting: pears (4) before apples (10)", r["ok"] and [row[0] for row in r["data"]["values"]] == ["pears", "apples"], r)
+            r = live(page, "add_chart", {"sheet": "Sheet1", "abs": "$A$1:$B$3", "type": "bar", "at_col": 3, "at_row": 0, "width_mm": 120, "height_mm": 70, "title": "Fruit"})
+            check("add_chart: a bar chart of A1:B3", r["ok"], r)
+            page.screenshot(path=str(SHOTS / "xlsx-format.png"))
+            ok, detail = force_save(api, xlsx["id"])
+            check("formatted xlsx force-saved", ok, detail)
+            raw = download(api, xlsx["id"])
+            names = zip_names(raw)
+            styles = zip_text(raw, "xl/styles.xml")
+            sheet1 = zip_text(raw, sorted(n for n in names if re.match(r"xl/worksheets/sheet\d+\.xml$", n))[0])
+            # "0.00" is the built-in number format 2: written as numFmtId="2", not as a formatCode.
+            fonts = re.search(r"<fonts[^>]*>.*?</fonts>", styles, re.S)
+            xfs = re.search(r"<cellXfs[^>]*>.*?</cellXfs>", styles, re.S)
+            check("saved xlsx: the 0.00 number format and a bold font",
+                  (re.search(r'numFmtId="2"', xfs.group(0) if xfs else "") is not None or 'formatCode="0.00"' in styles) and re.search(r'<b(?: val="(?:1|true)")?\s*/>', fonts.group(0) if fonts else "") is not None,
+                  {"fonts": (fonts.group(0) if fonts else "")[:400], "cellXfs": (xfs.group(0) if xfs else "")[:600]})
+            check("saved xlsx: column A widened", re.search(r'<col [^>]*min="1"[^>]*width="2[3-5]', sheet1) is not None, re.findall(r"<col [^>]*>", sheet1)[:3])
+            check("saved xlsx: a chart part", any(re.match(r"xl/charts/chart\d+\.xml$", n) for n in names), [n for n in names if "chart" in n or "drawing" in n])
             close_editor(page)
 
             # -------------------------------------------------------------- presentation
@@ -476,6 +551,34 @@ def main() -> int:
             # A new shape's default style paints text in a light colour (white on the white slide): the plugin sets tx1.
             check("added slide text uses the theme text colour (visible on the slide)", len(added) == 2 and all(re.search(r'<a:schemeClr val="tx1"\s*/?>', x) for x in added),
                   [re.findall(r"<a:rPr[^>]*>.{0,200}", x)[:2] for x in added])
+            # Slide text by shape, speaker notes, deleting a slide.
+            r = live(page, "get_structure")
+            plan = r["data"]["slides"][2]
+            body_shape = next((sh["shape"] for sh in plan.get("shapes", []) if sh["text"].startswith("First point")), None)
+            check("get_structure lists each slide's text shapes", body_shape is not None, plan)
+            r = live(page, "set_slide_text", {"index": 2, "shape": body_shape if body_shape is not None else 1, "text": "Revised point\nAnother point"})
+            check("set_slide_text replaces a shape's text (returns the old one)", r["ok"] and r["data"]["replaced"].startswith("First point"), r)
+            r = live(page, "set_slide_notes", {"index": 2, "text": "Say this out loud."})
+            check("set_slide_notes", r["ok"], r)
+            r = live(page, "get_structure")
+            check("structure: the new text and the notes", r["ok"] and "Revised point\nAnother point" in r["data"]["slides"][2]["texts"] and r["data"]["slides"][2].get("notes") == "Say this out loud.", r["data"]["slides"][2])
+            r = live(page, "delete_slide", {"index": 1})
+            check("delete_slide returns the texts and the new count", r["ok"] and r["data"]["count"] == 2, r)
+            if not page.locator("[role=dialog][aria-label='Toolbox assistant']").count():
+                bot.open()
+            bot.mode("Risky")
+            res = bot.run('CALL:doc_live_delete_slide:{"index":0}')
+            check("Risky: deleting a slide asks (destructive); denied = kept", res.startswith("asked!:Delete slide 1") and live(page, "get_structure")["data"]["count"] == 2, res)
+            bot.mode("None")
+            ok, detail = force_save(api, pptx["id"])
+            check("edited pptx force-saved", ok, detail)
+            raw = download(api, pptx["id"])
+            names = zip_names(raw)
+            slide_files = sorted(n for n in names if re.match(r"ppt/slides/slide\d+\.xml$", n))
+            all_text = " | ".join(" ".join(re.findall(r"<a:t>([^<]*)</a:t>", zip_text(raw, n))) for n in slide_files)
+            notes = " ".join(" ".join(re.findall(r"<a:t>([^<]*)</a:t>", zip_text(raw, n))) for n in names if re.match(r"ppt/notesSlides/notesSlide\d+\.xml$", n))
+            check("saved pptx: two slides, the revised text, no old body", len(slide_files) == 2 and "Revised point" in all_text and "First point" not in all_text, all_text)
+            check("saved pptx: the speaker notes", "Say this out loud." in notes, notes[:200])
             close_editor(page)
             browser.close()
             check("no page errors", not errors, errors[:5])

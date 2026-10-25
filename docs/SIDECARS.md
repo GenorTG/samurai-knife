@@ -290,20 +290,33 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   style, heading level), `get_selection`, `insert_text` (end = new paragraphs, an empty last paragraph is filled first;
   cursor = at the user's cursor), `replace_text` (count, then `SearchAndReplace`), `insert_paragraphs` (at an index,
   styled), `set_paragraph_style`, `delete_range` (element indices, returns the removed text), `add_comment` (on a quote,
-  a paragraph or the selection); cell `get_text`/`get_structure`/`get_selection`, `cells_read` (values + formulas, max 2000
-  cells), `cells_write` (block from a top-left cell, formulas as `=...`; refuses non-empty cells unless `overwrite`),
-  `add_sheet`; slide `get_text`/`get_structure`, `add_slide` (title + body shapes, theme text colour). Each runs through
+  a paragraph or the selection), `format_text` (bold/italic/underline/strikeout, colour, highlight, size, font on a quote
+  (first or every match), element range or the selection), `insert_table` (rows of cell texts, a bordered table style
+  when the document has one, bold header row), `insert_list` (bullets or numbers), `set_header_footer` (default
+  header/footer of the last section, replaced), `track_changes` (on/off); cell `get_text`/`get_structure`/`get_selection`,
+  `cells_read` (values + formulas, max 2000 cells), `cells_write` (block from a top-left cell, formulas as `=...`; refuses
+  non-empty cells unless `overwrite`), `cells_format` (bold/italic/underline/wrap, font size and colour, fill, number
+  format, horizontal alignment), `column_width` (characters), `sort_range` (by one column, header row kept),
+  `add_chart` (`AddChart` on an absolute range, anchored at a cell, sized in EMU, optional title), `add_sheet`; slide
+  `get_text`/`get_structure` (texts, text shapes by index, speaker notes), `add_slide` (title + body shapes, theme text
+  colour), `set_slide_text` (one shape's text replaced, first paragraph's formatting kept), `set_slide_notes`,
+  `delete_slide` (never the last one; returns its texts). The protocol (`toLiveCall`) checks and prepares every
+  argument before it reaches the editor (colours to RGB, column letters to indexes, ranges to `$A$1:$B$6`). Each runs through
   `Asc.plugin.callCommand` with `Asc.scope` for the arguments, wrapped in try/catch so an exception comes back as an
   error, one at a time (the runtime has a single callback slot), 20 s timeout; edits recalculate, reads do not; a
   read-only editor refuses edits. Saving is NOT a plugin command (`Api.Save()` from a plugin does not reach the save path
   in 9.3.5): `doc_live_save` uses the force-save above.
 - **Assistant tools** (`src/lib/agent-client/office-live-tools.ts`, group `office_live`, page-only: not offered by
   `load_tools`): `doc_live_read {what: text|structure|selection}`, `doc_live_insert_text`, `doc_live_insert_paragraphs`,
-  `doc_live_replace`, `doc_live_set_style`, `doc_live_delete`, `doc_live_comment`, `doc_live_cells_read`,
-  `doc_live_cells_write`, `doc_live_add_sheet`, `doc_live_add_slide`, `doc_live_save`. A tool is sent to the model only
+  `doc_live_replace`, `doc_live_set_style`, `doc_live_delete`, `doc_live_comment`, `doc_live_format`,
+  `doc_live_insert_table`, `doc_live_insert_list`, `doc_live_header_footer`, `doc_live_track_changes`,
+  `doc_live_cells_read`, `doc_live_cells_write`, `doc_live_cells_format`, `doc_live_column_width`, `doc_live_sort`,
+  `doc_live_add_chart`, `doc_live_add_sheet`, `doc_live_add_slide`, `doc_live_slide_text`, `doc_live_slide_notes`,
+  `doc_live_delete_slide`, `doc_live_save`. A tool is sent to the model only
   while the plugin is connected AND the editor type fits (word / cell / slide), so a page without an editor costs no
   tokens; a stray call explains how to connect. Trust: reads never ask; edits are acting calls (asked in All/Most);
-  `doc_live_delete`, `doc_live_replace` (replaces every match) and `doc_live_cells_write {overwrite:true}` are destructive
+  `doc_live_delete`, `doc_live_replace` (replaces every match), `doc_live_cells_write {overwrite:true}`,
+  `doc_live_delete_slide`, `doc_live_slide_text` and `doc_live_header_footer` (both replace what is there) are destructive
   (asked in every mode except None, one by one). The user can undo any edit with Ctrl+Z in the editor (verified).
   `page_snapshot` carries `liveDocument {document, state, editor, read_only}` and a note; the office page shows
   "Assistant live editing: connected (word editor)." (`data-agent-region="office-live-status"`). Debug handle:
@@ -313,8 +326,8 @@ against the code in the image (sdkjs/web-apps 9.3.5: `/plugins.json`, `parsePlug
   `knife_doc_*` for the saved files.
 - **Limits**: indices are element indices (a table counts as one element; table cells are not addressable); styles must
   exist in the document (`GetStyle` falls back to the default style for an unknown name, so the plugin compares the
-  name and lists the known ones); `replace_text` is plain text, whole document; no tracked-changes mode; slides are
-  added as plain text boxes, not layout placeholders; one live editor per page (the active bridge); an editor opened
+  name and lists the known ones); `replace_text` is plain text, whole document; table cells are written once (no
+  addressing after insert); images are not inserted yet; slides are added as plain text boxes, not layout placeholders; one live editor per page (the active bridge); an editor opened
   outside Smart Knife never connects (no options).
 
 ## ArtCraft (`craft`, slug `artcraft`)
@@ -337,16 +350,17 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
   512 KB per file, 24 files) and cached in `services/craft/notices/<app>-<version>.json` once complete (outside the
   bundle, so it never changes the helper hash). Most zips do not carry `NOTICE` (SoundCraft's does).
 
-- **Pins** (`ARTCRAFT_APPS` in definitions.ts): version, release URL, zip size and sha256, verified 2026-10-21 against
+- **Pins** (`ARTCRAFT_APPS` in definitions.ts): version, release URL, zip size and sha256, verified 2026-10-21 (VectorCraft,
+  FilmCraft and EffectCraft raised 2026-10-25 to the first releases whose `window.<app>` the assistant drives) against
   the GitHub API's asset digest and a local `sha256sum` (they agree):
 
   | App | Version | Zip sha256 | Zip / unpacked |
   | --- | --- | --- | --- |
   | photocraft | 0.11.1 | `f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f` | 11.6 / 11.8 MB |
-  | vectorcraft | 0.14.0 | `6f28a8bcee1c5ad6c37c6a0c44058793a40ea4443085866d5f78afb16aba075e` | 27.7 / 75.4 MB |
-  | filmcraft | 0.10.0 | `47618cc373ff1306be17cfd539a33a5a5af490d3bb6722a6bc1436fcd6bf87a0` | 13.4 / 41.7 MB |
+  | vectorcraft | 0.17.0 | `71ddc4e71538ec1ce8467c21cb6ca47754042b222605a7de1851fbb1f3d6b37c` | 29.3 / 79.1 MB |
+  | filmcraft | 0.13.0 | `c632afdcafc0cf185c01063471cf4a78eecb2d526787f3eb821047786c6482d5` | 13.5 / 42.1 MB |
   | lightcraft | 0.10.0 | `6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794` | 22.4 / 39.9 MB |
-  | effectcraft | 0.13.0 | `70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc` | 19.3 / 64.2 MB |
+  | effectcraft | 0.17.0 | `95f93e7a8d7907616e219152272b7e0c1791030309be02eb9214ae4258fec783` | 19.5 / 64.7 MB |
   | designcraft | 0.10.0 | `88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4` | 19.2 / 49.5 MB |
   | pdfcraft | 0.10.1 | `58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9` | 14.5 / 39.4 MB |
   | figcraft | 0.8.0 | `75fd4821e0ef8793c82bc56d530764f8244a137e55745f49a745838028c9bb51` | 9.8 / 34.9 MB |
@@ -430,6 +444,28 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
     (bounded by the per-file cap, the save rate and the quota, into the account's own Craft files). It cannot read the
     account's files: a file only goes into an app after the person picked it in Smart Knife's chooser, which runs on
     the app's origin where app code has no access. Every message from the port is checked (types, sizes, names).
+- **The assistant inside an app** (`craft_*` tools; src/lib/agent-client/craft-live-tools.ts, src/lib/craft/live.ts, the
+  bridge's `agent` message):
+  - Which apps: those whose web build defines `window.<app>` (the desktop control channel as promises): VectorCraft
+    0.17, FilmCraft 0.13 and EffectCraft 0.17 (the pins), checked 2026-10-25 in Firefox. The other ten have no browser
+    API; their tab says so in page snapshots and offers no `craft_*` tool.
+  - Relay: page -> bridge `{type:"agent", id, method, args}` -> `window.<app>[method](...)` -> `{type:"agent-result",
+    id, ok, result|error}`. Allowlist: request, execute, commands, inspect, screenshot, files, readFile, info and
+    `import` (whichever the app has: `importFiles(File[])`, `openFile(name, bytes)`, `addFile(File)`). Results go back
+    as JSON (16 MB cap), `readFile` as a transferred ArrayBuffer (50 MB), 60 s per call.
+  - Ready: apps define the object before they run and reject calls until then ("FilmCraft is not running yet";
+    VectorCraft defines it only after start), so the page probes after each load of the app frame: `inspect()` must
+    answer within 5 s. "Assistant ready" shows in the toolbar; no object after 60 s = no API; an object that keeps
+    refusing gets 5 minutes (EffectCraft's first start).
+  - Tools (page-only group `craft_live`, offered only while connected and per function the app has):
+    `craft_commands {query?}` (compact entries, id/label matches first, shrunk to fit), `craft_inspect {what:ui|elements}`,
+    `craft_execute {command, params}`, `craft_request {method, params}` (ui.click, ui.key, ui.type, ui.set…),
+    `craft_screenshot` (PNG into the assistant's file chain; VectorCraft needs `data:true`, sent on a second try),
+    `craft_files`, `craft_export {path}` (an app file into the chain), `craft_import {files}` (chain files into the app).
+  - Trust: reads never ask; execute, request (except ui.inspect/ui.elements/ui.menu.list/engine.commands/perf.stats)
+    and import act; an id or method naming delete/remove/clear/reset/revert/discard/close/quit/exit/purge/wipe/erase/
+    overwrite (also inside `ui.menu.invoke {command}`) is destructive. Every app answer counts as third-party text for
+    the conversation's taint (`PAGE_READS`): app code and the files it opens are not ours.
 - **Updates** (src/lib/craft/updates.ts, admin drawer "Updates" in every tab, `GET`/`POST /api/craft/updates`):
   - Source: each app's GitHub releases, one `GET /repos/storytold/<app>/releases?per_page=20` per app per check with
     `If-None-Match` (13 requests; GitHub allows 60 unauthenticated an hour per address). A 403/429 stops the check and
@@ -571,6 +607,8 @@ editor session is open). An image bump or a new sidecar repeats the check: drop 
 - Unit: `tests/services.test.mjs` (compose, secrets, state/lock, pull progress, ps parsing, URLs, JWT, templates/text, store,
   editor config, callback incl. SSRF and stale keys, office hardening: filter env, allow list, caps; learn-db on loopback;
   container hardening: cap_drop ALL + the verified cap_add per sidecar, no-new-privileges, pids_limit, refused cap names).
+- Unit: `tests/craft_live.test.mjs` (the bridge's agent relay against a fake app window, readiness, bytes both ways;
+  the craft_* tools' availability, trust verdicts, command listing, screenshot/export/import through the file chain).
 - Unit: `tests/office_live.test.mjs` (protocol + argument checks, the browser bridge against a fake plugin frame, the
   real `bridge.js` in a sandbox with a fake editor `Api`, trust verdicts, tool visibility, asset sync + mount, editor
   config options).

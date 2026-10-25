@@ -137,21 +137,21 @@ test("check + apply: notify records, auto switches (download checked against the
 
 test("apply refuses a download that does not match the published digest, and a release that fails the health gate", async () => {
   const vc = app("vectorcraft");
-  const zip = zipFor("vectorcraft", "0.15.0", { "index.html": "x", "v.wasm": "w" });
-  const listing = release("vectorcraft", "0.15.0", zip);
-  const tampered = zipFor("vectorcraft", "0.15.0", { "index.html": "y", "v.wasm": "w" });
+  const zip = zipFor("vectorcraft", "0.18.0", { "index.html": "x", "v.wasm": "w" });
+  const listing = release("vectorcraft", "0.18.0", zip);
+  const tampered = zipFor("vectorcraft", "0.18.0", { "index.html": "y", "v.wasm": "w" });
   assert.equal(tampered.length, zip.length, "same size, other bytes: only the digest can tell");
   const fetcher = fakeGithub({ listings: { vectorcraft: [listing] }, zips: new Map([[listing.assets[0].browser_download_url, tampered]]), calls: [] });
   channel.writeChannel("craft", { mode: "auto", apps: {} });
   const result = await updates.checkCraftUpdates({ apply: true, fetcher });
   assert.deepEqual(result.applied, []);
-  assert.match(result.errors.join(), /VectorCraft: update to 0\.15\.0 failed: .*does not match the release/);
+  assert.match(result.errors.join(), /VectorCraft: update to 0\.18\.0 failed: .*does not match the release/);
   assert.equal(sites.activeRelease(craft, vc).version, vc.version);
-  assert.ok(!existsSync(join(dataDir, "services", "craft", "releases", sites.releaseFolder(vc, { version: "0.15.0", sha256: sha(zip) }))));
+  assert.ok(!existsSync(join(dataDir, "services", "craft", "releases", sites.releaseFolder(vc, { version: "0.18.0", sha256: sha(zip) }))));
 
   // Matches the digest but has no WebAssembly: refused by the static check, removed again.
-  const noWasm = zipFor("vectorcraft", "0.16.0", { "index.html": "x", "main.js": "y" });
-  const listing2 = release("vectorcraft", "0.16.0", noWasm);
+  const noWasm = zipFor("vectorcraft", "0.19.0", { "index.html": "x", "main.js": "y" });
+  const listing2 = release("vectorcraft", "0.19.0", noWasm);
   const fetcher2 = fakeGithub({ listings: { vectorcraft: [listing2] }, zips: new Map([[listing2.assets[0].browser_download_url, noWasm]]), calls: [] });
   const result2 = await updates.checkCraftUpdates({ apply: true, fetcher: fetcher2 });
   assert.match(result2.errors.join(), /no WebAssembly found/);

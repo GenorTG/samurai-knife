@@ -218,6 +218,109 @@
       if (!comment) throw new Error("the editor refused the comment (protected or empty target)");
       return { added: true, on: on };
     },
+    format_text: function (a) {
+      var doc = Api.GetDocument();
+      var ranges = [];
+      var on = "";
+      if (a.quote) {
+        var hits = doc.Search(a.quote, a.match_case === true) || [];
+        if (!hits.length) throw new Error('text "' + a.quote + '" not found');
+        ranges = a.all ? hits : [hits[0]];
+        on = ranges.length + " match" + (ranges.length === 1 ? "" : "es");
+      } else if (typeof a.from === "number") {
+        var n = doc.GetElementsCount();
+        var to = typeof a.to === "number" ? a.to : a.from;
+        if (a.from < 0 || to >= n || to < a.from) throw new Error("paragraph index out of range (document has " + n + " elements, 0.." + (n - 1) + ")");
+        for (var i = a.from; i <= to; i++) ranges.push(doc.GetElement(i).GetRange());
+        on = "elements " + a.from + ".." + to;
+      } else {
+        var sel = doc.GetRangeBySelect();
+        if (!sel || !String(sel.GetText())) throw new Error("nothing is selected: pass quote or from/to");
+        ranges = [sel];
+        on = "selection";
+      }
+      for (var k = 0; k < ranges.length; k++) {
+        var r = ranges[k];
+        if (typeof a.bold === "boolean") r.SetBold(a.bold);
+        if (typeof a.italic === "boolean") r.SetItalic(a.italic);
+        if (typeof a.underline === "boolean") r.SetUnderline(a.underline);
+        if (typeof a.strikeout === "boolean") r.SetStrikeout(a.strikeout);
+        if (a.color) r.SetColor(a.color.r, a.color.g, a.color.b);
+        if (a.highlight) r.SetHighlight(a.highlight);
+        if (typeof a.size === "number") r.SetFontSize(Math.round(a.size * 2));
+        if (a.font) r.SetFontFamily(a.font);
+      }
+      return { formatted: ranges.length, on: on };
+    },
+    insert_table: function (a) {
+      var doc = Api.GetDocument();
+      var rows = a.rows.length;
+      var cols = 0;
+      for (var r = 0; r < rows; r++) cols = Math.max(cols, a.rows[r].length);
+      var table = Api.CreateTable(cols, rows);
+      table.SetWidth("percent", 100);
+      // The default "Normal Table" style draws no lines: use a bordered table style when the document has one.
+      var names = ["Table Grid", "Bordered", "Bordered & Lined - Accent"];
+      for (var s = 0; s < names.length; s++) {
+        var style = doc.GetStyle(names[s]);
+        if (style && String(style.GetName()).toLowerCase() === names[s].toLowerCase()) {
+          table.SetStyle(style);
+          break;
+        }
+      }
+      for (var i = 0; i < rows; i++) {
+        for (var c = 0; c < cols; c++) {
+          var text = a.rows[i][c] === undefined || a.rows[i][c] === null ? "" : String(a.rows[i][c]);
+          var para = table.GetRow(i).GetCell(c).GetContent().GetElement(0);
+          var run = para.AddText(text);
+          if (a.header && i === 0 && run && run.SetBold) run.SetBold(true);
+        }
+      }
+      var n = doc.GetElementsCount();
+      var at = typeof a.index === "number" && a.index >= 0 && a.index < n ? a.index : n;
+      if (at >= n) doc.Push(table);
+      else doc.AddElement(at, table);
+      return { inserted: "table", rows: rows, cols: cols, at: at, total: doc.GetElementsCount() };
+    },
+    insert_list: function (a) {
+      var doc = Api.GetDocument();
+      var numbering = doc.CreateNumbering(a.numbered ? "numbered" : "bullet");
+      var level = numbering.GetLevel(0);
+      var n = doc.GetElementsCount();
+      var at = typeof a.index === "number" && a.index >= 0 && a.index < n ? a.index : n;
+      for (var i = 0; i < a.items.length; i++) {
+        var p = Api.CreateParagraph();
+        p.AddText(String(a.items[i]));
+        p.SetNumbering(level);
+        if (at + i >= doc.GetElementsCount()) doc.Push(p);
+        else doc.AddElement(at + i, p);
+      }
+      return { inserted: a.items.length, numbered: a.numbered === true, at: at, total: doc.GetElementsCount() };
+    },
+    set_header_footer: function (a) {
+      var doc = Api.GetDocument();
+      var section = doc.GetFinalSection();
+      var done = {};
+      var parts = [["header", a.header], ["footer", a.footer]];
+      for (var i = 0; i < parts.length; i++) {
+        if (typeof parts[i][1] !== "string") continue;
+        var content = parts[i][0] === "header" ? section.GetHeader("default", true) : section.GetFooter("default", true);
+        content.RemoveAllElements();
+        var lines = parts[i][1].split("\n");
+        for (var k = 0; k < lines.length; k++) {
+          var p = Api.CreateParagraph();
+          if (lines[k]) p.AddText(lines[k]);
+          content.Push(p);
+        }
+        done[parts[i][0]] = parts[i][1];
+      }
+      return done;
+    },
+    track_changes: function (a) {
+      var doc = Api.GetDocument();
+      doc.SetTrackRevisions(a.on === true);
+      return { tracking: doc.IsTrackRevisions() };
+    },
   };
 
   var CELL = {
@@ -289,6 +392,48 @@
       for (var k = 0; k < a.cells.length; k++) ws.GetRange(a.cells[k][0]).SetValue(a.cells[k][1]);
       return { written: a.cells.length, overwritten: nonEmpty.length, sheet: ws.GetName(), address: a.address };
     },
+    cells_format: function (a) {
+      var ws = a.sheet ? Api.GetSheet(a.sheet) : Api.GetActiveSheet();
+      if (!ws) throw new Error('no sheet named "' + a.sheet + '"');
+      var range = ws.GetRange(a.range);
+      if (!range) throw new Error('bad range "' + a.range + '"');
+      var done = [];
+      if (typeof a.bold === "boolean") { range.SetBold(a.bold); done.push("bold"); }
+      if (typeof a.italic === "boolean") { range.SetItalic(a.italic); done.push("italic"); }
+      if (typeof a.underline === "boolean") { range.SetUnderline(a.underline ? "single" : "none"); done.push("underline"); }
+      if (typeof a.font_size === "number") { range.SetFontSize(a.font_size); done.push("font_size"); }
+      if (a.font_color) { range.SetFontColor(Api.CreateColorFromRGB(a.font_color.r, a.font_color.g, a.font_color.b)); done.push("font_color"); }
+      if (a.fill) { range.SetFillColor(Api.CreateColorFromRGB(a.fill.r, a.fill.g, a.fill.b)); done.push("fill"); }
+      if (a.number_format) { range.SetNumberFormat(a.number_format); done.push("number_format"); }
+      if (a.align) { range.SetAlignHorizontal(a.align); done.push("align"); }
+      if (typeof a.wrap === "boolean") { range.SetWrap(a.wrap); done.push("wrap"); }
+      return { sheet: ws.GetName(), address: range.GetAddress(false, false), set: done };
+    },
+    column_width: function (a) {
+      var ws = a.sheet ? Api.GetSheet(a.sheet) : Api.GetActiveSheet();
+      if (!ws) throw new Error('no sheet named "' + a.sheet + '"');
+      for (var c = a.first; c <= a.last; c++) ws.SetColumnWidth(c, a.width);
+      return { sheet: ws.GetName(), columns: a.columns, width: a.width };
+    },
+    add_chart: function (a) {
+      var ws = a.sheet ? Api.GetSheet(a.sheet) : Api.GetActiveSheet();
+      if (!ws) throw new Error('no sheet named "' + a.sheet + '"');
+      var name = ws.GetName().replace(/'/g, "''");
+      var ref = "'" + name + "'!" + a.abs;
+      // Size in EMU (36000 per mm); anchored at a cell (0-based column/row).
+      var chart = ws.AddChart(ref, a.in_rows === true, a.type, 2, a.width_mm * 36000, a.height_mm * 36000, a.at_col, 0, a.at_row, 0);
+      if (!chart) throw new Error("the editor refused the chart (check the range and type)");
+      if (a.title && chart.SetTitle) chart.SetTitle(a.title, 13);
+      return { added: a.type, data: ref, at: a.at };
+    },
+    sort_range: function (a) {
+      var ws = a.sheet ? Api.GetSheet(a.sheet) : Api.GetActiveSheet();
+      if (!ws) throw new Error('no sheet named "' + a.sheet + '"');
+      var range = ws.GetRange(a.range);
+      if (!range) throw new Error('bad range "' + a.range + '"');
+      range.SetSort(ws.GetRange(a.key), a.descending ? "xlDescending" : "xlAscending", null, null, null, null, a.header ? "xlYes" : "xlNo");
+      return { sheet: ws.GetName(), sorted: range.GetAddress(false, false), by: a.key, descending: a.descending === true };
+    },
     add_sheet: function (a) {
       if (Api.GetSheet(a.name)) throw new Error('a sheet named "' + a.name + '" already exists');
       Api.AddSheet(a.name);
@@ -332,9 +477,88 @@
           var t = content ? String(content.GetText()).replace(/\r\n?/g, "\n").replace(/^\n+|\n+$/g, "") : "";
           if (t) texts.push(t.length > 200 ? t.slice(0, 200) + "…" : t);
         }
-        slides.push({ index: i, texts: texts });
+        var item = { index: i, texts: texts, shapes: [] };
+        // Every shape that holds text, by its index among the slide's shapes (for set_slide_text).
+        for (var s = 0; s < shapes.length; s++) {
+          var c = shapes[s].GetDocContent();
+          if (c) {
+            var st = String(c.GetText()).replace(/\r\n?/g, "\n").replace(/^\n+|\n+$/g, "");
+            item.shapes.push({ shape: s, text: st.length > 200 ? st.slice(0, 200) + "…" : st });
+          }
+        }
+        var notes = "";
+        try {
+          var page = pres.GetSlideByIndex(i).GetNotesPage();
+          var body = page && page.GetBodyShape ? page.GetBodyShape() : null;
+          var nc = body ? body.GetDocContent() : null;
+          notes = nc ? String(nc.GetText()).replace(/^\s+|\s+$/g, "") : "";
+        } catch {
+          notes = "";
+        }
+        if (notes) item.notes = notes.length > 300 ? notes.slice(0, 300) + "…" : notes;
+        slides.push(item);
       }
       return { count: n, current: pres.GetCurSlideIndex(), slides: slides };
+    },
+    set_slide_text: function (a) {
+      var pres = Api.GetPresentation();
+      var n = pres.GetSlidesCount();
+      if (a.index < 0 || a.index >= n) throw new Error("slide index out of range (0.." + (n - 1) + ")");
+      var shapes = pres.GetSlideByIndex(a.index).GetAllShapes();
+      if (a.shape < 0 || a.shape >= shapes.length) throw new Error("shape index out of range (this slide has " + shapes.length + " shapes)");
+      var content = shapes[a.shape].GetDocContent();
+      if (!content) throw new Error("shape " + a.shape + " holds no text");
+      var before = String(content.GetText()).replace(/^\s+|\s+$/g, "");
+      // Keep the first paragraph (its formatting) and replace the text.
+      var first = content.GetElementsCount() > 0 ? content.GetElement(0) : null;
+      content.RemoveAllElements();
+      var lines = String(a.text).split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        var p = Api.CreateParagraph();
+        if (i === 0 && first && first.GetParaPr && p.SetParaPr) {
+          try { p.SetParaPr(first.GetParaPr()); } catch { /* keep the default */ }
+        }
+        if (lines[i]) p.AddText(lines[i]);
+        content.Push(p);
+      }
+      return { slide: a.index, shape: a.shape, replaced: before.length > 200 ? before.slice(0, 200) + "…" : before };
+    },
+    set_slide_notes: function (a) {
+      var pres = Api.GetPresentation();
+      var n = pres.GetSlidesCount();
+      if (a.index < 0 || a.index >= n) throw new Error("slide index out of range (0.." + (n - 1) + ")");
+      var page = pres.GetSlideByIndex(a.index).GetNotesPage();
+      if (!page) throw new Error("this slide has no notes page");
+      var body = page.GetBodyShape ? page.GetBodyShape() : null;
+      var content = body ? body.GetDocContent() : null;
+      if (content) {
+        content.RemoveAllElements();
+        var lines = String(a.text).split("\n");
+        for (var i = 0; i < lines.length; i++) {
+          var p = Api.CreateParagraph();
+          if (lines[i]) p.AddText(lines[i]);
+          content.Push(p);
+        }
+      } else {
+        page.AddBodyShapeText(String(a.text));
+      }
+      return { slide: a.index, notes: String(a.text).length };
+    },
+    delete_slide: function (a) {
+      var pres = Api.GetPresentation();
+      var n = pres.GetSlidesCount();
+      if (n <= 1) throw new Error("a presentation keeps at least one slide");
+      if (a.index < 0 || a.index >= n) throw new Error("slide index out of range (0.." + (n - 1) + ")");
+      var slide = pres.GetSlideByIndex(a.index);
+      var texts = [];
+      var shapes = slide.GetAllShapes();
+      for (var k = 0; k < shapes.length; k++) {
+        var c = shapes[k].GetDocContent();
+        var t = c ? String(c.GetText()).replace(/^\s+|\s+$/g, "") : "";
+        if (t) texts.push(t.length > 100 ? t.slice(0, 100) + "…" : t);
+      }
+      if (!slide.Delete()) throw new Error("the editor refused to delete the slide");
+      return { deleted: a.index, texts: texts, count: pres.GetSlidesCount() };
     },
     add_slide: function (a) {
       var pres = Api.GetPresentation();

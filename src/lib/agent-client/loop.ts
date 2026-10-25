@@ -30,6 +30,7 @@ import {
 import { runtime } from "./runtime-store";
 import { UI_TOOL_DEFS, isUiTool, runUiTool, type UiToolContext } from "./ui-tools";
 import { liveToolAvailable } from "./office-live-tools";
+import { craftToolAvailable } from "./craft-live-tools";
 import { assessCall } from "./approval-policy";
 import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
 import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
@@ -341,7 +342,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       onActivity("Thinking…");
       roundStarted();
       const result = await callModel(
-        { tools: visibleTools(allTools, activeGroups, liveToolAvailable), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
+        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
         buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions }),
         {
           onText: appendDraft,

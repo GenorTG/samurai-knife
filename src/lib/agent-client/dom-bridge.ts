@@ -12,6 +12,7 @@ import { artifactFile, drainNewArtifacts, listArtifacts, type ArtifactInfo } fro
 import { highlight, settleOutputs } from "./feedback";
 import { BUSY_TEXT, WaitEvaluator, type WaitCondition } from "./wait-condition";
 import { liveStatus, liveStatusNote } from "./office-live-tools";
+import { craftStatus, craftStatusNote } from "./craft-live-tools";
 
 export const WIDGET_ATTR = "data-agent-widget";
 const ID_ATTR = "data-agent-id";
@@ -363,6 +364,7 @@ export interface PageSnapshot {
   files?: ArtifactInfo[];
   /** The office document open in the editor on this page and whether the assistant's live-editing plugin is connected. */
   liveDocument?: { document: string; state: string; editor?: string; read_only?: boolean; reason?: string };
+  craftApp?: { app: string; version: string; state: string };
   notes: string[];
 }
 
@@ -439,9 +441,13 @@ export function snapshotPage(): PageSnapshot {
   if (root === document.body) notes.push("No <main> element; snapshot covers the whole body.");
   const frames = Array.from(root.querySelectorAll("iframe")).filter((f) => !inWidget(f));
   const live = liveStatusNote();
+  const craft = craftStatusNote();
   if (live) {
     out.liveDocument = liveStatus() ?? undefined;
     notes.push(`The office editor is an embedded frame (not clickable or fillable). ${live}`);
+  } else if (craft) {
+    out.craftApp = craftStatus() ?? undefined;
+    notes.push(`The Craft app is an embedded canvas (not in this snapshot, not clickable or fillable here). ${craft}`);
   } else if (frames.length) {
     notes.push(`${frames.length} embedded frame(s): their content is not part of this snapshot and cannot be clicked or filled; for saved office documents use the knife_doc_* tools.`);
   }

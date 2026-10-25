@@ -13,7 +13,7 @@ test("groups cover exactly the database tool prefixes", () => {
   for (const n of ["knife_hash", "list_tools", "load_tools", "knife_json_format"]) assert.equal(groupOf(n), null, n);
   assert.equal(groupOf("doc_live_read")?.id, "office_live");
   assert.equal(groupOf("knife_site_audit")?.id, "site");
-  assert.deepEqual(TOOL_GROUPS.map((g) => g.id), ["sql", "cv", "site", "workflows", "docs", "learn", "nosql", "office_live"]);
+  assert.deepEqual(TOOL_GROUPS.map((g) => g.id), ["sql", "cv", "site", "workflows", "docs", "learn", "nosql", "office_live", "craft_live"]);
 });
 
 test("on an ordinary page only the core tools are sent", () => {

@@ -7,6 +7,7 @@ import { attachFile, clickElement, controlElement, controlLabel, diffSnapshots, 
 import { MAX_WAIT_FOR_MS, describeWait, parseWaitFor, waitingLabel } from "./wait-condition";
 import type { FunctionToolDef, ToolRunResult } from "./types";
 import { LIVE_TOOL_DEFS, isLiveTool, runLiveTool } from "./office-live-tools";
+import { CRAFT_TOOL_DEFS, isCraftTool, runCraftTool } from "./craft-live-tools";
 
 /**
  * Tools the model can call that run in the browser, against the live page.
@@ -122,6 +123,8 @@ export const UI_TOOL_DEFS: FunctionToolDef[] = [
   ),
   // Live editing of the open office document (group office_live; offered only while the editor plugin is connected).
   ...LIVE_TOOL_DEFS,
+  // The Craft app open on the page (group craft_live; offered only while an app with an agent API is connected).
+  ...CRAFT_TOOL_DEFS,
 ];
 
 const UI_TOOL_NAMES = new Set(UI_TOOL_DEFS.map((d) => d.function.name));
@@ -291,6 +294,7 @@ async function settled(run: () => ToolRunResult | Promise<ToolRunResult>, skipId
 export async function runUiTool(name: string, args: Args, ctx: UiToolContext): Promise<ToolRunResult> {
   try {
     if (isLiveTool(name)) return await runLiveTool(name, args, ctx.signal);
+    if (isCraftTool(name)) return await runCraftTool(name, args, ctx.signal);
     switch (name) {
       case "list_tools":
         return listTools(args);

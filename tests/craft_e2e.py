@@ -302,6 +302,101 @@ def open_from_computer(page, app: str, path: Path, trigger) -> bool:
     return True
 
 
+AGENT_APPS = ["vectorcraft", "filmcraft", "effectcraft"]
+# Per app: a word craft_commands must find, and the acting calls to run (each one undoable in the app).
+AGENT_SCENARIO = {
+    "vectorcraft": ("zoom", [("file.new", {}), ("view.zoomIn", {})]),
+    "filmcraft": ("marker", [("markers.add", {})]),
+    "effectcraft": ("zoom", [("view.zoomIn", {})]),
+}
+PANEL = "[role=dialog][aria-label='Toolbox assistant']"
+LAST_TOOL_JS = """() => fetch('/api/agent/conversation').then(r => r.json()).then(c => { const m = c.messages; const i = m.map(x => x.role).lastIndexOf('user');
+    return m.slice(i).filter(x => x.role === 'tool').map(x => x.content).pop() ?? null; })"""
+
+
+class MockProvider:
+    """tests/mock_provider.mjs on a free loopback port (CALL:<tool>:<json> makes the model call that tool)."""
+
+    def __init__(self) -> None:
+        import socket
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        self.proc = subprocess.Popen(["node", str(ROOT / "tests" / "mock_provider.mjs"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.base = f"http://127.0.0.1:{port}/v1"
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(f"{self.base}/models", timeout=2).read()
+                break
+            except OSError:
+                time.sleep(0.1)
+
+    def close(self) -> None:
+        self.proc.terminate()
+
+
+def ask(page, text: str) -> dict:
+    """Send one message, wait for the turn to end, return the last tool result of that turn (parsed)."""
+    page.locator(f"{PANEL} button[aria-label='Send']").wait_for(timeout=180_000)
+    before = page.evaluate("() => fetch('/api/agent/conversation').then(r => r.json()).then(c => c.messages.filter(m => m.role === 'user').length)")
+    composer = page.locator("textarea[aria-label='Message the assistant']")
+    composer.fill(text)
+    composer.press("Enter")
+    page.wait_for_function(
+        """async (n) => { const c = await (await fetch('/api/agent/conversation')).json(); const m = c.messages.filter(x => !(x.role === 'notice' && x.level === 'usage'));
+           if (m.filter(x => x.role === 'user').length <= n) return false; const l = m[m.length - 1]; return (l.role === 'assistant' && !l.tool_calls) || l.role === 'notice'; }""",
+        arg=before, timeout=180_000, polling=250,
+    )
+    page.locator(f"{PANEL} button[aria-label='Send']").wait_for(timeout=180_000)
+    raw = page.evaluate(LAST_TOOL_JS)
+    try:
+        return json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {"raw": raw}
+
+
+def agent_checks(page, app: str, shots: Path) -> None:
+    badge = page.locator(f"[data-craft-app={app}] [data-craft-agent=connected]")
+    snap: dict = {}
+    # A dev server compiles the assistant's chunks on first use and may reload the page once: retry after it settles.
+    for attempt in range(3):
+        try:
+            badge.wait_for(timeout=240_000)
+            if not page.locator(PANEL).count():
+                page.locator("button[aria-label='Open assistant']").click()
+            page.wait_for_selector(PANEL)
+            page.locator("[aria-label='Ask before acting']").get_by_role("radio", name="None", exact=True).click()
+            snap = ask(page, "CALL:page_snapshot:{}")
+            if "CONNECTED" in json.dumps(snap):
+                break
+        except Exception as err:  # noqa: BLE001
+            print(f"  (assistant attempt {attempt + 1}: {str(err).splitlines()[0][:200]})", flush=True)
+        page.wait_for_load_state("networkidle")
+        time.sleep(2)
+    note = " ".join((snap.get("snapshot") or snap).get("notes", []))
+    check(f"{app}: page_snapshot says the Craft app is connected and names the craft_* tools", "CONNECTED" in note and "craft_" in note, note[:300])
+    inspected = ask(page, "CALL:craft_inspect:{}")
+    check(f"{app}: craft_inspect returns the app's state", inspected.get("ok") is True and isinstance(inspected.get("state"), dict) and inspected.get("app") == NAMES[app], json.dumps(inspected)[:300])
+    query, commands = AGENT_SCENARIO[app]
+    found = ask(page, "CALL:craft_commands:" + json.dumps({"query": query}))
+    check(f"{app}: craft_commands finds commands by word (compact entries with ids)", found.get("ok") is True and found.get("total", 0) > 0 and all("id" in c for c in found.get("commands", [])), json.dumps(found)[:300])
+    shot = ask(page, "CALL:craft_screenshot:{}")
+    file = shot.get("file") or {}
+    check(f"{app}: craft_screenshot puts a PNG of the app into the file chain", shot.get("ok") is True and file.get("mime") == "image/png" and file.get("bytes", 0) > 1000 and (shot.get("width") or 0) > 100, json.dumps(shot)[:300])
+    # Acting calls under trust None (no approval card), each listed by craft_commands.
+    ids = [c.get("id") for c in found.get("commands", [])]
+    for command, params in commands:
+        done = ask(page, "CALL:craft_execute:" + json.dumps({"command": command, "params": params}))
+        check(f"{app}: craft_execute runs {command} in the app", done.get("ok") is True, json.dumps(done)[:300])
+    if app == "vectorcraft":
+        state = ask(page, "CALL:craft_inspect:{}").get("state") or {}
+        check(f"{app}: the new document shows in craft_inspect", len(state.get("documents") or []) == 1, json.dumps(state.get("documents"))[:200])
+    check(f"{app}: craft_commands listed the commands used", all(c in ids for c, _ in commands if c != "file.new"), json.dumps(ids)[:300])
+    page.screenshot(path=str(shots / f"60-{app}-assistant.png"))
+    page.locator("button[aria-label='Close assistant']").first.click()
+
+
 def wait_app(page, app: str, timeout_s: float = 180) -> dict:
     frame = None
     deadline = time.monotonic() + timeout_s
@@ -495,6 +590,28 @@ def main() -> int:
                     check(f"{app}: Exit full screen leaves it too", page.locator(f"[data-craft-app={app}][data-page-fullscreen]").count() == 0)
                 else:
                     check(f"{app}: Full screen button offered", full.is_visible())
+
+            # The assistant inside the apps that have an agent API (craft_* tools through the bridge), driven through the
+            # widget with the mock provider: connected badge, inspect, command search, a screenshot into the file chain,
+            # one acting call. EffectCraft may not start without a GPU (xvfb): then it must say it is still starting.
+            agent_apps = [app for app in AGENT_APPS if app in only]
+            if agent_apps:
+                mock = MockProvider()
+                status, _ = api.call("PUT", "/api/account/provider", {"baseUrl": mock.base, "model": "mock-model", "apiKey": "mock-key"})
+                check("assistant: mock provider stored", status == 200, str(status))
+                for app in agent_apps:
+                    page.goto(f"{url}/tools/artcraft?tab={app}")
+                    page.locator("main [role=status]", has_text=f"{NAMES[app]} loaded from").first.wait_for(timeout=180_000)
+                    badge = page.locator(f"[data-craft-app={app}] [data-craft-agent=connected]")
+                    try:
+                        badge.wait_for(timeout=240_000)
+                    except Exception:  # noqa: BLE001
+                        state = wait_app(page, app, 5)
+                        check(f"{app}: assistant connects to the app's agent API", False, f"no 'Assistant ready'; app state {json.dumps(state)[:200]}")
+                        continue
+                    check(f"{app}: 'Assistant ready' once the app's agent API answers", badge.is_visible())
+                    agent_checks(page, app, shots)
+                mock.close()
 
             if len(only) == len(APPS):
                 _, body = api.call("GET", f"/api/services/{SERVICE}?memory=1")

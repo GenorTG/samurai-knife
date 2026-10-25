@@ -147,7 +147,8 @@ export interface SidecarSite {
 }
 
 // ArtCraft (https://github.com/storytold): MIT OR Apache-2.0, pure Rust, static WebAssembly web builds. Versions and
-// sha256 verified 2026-10-21 against the GitHub release assets (the API's asset digest and a local sha256sum agree).
+// sha256 verified 2026-10-21 (VectorCraft, FilmCraft, EffectCraft: 2026-10-25, the first releases with the agent API the
+// assistant's craft_* tools use) against the GitHub release assets (the API's asset digest and a local sha256sum agree).
 const ARTCRAFT_SANDBOX = ["allow-scripts", "allow-same-origin", "allow-downloads", "allow-popups"];
 const ARTCRAFT_ALLOW = ["fullscreen", "clipboard-read", "clipboard-write"];
 const HASHED_GLUE = String.raw`-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`;
@@ -174,12 +175,12 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
   artcraft("photocraft", "PhotoCraft", "image editor", "0.11.1", "f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f", 11567210, {
     immutable: [String.raw`\.part-[a-z]+$`, String.raw`photocraft-web-boot-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`],
   }),
-  artcraft("vectorcraft", "VectorCraft", "vector illustration", "0.14.0", "6f28a8bcee1c5ad6c37c6a0c44058793a40ea4443085866d5f78afb16aba075e", 27734185, {
+  artcraft("vectorcraft", "VectorCraft", "vector illustration", "0.17.0", "71ddc4e71538ec1ce8467c21cb6ca47754042b222605a7de1851fbb1f3d6b37c", 29276998, {
     immutable: [HASHED_GLUE, String.raw`^/fonts/[0-9a-f]{16}/`],
   }),
   // index.html loads the glue and wasm with `?v=<build hash>`, but the file names stay the same in every release: an
   // update must not meet a year-long immutable copy of the old file, so everything revalidates (ETag, 304).
-  artcraft("filmcraft", "FilmCraft", "video editor", "0.10.0", "47618cc373ff1306be17cfd539a33a5a5af490d3bb6722a6bc1436fcd6bf87a0", 13429216, {
+  artcraft("filmcraft", "FilmCraft", "video editor", "0.13.0", "c632afdcafc0cf185c01063471cf4a78eecb2d526787f3eb821047786c6482d5", 13517113, {
     immutable: [],
   }),
   // Same file names in every release: nothing is immutable. Library in OPFS (IndexedDB fallback), render workers.
@@ -189,7 +190,7 @@ export const ARTCRAFT_APPS: readonly SidecarSite[] = [
     webgpu: false,
     note: "Experimental: the library lives in this browser's storage for the Craft apps address; keep your originals elsewhere and use File > Back Up Library.",
   }),
-  artcraft("effectcraft", "EffectCraft", "motion graphics and effects", "0.13.0", "70eeb35b1bc6e19be98e37570cba962afce9dc65f2099d23989fca9c45a656dc", 19328128, {
+  artcraft("effectcraft", "EffectCraft", "motion graphics and effects", "0.17.0", "95f93e7a8d7907616e219152272b7e0c1791030309be02eb9214ae4258fec783", 19453875, {
     immutable: [],
     note: "The largest app (about 63 MB of WebAssembly, 17 MB to download): the first start takes a while.",
   }),

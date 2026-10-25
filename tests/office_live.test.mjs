@@ -123,6 +123,70 @@ test("toLiveCall: every assistant tool maps to a plugin command with checked arg
   ok("doc_live_add_slide", { title: "T", body: "a\nb" }, "add_slide");
   bad("doc_live_add_slide", {}, /title/);
   bad("doc_live_unknown", {}, /unknown/);
+
+  // Formatting, tables, lists, header/footer, tracking (word).
+  assert.deepEqual(ok("doc_live_format", { quote: "revenue", bold: true, color: "#C00000", highlight: "yellow", all: true }, "format_text"), {
+    bold: true,
+    color: { r: 192, g: 0, b: 0 },
+    highlight: "yellow",
+    quote: "revenue",
+    all: true,
+    match_case: false,
+  });
+  assert.deepEqual(ok("doc_live_format", { from: 2, to: 3, size: 14, font: "Arial" }, "format_text"), { size: 14, font: "Arial", from: 2, to: 3 });
+  ok("doc_live_format", { italic: true }, "format_text");
+  bad("doc_live_format", { quote: "x" }, /nothing to change/);
+  bad("doc_live_format", { quote: "x", from: 1, bold: true }, /not both/);
+  bad("doc_live_format", { bold: "yes" }, /true or false/);
+  bad("doc_live_format", { color: "red" }, /#rrggbb/);
+  bad("doc_live_format", { highlight: "chartreuse" }, /highlight must be/);
+  bad("doc_live_format", { font: "<b>" }, /bad font/);
+  assert.deepEqual(ok("doc_live_insert_table", { rows: [["A", 1], ["b", null]], index: 0 }, "insert_table"), { rows: [["A", "1"], ["b", ""]], header: true, index: 0 });
+  bad("doc_live_insert_table", { rows: [] }, /1\.\.200/);
+  bad("doc_live_insert_table", { rows: [["a\nb"]] }, /one line/);
+  assert.deepEqual(ok("doc_live_insert_list", { items: ["a", "b"], numbered: true }, "insert_list"), { items: ["a", "b"], numbered: true });
+  bad("doc_live_insert_list", { items: ["a\nb"] }, /one line/);
+  assert.deepEqual(ok("doc_live_header_footer", { footer: "" }, "set_header_footer"), { footer: "" });
+  bad("doc_live_header_footer", {}, /header and\/or footer/);
+  assert.deepEqual(ok("doc_live_track_changes", { on: true }, "track_changes"), { on: true });
+  bad("doc_live_track_changes", {}, /on must be/);
+
+  // Spreadsheets: formats, widths, charts, sorting (arguments prepared for the plugin: 0-based indexes, $A$1 ranges).
+  assert.deepEqual(ok("doc_live_cells_format", { range: "A1:B1", bold: true, fill: "fff2cc", number_format: "0.00", align: "center" }, "cells_format"), {
+    range: "A1:B1",
+    bold: true,
+    fill: { r: 255, g: 242, b: 204 },
+    number_format: "0.00",
+    align: "center",
+  });
+  bad("doc_live_cells_format", { range: "A1" }, /nothing to change/);
+  bad("doc_live_cells_format", { range: "A1", align: "middle" }, /align must be/);
+  assert.deepEqual(ok("doc_live_column_width", { columns: "b:d", width: 20 }, "column_width"), { columns: "B:D", first: 1, last: 3, width: 20 });
+  bad("doc_live_column_width", { columns: "D:B", width: 20 }, /left to right/);
+  bad("doc_live_column_width", { columns: "B", width: 300 }, /width/);
+  assert.deepEqual(ok("doc_live_add_chart", { range: "a1:b6", type: "pie", title: "Share" }, "add_chart"), {
+    abs: "$A$1:$B$6",
+    type: "pie",
+    at: null,
+    at_col: 3,
+    at_row: 0,
+    width_mm: 130,
+    height_mm: 75,
+    in_rows: false,
+    title: "Share",
+  });
+  assert.equal(ok("doc_live_add_chart", { range: "A1:B6", at: "F10" }, "add_chart").at_row, 9);
+  bad("doc_live_add_chart", { range: "A1" }, /data block/);
+  bad("doc_live_add_chart", { range: "A1:B2", type: "radar3d" }, /type must be/);
+  assert.deepEqual(ok("doc_live_sort", { range: "A1:C20", by: "b", descending: true }, "sort_range"), { range: "A1:C20", key: "B1", descending: true, header: true });
+  bad("doc_live_sort", { range: "A1:C20", by: "E" }, /outside/);
+
+  // Presentations.
+  assert.deepEqual(ok("doc_live_slide_text", { index: 1, shape: 0, text: "New" }, "set_slide_text"), { index: 1, shape: 0, text: "New" });
+  bad("doc_live_slide_text", { index: 1, text: "x" }, /shape/);
+  ok("doc_live_slide_notes", { index: 0, text: "Say it" }, "set_slide_notes");
+  ok("doc_live_delete_slide", { index: 2 }, "delete_slide");
+  bad("doc_live_delete_slide", {}, /index/);
 });
 
 test("every doc_live tool has an editor list, and risk classes follow the trust rules", () => {
@@ -134,6 +198,9 @@ test("every doc_live tool has an editor list, and risk classes follow the trust 
   assert.equal(protocol.liveRisk("doc_live_replace", {}), "destructive");
   assert.equal(protocol.liveRisk("doc_live_cells_write", {}), "edit");
   assert.equal(protocol.liveRisk("doc_live_cells_write", { overwrite: true }), "destructive");
+  for (const tool of ["doc_live_delete_slide", "doc_live_slide_text", "doc_live_header_footer"]) assert.equal(protocol.liveRisk(tool, {}), "destructive", tool);
+  for (const tool of ["doc_live_format", "doc_live_insert_table", "doc_live_cells_format", "doc_live_add_chart", "doc_live_sort", "doc_live_slide_notes"]) assert.equal(protocol.liveRisk(tool, {}), "edit", tool);
+  assert.match(assessLiveCall("doc_live_delete_slide", { index: 2 }, "destructive", "d", "Deck.pptx").title, /^Delete slide 3 in “Deck\.pptx”\?$/);
 
   const verdict = (name, args, mode) => assessLiveCall(name, args, mode, "detail", "Report.docx");
   for (const mode of ["strict", "standard", "destructive", "free"]) assert.equal(verdict("doc_live_read", {}, mode).ask, false, `read in ${mode}`);

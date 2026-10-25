@@ -105,3 +105,27 @@ connected". Never runs without a visible tab, never bypasses an approval, result
 3. Office tool gaps (formatting, tables, slide text, charts).
 4. `knife_ui_call` for outside agents.
 5. Upstream issues for the other ten apps; self-built bundles only for an app you really need now.
+
+## Done: Craft (2026-10-25)
+
+Built as designed in "1. Craft tools in the page" (docs/SIDECARS.md "The assistant inside an app"), with what the real
+builds showed when loaded in Firefox:
+
+- Pins raised to VectorCraft 0.17.0, FilmCraft 0.13.0, EffectCraft 0.17.0 (digests checked against the API and a local
+  `sha256sum`).
+- VectorCraft defines `window.vectorcraft` only after it starts; FilmCraft and EffectCraft define theirs at once and
+  reject every call ("… is not running yet") until the app runs. Readiness is therefore "inspect() answers", not "the
+  object exists".
+- VectorCraft returns the screenshot inline only with `{data: true}`; it has no `ui.elements` (FilmCraft does) and
+  imports through `openFile(name, bytes)`, EffectCraft through `addFile(File)`, FilmCraft through `importFiles(File[])`.
+  `files()` is synchronous in VectorCraft and FilmCraft.
+- `commands()` returns arrays of `{id, label, menu, params, enabled, shortcut}` (VectorCraft 1148, FilmCraft 710).
+- EffectCraft 0.17 does not finish `start()` without a GPU (xvfb + llvmpipe); with one it is expected to connect.
+
+## Done: office (2026-10-25)
+
+"3. More office tools" built and checked in the real editor (tests/office_live_e2e.py): documents get character
+formatting, tables, bulleted/numbered lists, header and footer, track changes; spreadsheets get cell formats (number
+formats, fills, alignment), column widths, sorting and charts (formulas already worked through `cells_write`);
+presentations get slide text by shape, speaker notes and deleting a slide. Not yet: images, layouts/placeholders,
+PDF forms. "4. Outside agents (MCP) driving an open app" (`knife_ui_call`) is still open.

@@ -37,7 +37,7 @@ function total(): number {
   return sum;
 }
 
-function record(blob: Blob, filename: string): void {
+function record(blob: Blob, filename: string): string {
   // Oldest first out when over the count or memory budget; never evict the file just recorded.
   const id = `f${++counter}`;
   store.set(id, { id, name: filename.replace(/[\\/]/g, "_").slice(0, 120) || "download", mime: blob.type || "application/octet-stream", bytes: blob.size, blob, announced: false });
@@ -46,6 +46,16 @@ function record(blob: Blob, filename: string): void {
     if (oldest === undefined || oldest === id) break;
     store.delete(oldest);
   }
+  return id;
+}
+
+/** A file a tool made without a download (a Craft app's screenshot or export): into the chain; the tool's own result
+ *  names it, so it is not announced again as new_files. */
+export function addArtifact(blob: Blob, filename: string): ArtifactInfo {
+  const id = record(blob, filename);
+  const entry = store.get(id);
+  if (entry) entry.announced = true;
+  return artifactInfo(id) as ArtifactInfo;
 }
 
 /** Wrap the two browser APIs every tool's download goes through. Idempotent; browser only. */
