@@ -157,6 +157,7 @@ def main() -> int:
         ("POST", "/api/agent/tool", {"name": "knife_cv_get", "input": {}}), ("POST", "/api/agent/chat", {"messages": []}),
         ("POST", "/api/sql", {"action": "format", "sql": "select 1"}), ("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
         ("GET", "/api/ui/poll?client=AAAAAAAAAAAAAAAA", None), ("GET", "/api/learn", None),
+        ("POST", "/api/ui/call", {"clientId": "AAAAAAAAAAAAAAAA", "callId": "00000000-0000-4000-8000-000000000000", "status": "done", "ok": True, "content": "x"}),
         ("GET", "/api/workflows", None), ("GET", "/api/workflows/credentials", None), ("GET", "/api/workflows/oauth/start?credential=abcdefabcdef", None),
         ("POST", "/api/workflows", {"action": "create", "name": "x"}),
     ):
@@ -221,6 +222,35 @@ def main() -> int:
     # The Python lane runs under the public-mode parser sandbox (bubblewrap): a real job must still work.
     ok, text, took = mcp(api, "knife_sql_format", {"sql": "select a,b from t where x=1", "dialect": "postgres"}, ha, "198.51.100.10")
     check(f"Python lane works under the public-mode sandbox (knife_sql_format, {took:.1f} s)", ok and "SELECT" in text.upper(), text[:200])
+
+    # --------------------------------------------------------------------------------------------- knife_ui_call
+    # alice's tab reports a live tool and polls; bob's agent never reaches it, bob cannot answer alice's call
+    tab_a = "aliceTab00000001"
+    api.call("POST", "/api/ui/presence", {"clientId": tab_a, "path": "/tools/office", "title": "x", "visible": True, "active": True, "tools": ["doc_live_read"]}, cookie=alice, ip="198.51.100.10")
+    api.call("GET", f"/api/ui/poll?client={tab_a}", cookie=alice, ip="198.51.100.10")
+    ok, text, _ = mcp(api, "knife_ui_call", {"tool": "doc_live_read"}, hb, "198.51.100.20")
+    check("bob's agent sees no tab of alice's (knife_ui_call -> no_tab)", ok and '"no_tab"' in text, text[:200])
+    waited: list[tuple[bool, str, float]] = []
+    caller = threading.Thread(target=lambda: waited.append(mcp(api, "knife_ui_call", {"tool": "doc_live_read", "timeoutSeconds": 15}, ha, "198.51.100.10")))
+    caller.start()
+    call_id = ""
+    for _ in range(40):
+        status, body, _ = api.call("GET", f"/api/ui/poll?client={tab_a}", cookie=alice, ip="198.51.100.10")
+        call_id = next((e["callId"] for e in (body.get("events", []) if isinstance(body, dict) else []) if e.get("kind") == "call"), "")
+        if call_id:
+            break
+        time.sleep(0.25)
+    check("alice's tab gets alice's call in its poll", bool(call_id))
+    answer = {"clientId": tab_a, "callId": call_id or "00000000-0000-4000-8000-000000000000", "status": "done", "ok": True, "content": "{\"text\":\"forged by bob\"}"}
+    status, body, _ = api.call("POST", "/api/ui/call", answer, cookie=bob, ip="198.51.100.20")
+    check("bob cannot answer alice's call (accepted, ignored)", status == 200 and isinstance(body, dict) and body.get("taken") is False, (status, body))
+    status, body, _ = api.call("POST", "/api/ui/call", {**answer, "content": "{\"text\":\"alice answer\"}"}, cookie=alice, ip="198.51.100.10")
+    check("alice's tab answers its own call", status == 200 and isinstance(body, dict) and body.get("taken") is True, (status, body))
+    caller.join(30)
+    ok, text, _ = waited[0] if waited else (False, "no answer", 0)
+    check("alice's agent gets her tab's answer, enveloped, never bob's", ok and "alice answer" in text and "forged by bob" not in text and "UNTRUSTED_CONTENT" in text, text[:300])
+    status, _, _ = raw("POST", "/api/ui/call", json.dumps(answer).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
+    check("a cross-origin call answer is refused by the Origin guard", status == 403, status)
 
     # --------------------------------------------------------------------------------------------- workflows
     status, hdrs, text = raw("POST", "/api/hooks/" + "A" * 24 + "/x", b"{}", {"Content-Type": "application/json"})
