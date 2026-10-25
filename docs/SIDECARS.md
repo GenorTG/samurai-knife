@@ -458,10 +458,26 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
     answer within 5 s. "Assistant ready" shows in the toolbar; no object after 60 s = no API; an object that keeps
     refusing gets 5 minutes (EffectCraft's first start).
   - Tools (page-only group `craft_live`, offered only while connected and per function the app has):
-    `craft_commands {query?}` (compact entries, id/label matches first, shrunk to fit), `craft_inspect {what:ui|elements}`,
+    `craft_guide` (how to work in the open app, below), `craft_commands {query?}` (compact entries, id/label matches
+    first, parameter docs clipped at 300 characters, shrunk to fit) or `{command}` (one command with its whole parameter
+    doc and the app's reason when it is disabled; a typo lists the closest ids), `craft_inspect {what:ui|elements}`,
     `craft_execute {command, params}`, `craft_request {method, params}` (ui.click, ui.key, ui.type, ui.set…),
     `craft_screenshot` (PNG into the assistant's file chain; VectorCraft needs `data:true`, sent on a second try),
     `craft_files`, `craft_export {path}` (an app file into the chain), `craft_import {files}` (chain files into the app).
+    File data an app returns inline (`dataBase64` / `pngBase64` / `png` of 512+ characters, e.g. VectorCraft's
+    `document.export` without a path, which the web build requires) is filed in the chain and replaced by `{file}`, so an
+    export never lands in the model's context.
+  - Guides (src/lib/craft/guides.ts, `craft_guide`; a one-line `brief` in the snapshot note; the whole guide in
+    `knife_ui_call {tool:"list_tools"}` for outside agents): per app its units and coordinates, how to read the document
+    (VectorCraft `document.inspect`, FilmCraft `project.inspect` / `sequence.inspect`, EffectCraft `comp.info` /
+    `prop.get`), the commands for common jobs with parameters, batching (`command.batch` / `engine.batch`), exporting
+    from the in-browser file table, and pitfalls. Written from the apps' own docs (docs/agents.md, mcp.md, web.md of each
+    release) and every recipe run against the pinned web build (2026-10-25). A guide records the version it was checked
+    against (`verified` = the pin, enforced by tests/craft_guides.test.mjs, which also checks every command id it names
+    against `tests/fixtures/craft-commands/<app>-<version>.json`, the ids of `window.<app>.commands()`); an app the
+    update channel moved past it gets a note to confirm commands with `craft_commands {command}`. When a pin moves:
+    dump the new catalogue's ids into a new fixture, re-run the recipes (`tests/craft_e2e.py` runs one per app through
+    the assistant), update the guide and its `verified`.
   - Trust: reads never ask; execute, request (except ui.inspect/ui.elements/ui.menu.list/engine.commands/perf.stats)
     and import act; an id or method naming delete/remove/clear/reset/revert/discard/close/quit/exit/purge/wipe/erase/
     overwrite (also inside `ui.menu.invoke {command}`) is destructive. Every app answer counts as third-party text for

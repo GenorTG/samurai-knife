@@ -38,7 +38,7 @@ const CONNECT_TIMEOUT_MS = 20_000;
 /** The bridge gives up after 60 s; this only catches a bridge that never answers. */
 const AGENT_TIMEOUT_MS = 70_000;
 
-type Pending = { resolve: (reply: CraftReply) => void; timer: ReturnType<typeof setTimeout> };
+type Pending = { resolve: (reply: CraftReply) => void; timer: ReturnType<typeof setTimeout>; method: string };
 
 export function useCraftBridge(options: {
   origin: string;
@@ -117,9 +117,10 @@ export function useCraftBridge(options: {
           if (!entry) return;
           pending.current.delete(id as number);
           clearTimeout(entry.timer);
-          // readFile's bytes are the only binary result: an ArrayBuffer up to the save limit, nothing else passes.
+          // readFile's bytes are the only binary result: an ArrayBuffer up to the save limit, nothing else passes. Other
+          // answers may carry a `bytes` field of their own (VectorCraft's export reports its size there): plain JSON.
           const result = message.result as { bytes?: unknown } | null;
-          if (message.ok === true && result && typeof result === "object" && "bytes" in result && !(result.bytes instanceof ArrayBuffer && result.bytes.byteLength <= MAX_SAVE)) {
+          if (entry.method === "readFile" && message.ok === true && !(result && typeof result === "object" && result.bytes instanceof ArrayBuffer && result.bytes.byteLength <= MAX_SAVE)) {
             entry.resolve({ ok: false, error: "the app sent an invalid file" });
             break;
           }
@@ -157,7 +158,7 @@ export function useCraftBridge(options: {
         resolve(reply);
       };
       const timer = setTimeout(() => done({ ok: false, error: "the Craft app did not answer" }), AGENT_TIMEOUT_MS);
-      pending.current.set(id, { resolve, timer });
+      pending.current.set(id, { resolve, timer, method });
       signal?.addEventListener("abort", () => done({ ok: false, error: "Stopped by the user." }), { once: true });
       target.postMessage({ type: "agent", id, method, args }, transfer);
     });

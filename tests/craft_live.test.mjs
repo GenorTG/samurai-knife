@@ -4,6 +4,7 @@
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/craft_live.test.mjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import test from "node:test";
 
 const { assessCraftCall, craftRisk, craftStatusNote, craftToolAvailable, runCraftTool, CRAFT_TOOL_DEFS } = await import("../src/lib/agent-client/craft-live-tools.ts");
@@ -137,7 +138,7 @@ const run = async (name, args = {}) => {
 test("craft_* is a page-only group on /tools/artcraft, offered only while an app with the API is connected", () => {
   assert.equal(groupOf("craft_execute")?.id, "craft_live");
   assert.deepEqual([...initialGroups("/tools/artcraft", [])], ["craft_live"]);
-  assert.equal(CRAFT_TOOL_DEFS.length, 8);
+  assert.equal(CRAFT_TOOL_DEFS.length, 9);
   clearCraftPresence("democraft");
   setCraftPresence(null);
   assert.equal(craftToolAvailable("craft_inspect"), false);
@@ -151,7 +152,7 @@ test("craft_* is a page-only group on /tools/artcraft, offered only while an app
   assert.equal(craftToolAvailable("craft_inspect"), true);
   assert.equal(craftToolAvailable("craft_export"), false, "the app has no readFile");
   const visible = visibleTools(CRAFT_TOOL_DEFS, new Set(["craft_live"]), craftToolAvailable).map((d) => d.function.name);
-  assert.deepEqual(visible, ["craft_commands", "craft_inspect", "craft_request"]);
+  assert.deepEqual(visible, ["craft_guide", "craft_commands", "craft_inspect", "craft_request"]);
   assert.match(craftStatusNote(), /CONNECTED/);
   // An unmount of another app's frame does not clear this one.
   clearCraftPresence("othercraft");
@@ -190,9 +191,9 @@ test("craft_commands lists compact entries, filters by id/label first, and says 
   connect();
   const all = await run("craft_commands");
   assert.equal(all.body.total, 81);
-  assert.equal(all.body.shown, 40);
+  assert.ok(all.body.shown > 20 && all.body.shown <= 40, `whole entries that fit: ${all.body.shown}`);
   assert.match(all.body.note, /More match/);
-  assert.ok(all.body.commands[0].params.length <= 161);
+  assert.match(all.body.commands[0].params, /^x{300}… \(craft_commands \{command:"cmd\.n0"\} for all of it\)$/);
   const many = await run("craft_commands", { limit: 200 });
   assert.ok(many.body.shown < 81 && many.body.shown > 20, `shrunk to fit, whole entries: ${many.body.shown}`);
   assert.equal(many.body._truncated, undefined);
@@ -252,4 +253,70 @@ test("craft_export copies an app file into the chain; craft_import sends chain f
   assert.equal((await run("craft_import", { files: ["../etc"] })).ok, false);
   assert.match((await run("craft_import", { files: ["f9999"] })).body.error, /no longer in your file chain/);
   clearCraftPresence("democraft");
+});
+
+test("craft_commands {command}: one command with its whole parameter doc and why it is disabled; a near miss lists similar ids", async () => {
+  connect({ commands: { ok: true, result: [
+    { id: "document.export", label: "Export Document", menu: ["File"], params: "p".repeat(3000), enabled: true },
+    { id: "prop.set", label: "Set Property Value", params: "{layer?, path, value}", enabled: false, why: "select a layer first" },
+  ] } });
+  const one = await run("craft_commands", { command: "document.export" });
+  assert.equal(one.ok, true);
+  assert.equal(one.body.command.params.length, 3000, "not clipped");
+  const disabled = await run("craft_commands", { command: "prop.set" });
+  assert.deepEqual(disabled.body.command, { id: "prop.set", label: "Set Property Value", params: "{layer?, path, value}", enabled: false, why: "select a layer first" });
+  const miss = await run("craft_commands", { command: "document.exportt" });
+  assert.equal(miss.ok, false);
+  assert.match(miss.body.error, /no command "document\.exportt"/);
+  assert.equal(miss.body.similar[0].id, "document.export");
+  clearCraftPresence("democraft");
+});
+
+test("file data an app returns inline (export without a path) goes to the file chain, never into the result", async () => {
+  const png = Buffer.alloc(4000, 7).toString("base64");
+  connect({ execute: { ok: true, result: { bytes: 4000, dataBase64: png, format: "png", warnings: [] } } });
+  const r = await run("craft_execute", { command: "document.export", params: { format: "png" } });
+  assert.equal(r.ok, true);
+  assert.ok(!JSON.stringify(r.body).includes(png.slice(0, 200)), "no base64 in the result");
+  assert.equal(r.body.result.file.name, "democraft-document-export.png");
+  assert.equal(r.body.result.file.mime, "image/png");
+  assert.equal(r.body.new_files[0].id, r.body.result.file.id);
+  assert.equal((await artifactFile(r.body.result.file.id).arrayBuffer()).byteLength, 4000);
+  // several files (one per artboard), named by the app; small strings and other keys stay as they are
+  connect({ request: { ok: true, result: { files: [{ name: "art-1.svg", dataBase64: Buffer.alloc(900, 1).toString("base64") }, { name: "art-2.svg", dataBase64: Buffer.alloc(900, 2).toString("base64") }], note: "x".repeat(600) } } });
+  const many = await run("craft_request", { method: "assets.export" });
+  assert.deepEqual(many.body.new_files.map((f) => f.name), ["art-1.svg", "art-2.svg"]);
+  assert.equal(many.body.result.note.length, 600);
+  connect({ execute: { ok: true, result: { dataBase64: "short" } } });
+  assert.deepEqual((await run("craft_execute", { command: "x.y" })).body.result, { dataBase64: "short" }, "too short to be a file");
+  clearCraftPresence("democraft");
+});
+
+test("craft_guide: the guide of the open app, a version note when the app moved on, a fallback for apps without one", async () => {
+  const { craftGuide } = await import("../src/lib/craft/guides.ts");
+  const guide = craftGuide("vectorcraft");
+  setCraftPresence({ appId: "vectorcraft", appName: "VectorCraft", version: guide.verified, state: "connected", methods: ["inspect"], call: async () => ({ ok: true, result: {} }) });
+  assert.equal(craftToolAvailable("craft_guide"), true);
+  const same = await run("craft_guide");
+  assert.equal(same.body.guide, guide.text);
+  assert.equal(same.body.note, undefined);
+  assert.match(craftStatusNote(), /read craft_guide/);
+  assert.ok(craftStatusNote().includes(guide.brief));
+  setCraftPresence({ appId: "vectorcraft", appName: "VectorCraft", version: "9.9.9", state: "connected", methods: ["inspect"], call: async () => ({ ok: true, result: {} }) });
+  assert.match((await run("craft_guide")).body.note, /checked against VectorCraft 0\.17\.0; the open app is 9\.9\.9/);
+  clearCraftPresence("vectorcraft");
+  connect({}, ["inspect"]);
+  assert.match((await run("craft_guide")).body.guide, /No guide for this app yet/);
+  clearCraftPresence("democraft");
+});
+
+test("readFile: bytes from the app's own frame (another realm, where instanceof Uint8Array is false) still come back", async () => {
+  const foreign = vm.runInNewContext("new Uint8Array([1, 2, 3, 4]).subarray(1)");
+  assert.equal(foreign instanceof Uint8Array, false, "the test really crosses realms");
+  const call = bridge({ democraft: fakeApi({ readFile: async () => foreign }).api });
+  const hit = await call("readFile", ["/exports/a.png"]);
+  assert.equal(hit.message.ok, true, JSON.stringify(hit.message));
+  assert.deepEqual([...new Uint8Array(hit.message.result.bytes)], [2, 3, 4], "the view's own bytes, not its whole buffer");
+  const plain = bridge({ democraft: fakeApi({ readFile: async () => "nope" }).api });
+  assert.equal((await plain("readFile", ["/x"])).message.error, "the app returned no bytes");
 });

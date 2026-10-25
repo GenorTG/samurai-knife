@@ -1,5 +1,6 @@
 import { activeCraft, craftPresence, type ActiveCraft } from "@/lib/craft/live";
 import { addArtifact, artifactFile, ARTIFACT_ID } from "./artifacts";
+import { craftGuide } from "@/lib/craft/guides";
 import type { Assessment } from "./approval-policy";
 import type { TrustMode } from "./interaction";
 import type { FunctionToolDef, ToolRunResult } from "./types";
@@ -24,9 +25,15 @@ const PARAMS = { type: "object", description: "Parameters as the command/method 
 
 export const CRAFT_TOOL_DEFS: FunctionToolDef[] = [
   def(
+    "craft_guide",
+    "How to work in the open Craft app: its units and coordinates, how to read the document, the commands for common jobs (create, style, animate, cut, export) with exact parameters, and its pitfalls. Read it once before your first edit in an app.",
+    {},
+    [],
+  ),
+  def(
     "craft_commands",
-    "List the open Craft app's engine and menu commands (ids, titles, parameters, enabled state). Pass query to filter (words matched in the id or title, e.g. \"export\", \"layer\"). Use the ids with craft_execute.",
-    { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200, description: "Default 40." } },
+    "List the open Craft app's engine and menu commands (ids, titles, parameters, enabled state and why not). Pass query to filter (words matched in the id or title, e.g. \"export\", \"layer\"); pass command (an exact id) for that one command with its whole parameter documentation before you run it. Use the ids with craft_execute.",
+    { query: { type: "string" }, command: { type: "string", description: "An exact command id: returns its full parameter docs." }, limit: { type: "integer", minimum: 1, maximum: 200, description: "Default 40." } },
     [],
   ),
   def(
@@ -37,7 +44,7 @@ export const CRAFT_TOOL_DEFS: FunctionToolDef[] = [
   ),
   def(
     "craft_execute",
-    "Run one engine command in the open Craft app (an id from craft_commands, with its params), e.g. {command:\"file.newSequence\", params:{fromItem:48}}. The user sees the change at once and can undo it in the app (Ctrl+Z).",
+    "Run one engine command in the open Craft app (an id from craft_commands, with its params), e.g. {command:\"file.newSequence\", params:{fromItem:48}}. Use the ids and paths the result returns in your next calls. File data the app returns (an export without a path) is saved to your file chain. The user sees the change at once and can undo it in the app (Ctrl+Z).",
     { command: { type: "string" }, params: PARAMS },
     ["command"],
   ),
@@ -70,6 +77,7 @@ export const CRAFT_TOOL_DEFS: FunctionToolDef[] = [
 
 /** The app function each tool needs (probe reports which ones the app has). */
 const NEEDS: Record<string, string> = {
+  craft_guide: "inspect",
   craft_commands: "commands",
   craft_inspect: "inspect",
   craft_execute: "execute",
@@ -98,7 +106,8 @@ export function craftStatusNote(): string | null {
   if (!presence) return null;
   const app = `${presence.appName} ${presence.version}`;
   if (presence.state === "connected") {
-    return `The Craft app ${app} is CONNECTED: read and drive it with the craft_* tools (start with craft_inspect, find commands with craft_commands {query}). The user sees every change and can undo it in the app.`;
+    const guide = craftGuide(presence.appId);
+    return `The Craft app ${app} is CONNECTED: read and drive it with the craft_* tools. ${guide ? `Before the first edit read craft_guide (how this app works, commands for common jobs). ${guide.brief}` : "Start with craft_inspect, find commands with craft_commands {query}."} The user sees every change and can undo it in the app.`;
   }
   if (presence.state === "probing") return `${app} is starting; the craft_* tools appear once its agent API answers.`;
   return `${app} has no agent API in this version: its canvas cannot be read or driven (VectorCraft, FilmCraft and EffectCraft have one). Files it saves go to the user's files.`;
@@ -173,12 +182,34 @@ async function call(app: ActiveCraft, method: string, args: unknown[], signal?: 
 
 const params = (args: Args): Args => (args.params && typeof args.params === "object" && !Array.isArray(args.params) ? (args.params as Args) : {});
 
-function filterCommands(result: unknown, query: string, limit: number): { total: number; commands: unknown[] } {
-  const list: unknown[] = Array.isArray(result)
+function commandList(result: unknown): unknown[] {
+  return Array.isArray(result)
     ? result
     : result && typeof result === "object"
       ? (Object.values(result).find(Array.isArray) as unknown[] | undefined) ?? Object.entries(result).map(([id, value]) => ({ id, ...(value && typeof value === "object" ? value : { value }) }))
       : [];
+}
+
+/** For a mistyped id: the same command family first (`document.*` for "document.exportt"), closest prefix first. */
+function similarCommands(result: unknown, wanted: string): unknown[] {
+  const ids = commandList(result).filter((e): e is Args => Boolean(e) && typeof e === "object" && typeof (e as Args).id === "string");
+  const family = wanted.split(".")[0];
+  const common = (id: string): number => {
+    let n = 0;
+    while (n < id.length && n < wanted.length && id[n] === wanted[n]) n += 1;
+    return n;
+  };
+  const last = wanted.split(".").pop()?.toLowerCase() ?? "";
+  return ids
+    .map((e) => ({ e, id: String(e.id), rank: common(String(e.id)) + (String(e.id).startsWith(`${family}.`) ? 100 : 0) + (last.length > 3 && String(e.id).toLowerCase().includes(last.slice(0, 4)) ? 10 : 0) }))
+    .filter((m) => m.rank > 2)
+    .sort((x, y) => y.rank - x.rank)
+    .slice(0, 8)
+    .map((m) => compactCommand(m.e, 200));
+}
+
+function filterCommands(result: unknown, query: string, limit: number): { total: number; commands: unknown[] } {
+  const list = commandList(result);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const text = (entry: unknown, key: string): string => {
     const value = entry && typeof entry === "object" ? (entry as Record<string, unknown>)[key] : undefined;
@@ -194,11 +225,14 @@ function filterCommands(result: unknown, query: string, limit: number): { total:
   const matches = words.length
     ? list.map((entry) => ({ entry, rank: score(entry) })).filter((m) => m.rank > 0).sort((a, b) => b.rank - a.rank).map((m) => m.entry)
     : list;
-  return { total: matches.length, commands: matches.slice(0, limit).map(compactCommand) };
+  return { total: matches.length, commands: matches.slice(0, limit).map((entry) => compactCommand(entry)) };
 }
 
-/** One line per command: the id to call, what the menu calls it, its parameters (clipped), and whether it can run now. */
-function compactCommand(entry: unknown): unknown {
+/**
+ * One line per command: the id to call, what the menu calls it, its parameters (clipped in a list; whole for one command,
+ * craft_commands {command}), and whether it can run now (with the app's reason when it says one).
+ */
+function compactCommand(entry: unknown, paramsLimit = 300): unknown {
   if (!entry || typeof entry !== "object") return entry;
   const e = entry as Record<string, unknown>;
   const menu = Array.isArray(e.menu) ? e.menu.join(" > ") : Array.isArray(e.path) ? e.path.join(" > ") : undefined;
@@ -207,8 +241,8 @@ function compactCommand(entry: unknown): unknown {
     id: e.id ?? e.command,
     ...(typeof e.label === "string" ? { label: e.label } : {}),
     ...(menu ? { menu } : {}),
-    ...(params ? { params: params.length > 160 ? `${params.slice(0, 160)}…` : params } : {}),
-    ...(e.enabled === false ? { enabled: false } : {}),
+    ...(params ? { params: params.length > paramsLimit ? `${params.slice(0, paramsLimit)}… (craft_commands {command:"${String(e.id ?? e.command)}"} for all of it)` : params } : {}),
+    ...(e.enabled === false ? { enabled: false, ...(typeof e.why === "string" && e.why ? { why: e.why } : {}) } : {}),
   };
 }
 
@@ -234,6 +268,15 @@ export async function runCraftTool(name: string, args: Args, signal?: AbortSigna
     case "craft_commands": {
       const r = await call(app, "commands", [], signal);
       if (!r.ok) return r.error;
+      const exact = str(args, "command");
+      if (exact) {
+        const entry = commandList(r.result).find((e) => e && typeof e === "object" && ((e as Args).id === exact || (e as Args).command === exact));
+        if (!entry) {
+          const near = similarCommands(r.result, exact);
+          return out(false, { ok: false, ...where, error: `${app.appName} has no command "${exact}".`, ...(near.length ? { similar: near } : {}) });
+        }
+        return out(true, { ok: true, ...where, command: compactCommand(entry, Infinity) });
+      }
       const limit = typeof args.limit === "number" ? Math.max(1, Math.min(200, Math.floor(args.limit))) : 40;
       const query = str(args, "query");
       const { total, commands } = filterCommands(r.result, query, limit);
@@ -255,14 +298,24 @@ export async function runCraftTool(name: string, args: Args, signal?: AbortSigna
       if (!command) return fail('craft_execute needs {"command": "<id from craft_commands>"}.');
       const r = await call(app, "execute", [command, params(args)], signal);
       if (!r.ok) return r.error;
-      return out(true, { ok: true, ...where, command, result: r.result });
+      const files: unknown[] = [];
+      const result = inlineFilesToArtifacts(r.result, `${app.appId}-${command.replace(/[^a-z0-9]+/gi, "-")}`, files);
+      return out(true, { ok: true, ...where, command, result, ...(files.length ? { new_files: files, note: "The file data the app returned is in your file chain (ids above), not in this result." } : {}) });
     }
     case "craft_request": {
       const method = str(args, "method");
       if (!method) return fail('craft_request needs {"method": "ui.click", "params": {...}}.');
       const r = await call(app, "request", [method, params(args)], signal);
       if (!r.ok) return r.error;
-      return out(true, { ok: true, ...where, method, result: r.result });
+      const files: unknown[] = [];
+      const result = inlineFilesToArtifacts(r.result, `${app.appId}-${method.replace(/[^a-z0-9]+/gi, "-")}`, files);
+      return out(true, { ok: true, ...where, method, result, ...(files.length ? { new_files: files } : {}) });
+    }
+    case "craft_guide": {
+      const guide = craftGuide(app.appId);
+      if (!guide) return out(true, { ok: true, ...where, guide: "No guide for this app yet: read the state with craft_inspect, find commands with craft_commands {query} and check each command's params with craft_commands {command}." });
+      const mismatch = guide.verified !== app.version ? `This guide was checked against ${app.appName} ${guide.verified}; the open app is ${app.version}: if a command fails, confirm it with craft_commands {command}.` : undefined;
+      return out(true, { ok: true, ...where, guide: guide.text, ...(mismatch ? { note: mismatch } : {}) });
     }
     case "craft_screenshot": {
       const panel = str(args, "panel");
@@ -316,6 +369,39 @@ export async function runCraftTool(name: string, args: Args, signal?: AbortSigna
     }
   }
   return fail(`Unknown tool "${name}".`);
+}
+
+/** Keys under which the apps return a file's bytes inline (VectorCraft document.export without a path, clipboard.exportPng, …). */
+const INLINE_DATA_KEYS = new Set(["dataBase64", "pngBase64", "png", "base64"]);
+const INLINE_MIN_CHARS = 512;
+
+/**
+ * Replaces file data an app returned inline (base64 under dataBase64 / pngBase64 / png) with a file in the chain, so a
+ * 2 MB export never lands in the model's context: `{dataBase64, format: "png"}` becomes `{file: {id: "f3", …}, format}`.
+ * Walks objects and arrays (VectorCraft's multi-artboard exports return `files: [{name, dataBase64}]`).
+ */
+function inlineFilesToArtifacts(value: unknown, stem: string, files: unknown[], depth = 0): unknown {
+  if (depth > 6 || value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((item) => inlineFilesToArtifacts(item, stem, files, depth + 1));
+  const obj = value as Record<string, unknown>;
+  const outObj: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(obj)) {
+    if (INLINE_DATA_KEYS.has(key) && typeof item === "string" && item.length >= INLINE_MIN_CHARS && /^[A-Za-z0-9+/=\r\n]+$/.test(item.slice(0, 2048))) {
+      const ext = typeof obj.format === "string" ? obj.format.toLowerCase().replace(/^png8$/, "png") : key === "png" || key === "pngBase64" ? "png" : "";
+      const given = typeof obj.name === "string" ? obj.name.split("/").pop() : "";
+      const fileName = given || `${stem}${ext ? `.${ext}` : ""}`;
+      try {
+        const file = addArtifact(base64Blob(item.replace(/\s+/g, ""), mimeOf(fileName)), fileName);
+        files.push(file);
+        outObj.file = file;
+      } catch {
+        outObj[key] = `<${item.length} characters of base64 that could not be decoded>`;
+      }
+      continue;
+    }
+    outObj[key] = inlineFilesToArtifacts(item, stem, files, depth + 1);
+  }
+  return outObj;
 }
 
 const MIMES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", svg: "image/svg+xml", pdf: "application/pdf", mp4: "video/mp4", webm: "video/webm", wav: "audio/wav", mp3: "audio/mpeg", gif: "image/gif", webp: "image/webp" };

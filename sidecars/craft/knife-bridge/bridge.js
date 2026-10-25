@@ -146,9 +146,12 @@
     try {
       const result = await withTimeout(run(), AGENT_TIMEOUT_MS);
       if (method === "readFile") {
-        if (!(result instanceof Uint8Array)) return reply({ ok: false, error: "the app returned no bytes" });
-        if (result.byteLength > MAX_SAVE) return reply({ ok: false, error: `the file is too large (${result.byteLength} bytes)` });
-        const bytes = result.slice().buffer;
+        // The app's Uint8Array comes from its own frame (another realm): `instanceof` here would be false.
+        const view = ArrayBuffer.isView(result) ? new Uint8Array(result.buffer, result.byteOffset, result.byteLength)
+          : Object.prototype.toString.call(result) === "[object ArrayBuffer]" ? new Uint8Array(result) : null;
+        if (!view) return reply({ ok: false, error: "the app returned no bytes" });
+        if (view.byteLength > MAX_SAVE) return reply({ ok: false, error: `the file is too large (${view.byteLength} bytes)` });
+        const bytes = new Uint8Array(view).buffer;
         return reply({ ok: true, result: { bytes } }, [bytes]);
       }
       const text = JSON.stringify(result === undefined ? null : result);

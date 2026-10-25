@@ -3,6 +3,8 @@ import { CRAFT_TOOL_DEFS, craftStatusNote, craftToolAvailable, isCraftTool } fro
 import { getTrustMode } from "./interaction";
 import { LIVE_TOOL_DEFS, isLiveTool, liveStatusNote, liveToolAvailable } from "./office-live-tools";
 import { tryAcquireRun } from "./run-lock";
+import { activeCraft } from "@/lib/craft/live";
+import { craftGuide } from "@/lib/craft/guides";
 import { runtime } from "./runtime-store";
 import { runUiTool } from "./ui-tools";
 
@@ -58,7 +60,10 @@ const clip = (text: string): string => (text.length > RESULT_LIMIT ? `${text.sli
 export async function runExternalCall(call: ExternalCall, approve: ApproveFn, signal?: AbortSignal): Promise<ExternalAnswer> {
   if (call.tool === LIST_TOOLS) {
     const tools = ALL_DEFS.filter((d) => available(d.function.name)).map((d) => d.function);
-    return { status: "done", ok: true, content: JSON.stringify({ ok: true, page: liveNote() || "This page has no live tools.", tools }) };
+    const app = activeCraft();
+    const guide = app ? craftGuide(app.appId) : null;
+    // An outside agent has no system prompt from us: the open app's guide comes with the definitions.
+    return { status: "done", ok: true, content: JSON.stringify({ ok: true, page: liveNote() || "This page has no live tools.", tools, ...(guide ? { guide: guide.text } : {}) }) };
   }
   if (!isLiveTool(call.tool) && !isCraftTool(call.tool)) return { status: "unavailable", ok: false, content: `'${call.tool}' is not a live tool.` };
   if (!available(call.tool)) {

@@ -309,6 +309,30 @@ AGENT_SCENARIO = {
     "filmcraft": ("marker", [("markers.add", {})]),
     "effectcraft": ("zoom", [("view.zoomIn", {})]),
 }
+# Per app: a recipe from its craft_guide (src/lib/craft/guides.ts), run through craft_execute as the model would, and
+# what the last step must return. Proves the guide's commands and parameters work in the pinned build.
+GUIDE_RECIPES = {
+    "vectorcraft": [
+        ("file.new", {"name": "Guide e2e", "width": 800, "height": 600, "units": "Pixels"}),
+        ("shape.rectangle", {"x": 100, "y": 100, "width": 600, "height": 300, "radius": 24}),
+        ("paint.setFill", {"color": "#1e88e5"}),
+        ("text.create", {"x": 400, "y": 270, "text": "Hello", "size": 72, "color": "#ffffff", "justify": "center"}),
+        ("document.export", {"format": "png", "ppi": 72, "background": "white"}),
+    ],
+    "filmcraft": [
+        ("file.newSequence", {"name": "Guide e2e", "width": 1280, "height": 720, "fps": 30}),
+        ("graphics.newText", {"text": "Hello", "size": 120, "seconds": 2}),
+        ("file.exportFrame", {"path": "/exports/guide-e2e.png", "format": "png"}),
+    ],
+    "effectcraft": [
+        ("comp.new", {"name": "Guide e2e", "width": 640, "height": 360, "frameRate": 30, "duration": 2}),
+        ("layer.newText", {"text": "Hello", "name": "Title", "size": 80, "fill": "#ffffff"}),
+        ("prop.addKey", {"layer": "Title", "path": "transform/position", "time": 0, "value": [-100, 180]}),
+        ("prop.addKey", {"layer": "Title", "path": "transform/position", "time": 1, "value": [320, 180]}),
+        ("effect.apply", {"effect": "Gaussian Blur", "layers": ["Title"]}),
+        ("prop.set", {"layer": "Title", "path": "effects/#1/blurriness", "value": 8}),
+    ],
+}
 PANEL = "[role=dialog][aria-label='Toolbox assistant']"
 LAST_TOOL_JS = """() => fetch('/api/agent/conversation').then(r => r.json()).then(c => { const m = c.messages; const i = m.map(x => x.role).lastIndexOf('user');
     return m.slice(i).filter(x => x.role === 'tool').map(x => x.content).pop() ?? null; })"""
@@ -393,6 +417,26 @@ def agent_checks(page, app: str, shots: Path) -> None:
         state = ask(page, "CALL:craft_inspect:{}").get("state") or {}
         check(f"{app}: the new document shows in craft_inspect", len(state.get("documents") or []) == 1, json.dumps(state.get("documents"))[:200])
     check(f"{app}: craft_commands listed the commands used", all(c in ids for c, _ in commands if c != "file.new"), json.dumps(ids)[:300])
+    # The guide: named in the snapshot note, readable, and its recipe works in this build.
+    check(f"{app}: the snapshot note points to craft_guide", "craft_guide" in note, note[:300])
+    guide = ask(page, "CALL:craft_guide:{}")
+    check(f"{app}: craft_guide returns the app's guide for this version", guide.get("ok") is True and NAMES[app] in (guide.get("guide") or "") and "note" not in guide, json.dumps(guide)[:300])
+    doc = ask(page, "CALL:craft_commands:" + json.dumps({"command": GUIDE_RECIPES[app][0][0]}))
+    check(f"{app}: craft_commands {{command}} gives one command's whole parameter doc", doc.get("ok") is True and (doc.get("command") or {}).get("id") == GUIDE_RECIPES[app][0][0] and "for all of it)" not in str((doc.get("command") or {}).get("params")), json.dumps(doc)[:300])
+    last: dict = {}
+    for command, params in GUIDE_RECIPES[app]:
+        last = ask(page, "CALL:craft_execute:" + json.dumps({"command": command, "params": params}))
+        check(f"{app}: guide recipe step {command}", last.get("ok") is True, json.dumps(last)[:300])
+    if app == "vectorcraft":
+        made = (last.get("new_files") or [{}])[0]
+        check(f"{app}: document.export without a path lands as a PNG in the file chain (no base64 in the result)", made.get("mime") == "image/png" and made.get("bytes", 0) > 1000 and "dataBase64" not in json.dumps(last), json.dumps(last)[:300])
+    if app == "filmcraft":
+        copied = ask(page, "CALL:craft_export:" + json.dumps({"path": "/exports/guide-e2e.png"}))
+        check(f"{app}: the exported frame is copied into the file chain", copied.get("ok") is True and (copied.get("file") or {}).get("bytes", 0) > 1000, json.dumps(copied)[:300])
+    if app == "effectcraft":
+        got = ask(page, "CALL:craft_execute:" + json.dumps({"command": "prop.get", "params": {"layer": "Title", "path": "transform/position", "time": 1}}))
+        value = ((got.get("result") or {}).get("value") or [None])[0]
+        check(f"{app}: the keyframed position reads back", got.get("ok") is True and value == 320, json.dumps(got)[:300])
     page.screenshot(path=str(shots / f"60-{app}-assistant.png"))
     page.locator("button[aria-label='Close assistant']").first.click()
 
