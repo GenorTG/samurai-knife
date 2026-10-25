@@ -89,7 +89,6 @@ SUITES: list[Suite] = [
     Suite("f_cv_studio", py(f"{F}/cv_studio_e2e.py", "{url}"), timeout=1200),
     Suite("cv_photo", py("tests/cv_photo_e2e.py", "{url}")),
     Suite("f_sql_lab", py(f"{F}/sql_lab_e2e.py", "{url}"), timeout=1500),
-    Suite("f_nosql_lab", py(f"{F}/nosql_lab_e2e.py", "{url}"), timeout=1200),
     Suite("offload", py(f"{F}/offload_e2e.py", "{url}"), timeout=2400),
     Suite("offload_json", py(f"{F}/offload_json_e2e.py", "{url}"), timeout=2400),
     Suite("offload_text", py(f"{F}/offload_text_e2e.py", "{url}"), timeout=3600),

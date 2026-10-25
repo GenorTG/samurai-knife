@@ -210,7 +210,7 @@ with sync_playwright() as pw:
         fresh.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
         run(fresh, k2, "CALL:page_snapshot:{}")
 
-    open_page("/tools/file-compressor")
+    open_page("/tools/ids")
     # a real file chooser: set_input_files dispatches untrusted events, which (rightly) do not count as the user's own pick
     with fresh.expect_file_chooser() as chooser:
         fresh.get_by_text("Choose file", exact=False).first.click()
@@ -222,7 +222,7 @@ with sync_playwright() as pw:
     run(fresh, k2, "CALL:page_snapshot:{}")
     r = run(fresh, k2, 'CALL:upload_file:{"id":"%s","name":"other.txt","text":"the assistant file"}' % agent_id("main input[type=file]"))
     check("Risky: upload_file over a file I chose asks (destructive)", r.startswith("asked!:Replace your file"), r)
-    open_page("/tools/file-compressor")
+    open_page("/tools/ids")
     fid = agent_id("main input[type=file]")
     check("Risky: attaching to an empty file input is not asked", run(fresh, k2, 'CALL:upload_file:{"id":"%s","name":"a.txt","text":"first"}' % fid) == "ran")
     check("Risky: replacing the assistant's own attachment is not asked", run(fresh, k2, 'CALL:upload_file:{"id":"%s","name":"b.txt","text":"second"}' % agent_id("main input[type=file]")) == "ran")

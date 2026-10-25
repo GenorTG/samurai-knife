@@ -1,5 +1,7 @@
 # Smart Knife — 200-tool roadmap
 
+> 2026-10-25: several shipped items below were removed again in the tool audit (docs/research/tool-audit.md); the registry is the list of what exists.
+
 This is a candidate backlog, not a promise to ship every item. Keep Smart Knife
 private, local-first, and hand-made: a tool earns a place when it solves a real
 repeat task cleanly, not because the count looks impressive.

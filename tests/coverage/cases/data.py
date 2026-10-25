@@ -94,7 +94,6 @@ for _i, _r in enumerate(_rows(_DUP), 1):
     _seen.add(_k)
 
 # ------------------------------------------------------------------ delimiter
-_DELIM = 'id|name|note|score\n1|"Smith, Jo"|"a,b,c"|88\n2|Lee|plain|91\n3|"Park, Min"|x,y|77\n'
 
 # ------------------------------------------------------------------ compare
 _LEFT = "sku,qty,price\nA1,10,2.50\nB2,4,9.00\nC3,7,1.25\nD4,2,5.00\n"
@@ -156,7 +155,6 @@ _PTR_DOC = {
     "a/b": {"m~n": ["plain-1", "plain-2", "quartz-9931"], "other": "quartz-9931x"},
     "a": {"b": {"m": ["wrong-0", "wrong-1", "wrong-2"]}},
 }
-_PTR = "/a~1b/m~0n/2"
 assert _PTR_DOC["a/b"]["m~n"][2] == "quartz-9931"
 
 _DIAG = {"cluster": {"name": "eu-west", "servers": [{"h": f"s{i}"} for i in range(7)],
@@ -194,11 +192,6 @@ for _i, _l in enumerate(_ND, 1):
         _nd_ok += 1
     except ValueError:
         _nd_bad.append(_i)
-
-
-def _oracle_ndjson(c: Ctx):
-    a = c.answer
-    return first_error(_near(a, r"valid", _nd_ok), _has_nums(a, _nd_bad))
 
 
 # ------------------------------------------------------------------ yaml-json
@@ -250,11 +243,6 @@ for _i, _raw in enumerate(_INI.split("\n"), 1):
 assert sorted(_ini_bad) == [8, 9, 10], _ini_bad
 
 
-def _oracle_ini(c: Ctx):
-    a = c.answer
-    return first_error(_has_nums(a, sorted(_ini_bad)), matches(a, r"duplicate|repeated|twice|already"), has(a, "host", "net", ci=True))
-
-
 _XML = ('<inventory><item type="tool"><name>Saw</name><price>14.75</price></item>'
         '<item type="toy"><name>Kite</name><price>8.4</price></item>'
         '<item type="tool"><name>Plane</name><price>31.2</price></item>'
@@ -294,45 +282,11 @@ def _oracle_pivot(c: Ctx):
     return "; ".join(errs) or None
 
 
-_TSV_IN = "Item\tQty\tNote\nBolt M6\t250\tzinc plated\nWasher\t1800\tflat | thin\nNut M6\t75\t\n"
-_md_rows = [["Item", "Qty", "Note"], ["Bolt M6", "250", "zinc plated"], ["Washer", "1800", "flat \\| thin"], ["Nut M6", "75", ""]]
-
-
-def _md_cells(line: str) -> list[str]:
-    body = line.strip().strip("|")
-    return [x.strip() for x in re.split(r"(?<!\\)\|", body)]
-
-
-def _oracle_md(c: Ctx):
-    lines = [l for l in _norm(c.haystack()).split("\n") if l.strip().startswith("|")]
-    parsed = [_md_cells(l) for l in lines]
-    sep = any(len(p) == 3 and all(re.fullmatch(r":?-{3,}:?", x) for x in p) for p in parsed)
-    if not sep:
-        return "no markdown separator row"
-    missing = []
-    for want in _md_rows:
-        norm_w = [x.replace("\\|", "|") for x in want]
-        if not any([x.replace("\\|", "|") for x in p] == norm_w for p in parsed):
-            missing.append(want[0])
-    return None if not missing else f"markdown rows missing/incorrect: {missing}"
-
-
-_FW_W = [5, 13, 2]
 _FW_LINES = ["GraceSan FranciscoUS", "Alan Bristol      UK", "Ada  New York     US"]
 _fw_rows = [[l[:5].rstrip(), l[5:18].rstrip(), l[18:20].rstrip()] for l in _FW_LINES]
 # Ada row: "Ada  " + "New York     " + "US"
 assert _fw_rows[2] == ["Ada", "New York", "US"] and _fw_rows[0] == ["Grace", "San Francisco", "US"], _fw_rows
 assert _fw_rows[1] == ["Alan", "Bristol", "UK"], _fw_rows
-
-
-def _oracle_fw(c: Ctx):
-    hay = c.haystack()
-    errs = []
-    for r in _fw_rows:
-        pat = r"[\s|,\t\"'`]+".join(re.escape(x) for x in r)
-        if not re.search(pat, hay):
-            errs.append(r)
-    return None if not errs else f"rows not found: {errs}"
 
 
 # ------------------------------------------------------------------ regex
@@ -356,9 +310,6 @@ CASES = [
          "\nCount the header as line 1. Tell me how many rows are repeats of an earlier row and list their line numbers.",
          lambda c: first_error(_near(c.answer, r"repeat|duplicate", len(_dup_lines)), _has_nums(c.answer, _dup_lines))),
 
-    Case("csv-profile", "delimiter",
-         "I got this text file but don't know how it is separated:\n\n" + _DELIM + "\nWhich separator character does it use, and how many columns does each row have?",
-         lambda c: first_error(matches(c.answer, r"pipe|\|"), _near(c.answer, r"column|field", 4))),
 
     Case("csv-profile", "compare",
          "Compare these two tables cell by cell, position by position, with the header row included. Table A:\n\n" + _LEFT +
@@ -379,9 +330,6 @@ CASES = [
          + json.dumps(_ORDERS) + "\n",
          _oracle_path),
 
-    Case("json", "pointer",
-         "What value does the RFC 6901 JSON Pointer `" + _PTR + "` select in this document? Remember the ~0 and ~1 escapes.\n\n" + json.dumps(_PTR_DOC),
-         lambda c: matches(c.answer, r"(?<![\w-])quartz-9931(?![\w-])")),
 
     Case("json", "diagram",
          "Outline the structure of this JSON document as a tree, then tell me: how many items are in cluster.servers, "
@@ -393,18 +341,11 @@ CASES = [
          + json.dumps(_SCHEMA) + "\n\nDocument:\n" + json.dumps(_SDOC),
          _oracle_schema),
 
-    Case("json", "ndjson",
-         "This is a newline-delimited JSON log (one JSON value per line, physical line numbers start at 1, blank lines are ignored but still count as lines):\n\n"
-         + "\n".join(_ND) + "\n\nHow many records are valid JSON, and which line numbers are broken?",
-         _oracle_ndjson),
 
     Case("yaml-json", "yaml",
          "Convert this YAML to JSON, resolving the anchor/alias so the final JSON has no references. Show the JSON:\n\n" + _YAML,
          lambda c: _has_json(c.haystack(), _YAML_EXPECT)),
 
-    Case("yaml-json", "ini",
-         "Check this INI config for problems and tell me the line numbers (starting at 1) of every line with an error, and what is wrong with each:\n\n" + _INI,
-         _oracle_ini),
 
     Case("yaml-json", "xml",
          "Run an XPath over this XML to get the total price of all items whose type attribute is \"tool\", and tell me the number:\n\n" + _XML,
@@ -423,14 +364,6 @@ CASES = [
          "Pivot this CSV: one row per region, one column per quarter, summing units. Show the resulting table with all totals:\n\n" + _PIV,
          _oracle_pivot),
 
-    Case("csv", "markdown",
-         "Turn this tab-separated table (first row is the header) into a Markdown table I can paste into a README:\n\n" + _TSV_IN,
-         _oracle_md),
-
-    Case("csv", "fixed-width",
-         "This text has fixed-width columns of widths 5, 13 and 2 characters (name, city, country code). Split each line into its three fields and "
-         "show them as a table:\n\n" + "\n".join(_FW_LINES) + "\n",
-         _oracle_fw),
 
     Case("regex", None,
          "Apply this regex replacement to the text: pattern `(\\d{4})-(\\d{2})-(\\d{2})` with the global flag, replacement `$3/$2/$1`. "

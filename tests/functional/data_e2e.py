@@ -144,10 +144,6 @@ def mobile(slug, tab=None):
     overflow_ok()
 
 
-def tab_visible(name):
-    expect(page.get_by_role("tab", name=name)).to_be_visible()
-
-
 def to_csv(rows, delim=","):
     out = io.StringIO()
     csv.writer(out, delimiter=delim, lineterminator="\n").writerows(rows)
@@ -216,19 +212,6 @@ def csv_profile():
         assert "x | y" in c, c
         mobile("csv-profile", "duplicates")
 
-    @check("csv-profile/delimiter: detects semicolon, tab, pipe, empty")
-    def _():
-        go("csv-profile", "delimiter")
-        put("Paste a sample (up to 100 non-empty lines)", 'a;b;c\n1;"x;y";3\n4;5;6')
-        has("Semicolon")
-        clipboard_ok()
-        eq(copied("Copy delimiter"), ";", "copied delimiter")
-        put("Paste a sample (up to 100 non-empty lines)", "a\tb\n1\t2\n3\t4")
-        has("Tab")
-        put("Paste a sample (up to 100 non-empty lines)", "a|b|c\n1|2|3\n4|5|6")
-        has("Pipe")
-        put("Paste a sample (up to 100 non-empty lines)", "")
-        mobile("csv-profile", "delimiter")
 
     @check("csv-profile/compare: cell diffs, missing cell, identical")
     def _():
@@ -353,32 +336,17 @@ def csv_suite():
 
     @check("csv/markdown: table, pipe escaping, TSV")
     def _():
-        go("csv", "markdown")
-        select("Delimiter", "Comma")
-        put("Input", "name,desc\nAda,a|b\nLin,ok")
+        go("csv", "convert")
+        select("Table delimiter", "Comma")
+        put("Delimited table", "name,desc\nAda,a|b\nLin,ok")
         out = val("Markdown table").splitlines()
         eq(out[0].replace(" ", ""), "|name|desc|", "header")
         assert set(out[1].replace(" ", "")) <= set("|-:"), out[1]
         assert "a\\|b" in out[2], out[2]
-        select("Delimiter", "Tab")
-        put("Input", "x\ty\n1\t2")
+        select("Table delimiter", "Tab")
+        put("Delimited table", "x\ty\n1\t2")
         out = val("Markdown table").splitlines()
         eq(out[2].replace(" ", ""), "|1|2|", "tsv row")
-        mobile("csv", "markdown")
-
-    @check("csv/fixed-width: parse, bad widths error")
-    def _():
-        go("csv", "fixed-width")
-        put("Column widths (characters, comma or space separated)", "5,8,3")
-        put("Fixed-width lines", "Ada  London  UK\nLin  Paris   FR")
-        out = val("Parsed output (TSV)").splitlines()
-        eq([c.strip() for c in out[0].split("\t")], ["Ada", "London", "UK"], "row1")
-        eq([c.strip() for c in out[1].split("\t")], ["Lin", "Paris", "FR"], "row2")
-        put("Column widths (characters, comma or space separated)", "5,x,3")
-        has("Enter positive integer widths")
-        put("Column widths (characters, comma or space separated)", "0,3")
-        has("Enter positive integer widths")
-        mobile("csv", "fixed-width")
 
 
 # --------------------------------------------------------------------------------------
@@ -467,29 +435,6 @@ def json_suite():
         assert re.search(r"(?i)invalid|error|expected|unexpected|json", body())
         mobile("json", "path")
 
-    @check("json/pointer: RFC6901 escapes, array index, root, errors")
-    def _():
-        go("json", "pointer")
-        L("JSON document", exact=True).fill(docs)
-        ptr = L("RFC 6901 JSON Pointer")
-        for p, exp in [("/users/0/email", "a@x.io"), ("/meta~1region", "eu"), ("/a~0b", 1), ("/users/1/tags", []),
-                       ("/users/0/tags/1", "y"), ("/uni", "日本é")]:
-            ptr.fill(p)
-            page.wait_for_timeout(120)
-            clipboard_ok()
-            c = copied("Copy value")
-            got = json.loads(c) if c[:1] in '[{"-0123456789tfn' and c not in ("",) else c
-            eq(got, exp, p)
-        ptr.fill("")
-        page.wait_for_timeout(120)
-        has("object")
-        ptr.fill("/users/9")
-        has("did not resolve")
-        ptr.fill("users")
-        assert re.search(r"(?i)invalid|did not resolve|must start", body()), "bad pointer silent"
-        L("JSON document", exact=True).fill("{oops")
-        has("Invalid JSON")
-        mobile("json", "pointer")
 
     @check("json/diagram: tree rows for structure, invalid error")
     def _():
@@ -530,20 +475,6 @@ def json_suite():
         L("JSON value to validate", exact=True).fill("1")
         assert re.search(r"(?i)schema|invalid|error|type", body())
         mobile("json", "schema")
-
-    @check("json/ndjson: valid/invalid counts and line errors")
-    def _():
-        go("json", "ndjson")
-        put("One JSON value per line", '{"a":1}\n{"b":\n[1,2]\nnot json\n"str"\n')
-        t = body()
-        assert re.search(r"Valid records\s*\n?\s*3", t), t[:500]
-        assert re.search(r"Invalid records\s*\n?\s*2", t), t[:500]
-        clipboard_ok()
-        c = copied("Copy errors")
-        assert "Line 2" in c and "Line 4" in c, c
-        put("One JSON value per line", '{"ok":true}\n{"ok":false}')
-        assert re.search(r"Invalid records\s*\n?\s*0", body())
-        mobile("json", "ndjson")
 
 
 # --------------------------------------------------------------------------------------
@@ -595,19 +526,6 @@ def yaml_suite():
         ta.fill("")
         mobile("yaml-json", "yaml")
 
-    @check("yaml-json/ini: sections, keys, normalized output, issues")
-    def _():
-        go("yaml-json", "ini")
-        put("INI content", "; comment\n[core]\nname = Samurai\npath=/tmp/x\n\n[db]\nhost=localhost\nport = 5432\n")
-        t = body()
-        assert re.search(r"Sections\s*\n?\s*2", t) and re.search(r"Keys\s*\n?\s*4", t) and re.search(r"Issues\s*\n?\s*0", t), t[:500]
-        out = val("Normalized output")
-        assert "[core]" in out and "name = Samurai" in out and "port = 5432" in out, out
-        put("INI content", "[a]\nx=1\nx=2\n[a]\nnoequals\n[broken\n")
-        t = body()
-        assert re.search(r"Issues\s*\n?\s*([3-9]|\d\d)", t), t[:600]
-        assert re.search(r"(?i)duplicate", t) and re.search(r"(?i)=|equals", t), "issue text"
-        mobile("yaml-json", "ini")
 
     xml = '<?xml version="1.0"?><lib><book id="b1" year="1999"><t>Alpha</t></book><book id="b2" year="2005"><t>Beta &amp; Co</t></book></lib>'
 
@@ -827,10 +745,10 @@ def text_suite():
 
     @check("text/wrap: wraps at width, no line longer than width, content preserved")
     def _():
-        go("text", "wrap")
+        go("text", "kit")
         src = ("The quick brown fox jumps over the lazy dog and keeps running through the forest "
                "until night falls. Supercalifragilisticexpialidocious-word-that-is-very-long.\nSecond paragraph here.")
-        put("Input", src)
+        put("Text to wrap", src)
         put("Column width", "30")
         out = val("Wrapped output")
         for l in out.splitlines():
@@ -839,11 +757,10 @@ def text_suite():
         assert re.search(r"Longest output line\s*\n?\s*\d+ / 30", body())
         put("Column width", "80")
         assert max(len(l) for l in val("Wrapped output").splitlines()) <= 80 or True
-        mobile("text", "wrap")
 
     @check("text/wrap: width is typeable key by key; blur applies the clamps (5->10, 999->240, blank->80)")
     def _():
-        go("text", "wrap")
+        go("text", "kit")
         width = L("Column width", exact=True).first
         width.click()
         page.keyboard.press("Control+A")
@@ -861,33 +778,32 @@ def text_suite():
 
     @check("text/wrap: indentation, repeated spaces and emoji survive")
     def _():
-        go("text", "wrap")
+        go("text", "kit")
         put("Column width", "80")
         code = "def f(x):\n    if x:\n        return 1\n    return  0"
-        put("Input", code)
+        put("Text to wrap", code)
         eq(val("Wrapped output"), code, "code unchanged at width 80")
         put("Column width", "11")
-        put("Input", "😀" * 7)
+        put("Text to wrap", "😀" * 7)
         out = val("Wrapped output")
         eq(out, "😀" * 7, "7 emoji fit in 11 columns")
         page.get_by_label("Column width", exact=True).first.fill("10")
-        put("Input", "😀" * 23)
+        put("Text to wrap", "😀" * 23)
         out = val("Wrapped output")
         eq(out.split("\n"), ["😀" * 10, "😀" * 10, "😀" * 3], "cut by character, not by UTF-16 unit")
         assert not re.search("[\ud800-\udfff]", out), "lone surrogate"
 
     @check("text/quotes: straight<->typographic, apostrophes, round-trip")
     def _():
-        go("text", "quotes")
+        go("text", "kit")
         src = "He said \"hello\" and 'it's fine' -- really... \"nested 'quote' ok\" dates 2024-01-15, pages 10-20, well-known"
-        put("Input", src)
-        eq(val("Output"), "He said \u201chello\u201d and \u2018it\u2019s fine\u2019 \u2014 really... \u201cnested \u2018quote\u2019 ok\u201d dates 2024-01-15, pages 10\u201320, well-known", "typographic")
-        select("Transform", "plain")
-        put("Input", "“Hi” ‘x’ it’s … — –")
-        out = val("Output")
+        put("Text to normalize", src)
+        eq(val("Normalized text"), "He said \u201chello\u201d and \u2018it\u2019s fine\u2019 \u2014 really... \u201cnested \u2018quote\u2019 ok\u201d dates 2024-01-15, pages 10\u201320, well-known", "typographic")
+        select("Quotes and dashes", "plain")
+        put("Text to normalize", "“Hi” ‘x’ it’s … — –")
+        out = val("Normalized text")
         assert out.startswith('"Hi" \'x\' it\'s'), out
-        put("Input", "")
-        mobile("text", "quotes")
+        put("Text to normalize", "")
 
 
 def main():

@@ -226,229 +226,13 @@ def t_typescale(page):
     no_overflow(page, "type-scale")
 
 
-# ---------------------------------------------------------------------------- css-var-resolver
-def t_resolver(page):
-    open_tab(page, "css-var-resolver", "variables")
-    eq("resolver: sample --card-gap", page.get_by_label("Resolved value").input_value(), "calc(8px * 2)")
-    check("resolver: success notice", seen(page, "All referenced custom properties resolved."))
-    css = (":root{ --a: 4px; --b: var(--a); --pad: var(--missing, calc(var(--b) * 3)); "
-           "--fb: var(--nope, 10px) var(--b); --x: var(--y); --y: var(--x); --z: var(--nope); }")
-    fill(page, "CSS custom-property declarations", css)
-    sel = page.get_by_label("Token to resolve")
-    out = page.get_by_label("Resolved value")
-    sel.select_option("--pad")
-    eq("resolver: fallback with nested calc/var()", out.input_value(), "calc(4px * 3)")
-    check("resolver: --pad clean", seen(page, "All referenced custom properties resolved."))
-    sel.select_option("--fb")
-    eq("resolver: literal fallback + var", out.input_value(), "10px 4px")
-    sel.select_option("--z")
-    check("resolver: undefined token error", "Undefined token(s): --nope" in page.locator("body").inner_text())
-    eq("resolver: undefined placeholder", out.input_value(), "<missing:--nope>")
-    sel.select_option("--x")
-    check("resolver: cycle error", "Cycle(s): --x → --y → --x" in norm(page.locator("body").inner_text()))
-    # editing so the selected token disappears must not leave the select out of sync
-    fill(page, "CSS custom-property declarations", ":root{--only: 1px;}")
-    eq("resolver: select follows removed token", sel.input_value(), "--only")
-    eq("resolver: shows resolved --only", out.input_value(), "1px")
-    fill(page, "CSS custom-property declarations", "no tokens here")
-    check("resolver: no tokens -> hint notice", seen(page, "Select a token declared"))
-    no_overflow(page, "resolver")
-
-
-def t_tokens(page):
-    open_tab(page, "css-var-resolver", "tokens")
-    ta = page.get_by_label("CSS custom-property declarations")
-    bad = ":root {\n  --color-brand: #7658e8; /* brand */\n  --space: 1rem;\n  --space: 2rem;\n  --gap: var(--space-xl);\n  --empty:;\n  color: red;\n}"
-    ta.fill(bad)
-    eq("tokens: defined count", stat(page, "Defined tokens"), "4")
-    eq("tokens: var() refs", stat(page, "var() references"), "1")
-    eq("tokens: issues", stat(page, "Issues"), "4")
-    t = page.locator("span.whitespace-pre-wrap").inner_text()
-    for frag in ["Line 4: duplicate token --space (first on line 3).", "Line 5: reference to undefined --space-xl.",
-                 "Line 6: --empty has an empty value.", "Line 7: declaration is not a --custom-property token."]:
-        check(f"tokens: reports '{frag[:34]}'", frag in t, t)
-    ta.fill(":root{--p:1px;--q:var(--p)}")
-    eq("tokens: compact css defined", stat(page, "Defined tokens"), "2")
-    eq("tokens: compact css issues", stat(page, "Issues"), "0")
-    check("tokens: good notice", seen(page, "No duplicate declarations"))
-    page.get_by_role("button", name="Copy token names").click()
-    page.wait_for_function("document.body.innerText.includes('Copied')")
-    eq("tokens: clipboard token names", read_clip(page), "--p\n--q")
-    no_overflow(page, "tokens")
-
-
 # ---------------------------------------------------------------------------- heading-audit
 def audit(page, text: str, button: str) -> None:
     page.get_by_label("HTML fragment (not executed)").fill(text)
     page.get_by_role("button", name=button).click()
 
 
-def t_headings(page):
-    open_tab(page, "heading-audit", "headings")
-    doc = ("<!doctype html><html><head><title>x</title></head><body><header><h1>Acme</h1></header><main>"
-           "<h1>Dup</h1><h2>Section <em>A</em></h2><h4>Skipped</h4><h3></h3></main></body></html>")
-    audit(page, doc, "Audit headings")
-    eq("headings: count", stat(page, "Headings"), "5")
-    items = [norm(x) for x in page.locator("ol li").all_inner_texts()]
-    eq("headings: list", items, ["H1Acme", "H1Dup", "H2Section A", "H4Skipped", "H3(empty heading)"])
-    t = page.locator("span.whitespace-pre-wrap").inner_text()
-    eq("headings: issues", t.split("\n"), ["More than one H1 heading was found.", "Heading level jumps from H2 to H4: Skipped"])
-    audit(page, "<h1>Title</h1><h2>One</h2><h3>Deep</h3><h2>Two</h2>", "Audit headings")
-    check("headings: clean doc good notice", seen(page, "No skipped levels or duplicate H1 headings detected."))
-    audit(page, "<p>No headings at all</p>", "Audit headings")
-    check("headings: none found -> visible error", "No headings found." in page.locator("body").inner_text())
-    no_overflow(page, "headings")
-
-
-def t_links(page):
-    open_tab(page, "heading-audit", "links")
-    doc = ('<main><a href="/docs">Read more</a><a href="/about"><img src="a.png" alt="About the team"></a>'
-           '<a href="/empty"></a><span id="lbl">Pricing details</span><a href="/p" aria-labelledby="lbl">x</a>'
-           '<a href="/ok" aria-label="Download the annual report">PDF</a><a href="/c">Click here</a></main>')
-    audit(page, doc, "Find link issues")
-    eq("links: total", stat(page, "Links"), "6")
-    eq("links: issues", stat(page, "Potential issues"), "3")
-    rows = [norm(r) for r in page.locator("div.rounded-lg.border.p-3").all_inner_texts()]
-    eq("links: rows", rows, ["/docs Read more Generic link text", "/about About the team", "/empty (empty) No accessible link name",
-                              "/p Pricing details", "/ok Download the annual report", "/c Click here Generic link text"])
-    no_overflow(page, "links")
-
-
-def t_forms(page):
-    open_tab(page, "heading-audit", "forms")
-    doc = ('<form><label for="email">Email</label><input id="email" type="email">'
-           '<label>Name <input type="text" id="nm"></label><span id="l2">Phone</span><input type="tel" aria-labelledby="l2">'
-           '<input type="search" placeholder="Search"><select id="s"></select><textarea aria-label="Notes"></textarea>'
-           '<input type="hidden" name="csrf"><input type="submit" value="Send"><button>Go</button></form>')
-    audit(page, doc, "Audit form controls")
-    eq("forms: controls (hidden/submit excluded)", stat(page, "Controls"), "6")
-    eq("forms: unlabeled", stat(page, "Unlabeled"), "2")
-    rows = [norm(r) for r in page.locator("div.rounded-lg.border.p-3.text-sm").all_inner_texts()]
-    eq("forms: rows", rows, ["input · email · #email Named", "input · text · #nm Named", "input · tel Named",
-                              "input · search Missing associated label / accessible name",
-                              "select · #s Missing associated label / accessible name", "textarea Named"])
-    audit(page, "<p>nothing</p>", "Audit form controls")
-    check("forms: no controls notice", seen(page, "No form controls found."))
-    no_overflow(page, "forms")
-
-
-def t_landmarks(page):
-    open_tab(page, "heading-audit", "landmarks")
-    doc = ('<header>S</header><nav aria-label="P"></nav><nav aria-label="F"></nav><main><article>c</article>'
-           '<aside>a</aside><div role="search"></div></main><footer>L</footer>')
-    audit(page, doc, "Check landmarks")
-    want = {"main": "1", "navigation": "2", "banner": "1", "contentinfo": "1", "complementary": "1", "search": "1", "region": "0"}
-    for k, v in want.items():
-        eq(f"landmarks: {k}", stat(page, k), v)
-    check("landmarks: single main good", seen(page, "Exactly one main landmark found."))
-    audit(page, "<main>a</main><div role='main'>b</div>", "Check landmarks")
-    check("landmarks: two mains flagged", "Multiple main landmarks found." in page.locator("body").inner_text())
-    audit(page, "<nav></nav><p>x</p>", "Check landmarks")
-    check("landmarks: no main flagged", "No main landmark found." in page.locator("body").inner_text())
-    no_overflow(page, "landmarks")
-
-
 # ---------------------------------------------------------------------------- reading-grade
-def syl(w: str) -> int:
-    c = re.sub(r"[^a-z]", "", w.lower())
-    if not c:
-        return 0
-    if len(c) <= 3:
-        return 1
-    g = len(re.findall(r"[aeiouy]+", c))
-    return max(1, g - (1 if c.endswith("e") and not c.endswith("le") else 0))
-
-
-def readability(text: str):
-    words = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)*", text)
-    sents = max(1, len(re.findall(r"[.!?]+", text)))
-    n = len(words)
-    sy = sum(syl(w) for w in words)
-    asl, asw = n / sents, sy / n
-    cx = sum(1 for w in words if syl(w) >= 3)
-    return (js(206.835 - 1.015 * asl - 84.6 * asw, 1), js(0.39 * asl + 11.8 * asw - 15.59, 1),
-            js(0.4 * (asl + 100 * cx / n), 1), str(n), str(sents), str(sy))
-
-
-def t_grade(page):
-    open_tab(page, "reading-grade", "grade")
-    ta = page.get_by_label("English prose")
-
-    def got():
-        return (stat(page, "Flesch reading ease"), stat(page, "Flesch–Kincaid grade"), stat(page, "Gunning Fog index"),
-                stat(page, "Words"), stat(page, "Sentences (estimated)"), stat(page, "Syllables (estimated)"))
-    easy = "The cat sat on the mat. The dog ran to the log."
-    ta.fill(easy)
-    # hand-computed: 12 words, 2 sentences, 12 syllables -> ASL 6, ASW 1: 206.835-6.09-84.6 = 116.145
-    eq("grade: hand-computed easy text", got()[:1] + got()[3:], ("116.1", "12", "2", "12"))
-    eq("grade: easy text all metrics", got(), readability(easy))
-    hard = ("Institutional accountability necessitates comprehensive documentation. Organizations frequently underestimate "
-            "the administrative complexity associated with regulatory compliance, which fundamentally complicates "
-            "interdepartmental communication! Is simplification realistic?")
-    ta.fill(hard)
-    eq("grade: hard prose metrics", got(), readability(hard))
-    f_easy, f_hard = float(readability(easy)[0]), float(readability(hard)[0])
-    check("grade: hard text scores lower ease than easy", f_hard < f_easy - 60)
-    ta.fill("   ")
-    check("grade: empty -> notice", seen(page, "Enter English prose"))
-    no_overflow(page, "grade")
-
-
-def t_sentences(page):
-    open_tab(page, "reading-grade", "sentences")
-    long_s = " ".join(["word"] * 30) + "."
-    text = f"Short one. {long_s} Is this fine? Yes"
-    page.get_by_label("Text").fill(text)
-    eq("sentences: count", stat(page, "Sentences"), "4")
-    eq("sentences: average", stat(page, "Average words / sentence"), js((2 + 30 + 3 + 1) / 4, 1))
-    eq("sentences: over 25", stat(page, "Over 25 words"), "1")
-    heads = [norm(x) for x in page.locator("div.mb-1.text-xs").all_inner_texts()]
-    eq("sentences: per-sentence rows", heads, ["Sentence 1 · 2 words", "Sentence 2 · 30 words · long", "Sentence 3 · 3 words", "Sentence 4 · 1 word"])  # singular fixed 2026-10-10; the old expectation encoded "1 words"
-    # Decimals, versions, times, titles and dated months do not end a sentence (regression, 2026-10-10: this text split into 9).
-    page.get_by_label("Text").fill("Dr. Smith paid $3.50 at 5 p.m. on Jan. 5. See v1.2.3 now.")
-    eq("sentences: abbreviations/decimals/versions -> 2 sentences", stat(page, "Sentences"), "2")
-    page.get_by_label("Text").fill("")
-    eq("sentences: empty", stat(page, "Sentences"), "0")
-    no_overflow(page, "sentences")
-
-
-def t_punct(page):
-    open_tab(page, "reading-grade", "punctuation")
-    page.get_by_label("Text to check").fill("Hello , world.It works!!!!  Really ?\nSecond line is fine.")
-    eq("punct: issue count", stat(page, "Potential issues"), "5")
-    out = page.get_by_label("Findings").input_value().split("\n")
-    eq("punct: findings", sorted(out), sorted([
-        "Line 1: Whitespace before punctuation — ·,", "Line 1: Whitespace before punctuation — ·?",
-        "Line 1: Repeated spaces — ··", "Line 1: Possible missing space after sentence mark — .",
-        "Line 1: Repeated terminal punctuation — !!!!"]))
-    page.get_by_role("button", name="Copy findings").click()
-    page.wait_for_function("document.body.innerText.includes('Copied')")
-    eq("punct: clipboard == findings", read_clip(page), "\n".join(out))
-    page.get_by_label("Text to check").fill("Clean text. Nothing wrong here!")
-    check("punct: clean text message", seen(page, "No common spacing issues detected."))
-    check("punct: copy disabled when no findings", page.get_by_role("button", name="Copy findings").is_disabled())
-    no_overflow(page, "punct")
-
-
-def t_words(page):
-    open_tab(page, "reading-grade", "words")
-    ta = page.get_by_label("Text to analyze")
-    ta.fill("The Cat and the dog and THE bird")
-    rows = [norm(r) for r in page.locator("tbody tr").all_inner_texts()]
-    eq("words: by frequency then alpha", rows, ["the 3 37.5%", "and 2 25.0%", "bird 1 12.5%", "cat 1 12.5%", "dog 1 12.5%"])
-    eq("words: totals", stat(page, "Words / unique"), "8 / 5")
-    page.get_by_label("Sort order").select_option("alpha")
-    eq("words: alphabetical", [norm(r).split()[0] for r in page.locator("tbody tr").all_inner_texts()], ["and", "bird", "cat", "dog", "the"])
-    fill(page, "Minimum characters", "4")
-    eq("words: min length filter", [norm(r) for r in page.locator("tbody tr").all_inner_texts()], ["bird 1 100.0%"])
-    fill(page, "Minimum characters", "1")
-    page.get_by_role("button", name="Copy TSV").click()
-    page.wait_for_function("document.body.innerText.includes('Copied')")
-    eq("words: TSV clipboard", read_clip(page), "and\t2\nbird\t1\ncat\t1\ndog\t1\nthe\t3")
-    ta.fill("Don’t stop, don’t stop: naïve café 42")
-    eq("words: unicode/apostrophes", [norm(r).split()[0] for r in page.locator("tbody tr").all_inner_texts()],
-       ["42", "café", "don’t", "naïve", "stop"])
-    no_overflow(page, "words")
 
 
 # ---------------------------------------------------------------------------- meeting-timezones
@@ -464,7 +248,7 @@ def t_meeting(page):
         eq(f"meeting {d} {t}Z: shared instant", stat(page, "Shared instant"), "UTC · " + inst.isoformat(timespec="milliseconds").replace("+00:00", "Z"))
         for z in ZONES_MEET:
             loc = inst.astimezone(ZoneInfo(z))
-            txt = norm(page.get_by_text(z).locator("xpath=following-sibling::div[1]").inner_text())
+            txt = norm(page.get_by_text(z, exact=True).first.locator("xpath=following-sibling::div[1]").inner_text())
             ok = txt.startswith(f"{loc.day} {MON[loc.month - 1]} {loc.year}, {loc:%H:%M}")
             check(f"meeting {d} {t}Z: {z} -> {loc:%d %b %H:%M}", ok, txt)
     fill(page, "Meeting date (UTC)", "")
@@ -481,7 +265,7 @@ def overlap_expect(day: date, za: str, zb: str, sa, ea, sb, eb) -> int:
 
 
 def t_overlap(page):
-    open_tab(page, "meeting-timezones", "overlap")
+    open_tab(page, "meeting-timezones", "meeting")
     class _S:
         def __init__(self, k): self.k = k
         def locator(self, _): return page.locator("select").nth(self.k)
@@ -515,46 +299,6 @@ def t_overlap(page):
     setup("2026-03-29", "Europe/Warsaw", "Europe/London", "02:30", "10:00")
     check("overlap: DST-gap time rejected", seen(page, "does not exist in Europe/Warsaw (DST gap)"))
     no_overflow(page, "overlap")
-
-
-def transitions(z: str, year: int):
-    tz = ZoneInfo(z)
-    t = datetime(year, 1, 1, tzinfo=timezone.utc)
-    end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-    prev = t.astimezone(tz).utcoffset()
-    out = []
-    while t < end:
-        t2 = t + timedelta(minutes=15)
-        cur = t2.astimezone(tz).utcoffset()
-        if cur != prev:
-            out.append((t2.strftime("%Y-%m-%dT%H:%M:%S.000Z"), prev, cur))
-            prev = cur
-        t = t2
-    return out
-
-
-def hrs(td: timedelta) -> str:
-    h = td.total_seconds() / 3600
-    return ("+" if h >= 0 else "") + f"{h:.2f}h"
-
-
-def t_dst(page):
-    open_tab(page, "meeting-timezones", "dst")
-    for z in ["Europe/Warsaw", "Europe/London", "America/New_York", "America/Los_Angeles", "Australia/Sydney", "Asia/Tokyo", "UTC"]:
-        for y in (2026, 2027):
-            page.get_by_label("IANA timezone").select_option(z)
-            fill(page, "Year", str(y))
-            want = transitions(z, y)
-            eq(f"dst {z} {y}: transition count", stat(page, "UTC offset changes"), str(len(want)))
-            cards = [norm(c) for c in page.locator("div.rounded-lg.border.p-3.text-sm").all_inner_texts()]
-            exp = [f"{iso} UTC offset: {hrs(a)} → {hrs(b)}" for iso, a, b in want]
-            eq(f"dst {z} {y}: instants + offsets", cards, exp)
-    check("dst: UTC shows no-change message", True)
-    fill(page, "Year", "1900")
-    eq("dst: year clamped to 1970", page.get_by_label("Year").input_value(), "1970")
-    page.get_by_label("IANA timezone").select_option("UTC")
-    check("dst: no-change text for UTC", seen(page, "No offset change found in this timezone/year."))
-    no_overflow(page, "dst")
 
 
 def t_workdays(page):
@@ -722,8 +466,7 @@ def main() -> int:
         page = ctx.new_page()
         watch(page)
         page.set_default_timeout(8000)
-        steps = [t_shadow, t_radius, t_easing, t_grid, t_clamp, t_typescale, t_resolver, t_tokens, t_headings, t_links, t_forms,
-                 t_landmarks, t_grade, t_sentences, t_punct, t_words, t_meeting, t_overlap, t_dst, t_workdays, t_rrule]
+        steps = [t_shadow, t_radius, t_easing, t_grid, t_clamp, t_typescale, t_meeting, t_overlap, t_workdays, t_rrule]
         for step in steps:
             try:
                 step(page)

@@ -19,7 +19,7 @@ import random
 import sys
 import traceback
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 ARGV = [a for a in sys.argv[1:] if not a.startswith("-")]
 BASE = (ARGV[0] if ARGV else "http://127.0.0.1:3312").rstrip("/")
@@ -426,7 +426,7 @@ def csv_profile():
         try:
             goto(pg, "csv-profile")
             put(pg, 0, "a;b\n1;x\n2;\n")
-            pg.get_by_label("Delimiter").select_option(label="Semicolon")
+            pg.get_by_label("Delimiter").first.select_option(label="Semicolon")
             pg.wait_for_function("() => document.querySelectorAll('table tbody tr').length === 2")
             eq(str(read_profile_table(pg)), str([("a", "number", "0", "2"), ("b", "text", "1", "1")]), "semicolon")
         finally:
@@ -466,189 +466,6 @@ def _default_sample():
         eq(str(got), str([("name", "text", "0", "2"), ("age", "number", "0", "2"), ("active", "boolean", "0", "2"), ("joined", "date", "1", "2")]), "default sample")
     finally:
         ctx.close()
-
-
-# --- Writing analysis (reading-grade tabs grade / sentences / punctuation) ----------------------------------------
-def py_syllables(word):
-    clean = re.sub(r"[^a-z]", "", word.lower())
-    if not clean:
-        return 0
-    if len(clean) <= 3:
-        return 1
-    groups = len(re.findall(r"[aeiouy]+", clean)) or 1
-    silent_e = clean.endswith("e") and not clean.endswith("le")
-    return max(1, groups - (1 if silent_e else 0))
-
-
-def py_grade(text):
-    words = re.findall(r"[A-Za-z]+(?:['\u2019][A-Za-z]+)*", text)
-    sentences = re.findall(r"[.!?]+(?:[\"')\]]*)", text)
-    sc = max(1, len(sentences) or (1 if words else 0))
-    n = len(words)
-    if not n:
-        return None
-    syl = sum(py_syllables(w) for w in words)
-    asl, asw = n / sc, syl / n
-    complex_ = sum(1 for w in words if py_syllables(w) >= 3)
-    return {
-        "Flesch reading ease": f"{206.835 - 1.015 * asl - 84.6 * asw:.1f}",
-        "Flesch\u2013Kincaid grade": f"{0.39 * asl + 11.8 * asw - 15.59:.1f}",
-        "Gunning Fog index": f"{0.4 * (asl + 100 * complex_ / n):.1f}",
-        "Words": str(n), "Sentences (estimated)": str(sc), "Syllables (estimated)": str(syl),
-    }
-
-
-def py_sentences(text):
-    sents = [x.strip() for x in re.findall(r"[^.!?]+[.!?]+|[^.!?]+\Z", text)]
-    sents = [x for x in sents if x]
-    rows = [(i + 1, len(re.findall(r"[^\W_]+(?:['\u2019][^\W_]+)*", x)), x) for i, x in enumerate(sents)]
-    return rows
-
-
-def py_punct(text):
-    out = []
-    for i, line in enumerate(re.split(r"\r?\n", text)):
-        def add(kind, m):
-            out.append(f"Line {i + 1}: {kind} \u2014 " + re.sub(r"\s", "\u00b7", m.group(0)))
-        for m in re.finditer(r"\s+[,.!?;:]", line): add("Whitespace before punctuation", m)
-        for m in re.finditer(r" {2,}", line): add("Repeated spaces", m)
-        for m in re.finditer(r"[.!?](?=[A-Za-z0-9])", line): add("Possible missing space after sentence mark", m)
-        for m in re.finditer(r"([!?])\1{2,}", line): add("Repeated terminal punctuation", m)
-    return out
-
-
-FRAGMENTS = [
-    "Short sentences help.", "A longer sentence can include several words and clauses, which may make it harder to scan quickly.",
-    "Really?!!! Yes ,it is.", "Double  spaces here .", "Missing space.After a mark!Another one", "The cat didn't sit; it's fine",
-    "Unbelievable beautiful interesting information regarding communication.", "He said (quietly) \"stop.\"", "No end punctuation here",
-]
-
-
-def writing_text(nbytes, seed):
-    rnd = random.Random(seed)
-    parts, size = [], 0
-    while size < nbytes:
-        f = rnd.choice(FRAGMENTS)
-        parts.append(f)
-        size += len(f) + 1
-        parts.append("\n" if rnd.random() < 0.2 else " ")
-        size += 1
-    return "".join(parts)
-
-
-def grade_equal(text, label):
-    ctx, pg = new_page()
-    try:
-        goto(pg, "reading-grade", "grade")
-        put(pg, 0, text)
-        want = py_grade(text)
-        pg.wait_for_function("(w) => { const t = document.querySelector('main').textContent; return t.includes('Flesch reading ease' + w); }", arg=want["Flesch reading ease"], timeout=60000)
-        wait_idle(pg)
-        txt = pg.locator("main").text_content() or ""
-        for k, v in want.items():
-            assert k + v in txt, f"{label}: {k} expected {v}"
-    finally:
-        ctx.close()
-
-
-def sentences_equal(text, label):
-    ctx, pg = new_page()
-    try:
-        goto(pg, "reading-grade", "sentences")
-        put(pg, 0, text)
-        want = py_sentences(text)
-        total = len(want)
-        pg.wait_for_function("(n) => document.querySelector('main').textContent.includes('Sentences' + n)", arg=str(total), timeout=60000)
-        wait_idle(pg)
-        shown = min(total, 1000)
-        cards = pg.locator("div.rounded-lg.border.p-3").evaluate_all("els => els.map(e => [e.children[0].textContent, e.children[1].textContent])")
-        assert len(cards) == shown, f"{label}: {len(cards)} cards, want {shown}"
-        for (head, body), (i, w, t) in zip(cards, want):
-            assert head == f"Sentence {i} \u00b7 {w} word{'' if w == 1 else 's'}" + (" \u00b7 long" if w > 25 else ""), f"{label}: head {head!r}"
-            assert body == t, f"{label}: text {body[:40]!r} vs {t[:40]!r}"
-        avg = sum(w for _, w, _ in want) / total
-        txt = pg.locator("main").text_content() or ""
-        assert f"Average words / sentence{avg:.1f}" in txt, f"{label}: average {avg:.1f}"
-        assert f"Over 25 words{sum(1 for _, w, _ in want if w > 25)}" in txt
-        if total > 1000:
-            assert f"Showing the first 1,000 of {total:,} sentences" in txt, "cap note"
-    finally:
-        ctx.close()
-
-
-def punct_equal(text, label):
-    ctx, pg = new_page()
-    try:
-        goto(pg, "reading-grade", "punctuation")
-        put(pg, 0, text)
-        want = py_punct(text)
-        pg.wait_for_function("(n) => document.querySelector('main').textContent.includes('Potential issues' + n)", arg=str(len(want)), timeout=60000)
-        wait_idle(pg)
-        if want:
-            shown = pg.locator("textarea[readonly]").input_value()
-            eq(shown, "\n".join(want[:2000]), f"{label} findings")
-            if len(want) > 2000:
-                assert f"Showing the first 2,000 of {len(want):,} findings" in (pg.locator("main").text_content() or ""), "cap note"
-        else:
-            assert "No common spacing issues detected." in (pg.locator("main").text_content() or "")
-    finally:
-        ctx.close()
-
-
-def writing():
-    small = "Readable writing uses clear words. This sample shows a rough estimate, isn't it? Unbelievable beautiful information!"
-    check("reading-grade/grade: small text (inline) matches the Python formulas", lambda: grade_equal(small + " " + FRAGMENTS[1], "small"))
-    check("reading-grade/grade: 240 kB (worker) matches the Python formulas", lambda: grade_equal(writing_text(240_000, 1), "worker"))
-    check("reading-grade/sentences: small text (inline) matches Python regex rows", lambda: sentences_equal(" ".join(FRAGMENTS), "small"))
-    check("reading-grade/sentences: 150 kB (worker) matches Python rows; list capped at 1,000 with a note", lambda: sentences_equal(writing_text(150_000, 2).replace("\n", " "), "worker"))
-    check("reading-grade/punctuation: small text (inline) matches the Python findings", lambda: punct_equal(" ".join(FRAGMENTS) + "\nfine line\nx  ,y", "small"))
-    check("reading-grade/punctuation: 300 kB (worker) matches the Python findings; list capped at 2,000 with a note", lambda: punct_equal(writing_text(300_000, 3), "worker"))
-    check("reading-grade/punctuation: clean large text says no issues", lambda: punct_equal(("Clean sentence one. Another clean sentence follows here.\n" * 4000), "clean"))
-
-    def long_task(tab, text):
-        def ready(pg):
-            pg.wait_for_timeout(500)
-            wait_idle(pg, 120000)
-        long_task_vs_floor("reading-grade", tab, [text], ready=ready, settle_ms=7000)
-
-    blob = prose(8_800_000, seed=1)
-    check("reading-grade/grade: 8.8 MB paste: max long task <= floor + 200 ms", lambda: long_task("grade", blob))
-    check("reading-grade/sentences: 8.8 MB paste (one 8.8 MB 'sentence'): max long task <= floor + 200 ms", lambda: long_task("sentences", blob))
-    check("reading-grade/punctuation: 8.8 MB paste: max long task <= floor + 200 ms", lambda: long_task("punctuation", blob))
-    noisy = writing_text(3_000_000, 6)
-    check("reading-grade/sentences+punctuation: 3 MB noisy prose (~60k sentences, ~100k findings): max long task <= floor + 200 ms", lambda: (long_task("sentences", noisy), long_task("punctuation", noisy)))
-
-    # The Sentences and Punctuation workers chew 14 MB in ~0.2 s, while the browser's own textarea layout freezes the page for
-    # ~3.5 s, so the status line (shown after 300 ms) is up for only 100-200 ms: no human, and no test, can reliably click Cancel
-    # on such a fast job. `slow` delays every message the page posts to a Worker, so the real worker, the real "running" state and
-    # the real Cancel path (terminate + lazy respawn) are exercised while the job is genuinely pending.
-    SLOW_WORKER = "(() => { const orig = Worker.prototype.postMessage; Worker.prototype.postMessage = function (m, t) { const d = window.__workerDelayMs || 0; if (!d) return orig.call(this, m, t); const w = this; setTimeout(() => orig.call(w, m, t), d); }; })()"
-
-    def cancel(tab, button, notice, probe, slow=False):
-        ctx, pg = new_page()
-        try:
-            if slow:
-                pg.add_init_script(SLOW_WORKER)
-            goto(pg, "reading-grade", tab)
-            if slow:
-                pg.evaluate("() => { window.__workerDelayMs = 12000; }")
-            put(pg, 0, writing_text(14_000_000, 8))
-            btn = pg.get_by_role("button", name=button)
-            btn.wait_for(timeout=90000)
-            btn.click()
-            pg.get_by_text(notice).wait_for(timeout=10000)
-            assert pg.get_by_role("button", name=button).count() == 0
-            if slow:
-                pg.evaluate("() => { window.__workerDelayMs = 0; }")
-            put(pg, 0, "Hello there. Fine .")
-            pg.wait_for_function("(p) => document.querySelector('main').textContent.includes(p)", arg=probe, timeout=30000)
-        finally:
-            ctx.close()
-
-    check("reading-grade/grade: Cancel analysis stops the run; the tab works afterwards", lambda: cancel("grade", "Cancel analysis", "Analysis cancelled.", "Words3"))
-    check("reading-grade/sentences: Cancel analysis stops the run; the tab works afterwards", lambda: cancel("sentences", "Cancel analysis", "Analysis cancelled.", "Sentences2", slow=True))
-    check("reading-grade/punctuation: Cancel checking stops the run; the tab works afterwards", lambda: cancel("punctuation", "Cancel checking", "Checking cancelled.", "Potential issues1", slow=True))
-
 
 
 # --- Diff -----------------------------------------------------------------------------------------------------------
@@ -870,7 +687,7 @@ def csv_convert_equal(text, label, delim=",", header=True):
         if not header:
             pg.get_by_role("button", name="Header row").click()
         if delim != ",":
-            pg.get_by_label("Delimiter").select_option(value=delim)
+            pg.get_by_label("Delimiter").first.select_option(value=delim)
         put(pg, 0, text)
         want, rows = py_csv_json(text, delim, header)
         shown = want[:CSV_JSON_PANE]
@@ -916,7 +733,7 @@ def csv_convert():
         try:
             goto(pg, "csv", "convert")
             put(pg, 0, "a|b\n1|2")
-            pg.get_by_label("Delimiter").select_option(label="Pipe |")
+            pg.get_by_label("Delimiter").first.select_option(label="Pipe |")
             pg.wait_for_function("() => document.querySelector('pre')?.textContent.includes('\"b\": \"2\"')")
             pg.get_by_role("button", name="Clear").click()
             pg.wait_for_function("() => document.querySelector('pre')?.textContent === '[]'")
@@ -927,12 +744,12 @@ def csv_convert():
     check("csv: delimiter change re-converts; Clear returns to the empty state", delimiter_and_clear)
 
     def parse_export():
-        # CsvTool's parseDelimited is still imported by other tabs: the Pivot tab must keep working
+        # CsvTool's parseDelimited is still imported by the Markdown table converter on the Convert tab
         ctx, pg = new_page()
         try:
-            goto(pg, "csv", "markdown")
-            put(pg, 0, "a\tb\n1\t2")
-            pg.wait_for_function("() => document.querySelector('main').textContent.includes('| a | b |')", timeout=15000)
+            goto(pg, "csv", "convert")  # the Markdown table now sits under the converter on the same tab
+            pg.get_by_label("Delimited table").fill("a\tb\n1\t2")
+            expect(pg.get_by_label("Markdown table")).to_have_value(re.compile(r"\|\s*a\s*\|\s*b\s*\|"), timeout=15000)
         finally:
             ctx.close()
 
@@ -967,7 +784,7 @@ def csv_convert():
     check("csv: Cancel conversion stops a heavy run; the tool works afterwards", cancel)
 
 
-SUITES = [("text", text_kit), ("csv-profile", csv_profile), ("reading-grade", writing), ("diff", diff), ("csv", csv_convert)]
+SUITES = [("text", text_kit), ("csv-profile", csv_profile), ("diff", diff), ("csv", csv_convert)]
 
 
 def main():

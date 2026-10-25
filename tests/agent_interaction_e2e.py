@@ -73,7 +73,7 @@ with sync_playwright() as pw:
     page = ctx.new_page()
     page.on("console", lambda m: errors.append(m.text[:200]) if m.type == "error" else None)
     page.on("pageerror", lambda e: errors.append(str(e)[:200]))
-    page.goto(BASE + "/tools/file-compressor", wait_until="networkidle")
+    page.goto(BASE + "/tools/ids", wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     k = key(page)
@@ -84,12 +84,12 @@ with sync_playwright() as pw:
     page.wait_for_selector("[data-agent-approval]")
     check("approval names the destination", "Open QR" in page.locator("[data-agent-approval]").inner_text(), page.locator("[data-agent-approval]").inner_text())
     check("pill flags that the assistant needs an OK", page.locator("[data-agent-pill='approval']").count() == 1)
-    check("page unchanged while waiting for approval", page.url.endswith("/tools/file-compressor"), page.url)
+    check("page unchanged while waiting for approval", page.url.endswith("/tools/ids"), page.url)
     page.get_by_role("button", name="Deny").click()
     idle(page, k, 1)
     res = tool_results(page, k, "open_tool")
     check("denied call returns a 'declined' result", len(res) == 1 and res[0].get("ok") is False and "declined" in res[0].get("error", ""), res)
-    check("page still unchanged after deny", page.url.endswith("/tools/file-compressor"), page.url)
+    check("page still unchanged after deny", page.url.endswith("/tools/ids"), page.url)
 
     send(page, 'CALL:open_tool:{"slug":"qr"}')
     page.wait_for_selector("[data-agent-approval]")
@@ -107,16 +107,16 @@ with sync_playwright() as pw:
     check("read-only tools never prompt in Ask mode", page.locator("[data-agent-approval]").count() == 0)
 
     # --- Wait for user -----------------------------------------------------------------------------
-    page.goto(BASE + "/tools/file-compressor", wait_until="networkidle")
+    page.goto(BASE + "/tools/ids", wait_until="networkidle")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     send(page, 'CALL:page_snapshot:{}')
     idle(page, k, 4)
     file_id = page.evaluate("document.querySelector('main input[type=file]').getAttribute('data-agent-id')")
     check("snapshot tagged the file input", bool(file_id), file_id)
 
-    send(page, 'CALL:wait_for_user:{"message":"Choose the file to compress","id":"%s"}' % file_id)
+    send(page, 'CALL:wait_for_user:{"message":"Choose the file to hash","id":"%s"}' % file_id)
     page.wait_for_selector("[data-agent-wait]")
-    check("wait card shows the request", "Choose the file to compress" in page.locator("[data-agent-wait]").inner_text())
+    check("wait card shows the request", "Choose the file to hash" in page.locator("[data-agent-wait]").inner_text())
     check("target control pulses on the page", page.locator("main input[type=file][data-agent-await]").count() == 1)
     check("pill says it is waiting for the user", page.locator("[data-agent-pill='wait']").count() == 1)
     tmp = Path(tempfile.mkdtemp()) / "mine.txt"

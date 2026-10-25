@@ -235,7 +235,7 @@ with sync_playwright() as pw:
     page = browser.new_context(viewport={"width": 1440, "height": 900}).new_page()
     page.on("console", lambda m: errors.append(m.text[:200]) if m.type == "error" else None)
     page.on("pageerror", lambda e: errors.append(str(e)[:200]))
-    page.goto(BASE + "/tools/sql-lab?tab=build", wait_until="networkidle")
+    page.goto(BASE + "/tools/sql-lab?tab=format", wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")

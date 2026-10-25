@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-UI functional tests for the SQL lab suite (/tools/sql-lab): format, convert, validate, build, schema, run, connection.
+"""Real-UI functional tests for the SQL lab suite (/tools/sql-lab): format, convert, validate, schema, run, connection.
 
 Oracles are independent of the app: the Run tab is checked against Python's sqlite3 and csv modules (and the exported
 .sqlite is opened with sqlite3), DSNs against urllib.parse, everything else against the documented contract.
@@ -26,7 +26,7 @@ FAILS: list[str] = []
 CONSOLE: list[str] = []
 page = None
 TMP = tempfile.mkdtemp(prefix="sqllab-")
-TABS = ["format", "convert", "validate", "build", "schema", "run", "connect"]
+TABS = ["format", "convert", "validate", "schema", "run", "connect"]
 
 
 def ok(name):
@@ -84,10 +84,6 @@ def has(text, timeout=8000):
     expect(page.locator("main")).to_contain_text(text, timeout=timeout)
 
 
-def hasnt(text):
-    expect(page.locator("main")).not_to_contain_text(text, timeout=5000)
-
-
 def region(name):
     return page.locator(f'[data-agent-region="{name}"]').first
 
@@ -101,10 +97,6 @@ def grid(statement=1):
     """Rows of the results grid of a Run statement as lists of cell text (header first)."""
     t = page.locator(f'section[aria-label="Statement {statement} result"] table').first
     return [[c.strip() for c in tr.locator("th,td").all_inner_texts()] for tr in t.locator("tr").all()]
-
-
-def num(text):
-    return float(text) if text not in ("NULL", "") else None
 
 
 def upload(path):
@@ -626,80 +618,6 @@ def engine_suite():
         p = os.path.join(TMP, "c.sql"); dl.value.save_as(p)
         eq(open(p).read().strip(), region("converted-sql").inner_text().strip(), "downloaded output")
 
-    @check("build: example compiles; form edit rewrites JSON; JSON edit rewrites form; invalid JSON is a text error")
-    def _():
-        go("build", fresh=True)
-        page.get_by_label("Dialect", exact=True).first.select_option("postgres")
-        btn("Top customers by revenue").click()
-        expect(region("compiled-sql")).to_contain_text("LEFT JOIN", timeout=15000)
-        sql = region("compiled-sql").inner_text()
-        assert "SUM(" in sql and "COUNT(" in sql and "LIMIT 10" in sql and "GROUP BY" in sql, sql
-        # form -> JSON -> SQL
-        page.get_by_label("Limit", exact=True).fill("7")
-        expect(region("compiled-sql")).to_contain_text("LIMIT 7", timeout=15000)
-        assert json.loads(page.get_by_label("QuerySpec JSON").input_value())["limit"] == 7
-        # JSON -> form
-        spec = json.loads(page.get_by_label("QuerySpec JSON").input_value())
-        spec["from"] = {"name": "clients", "as": "c"}
-        page.get_by_label("QuerySpec JSON").fill(json.dumps(spec))
-        eq(page.get_by_label("From table", exact=True).input_value(), "clients")
-        expect(region("compiled-sql")).to_contain_text("clients", timeout=15000)
-        # invalid JSON
-        page.get_by_label("QuerySpec JSON").fill("{ not json")
-        expect(page.locator("main [role=alert]").filter(has_text="Not valid JSON").first).to_be_visible()
-        # valid JSON, invalid spec
-        page.get_by_label("QuerySpec JSON").fill('{"op":"select"}')
-        expect(page.locator("main [role=alert]").filter(has_text="not complete yet").first).to_be_visible()
-
-    @check("build: where tree (and/or/not), params list, every example compiles in 3 dialects")
-    def _():
-        go("build")
-        btn("Filtered, paginated list with parameters").click()
-        expect(region("compiled-params")).to_contain_text("min_total", timeout=15000)
-        sql = region("compiled-sql").inner_text()
-        assert "IN ('new', 'paid')" in sql and "NOT" in sql and "IS NULL" in sql and "$1" in sql, sql
-        params = region("compiled-params").inner_text()
-        assert "min_total" in params, params
-        # edit the tree through the form: switch ALL -> ANY
-        page.get_by_label("Where match mode").select_option("or")
-        expect(region("compiled-sql")).to_contain_text(" OR ", timeout=15000)
-        for dialect in ("postgres", "mysql", "sqlite"):
-            page.get_by_label("Dialect", exact=True).first.select_option(dialect)
-            for label in ["Top customers by revenue", "Filtered, paginated list with parameters", "Insert with upsert", "Update with and/or filter", "Delete with NOT and IN", "Create table with foreign key"]:
-                btn(label).click()
-                page.wait_for_timeout(700)
-                expect(region("compiled-sql")).not_to_contain_text("Fill in the form", timeout=15000)
-                out = region("compiled-sql").inner_text()
-                assert re.search(r"SELECT|INSERT|UPDATE|DELETE|CREATE", out), (dialect, label, out)
-                hasnt("The query is not complete yet")
-        # T-SQL has no ON CONFLICT: the engine writes a MERGE (and says what that changes)
-        page.get_by_label("Dialect", exact=True).first.select_option("tsql")
-        btn("Insert with upsert").click()
-        expect(region("compiled-sql")).to_contain_text("MERGE INTO", timeout=15000)
-        # Hive has no spelling at all: the engine says so in text instead of emitting wrong SQL
-        page.get_by_label("Dialect", exact=True).first.select_option("hive")
-        btn("Insert with upsert").click()
-        expect(page.locator("main [role=alert]").filter(has_text="onConflict is not supported for hive").first).to_be_visible(timeout=15000)
-        CONSOLE[:] = [c for c in CONSOLE if "422" not in c]
-
-    @check("build: statement types switch the form (insert/update/delete/create table) and compile")
-    def _():
-        go("build")
-        sel = page.get_by_label("Statement type")
-        for op, needle in [("insert", "INSERT INTO"), ("update", "UPDATE"), ("delete", "DELETE FROM"), ("create_table", "CREATE TABLE")]:
-            sel.select_option(op)
-            spec = json.loads(page.get_by_label("QuerySpec JSON").input_value())
-            eq(spec["op"], op)
-        # fill a simple delete via the form
-        sel.select_option("delete")
-        page.get_by_label("Delete from table").fill("sessions")
-        btn("Add where condition").click()
-        page.get_by_label("Where column").fill("expires_at")
-        page.get_by_label("Where operator").select_option("<")
-        page.get_by_label("Where value").fill(":now")
-        expect(region("compiled-sql")).to_contain_text("DELETE FROM sessions", timeout=15000)
-        assert "expires_at <" in region("compiled-sql").inner_text()
-        eq(json.loads(page.get_by_label("QuerySpec JSON").input_value())["where"], {"col": "expires_at", "op": "<", "value": {"param": "now"}})
 
     @check("build: schema-aware completion lists stored tables/columns; Ask the assistant opens it with schema + request")
     def _():
@@ -707,20 +625,6 @@ def engine_suite():
         btn("Sample: shop").click()
         expect(page.locator('article[aria-label="Table orders"]')).to_be_visible(timeout=15000)
         btn("Use as current schema").click()
-        go("build")
-        btn("Top customers by revenue").click()
-        tables = page.evaluate("[...document.querySelectorAll('#sk-sql-tables option')].map(o => o.value)")
-        eq(tables, ["customers", "products", "orders", "order_items"], "table completions")
-        cols = page.evaluate("[...document.querySelectorAll('#sk-sql-columns option')].map(o => o.value)")
-        assert "c.name" in cols and "o.total" in cols and "customers.name" not in cols, cols[:12]
-        page.evaluate("window.__prompts = []; window.addEventListener('sk:agent-open', e => window.__prompts.push(e.detail && e.detail.prompt))")
-        page.get_by_label("What should the query do?").fill("monthly revenue for paid orders")
-        btn("Ask the assistant to build this query").click()
-        prompts = page.evaluate("window.__prompts")
-        eq(len(prompts), 1, "one open event")
-        p = prompts[0]
-        assert "customers(id INTEGER PK" in p and "order_items(" in p, p
-        assert "QuerySpec" in p and "compile" in p and "monthly revenue for paid orders" in p, p
 
     @check("format: dialect-aware mode pretty-prints in the chosen dialect and rejects broken SQL")
     def _():

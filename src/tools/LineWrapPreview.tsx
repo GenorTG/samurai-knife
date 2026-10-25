@@ -16,7 +16,7 @@ export default function LineWrapPreview() {
         <Stat label="Longest output line" value={`${longest} / ${width}`} />
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
-        <Field label="Input"><TextArea rows={15} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+        <Field label="Text to wrap"><TextArea rows={15} value={text} onChange={(e) => setText(e.target.value)} /></Field>
         <Field label="Wrapped output"><TextArea rows={15} readOnly value={output} /></Field>
       </div>
       <p className="text-xs text-faint">Indentation and spacing inside a line that fits are kept. Words longer than the selected width are split (never inside a character). Existing hard line breaks remain hard breaks.</p>

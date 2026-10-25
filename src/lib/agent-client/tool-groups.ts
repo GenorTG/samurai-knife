@@ -27,7 +27,7 @@ export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list library + folders, read as text (or a version), create, make folders, move, list/restore versions" },
   // Tutor tools, preloaded on the course page only (MCP clients get them anyway).
   { id: "learn", prefixes: ["knife_learn_"], pagePattern: /^\/tools\/db-course(\/|$)/, summary: "Database course tutor: lessons, the learner's last query/error, SQL in the course sandbox", loadable: false },
-  { id: "nosql", prefixes: ["knife_mongo_", "knife_chroma_", "knife_redis_"], pagePattern: /^\/tools\/nosql-lab(\/|$)/, summary: "NoSQL and vector: MongoDB, Chroma and Redis operation specs to client code, validation and explanation" },
+  { id: "nosql", prefixes: ["knife_mongo_", "knife_chroma_", "knife_redis_"], pagePattern: /(?!)/ /* no page of its own since the NoSQL lab was removed (2026-10-25): load_tools only */, summary: "NoSQL and vector: MongoDB, Chroma and Redis operation specs to client code, validation and explanation" },
   // Browser-side (office-live-tools.ts); besides being loaded, each tool is offered only while an editor of its type is connected.
   { id: "office_live", prefixes: ["doc_live_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "live edits in the document open in the office editor", loadable: false },
 ];
@@ -67,7 +67,7 @@ export function loadToolsDef(): FunctionToolDef {
     type: "function",
     function: {
       name: LOAD_TOOLS_NAME,
-      description: `Make a group of specialist tools available for the rest of this conversation (one call, then use them right away). Groups: ${loadable().map((g) => `${g.id} = ${g.summary}`).join("; ")}. Each tool's own page (sql-lab, nosql-lab, cv-studio, site-studio, office) has its group already loaded.`,
+      description: `Make a group of specialist tools available for the rest of this conversation (one call, then use them right away). Groups: ${loadable().map((g) => `${g.id} = ${g.summary}`).join("; ")}. Each tool's own page (sql-lab, cv-studio, site-studio, office) has its group already loaded.`,
       parameters: {
         type: "object",
         properties: { group: { type: "string", enum: loadable().map((g) => g.id), description: "Which group to load." } },

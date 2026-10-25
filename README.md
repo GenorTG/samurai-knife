@@ -18,12 +18,12 @@ byte off the page.
 
 **Everyday tools**, grouped by the job you're doing rather than by file type:
 
-- **Data**: JSON workbench (lint, JSONPath, Pointer, diagram, schema, NDJSON), CSV workbench, YAML/INI/XML, table inspector, QR codes
-- **Databases**: SQL lab (format, transpile between dialects, validate, build from JSON, schema checks, run SQLite in the browser) and a NoSQL/vector lab (MongoDB, Chroma, Redis query builders with docs-derived validation)
-- **Documents**: PDF toolkit (merge, split, compress, protect, an in-browser editor, OCR in English and Polish, searchable-PDF export), file compressor
-- **Images**: export and resize, metadata scrubbing, responsive sets and favicons, crop and contact sheets, pixel compare, an SVG workshop, a Lottie inspector
-- **Dev and web**: JWT and passwords, IDs and hashes, dates and time zones, cron and RRULE explainer, URL/IDN, colour and contrast, HTTP headers/CSP/cURL, CSS grid, type scales, effects, robots.txt and sitemaps, HTML accessibility audit, semver and lockfiles, stack traces
-- **Text**: regex lab, diff, text kit, Markdown, writing analysis, Unicode and encoding inspector
+- **Data**: JSON workbench (lint, JSONPath, diagram, schema), CSV workbench (convert, columns, merge, pivot, profile, duplicates, compare, Markdown tables), YAML/XML, QR codes
+- **Databases**: SQL lab (format, transpile between dialects, validate, schema checks, run SQLite in the browser, connection strings); agents also get MongoDB, Chroma and Redis query tools over MCP
+- **Documents**: PDF toolkit (merge, split, compress, protect, an in-browser editor, OCR in English and Polish, searchable-PDF export), Markdown
+- **Images**: export and resize, metadata scrubbing, responsive sets and favicons, crop and trim, pixel compare, an SVG workshop
+- **Web and code**: a website check (a live URL: redirects, security headers, cookies, SEO, accessibility, robots.txt, sitemap), a CSS playground (HTML, CSS, JS/TS with presets and export) and CSS builders, CSP and cURL, URLs, robots.txt and sitemaps, JWT and passwords, IDs and hashes, dates and time zones, cron and RRULE
+- **Text**: regex lab, diff, text kit (transforms, line wrap, smart quotes, placeholder text), Unicode and encoding inspector
 
 **CV studio**: one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
 with an ATS check, an application tracker, and a showcase builder that drafts project entries from GitHub repos.

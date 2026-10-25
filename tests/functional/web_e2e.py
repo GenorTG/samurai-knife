@@ -168,36 +168,6 @@ def test_ids(t):
     t.p.get_by_role("button", name="Clear").nth(1).click()
     check("ids hash clear", "No digest yet." in t.body())
 
-    # snowflake
-    t.open("ids", "snowflake")
-    t.p.wait_for_timeout(300)
-    sid, ep = 175928847299117063, 1288834974657
-    ts_ms = (sid >> 22) + ep
-    exp_ts = dt.datetime.fromtimestamp(ts_ms / 1000, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{ts_ms % 1000:03d}Z"
-    check("snowflake default timestamp", t.stat("Timestamp") == exp_ts, f"{t.stat('Timestamp')} vs {exp_ts}")
-    check("snowflake default worker/seq", t.stat("Worker") == str((sid >> 12) & 0x3FF) and t.stat("Sequence") == str(sid & 0xFFF))
-    # custom: build id with 8 worker bits, 14 seq bits
-    ep2 = 1_600_000_000_000
-    ts2 = 123_456_789
-    sid2 = (ts2 << 22) | (200 << 14) | 4321
-    t.fill("64-bit ID", str(sid2)); t.fill("Epoch (Unix milliseconds)", str(ep2))
-    t.fill("Worker bits", "8"); t.fill("Sequence bits", "14")
-    m2 = ts2 + ep2
-    exp2 = dt.datetime.fromtimestamp(m2 / 1000, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{m2 % 1000:03d}Z"
-    check("snowflake custom bits", (t.stat("Timestamp"), t.stat("Worker"), t.stat("Sequence")) == (exp2, "200", "4321"),
-          str((t.stat("Timestamp"), t.stat("Worker"), t.stat("Sequence"))))
-    t.fill("64-bit ID", "12ab")
-    check("snowflake invalid id error", "Use unsigned decimal" in t.notice(), t.notice())
-    t.fill("64-bit ID", "-5")
-    check("snowflake negative error", "Use unsigned decimal" in t.notice())
-    t.fill("64-bit ID", str(sid)); t.fill("Worker bits", "40"); t.fill("Sequence bits", "40")
-    check("snowflake widths>=63 error", "bit widths" in t.notice(), t.notice())
-    t.fill("Worker bits", "10"); t.fill("Sequence bits", "12")
-    t.fill("64-bit ID", "0"); t.fill("Epoch (Unix milliseconds)", "0")
-    check("snowflake id 0 -> epoch", t.stat("Timestamp") == "1970-01-01T00:00:00.000Z", str(t.stat("Timestamp")))
-    t.fill("64-bit ID", "9223372036854775807")
-    check("snowflake max int64 safe", (t.stat("Timestamp") or t.notice()) != "", t.stat("Timestamp") or t.notice())
-
 
 # ==================================================================== epoch
 def wall_re(d: dt.datetime) -> str:
@@ -311,7 +281,9 @@ def test_epoch(t):
         t.fill("First duration", bad)
         check(f"duration invalid {bad!r}", "Use H:MM:SS" in t.notice(), t.notice())
 
-    t.open("epoch", "iso-week")
+
+# ===================================================================== jwt
+    t.open("epoch", "format")
     for d_ in ["2026-10-03", "2021-01-03", "2024-12-30", "2020-12-31", "2027-01-01", "2016-01-03", "2024-02-29"]:
         t.f("Calendar date").fill(d_)
         d = dt.date.fromisoformat(d_)
@@ -321,33 +293,6 @@ def test_epoch(t):
         check(f"iso-week {d_}", got == exp, f"{got} vs {exp}")
     t.f("Calendar date").fill("")
     check("iso-week empty -> error", "Choose a valid calendar date." in t.body())
-
-    t.open("epoch", "distribution")
-
-    def dist(a, b):
-        t.f("Start (inclusive)").fill(a); t.f("End (inclusive)").fill(b)
-        d0, d1 = dt.date.fromisoformat(a), dt.date.fromisoformat(b)
-        n = (d1 - d0).days + 1
-        wk = [0] * 7; mo: dict[str, int] = {}
-        for i in range(n):
-            d = d0 + dt.timedelta(days=i)
-            wk[d.weekday()] += 1; mo[d.strftime("%Y-%m")] = mo.get(d.strftime("%Y-%m"), 0) + 1
-        names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        ok = t.stat("Calendar days") == str(n) and all(t.stat(names[i]) == str(wk[i]) for i in range(7)) and all(t.stat(k) == str(v) for k, v in mo.items())
-        check(f"distribution {a}..{b}", ok, f"days={t.stat('Calendar days')} exp {n}")
-    dist("2026-10-01", "2026-10-31")
-    dist("2024-02-27", "2024-03-02")
-    dist("2023-12-25", "2025-01-07")
-    dist("2026-05-05", "2026-05-05")
-    t.f("Start (inclusive)").fill("2026-05-05"); t.f("End (inclusive)").fill("2026-05-04")
-    check("distribution end<start error", "end on or after start" in t.notice(), t.notice())
-    t.f("Start (inclusive)").fill("2000-01-01"); t.f("End (inclusive)").fill("2020-01-01")
-    check("distribution >10y error", "exceeds 10 years" in t.notice(), t.notice())
-    t.f("Start (inclusive)").fill("")
-    check("distribution empty error", "Choose valid dates" in t.notice())
-
-
-# ===================================================================== jwt
 def mk_jwt(header, payload, secret, alg="HS256", tamper_sig=False):
     h = b64u(json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode())
     b = b64u(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode())
@@ -570,126 +515,6 @@ def test_jwt(t):
     check("random empty alphabet -> bits 0", t.stat("Bits per string") == "0" and t.stat("Alphabet size") == "0")
 
 
-# ============================================================ stacktrace/ansi
-def test_stacktrace(t):
-    t.open("stacktrace", "stacktrace")
-    ta = lambda: t.f("Normalized output").input_value()
-    src = ("TypeError: boom\n    at render (src/app.ts:42:7)\n    at src/run.ts:12:3\n    at render (src/app.ts:42:7)\n\n"
-           "Traceback (most recent call last):\n  File \"worker.py\", line 18, in run\n    raise ValueError()")
-    t.fill("Pasted exception or traceback", src)
-    exp = ["TypeError: boom", "at render \u2014 src/app.ts:42:7", "at src/run.ts:12:3",
-           "Traceback (most recent call last):", "at run \u2014 worker.py:18", "raise ValueError()"]
-    out = ta().split("\n")
-    check("trace: V8 frame normalized", "at render \u2014 src/app.ts:42:7" in out, repr(out))
-    check("trace: python frame normalized", "at run \u2014 worker.py:18" in out, repr(out))
-    check("trace: header/unknown lines kept", "TypeError: boom" in out and "raise ValueError()" in out)
-    check("trace: duplicates removed", out.count("at render \u2014 src/app.ts:42:7") == 1)
-    check("trace: bare location frame kept as 'at file:line:col'", "at src/run.ts:12:3" in out, repr(out))
-    check("trace: whole normalized output is exactly the expected lines (duplicates removed, order kept)", out == exp, repr(out))
-    check("trace: counts", t.stat("Non-empty lines") == "7" and t.stat("Unique lines") == "6",
-          f"{t.stat('Non-empty lines')}/{t.stat('Unique lines')}")
-    t.fill("Pasted exception or traceback", "a\r\n\r\n  \r\nb\na")
-    check("trace: blank lines dropped + CRLF", ta() == "a\nb" and t.stat("Non-empty lines") == "3")
-    t.fill("Pasted exception or traceback", "")
-    check("trace: empty input", ta() == "" and t.stat("Unique lines") == "0")
-    t.fill("Pasted exception or traceback", "    at Object.<anonymous> (C:\\proj\\a.js:1:2)")
-    check("trace: windows path frame", ta() == "at Object.<anonymous> \u2014 C:\\proj\\a.js:1:2", repr(ta()))
-
-    t.open("stacktrace", "ansi")
-    out = lambda: t.f("Clean output").input_value()
-    t.fill("Terminal output", "\x1b[32mgreen\x1b[0m \x1b[1;31mred\x1b[0m")
-    check("ansi: SGR stripped", out() == "green red")
-    check("ansi: removed count", t.stat("Removed control characters") == str(len("\x1b[32m\x1b[0m\x1b[1;31m\x1b[0m")))
-    check("ansi: input count", t.stat("Input characters") == str(len("\x1b[32mgreen\x1b[0m \x1b[1;31mred\x1b[0m")))
-    t.fill("Terminal output", "a\x1b]8;;https://x.test\x1b\\link\x1b]8;;\x1b\\ b \x1b]0;title\x07c")
-    check("ansi: OSC 8 hyperlink (ST) + OSC title (BEL) keep text", out() == "alink b c", repr(out()))
-    t.fill("Terminal output", "\x1b[2K\x1b[1Gprogress\x1b[?25l \x1b[38;5;196mx\x1b[38;2;1;2;3my\x1b[0m")
-    check("ansi: cursor/256/truecolor", out() == "progress xy", repr(out()))
-    t.fill("Terminal output", "tab\there\nnew\x00\x07\x08line")
-    check("ansi: tab/newline kept, C0 removed", out() == "tab\there\nnewline", repr(out()))
-    t.fill("Terminal output", "plain text 100% \u2713 \u00e9")
-    check("ansi: plain unicode untouched", out() == "plain text 100% \u2713 \u00e9" and t.stat("Removed control characters") == "0")
-    t.fill("Terminal output", "")
-    check("ansi: empty", out() == "")
-
-
-# ================================================================ semver/lockfile
-def test_semver(t):
-    t.open("semver", "semver")
-    def sv(v, r, other=None):
-        t.fill("Version", v); t.fill("Range", r)
-        if other is not None:
-            t.fill("Compare against", other)
-        t.p.wait_for_timeout(100)
-        return t.notice()
-    ok = "Version satisfies this range."; no = "Version does not satisfy this range."
-    cases = [
-        ("1.8.4", "^1.4.0 || ~2.0.1", True), ("2.0.5", "^1.4.0 || ~2.0.1", True), ("2.1.0", "^1.4.0 || ~2.0.1", False),
-        ("1.3.9", "^1.4.0", False), ("2.0.0", "^1.4.0", False),
-        ("0.2.5", "^0.2.3", True), ("0.3.0", "^0.2.3", False), ("0.0.3", "^0.0.3", True), ("0.0.4", "^0.0.3", False),
-        ("1.2.9", "~1.2.3", True), ("1.3.0", "~1.2.3", False),
-        ("1.5.0", ">=1.2.0 <2.0.0", True), ("2.0.0", ">=1.2.0 <2.0.0", False), ("1.5.0", ">=1.2.0, <2.0.0", True),
-        ("1.5.0", "> 1.2.0", True), ("1.2.0", ">1.2.0", False), ("1.2.0", "<=1.2.0", True), ("1.2.0", "=1.2.0", True), ("1.2.0", "1.2.0", True),
-        ("1.2.5", "1.2.x", True), ("1.3.0", "1.2.x", False), ("5.0.0", "*", True), ("1.9.9", "1.x", True), ("2.0.0", "1.x", False),
-        ("1.2.3", "1.2", True), ("1.3.0", "1.2", False), ("1.2.3", "1", True), ("2.0.0", "1", False),
-        ("1.2.5", "1.2.3 - 2.3.4", True), ("2.3.5", "1.2.3 - 2.3.4", False), ("1.2.2", "1.2.3 - 2.3.4", False),
-        ("1.2.3", "^1.2", True), ("2.0.0", "^1", False), ("1.4.0", "~1", True), ("2.0.0", "~1", False),
-        ("v1.2.3", "^1.0.0", True), ("1.2.3+build.5", "1.2.3", True),
-        ("1.3.0-beta.1", "^1.2.0", False), ("1.3.0-beta.2", ">=1.3.0-beta.1", True), ("1.3.1-beta.2", ">=1.3.0-beta.1", False),
-        ("1.2.3", "^9.9.9", False), ("1.2.3", "garbage", False),
-    ]
-    bad = []
-    for v, r, exp in cases:
-        n = sv(v, r)
-        got = (ok in n) if (ok in n or no in n) else None
-        if got is not exp:
-            bad.append((v, r, exp, n))
-    check(f"semver: {len(cases)} range cases", not bad, str(bad[:6]))
-    n = sv("1.2", "^1.0.0"); check("semver: partial version -> error", "full major.minor.patch" in n, n)
-    for badv in ("01.2.3", "1.2.3-", "1.2.3-01", "abc", "", "1.2.3.4", "1.2.3-a..b"):
-        n = sv(badv, "^1.0.0"); check(f"semver: invalid {badv!r} -> error", "full major.minor.patch" in n, n)
-    def cmpresult(a, b):
-        sv(a, "*", b)
-        return t.f("Comparison").input_value() if False else t.p.locator("xpath=//label[./span[normalize-space()='Comparison']]//select/option").inner_text()
-    order = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0"]
-    bad = []
-    for i in range(len(order) - 1):
-        a, b = order[i], order[i + 1]
-        if cmpresult(a, b) != "First version is older" or cmpresult(b, a) != "First version is newer":
-            bad.append((a, b))
-    check("semver: spec precedence chain (semver.org 11)", not bad, str(bad))
-    check("semver: equal ignores build metadata", cmpresult("1.2.3+a", "1.2.3+b") == "Versions are equal")
-    check("semver: numeric not lexical", cmpresult("1.10.0", "1.9.0") == "First version is newer")
-    check("semver: uppercase < lowercase (ASCII)", cmpresult("1.0.0-B", "1.0.0-a") == "First version is older")
-    check("semver: invalid other", cmpresult("1.0.0", "nope") == "Enter two valid versions")
-
-    t.open("semver", "lockfile")
-    check("lock: default sample", t.stat("Installed packages") == "3" and t.stat("Names with multiple versions") == "1"
-          and t.stat("Lockfile version") == "3")
-    check("lock: duplicate text", t.f("Duplicate package versions").input_value() == "react: 18.3.1, 19.0.0", t.f("Duplicate package versions").input_value())
-    lock = {"lockfileVersion": 2, "packages": {"": {"name": "r"}, "node_modules/a": {"version": "1.0.0"}, "node_modules/b": {"version": "2.0.0", "dev": True, "optional": True},
-            "node_modules/x/node_modules/a": {"version": "1.0.0"}, "node_modules/@s/p": {"version": "3.0.0"}, "node_modules/alias": {"name": "real", "version": "1.1.1"}}}
-    t.fill("package-lock.json", json.dumps(lock))
-    check("lock: v2 counts", t.stat("Lockfile version") == "2" and t.stat("Installed packages") == "5" and t.stat("Names with multiple versions") == "0",
-          f"{t.stat('Installed packages')}/{t.stat('Names with multiple versions')}")
-    check("lock: no dup message", t.f("Duplicate package versions").input_value() == "No duplicate package versions.")
-    body = t.body()
-    check("lock: scoped name, alias name, dev+optional", "@s/p" in body and "real" in body and "dev, optional" in body)
-    t.fill("package-lock.json", "{not json")
-    check("lock: invalid JSON error", "JSON" in t.notice() or "Unexpected" in t.notice() or "Expected" in t.notice(), t.notice())
-    t.fill("package-lock.json", json.dumps({"lockfileVersion": 1, "dependencies": {}}))
-    check("lock: v1 rejected", "version 2 or 3" in t.notice(), t.notice())
-    t.fill("package-lock.json", "null")
-    check("lock: null rejected", "JSON object" in t.notice(), t.notice())
-    t.fill("package-lock.json", "[]")
-    check("lock: array rejected", t.notice() != "", t.notice())
-    t.fill("package-lock.json", json.dumps({"lockfileVersion": 3, "packages": {"node_modules/z": None}}))
-    check("lock: null entry gives a visible message", t.notice() != "" or t.stat("Installed packages") is not None, t.notice())
-    big = {"lockfileVersion": 3, "packages": {f"node_modules/p{i}": {"version": "1.0.0"} for i in range(600)}}
-    t.fill("package-lock.json", json.dumps(big))
-    check("lock: 600 packages counted, truncation note", t.stat("Installed packages") == "600" and "first 500 of 600" in t.body())
-
-
 # ================================================================ mcp-connect
 def test_mcp(t):
     t.open("mcp-connect")
@@ -726,23 +551,6 @@ def test_mcp(t):
 
 # ================================================================ http-headers
 def test_headers(t):
-    t.open("http-headers", "headers")
-    t.fill("Paste status line and headers (or headers only)",
-           "HTTP/2 404 Not Found\nContent-Type: text/html\nSet-Cookie: a=1\nset-cookie: b=2\nStrict-Transport-Security: max-age=1\nbroken line\nX-Test:  spaced  value ")
-    check("headers: status", t.stat("Status") == "404 Not Found", t.stat("Status"))
-    check("headers: unique names (case-folded)", t.stat("Header names") == "4", t.stat("Header names"))
-    check("headers: duplicates", t.stat("Duplicates") == "1")
-    body = t.body()
-    check("headers: dup cookies joined, trimmed value", "a=1 · b=2" in body and "spaced value" in body)
-    check("headers: malformed line reported", "Could not parse: broken line" in t.notice(), t.notice())
-    check("headers: missing list", "content-security-policy" in t.notice() and "referrer-policy" in t.notice() and "strict-transport-security," not in t.notice(), t.notice())
-    t.fill("Paste status line and headers (or headers only)",
-           "strict-transport-security: x\ncontent-security-policy: y\nx-content-type-options: nosniff\nreferrer-policy: no-referrer")
-    check("headers: all four present", "All four commonly reviewed" in t.notice() and t.stat("Status") == "Not supplied")
-    t.fill("Paste status line and headers (or headers only)", "")
-    check("headers: empty", t.stat("Header names") == "0")
-    t.fill("Paste status line and headers (or headers only)", "HTTP/1.1 200\nA: b: c")
-    check("headers: value with colon + status w/o reason", t.stat("Status") == "200" and "b: c" in t.body())
 
     t.open("http-headers", "csp")
     ta = lambda: t.f("Content-Security-Policy").input_value()
@@ -789,20 +597,43 @@ def test_headers(t):
     t.fill("Headers (one per line)", "")
     check("curl: no headers/body", "\n" not in cmd(), cmd())
 
-    t.open("http-headers", "multipart")
-    check("multipart: default 2 parts", t.stat("Parts") == "2")
-    check("multipart: part body", t.f("Text body", 1).input_value() == "hello world" and 'name="title"' in t.f("Headers", 0).input_value())
-    t.fill("Boundary (without the leading --)", "XX")
-    t.fill("Pasted multipart body", "--XX\r\n\r\njust body\r\n--XX--")
-    check("multipart: empty header block -> body is just `just body`", t.stat("Parts") == "1" and t.f("Text body", 0).input_value() == "just body" and t.f("Headers", 0).input_value() == "", repr(t.f("Text body", 0).input_value()))
-    t.fill("Boundary (without the leading --)", "nope")
-    check("multipart: boundary not found -> error", "not found" in t.notice(), t.notice())
-    t.fill("Boundary (without the leading --)", "")
-    check("multipart: empty boundary -> error", "Enter a boundary" in t.notice())
-    t.fill("Boundary (without the leading --)", "XX")
-    t.fill("Pasted multipart body", "preamble\n--XX\nContent-Disposition: form-data; name=\"f\"; filename=\"a.txt\"\nContent-Type: text/plain\n\nline1\n\nline3\n--XX\nContent-Disposition: form-data; name=\"e\"\n\n\n--XX--\nepilogue")
-    check("multipart: 2 parts, preamble/epilogue ignored", t.stat("Parts") == "2" and t.f("Text body", 0).input_value() == "line1\n\nline3" and t.f("Text body", 1).input_value() == "", t.stat("Parts"))
-    check("multipart: headers kept", 'filename="a.txt"' in t.f("Headers", 0).input_value())
+
+# ================================================================ website check
+def test_website_check(t):
+    """A real fetch of a local fixture site (tests/site_fixture_server.py): private mode may reach loopback."""
+    import socket
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    site = subprocess.Popen([sys.executable, str(Path(__file__).resolve().parents[1] / "site_fixture_server.py"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(0.8)
+        t.open("web", "check")
+        t.fill("Address", "http://127.0.0.1:%d/nope?x=1#frag" % port)
+        t.p.get_by_role("button", name="Check", exact=True).click()
+        t.p.get_by_role("list", name="Security headers").wait_for(timeout=60000)
+        check("website-check: a 404 page is still reported (status shown)", "404" in t.body(), t.body()[:200])
+        t.fill("Address", "http://127.0.0.1:%d/old" % port)
+        t.p.get_by_role("button", name="Check", exact=True).click()
+        t.p.get_by_text("Redirect chain").wait_for(timeout=60000)
+        body = t.body()
+        check("website-check: redirect chain 301 -> 200", "301" in body and "/old" in body, body[:300])
+        sec = t.p.get_by_role("list", name="Security headers").inner_text()
+        check("website-check: missing CSP flagged, nosniff OK, version disclosed", "Content-Security-Policy\nnot set" in sec.replace("\n\n", "\n") or ("Content-Security-Policy" in sec and "not set" in sec), sec[:400])
+        check("website-check: a Server header with a version is reported as disclosure", "Version disclosure" in sec and "server:" in sec, sec[-300:])
+        check("website-check: cookie value never reaches the page, missing SameSite is named", "SECRETVALUE" not in t.p.content() and "session=…" in sec and "SameSite" in sec, sec[-300:])
+        seo = t.p.get_by_role("list", name="SEO checks").inner_text()
+        check("website-check: SEO title found, description missing", "Fixture" in seo and "No meta description" in seo, seo[:400])
+        a11y = t.p.get_by_role("list", name="Accessibility checks").inner_text()
+        check("website-check: heading jump, two bad links and the unlabeled field are found",
+              "H1 to H3" in a11y and "2 links" in a11y and "#q" in a11y, a11y)
+        check("website-check: robots.txt and the sitemap it names (2 URLs)", "robots.txt" in body and "2 URLs" in body and "named in robots.txt" in body, body[-500:])
+        t.fill("Address", "http://")
+        t.p.get_by_role("button", name="Check", exact=True).click()
+        t.p.wait_for_timeout(1500)
+        check("website-check: an invalid address is a readable error", "not a valid address" in t.body(), t.body()[:300])
+    finally:
+        site.terminate()
 
 
 # ================================================================ url
@@ -885,27 +716,6 @@ def test_url(t):
     check("url: 390px host and path text complete", any(g["key"] == "Host" and g["text"] == longhost for g in geo) and any(g["key"] == "Path" and g["text"] == longpath for g in geo), str([g["text"] for g in geo][:4]))
     t.p.set_viewport_size({"width": 1280, "height": 900})
 
-    t.open("url", "idn")
-    asc = lambda: t.f("ASCII / Punycode hostname").input_value()
-    uni = lambda: t.f("Unicode display form").input_value()
-    def pc(host):
-        return ".".join(l if l.isascii() else "xn--" + l.encode("punycode").decode() for l in host.split("."))
-    bad = []
-    for host in ["bücher.example", "日本語.jp", "пример.испытание", "☃.net", "\U0001F4A9.la", "münich.example", "a-b.é.com", "中文.com"]:
-        t.fill("Hostname or URL", host)
-        if asc() != pc(host) or uni() != host:
-            bad.append((host, asc(), pc(host), uni()))
-    check("idn: unicode -> punycode -> unicode (8 hosts, python punycode codec)", not bad, str(bad[:3]))
-    t.fill("Hostname or URL", "xn--bcher-kva.example"); check("idn: decode xn--", uni() == "bücher.example" and asc() == "xn--bcher-kva.example")
-    t.fill("Hostname or URL", "https://User@XN--E1AFMKFD.xn--80akhbyknj4f:8080/p?q=://"); check("idn: URL with creds/port/upper", asc() == "xn--e1afmkfd.xn--80akhbyknj4f" and uni() == "пример.испытание", asc())
-    t.fill("Hostname or URL", "example.com/path?x=://y"); check("idn: '://' in query does not break", asc() == "example.com", asc())
-    t.fill("Hostname or URL", "EXAMPLE.com"); check("idn: lowercases", asc() == "example.com")
-    t.fill("Hostname or URL", "xn--zz!!"); check("idn: invalid punycode -> error", "Enter a valid hostname" in t.notice(), t.notice())
-    t.fill("Hostname or URL", "xn--99999999999999"); check("idn: out-of-range punycode -> error (no crash)", "Enter a valid hostname" in t.notice() or uni() != "", t.notice())
-    t.fill("Hostname or URL", "exa mple.com"); check("idn: space -> error", "Enter a valid hostname" in t.notice())
-    t.fill("Hostname or URL", ""); check("idn: empty -> error", "Enter a valid hostname" in t.notice())
-    t.fill("Hostname or URL", "[::1]"); check("idn: ipv6 literal", asc() == "[::1]")
-
 
 # ================================================================ robots-txt
 def test_robots(t):
@@ -980,14 +790,13 @@ def test_robots(t):
     sm(f'<urlset {NS}><url><loc>https://a.test/&amp;x?a=1&amp;b=2</loc></url></urlset>'); check("sitemap: entities decoded", "https://a.test/&x?a=1&b=2" in t.body())
 
 
-SECTIONS = [("ids", test_ids, "ids", ["ids", "snowflake"]),
+SECTIONS = [("ids", test_ids, "ids", ["ids"]),
             ("jwt", test_jwt, "jwt", ["jwt", "password"]),
-            ("epoch", test_epoch, "epoch", ["epoch", "format", "duration", "iso-week", "distribution"]),
-            ("stacktrace", test_stacktrace, "stacktrace", ["stacktrace", "ansi"]),
-            ("semver", test_semver, "semver", ["semver", "lockfile"]),
+            ("epoch", test_epoch, "epoch", ["epoch", "format", "duration"]),
             ("mcp", test_mcp, "mcp-connect", [None]),
-            ("http-headers", test_headers, "http-headers", ["headers", "csp", "curl", "multipart"]),
-            ("url", test_url, "url", ["url", "idn"]),
+            ("website-check", test_website_check, "web", ["check"]),
+            ("http-headers", test_headers, "http-headers", ["csp", "curl"]),
+            ("url", test_url, "url", ["url"]),
             ("robots", test_robots, "robots-txt", ["robots", "sitemap"])]
 
 

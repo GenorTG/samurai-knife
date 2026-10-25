@@ -41,7 +41,7 @@ PASSES = 0
 ADMIN_PW = "admin password 12"
 MAGIC = b"\0SKENC01"
 MARKER = "privacy-marker-" + secrets.token_hex(4)
-TOOL = "/tools/reading-grade?tab=words"
+TOOL = "/tools/markdown"
 # A tiny valid JPEG (SOI, APP0 marker with the plaintext marker as payload, EOI): the photo store checks the magic bytes.
 JPEG = b"\xff\xd8\xff\xe0" + MARKER.encode() + b"\xff\xd9"
 ACCOUNT_DIRS = ("cv", "docs", "conversations", "learn", "usage", "workspace")
@@ -86,9 +86,8 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
           textarea(page_a).input_value() != text and offer.get_by_role("button", name="Restore saved draft").count() == 1, textarea(page_a).input_value()[:80])
     offer.get_by_role("button", name="Restore saved draft").click()
     check(f"[{engine}] Restore saved draft brings alice's text back after a reload", textarea(page_a).input_value() == text, textarea(page_a).input_value()[:120])
-    words = page_a.locator("main table tbody tr").filter(has_text="words")
-    check(f"[{engine}] the restored draft drives the tool (its word table counts it)",
-          words.count() == 1 and words.first.locator("td").nth(1).inner_text().strip() == "2", page_a.locator("main table").inner_text()[:200])
+    rendered = page_a.locator("main div.min-h-64").first.inner_text()
+    check(f"[{engine}] the restored draft drives the tool (its preview renders it)", f"{engine} draft words" in rendered, rendered[:200])
     ctx_a.close()
 
     ctx_a2, page_a2 = new_context(browser, base, ip_a)

@@ -31,7 +31,7 @@ BASE = sys.argv[1].rstrip("/")
 MOCK = sys.argv[2].rstrip("/")
 DATA = os.environ.get("KNIFE_DATA_DIR", "")
 PASSWORD = "prod smoke password 1"
-TOOLS = ["/", "/tools/qr", "/tools/text", "/tools/json", "/tools/sql-lab", "/tools/nosql-lab", "/tools/pdf", "/tools/image-resize", "/tools/csv-profile", "/tools/regex", "/tools/markdown", "/tools/file-compressor", "/tools/cv-studio", "/tools/db-course", "/tools/office", "/tools/sidecars", "/account"]
+TOOLS = ["/", "/tools/qr", "/tools/text", "/tools/json", "/tools/sql-lab", "/tools/pdf", "/tools/image-resize", "/tools/csv-profile", "/tools/regex", "/tools/markdown", "/tools/file-compressor", "/tools/cv-studio", "/tools/db-course", "/tools/office", "/tools/sidecars", "/account"]
 FAILS: list[str] = []
 
 

@@ -1,9 +1,0 @@
-"use client";
-import { useState } from "react";
-import { Button, Field, Notice, Panel, Stat, StatGrid, TextArea } from "@/components/ui";
-import { auditFormLabels } from "@/lib/html-audit";
-export default function FormLabelAudit() {
-  const [source, setSource] = useState(`<form><label for="email">Email</label><input id="email" type="email"><input type="search" placeholder="Search"><textarea aria-label="Notes"></textarea></form>`), [controls, setControls] = useState<{ index: number; control: string; type: string; id: string; issue: string }[]>([]), [error, setError] = useState("");
-  const audit = () => { try { setControls(auditFormLabels(source)); setError(""); } catch { setError("Could not parse this HTML fragment."); } };
-  return <Panel title="HTML form-label auditor"><div className="space-y-3"><Field label="HTML fragment (not executed)"><TextArea rows={10} value={source} onChange={(e) => setSource(e.target.value)} /></Field><Button variant="primary" onClick={audit}>Audit form controls</Button>{error && <Notice tone="error">{error}</Notice>}{controls.length > 0 && <><StatGrid><Stat label="Controls" value={controls.length} /><Stat label="Unlabeled" value={controls.filter((item) => item.issue).length} /></StatGrid><div className="space-y-2">{controls.map((item) => <div key={item.index} className="flex justify-between gap-3 rounded-lg border border-line p-3 text-sm"><span>{item.control}{item.type && ` · ${item.type}`}{item.id && ` · #${item.id}`}</span><span className={item.issue ? "text-danger" : "text-good"}>{item.issue || "Named"}</span></div>)}</div></>}{controls.length === 0 && !error && <Notice>No form controls found.</Notice>}<p className="text-xs text-faint">Accepts explicit and wrapping labels, aria-label, and aria-labelledby. Placeholder text alone is not treated as an accessible name.</p></div></Panel>;
-}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offload e2e for the JSON/YAML text tools: json (format), yaml-json, json?tab=ndjson|path|diagram.
+"""Offload e2e for the JSON/YAML text tools: json (format), yaml-json, json?tab=path|diagram.
 
 Usage: python3 tests/functional/offload_json_e2e.py <base_url> [--big-dir DIR] [--only substring]
 
@@ -173,7 +173,7 @@ def budget(what, measured, floor):
 
 
 def main():
-    big_json, big_ndjson = big_files()
+    big_json, _ = big_files()
     big_rows = json.loads(big_json)
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--js-flags=--max-old-space-size=4096"])
@@ -405,73 +405,6 @@ def main():
             ta().fill("a: 1")
             page.get_by_text("Valid YAML document.").wait_for()
             eq(json.loads(yj_out()), {"a": 1}, "output after cancel")
-
-        # ------------------------------------------------------------------ json?tab=ndjson
-        def stat(pg, label):
-            return int(pg.locator("main").inner_text().split(label.upper() + "\n")[1].split("\n")[0])
-
-        @check("ndjson/small: valid/invalid counts and error line numbers equal the Python oracle")
-        def _():
-            go(page, "json", "ndjson")
-            text = '{"a":1}\n\n[1,2\n"ok"\n{bad}\r\n  \n{"z":null}\n'
-            valid, bad_lines = 0, []
-            for i, line in enumerate(text.split("\n")):
-                line = line.rstrip("\r")
-                if not line.strip():
-                    continue
-                try:
-                    json.loads(line)
-                    valid += 1
-                except ValueError:
-                    bad_lines.append(i + 1)
-            ta().fill(text)
-            page.get_by_text("Line 3:").first.wait_for()
-            eq(stat(page, "Valid records"), valid, "valid")
-            eq(stat(page, "Invalid records"), len(bad_lines), "invalid")
-            shown = page.locator("main p", has_text="Line ").first.inner_text()
-            eq([int(x.split(":")[0]) for x in (l[5:] for l in shown.split("\n") if l.startswith("Line "))], bad_lines, "error line numbers")
-            ta().fill('{"a":1}\n')
-            page.get_by_text("Every non-empty line is valid JSON.").wait_for()
-
-        nd_valid_done = "() => document.querySelector('main')?.innerText.includes('Every non-empty line is valid JSON.')"
-
-        @check("ndjson/big: 5 MB valid stream (45k records) validated off-thread, within budget, counts right")
-        def _():
-            page = assert_budget("ndjson 5 MB", "json", "ndjson", big_ndjson, nd_valid_done)
-            eq(stat(page, "Valid records"), len(big_rows), "valid")
-            eq(stat(page, "Invalid records"), 0, "invalid")
-
-        @check("ndjson/big: 15k bad lines: budget, display capped at 200 lines, Copy errors has all of them")
-        def _():
-            lines = big_ndjson.split("\n")
-            bad_idx = list(range(0, len(lines), 3))
-            for i in bad_idx:
-                lines[i] = lines[i][:-3] + "x"
-            text = "\n".join(lines)
-            page = assert_budget("ndjson 15k bad lines", "json", "ndjson", text,
-                                 "() => document.querySelector('main')?.innerText.includes('Showing the first 200 of')")
-            eq(stat(page, "Invalid records"), len(bad_idx), "invalid")
-            shown = [l for l in page.locator("main p", has_text="Line ").first.inner_text().split("\n") if l.startswith("Line ")]
-            eq(len(shown), 200, "lines on screen")
-            eq(shown[0].split(":")[0], "Line 1", "first error line")
-            page.get_by_role("button", name="Copy errors").click()
-            copied = page.evaluate("() => navigator.clipboard.readText()").split("\n")
-            eq([int(l.split(":")[0][5:]) for l in copied], [i + 1 for i in bad_idx], "copied error line numbers")
-
-        @check("ndjson/cancel: Cancel stops a long validation, page usable afterwards")
-        def _():
-            go(page, "json", "ndjson")
-            delay_workers(page, 12000)
-            setval(page, ta(), "\n".join([big_ndjson] * 6))  # ~30 MB: long enough to cancel
-            cancel = page.get_by_role("button", name="Cancel validation")
-            cancel.wait_for(timeout=30000)
-            assert page.locator("[role=status]").filter(has_text="Validating records").count() == 1
-            cancel.click()
-            page.get_by_text("Validation cancelled").wait_for()
-            delay_workers(page, 0)
-            ta().fill('{"ok":true}\n')
-            page.get_by_text("Every non-empty line is valid JSON.").wait_for()
-            eq(stat(page, "Valid records"), 1, "valid after cancel")
 
         # ------------------------------------------------------------------ json?tab=path
         def matches_on(pg):

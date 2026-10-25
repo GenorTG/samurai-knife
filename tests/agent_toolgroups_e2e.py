@@ -106,7 +106,7 @@ with sync_playwright() as pw:
           "never ask the user for API keys, passwords or tokens" in system and "never touch password fields" in system, system[-500:])
 
     # 2) the SQL lab preloads its group; the size difference is the saving
-    k2 = open_panel(page, "/tools/sql-lab?tab=build")
+    k2 = open_panel(page, "/tools/sql-lab?tab=format")
     page.locator("button[aria-label='Clear conversation']").click()
     foot_sql = run(page, k2, "hello")
     tools_sql = last_tools()
@@ -114,12 +114,6 @@ with sync_playwright() as pw:
     check("sql-lab: nosql tools still not sent", not any(t.startswith(("knife_mongo_", "knife_chroma_", "knife_redis_")) for t in tools_sql), tools_sql)
     p_sql = foot_sql["usage"]["promptTokens"]
     check("the preloaded request is much larger (>= 2000 prompt tokens) than the ordinary one", p_sql - p_json >= 2000, (p_json, p_sql))
-
-    k3 = open_panel(page, "/tools/nosql-lab?tab=redis")
-    page.locator("button[aria-label='Clear conversation']").click()
-    run(page, k3, "hello")
-    tools_no = last_tools()
-    check("nosql-lab: nosql tools preloaded, sql tools not", "knife_mongo_compile" in tools_no and "knife_redis_explain" in tools_no and "knife_sql_compile" not in tools_no, [t for t in tools_no if t.startswith("knife_")])
 
     # 3) load_tools on an ordinary page, then the tool really runs, and the group stays loaded next turn
     k = open_panel(page, "/tools/json")

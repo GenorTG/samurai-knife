@@ -59,7 +59,7 @@ matching `knife_*` MCP tools can stay for agents even when the page goes.
 | Dates: ISO week | Dates: Date format | Show the ISO week with every date. |
 | Dates: Hour overlap | Dates: Meeting planner | The overlap is the planner's main view. |
 | Tables and CSV: TSV to Markdown | Tables and CSV: Convert | "Markdown table" as one more output format. |
-| Image inspector (Compare only left) | Image crop and layout or Image export | One "Images" suite fewer: Compare becomes a tab. |
+| Image inspector (Compare only left) | – | Done as: the tool is now "Image compare", one page without tabs. |
 
 ## Replace (1)
 
@@ -83,3 +83,10 @@ Workflows; Database course; Services; MCP connect.
 33 tools / ~140 tabs → 26 tools / ~95 tabs, and every page left either works on real input or builds something you take
 away. Removal is mechanical per item: registry entry or tab, component, its tests and docs, the nav entry, a
 `SLUG_ALIASES` redirect for a removed tool (to its closest neighbour, or the home page with a note).
+
+
+## Done (2026-10-25)
+
+Applied as listed, in v0.9.1: the removals, the merges (each merged tab renders both former tools on one page, with
+unique field labels), the Website check (`src/tools/WebsiteCheck.tsx`, `POST /api/web/check`), and redirects for every
+removed slug and tab alias (tests/nav.test.mjs).

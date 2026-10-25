@@ -7,7 +7,6 @@ No model/network use. Needs python `playwright` (system python3) and the venv py
 
 Usage: python3 tests/functional/docs_e2e.py [base_url]
 """
-import gzip
 import json
 import os
 import re
@@ -17,7 +16,6 @@ import sys
 import tempfile
 import time
 import zipfile
-import zlib
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -582,45 +580,6 @@ print(t.count("h"), len(xo), t.count("l"))
     c.ctx.close()
 
 
-# ================================================================ small tools
-def file_compressor(browser):
-    run_section("file-compressor")
-    c = Ctx(browser)
-    pg = c.page()
-    goto(pg, "file-compressor")
-    data = (b"The quick brown fox. " * 500) + bytes(range(256))
-    src = TMP / "sample.bin"
-    src.write_bytes(data)
-
-    def process(file, op, algo, label):
-        pg.locator("input[type=file]").set_input_files(str(file))
-        pg.get_by_label("Operation").select_option(op)
-        pg.get_by_label("Stream format").select_option(algo)
-        pg.get_by_role("button", name=label, exact=True).click()
-        with pg.expect_download(timeout=30000) as d:
-            pg.get_by_role("button", name=re.compile(r"^Download ")).click()
-        return save_dl(d.value)
-
-    out = process(src, "compress", "gzip", "Compress file")
-    check("compressor: gzip output name + roundtrip", out.name == "sample.bin.gz" and gzip.decompress(out.read_bytes()) == data, out.name)
-    check("compressor: size shown smaller", "smaller" in pg.inner_text("body"))
-    out2 = process(out, "decompress", "gzip", "Decompress file")
-    check("compressor: gunzip via UI restores original", out2.name == "sample.bin" and out2.read_bytes() == data, out2.name)
-    out3 = process(src, "compress", "deflate", "Compress file")
-    check("compressor: deflate = zlib stream", out3.name == "sample.bin.deflate" and zlib.decompress(out3.read_bytes()) == data)
-    out4 = process(out3, "decompress", "deflate", "Decompress file")
-    check("compressor: inflate via UI restores original", out4.read_bytes() == data and out4.name == "sample.bin")
-    # wrong algorithm -> clear error
-    pg.locator("input[type=file]").set_input_files(str(src))
-    pg.get_by_label("Operation").select_option("decompress")
-    pg.get_by_label("Stream format").select_option("gzip")
-    pg.get_by_role("button", name="Decompress file").click()
-    pg.locator("p[class*=text-danger]").first.wait_for(timeout=10000)
-    check("compressor: decompressing non-gzip shows error", True, pg.locator("p[class*=text-danger]").first.inner_text())
-    check("compressor: no console errors", not c.errors, "; ".join(c.errors[:3]))
-    c.ctx.close()
-
-
 def characters(browser):
     run_section("characters")
     c = Ctx(browser)
@@ -678,84 +637,6 @@ def characters(browser):
     b = enc("bin.dat", bytes([0, 1, 2, 3, 255, 0, 0]))
     check("encoding: binary flagged", "Binary" in b or "Not valid" in b, b[-200:])
     check("encoding: no console errors", not c.errors, "; ".join(c.errors[:3]))
-
-    # hex tab
-    goto(pg, "characters", "hex")
-    f = TMP / "h.bin"
-    f.write_bytes(bytes(range(0, 40)) + b"Hello, hex!")
-    pg.locator("input[type=file]").set_input_files(str(f))
-    pg.wait_for_function("document.querySelector('pre') && document.querySelector('pre').innerText.includes('00000020')")
-    out = pg.locator("pre").first.inner_text()
-    lines = out.split("\n")
-    check("hex: row layout/offset/hex/ascii",
-          lines[0].startswith("00000000  00 01 02 03") and "|................|" in lines[0] and lines[2].startswith("00000020  20 21 22") and "|" in lines[3] and "Hello, h" in lines[2] and "ex!" in lines[3] and len(lines) == 4, lines[0])
-    check("hex: file name shown", "h.bin" in pg.inner_text("body"))
-    big = TMP / "big.bin"
-    big.write_bytes(b"\0" * (1024 * 1024 + 1))
-    pg.locator("input[type=file]").set_input_files(str(big))
-    pg.get_by_text("exceeds the 1 MiB").wait_for(timeout=5000)
-    check("hex: oversize rejected", True)
-    check("characters suite: no console errors", not c.errors, "; ".join(c.errors[:3]))
-    c.ctx.close()
-
-
-def batch_rename(browser):
-    run_section("batch-rename")
-    c = Ctx(browser)
-    pg = c.page()
-    goto(pg, "batch-rename", "rename")
-    ta = pg.get_by_label("File names (one per line)")
-    ta.fill("Photo 01.JPG\nPhoto 02.JPG\nnotes.tar.gz\nnoext")
-    pg.get_by_label("Find text").fill("Photo ")
-    pg.get_by_label("Replace with").fill("img_")
-    pg.get_by_label("Prefix").fill("trip-")
-    pg.get_by_label("Suffix (before extension)").fill("-v2")
-    rows = pg.locator("div.max-h-64 > div").all_inner_texts()
-    flat = [r.replace("\n", "|") for r in rows]
-    check("rename: replace+prefix+suffix preserve extension",
-          flat == ["Photo 01.JPG|trip-img_01-v2.JPG", "Photo 02.JPG|trip-img_02-v2.JPG", "notes.tar.gz|trip-notes.tar-v2.gz", "noext|trip-noext-v2"], str(flat))
-    # collision
-    ta.fill("a.txt\nA.txt")
-    pg.get_by_label("Find text").fill("")
-    pg.get_by_label("Prefix").fill("")
-    pg.get_by_label("Suffix (before extension)").fill("")
-    check("rename: collision detected case-insensitively", pg.get_by_text("Multiple inputs produce the same output name").count() == 1)
-    check("rename: collision count", pg.locator("div.sk-label", has_text="Collisions").locator("xpath=following-sibling::div").inner_text() == "2")
-    check("rename: overflow-free at default", overflow(pg))
-
-    goto(pg, "batch-rename", "normalize")
-    ta = pg.get_by_label("Names (one per line)")
-    ta.fill("  Résumé final?.pdf\nCON.txt\nimage   copy.png\nfile.\nＦＵＬＬ.txt\n..")
-    rows = [r.replace("\n", "|") for r in pg.locator("div.max-h-64 > div").all_inner_texts()]
-    check("normalize: illegal chars, reserved, spaces, fullwidth, trailing dot, dots-only",
-          [r.split("|")[1] for r in rows] == ["Résumé final_.pdf", "_CON.txt", "image copy.png", "file", "FULL.txt", "_"], str(rows))
-    got = copied(pg, lambda: pg.get_by_role("button", name="Copy normalized names").click())
-    check("normalize: copy output", got == "Résumé final_.pdf\n_CON.txt\nimage copy.png\nfile\nFULL.txt\n_", repr(got))
-    ta.fill("a:b.txt\na?b.txt")
-    check("normalize: collision notice", pg.get_by_text("normalize to the same output").count() == 1)
-
-    goto(pg, "batch-rename", "manifest")
-    check("manifest: tab renders with controls", pg.locator("textarea, input").count() > 0)
-    manifest_tests(pg)
-    check("batch-rename: no console errors", not c.errors, "; ".join(c.errors[:3]))
-    c.ctx.close()
-
-
-def manifest_tests(pg):
-    taxt = pg.locator("textarea")
-    n = taxt.count()
-    body = pg.inner_text("body")
-    # discover the manifest format from the component text, fill the two sides
-    if n >= 2:
-        h1 = "a" * 64
-        h2 = "b" * 64
-        taxt.nth(0).fill(f"same.txt\t{h1}\ngone.txt\t{h1}\nedit.txt\t{h1}")
-        taxt.nth(1).fill(f"same.txt\t{h1}\nedit.txt\t{h2}\nadded.txt\t{h2}")
-        pg.wait_for_timeout(500)
-        check("manifest: added/removed/changed detected",
-              "ADDED added.txt" in pg.locator("textarea").nth(2).input_value() and "REMOVED gone.txt" in pg.locator("textarea").nth(2).input_value() and "CHANGED edit.txt" in pg.locator("textarea").nth(2).input_value() and "same.txt" not in pg.locator("textarea").nth(2).input_value(), pg.locator("textarea").nth(2).input_value())
-    else:
-        check("manifest: two input areas", False, body[:200])
 
 
 def placeholder(browser):
@@ -849,48 +730,6 @@ def markdown(browser):
     pg.get_by_role("button", name="Sample").click()
     check("markdown: Sample restores", md.input_value().startswith("# Samurai notes"))
 
-    # organize
-    goto(pg, "markdown", "organize")
-    src = pg.locator("textarea").first
-    outta = pg.locator("textarea").nth(1)
-    src.fill("Intro\n### Deep\ntext\n* one\n+ two\n\n\n\n1. a\n1. b\n\n```\n* keep\n1. keep\n```\n#### Deeper #\n## Contents\n- old\n## Deep\n")
-    pg.wait_for_timeout(300)
-    o = outta.input_value()
-    lines = o.split("\n")
-    check("organize: heading jump repaired (### -> ##)", "# Deep" in lines and "## Deeper" in lines, o)
-    check("organize: list markers normalised, ordered renumbered", "- one" in lines and "- two" in lines and "1. a" in lines and "2. b" in lines, o)
-    check("organize: fenced code untouched", "* keep" in lines and "1. keep" in lines, o)
-    check("organize: blank lines collapsed", "\n\n\n" not in o)
-    check("organize: TOC generated, old Contents replaced, duplicate slug",
-          o.count("## Contents") == 1 and "- old" not in o and "[Deep](#deep)" in o and "[Deep](#deep-1)" in o, o)
-    pg.get_by_label("Insert or regenerate a Contents section after the title").uncheck()
-    o2 = outta.input_value()
-    # The kept Contents heading is a top-level heading now: `##` after `###`/`####` has no shallower ancestor to hang under.
-    check("organize: TOC off omits contents", "[Deep](#deep)" not in o2 and "\n# Contents\n" in o2, o2)
-    src.fill("# T\n\n## A\n\ntext\n")
-    pg.get_by_label("Insert or regenerate a Contents section after the title").check()
-    o3 = outta.input_value()
-    check("organize: TOC placed after title", o3.startswith("# T\n\n## Contents\n\n- [T](#t)") or o3.startswith("# T\n\n## Contents\n\n"), o3)
-    check("organize: TOC lists sections", "[A](#a)" in o3, o3)
-    src.fill("# T\n\nImportant body text.\n\n- keep me")
-    first = outta.input_value()
-    src.fill(first)
-    check("organize: re-running on its own output keeps the body and changes nothing",
-          "Important body text." in first and "- keep me" in first and outta.input_value() == first, first + " || " + outta.input_value())
-    src.fill("# A\n### X\n### Y")
-    check("organize: sibling headings stay siblings", "\n## X\n" in outta.input_value() and "\n## Y\n" in outta.input_value(), outta.input_value())
-    src.fill("# T\n\n## A\n\ntext\n")
-    got = copied(pg, lambda: pg.get_by_role("button", name="Copy", exact=True).click())
-    check("organize: Copy = output", got == outta.input_value())
-    with pg.expect_download() as d:
-        pg.get_by_role("button", name="Save .md").click()
-    check("organize: Save organized.md", save_dl(d.value).read_text() == outta.input_value())
-    pg.get_by_role("button", name="Sample").click()
-    check("organize: Sample loads & stats", "Project notes" in src.input_value() and int(pg.locator("div.sk-label", has_text="List items").locator("xpath=following-sibling::div").inner_text()) >= 4)
-    errs = [e for e in c.errors if "ERR_NAME_NOT_RESOLVED" not in e and "404" not in e]  # preview loads the test image URL e.com
-    check("markdown: no console errors", not errs, "; ".join(errs[:3]))
-    c.ctx.close()
-
 
 def diff(browser):
     run_section("diff")
@@ -971,7 +810,7 @@ def main():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            for fn in (pdf_tools, pdf_editor, file_compressor, characters, batch_rename, placeholder, markdown, diff, mobile):
+            for fn in (pdf_tools, pdf_editor, characters, placeholder, markdown, diff, mobile):
                 try:
                     fn(browser)
                 except Exception as exc:  # noqa: BLE001

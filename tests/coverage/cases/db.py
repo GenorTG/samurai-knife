@@ -1,9 +1,8 @@
-"""db group: sql-lab (format, convert, validate, build, schema, run, connect) and nosql-lab (mongo, chroma, redis).
+"""db group: sql-lab (format, convert, validate, schema, run, connect).
 
 Expected values are written by hand here (SQL contract, urllib.parse, plain arithmetic over the inline CSV); nothing is read
 back from the app. Code-generation oracles are tolerant of whitespace but strict on the substantive tokens.
 """
-import json
 import re
 from urllib.parse import quote
 
@@ -22,11 +21,6 @@ def _hay(c: Ctx) -> str:
     """The agent's reply plus the page. The deterministic knife_* tools (what the system prompt prefers for these jobs) return the result to the
     agent without touching the page, so a prompt that only asks for the code "in your reply" must be judged on the reply."""
     return c.answer + "\n" + c.page_only()
-
-
-def _ws(pattern: str) -> str:
-    """Make every space in a literal pattern match any whitespace run (tolerant to the generator's wrapping)."""
-    return r"\s*".join(re.escape(part) for part in pattern.split())
 
 
 # ---------------------------------------------------------------- sql-lab:format
@@ -82,36 +76,6 @@ def _validate(c: Ctx):
 
 
 # ---------------------------------------------------------------- sql-lab:build
-def _spec_fields(c: Ctx) -> list[dict]:
-    out = []
-    for v in c.values():
-        s = v.strip()
-        if not (s.startswith("{") and s.endswith("}")):
-            continue
-        try:
-            d = json.loads(s)
-        except ValueError:
-            continue
-        if isinstance(d, dict) and d.get("op") == "select":
-            out.append(d)
-    return out
-
-
-def _build(c: Ctx):
-    p = c.page_only()
-    specs = _spec_fields(c)
-    froms = [s.get("from") for s in specs]
-    from_ok = any((f == "shipments") or (isinstance(f, dict) and f.get("name") == "shipments") for f in froms)
-    return first_error(
-        None if specs else "no JSON query description with op=select is on the page",
-        None if from_ok else f"spec is not selecting from shipments: {froms[:2]}",
-        matches(p, r"FROM\s+shipments"),
-        matches(p, r"IN\s*\(\s*'late'\s*,\s*'lost'\s*\)|IN\s*\(\s*'lost'\s*,\s*'late'\s*\)"),
-        matches(p, r"weight_kg\s*>\s*12\.5"),
-        matches(p, r"ORDER BY\s+(?:\w+\.)?shipped_at\s+DESC"),
-        matches(p, r"LIMIT\s+25"),
-        matches(c.answer, r"LIMIT\s+25"),
-    )
 
 
 # ---------------------------------------------------------------- sql-lab:schema
@@ -185,46 +149,12 @@ def _connect(c: Ctx):
 
 
 # ---------------------------------------------------------------- nosql-lab:mongo
-def _mongo(c: Ctx):
-    p = _hay(c)
-    return first_error(
-        matches(p, _ws("db.invoices.find(")),
-        matches(p, r"amount:\s*\{\s*\$gte:\s*250\s*\}"),
-        matches(p, r"status:\s*\"overdue\""),
-        matches(p, r"\.sort\(\s*\{\s*dueDate:\s*1\s*\}\s*\)"),
-        matches(p, r"\.limit\(\s*12\s*\)"),
-        matches(p, r"customer:\s*1"),
-        matches(p, r"amount:\s*1"),
-        matches(c.answer, r"db\.invoices\.find\("),
-    )
 
 
 # ---------------------------------------------------------------- nosql-lab:chroma
-def _chroma(c: Ctx):
-    p = _hay(c)
-    return first_error(
-        matches(p, _ws('PersistentClient(path="./vectors")')),
-        matches(p, _ws('get_collection(name="recipes")')),
-        matches(p, _ws('query_texts=["spicy lentil soup"]')),
-        matches(p, r"n_results\s*=\s*7"),
-        # both spellings are the same Chroma filter: {"cuisine": "indian"} and {"cuisine": {"$eq": "indian"}}
-        matches(p, r'where\s*=\s*\{\s*"cuisine"\s*:\s*(?:"indian"|\{\s*"\$eq"\s*:\s*"indian"\s*\})\s*\}'),
-        matches(c.answer, r"n_results\s*=\s*7"),
-    )
 
 
 # ---------------------------------------------------------------- nosql-lab:redis
-def _redis(c: Ctx):
-    p = _hay(c)
-    return first_error(
-        matches(p, r"\bSET\s+session:9f3\s+tok-4471\s+EX\s+900\b"),
-        matches(p, r"\bINCR\s+visits:home\b"),
-        matches(p, r"\bTTL\s+session:9f3\b"),
-        matches(p, _ws('.set("session:9f3", "tok-4471", ex=900)')),
-        matches(p, r"\.incr\w*\(\s*\"visits:home\""),
-        matches(p, _ws('.ttl("session:9f3")')),
-        matches(c.answer, r"ex\s*=\s*900"),
-    )
 
 
 CASES = [
@@ -236,11 +166,6 @@ CASES = [
     Case("sql-lab", "validate",
          "Check whether this SQL script is syntactically valid. If something is wrong, tell me the line number of the broken statement and what the problem is:\n\n" + _VAL_SQL,
          _validate),
-    Case("sql-lab", "build",
-         "Build a PostgreSQL query for me from a structured JSON description of the query (not hand-written SQL), so I can tweak it afterwards: "
-         "select id, tracking_no and weight_kg from the table shipments where status is one of 'late' or 'lost' AND weight_kg is greater than 12.5, "
-         "newest shipped_at first, at most 25 rows. Leave the description and the generated SQL set up on screen, and paste the generated SQL in your reply.",
-         _build),
     Case("sql-lab", "schema",
          "Here is the DDL of a small database. Parse it into a schema overview and tell me: how many foreign keys are there in total, and which table has the most columns (and how many)?\n\n" + _DDL,
          _schema),
@@ -253,16 +178,4 @@ CASES = [
          "I need a PostgreSQL connection URL for host db-eu.example.net, port 6432, user report_ro, password p@ss:w/rd#1 and database warehouse, "
          "with the query parameter sslmode=require. The password has to be percent-encoded correctly. Reveal the full URL (with the password) and paste it in your reply.",
          _connect),
-    Case("nosql-lab", "mongo",
-         "Write me the mongosh command for the MongoDB collection invoices: find documents where amount is at least 250 and status equals \"overdue\", "
-         "return only the fields customer and amount (no _id), sorted by dueDate ascending, limited to 12 documents. Paste the mongosh code in your reply.",
-         _mongo),
-    Case("nosql-lab", "chroma",
-         "Give me Python code for Chroma (chromadb) using a persistent client stored at ./vectors: open the existing collection recipes and query it for the 7 nearest "
-         "documents to the text \"spicy lentil soup\", only among records whose metadata cuisine is \"indian\". Paste the Python in your reply.",
-         _chroma),
-    Case("nosql-lab", "redis",
-         "I need redis-py code for three Redis commands in a row: set the key session:9f3 to the value tok-4471 expiring after 900 seconds, "
-         "increment the counter visits:home by one, then read the remaining TTL of session:9f3. Also show me the equivalent redis-cli lines. Paste the redis-py code in your reply.",
-         _redis),
 ]

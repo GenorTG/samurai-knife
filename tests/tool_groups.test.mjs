@@ -22,7 +22,6 @@ test("on an ordinary page only the core tools are sent", () => {
 
 test("lab pages preload their own group (also with a tab query-less path and trailing slash)", () => {
   assert.deepEqual([...initialGroups("/tools/sql-lab", [])], ["sql"]);
-  assert.deepEqual([...initialGroups("/tools/nosql-lab/", [])], ["nosql"]);
   assert.deepEqual([...initialGroups("/tools/cv-studio", [])], ["cv", "site"], "the CV studio has a Website tab");
   assert.deepEqual([...initialGroups("/tools/site-studio", [])], ["site"]);
   assert.equal(groupOf("knife_cv_patch")?.id, "cv");

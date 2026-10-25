@@ -319,11 +319,11 @@ with sync_playwright() as pw:
     wait_running(page)
     send(page, "queued-before-nav")
     page.wait_for_selector("[data-agent-queued='1']")
-    link = page.locator("a[href='/tools/semver']")
+    link = page.locator("a[href='/tools/regex']")
     check("a sidebar/launcher link to navigate with exists", link.count() > 0)
     if link.count():
         link.first.click()
-        page.wait_for_url("**/tools/semver")
+        page.wait_for_url("**/tools/regex")
     settle(page, 5)
     check("queue survived in-app navigation and drained", user_msgs(page)[-1] == "queued-before-nav", user_msgs(page)[-2:])
     ctx.close()
@@ -331,7 +331,7 @@ with sync_playwright() as pw:
     # ------------------------------------------------------------------ 6. waits and approvals in the state machine
     print("# state machine: wait_for_user answers, approval queues")
     ctx = new_ctx(browser, mode="standard")
-    page = open_panel(ctx, "/tools/file-compressor")  # open_tool to the page already open needs no approval
+    page = open_panel(ctx, "/tools/ids")  # open_tool to the page already open needs no approval
     mock("/__log", "DELETE")
     send(page, 'CALL:wait_for_user:{"message":"Pick a file"}')
     page.wait_for_selector("[data-agent-wait]")

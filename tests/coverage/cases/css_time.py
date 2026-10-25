@@ -1,4 +1,4 @@
-"""css_time group: box-shadow, css-grid, reading-grade, heading-audit, css-var-resolver, meeting-timezones."""
+"""css_time group: box-shadow, css-grid (clamp, type scale) and the dates suite (meeting planner, workdays, recurrence, cron)."""
 import re
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -83,7 +83,6 @@ _SENT = ["Rain fell on the town.",
          "and then decided that the remaining budget should fund the community library renovation project.",
          "Did the rain ever stop?",
          "Nobody could say for sure, not yet."]
-_SENT_TEXT = " ".join(_SENT)
 _SENT_WORDS = [len(re.findall(r"[A-Za-z]+", s)) for s in _SENT]
 _SENT_AVG = sum(_SENT_WORDS) / len(_SENT_WORDS)
 
@@ -100,7 +99,6 @@ def o_sentences(c: Ctx):
     )
 
 
-_PUNCT = "We met on Monday ,then left.The plan failed!!!  Nobody knew why ?"
 # Four named kinds only (the comma without a following space is deliberately NOT one of them, so the count is unambiguous):
 # whitespace before , . ! ? ; : -> " ," and " ?" = 2; repeated spaces = 1 ("!!!  N"); a . ! ? glued to the next letter = 1 ("left.The");
 # a run of 3+ ! or ? = 1 ("!!!"). Total 5.
@@ -118,9 +116,6 @@ def o_punct(c: Ctx):
     )
 
 
-_WORDS = "Rain rain go away, come again another day. The rain is gone, so the children play."
-
-
 def o_words(c: Ctx):
     h = c.haystack()
     return first_error(
@@ -131,19 +126,6 @@ def o_words(c: Ctx):
 
 
 # ---------------------------------------------------------------- heading-audit
-_HEADINGS = ("<h1>Welcome</h1><h2>Pricing</h2><h4>Enterprise</h4><h2>FAQ</h2><h1>Second Title</h1>")
-_LINKS = ('<main><a href="/pricing">Click here</a><a href="/docs">Read more</a>'
-          '<a href="/team"><img src="t.png" alt="Meet the team"></a><a href="/void"></a>'
-          '<a href="/report">Annual report</a><a href="/c" aria-label="Contact sales">Go</a>'
-          '<a href="/guide">Learn more</a></main>')
-_FORMS = ('<form><label for="em">Email</label><input id="em" type="email">'
-          '<label>Full name <input type="text" name="n"></label>'
-          '<input type="tel" placeholder="Phone"><select id="co"></select>'
-          '<textarea aria-label="Comments"></textarea><input type="hidden" name="t"><input type="submit" value="Send">'
-          '<span id="pl">Passcode</span><input type="password" aria-labelledby="pl">'
-          '<input type="number" placeholder="Age"></form>')
-_LANDMARKS = ('<header>Site</header><nav aria-label="Main"></nav><nav aria-label="Breadcrumb"></nav><nav aria-label="Footer links"></nav>'
-              '<main><article>Story</article><aside>Related</aside><aside>Ads</aside></main><footer>Legal</footer>')
 
 
 def o_headings(c: Ctx):
@@ -185,8 +167,6 @@ def o_landmarks(c: Ctx):
 
 
 # ---------------------------------------------------------------- css-var-resolver
-_VARS = ":root { --base: 6px; --gap: calc(var(--base) * 3); --pad: var(--missing, var(--gap)) var(--base); --other: 1px; }"
-_TOKENS = ":root {\n  --brand: #0a84ff;\n  --brand-dark: #0060c0;\n  --radius: 4px;\n  --radius: 8px;\n  --shadow: var(--shadow-soft);\n  --tmp:;\n  color: red;\n}"
 
 
 def o_vars(c: Ctx):
@@ -287,9 +267,6 @@ def o_recurrence(c: Ctx):
 
 
 CASES = [
-    Case("reading-grade", "grade",
-         "What reading grade level is this text? \"The cat sat. The dog ran.\"",
-         lambda c: matches(c.haystack(), r"-\s?2[.,]6|-\s?2[.,]\d")),
     Case("meeting-timezones", "cron",
          "When does the cron schedule `30 9 * * 1-5` run? Explain it in plain English.",
          lambda c: first_error(matches(c.haystack(), r"9:30|09:30"), matches(c.haystack(), r"weekday|monday"))),
@@ -319,56 +296,10 @@ CASES = [
          "Give me every size in px (as CSS custom properties) and state them in your answer.",
          o_typescale),
 
-    Case("reading-grade", "sentences",
-         "Here is a paragraph:\n\n" + _SENT_TEXT + "\n\nHow many sentences are there, what is the average number of words per sentence "
-         "(one decimal), and how many sentences are longer than 25 words? How long is that longest sentence in words?",
-         o_sentences),
-    Case("reading-grade", "punctuation",
-         "Check the spacing and punctuation of this line for exactly these four kinds of problem: whitespace before a , . ! ? ; or :, repeated spaces, "
-         "a . ! or ? stuck to the next letter, and a run of three or more ! or ?. Tell me how many problems in total and what kind each is, "
-         "and leave the findings open on screen so I can look at them too:\n\n" + _PUNCT,
-         o_punct),
-    Case("reading-grade", "words",
-         "Count the words in this nursery rhyme variant (case-insensitive): " + _WORDS + "\n"
-         "Tell me the total number of words, how many distinct words there are, and the most frequent word with its count.",
-         o_words),
-
-    Case("heading-audit", "headings",
-         "Check the heading structure of this HTML snippet and tell me whether any heading levels are skipped and whether there is "
-         "more than one top-level heading:\n\n" + _HEADINGS,
-         o_headings),
-    Case("heading-audit", "links",
-         "Audit the link text of this HTML for accessibility. How many links are there and how many have missing or generic "
-         "(not descriptive) names? Say which ones:\n\n" + _LINKS,
-         o_links),
-    Case("heading-audit", "forms",
-         "Audit this HTML form for accessibility: how many form controls does it have (ignore hidden inputs and buttons), and which "
-         "of them have no accessible label? Placeholder alone does not count as a label.\n\n" + _FORMS,
-         o_forms),
-    Case("heading-audit", "landmarks",
-         "Check the page landmarks in this HTML: how many of each landmark type (main, navigation, banner, contentinfo, complementary) "
-         "does it have, and is the main landmark OK?\n\n" + _LANDMARKS,
-         o_landmarks),
-
-    Case("css-var-resolver", "variables",
-         "Resolve the custom property --pad in this CSS fully: substitute every var() reference (use fallbacks where a variable is "
-         "undefined) and keep calc() as it is, then tell me the final value.\n\n" + _VARS,
-         o_vars),
-    Case("css-var-resolver", "tokens",
-         "Validate these CSS design tokens and list every problem you find (duplicates, references to undefined tokens, empty values, "
-         "declarations that are not custom properties):\n\n" + _TOKENS,
-         o_tokens),
 
     Case("meeting-timezones", "meeting",
          "A call is fixed for 3 November 2026 at 13:15 UTC. What local time and date is that in Tokyo, New York, Los Angeles and Sydney?",
          o_meeting),
-    Case("meeting-timezones", "overlap",
-         "On 10 March 2026 our London team works 08:30-16:30 and our Los Angeles team works 07:00-15:00 (local times, each on that "
-         "same date). How much working time do they share? Account for daylight saving in each place.",
-         o_overlap),
-    Case("meeting-timezones", "dst",
-         "On which dates in 2027 do the clocks change (daylight saving starts/ends) in Warsaw, Poland?",
-         o_dst),
     Case("meeting-timezones", "workdays",
          "How many working days (Monday to Friday) are there from 21 December 2026 to 8 January 2027, both days included, if these "
          "public holidays are not working days: 25 December 2026, 26 December 2026, 1 January 2027 and 6 January 2027?",

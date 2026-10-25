@@ -1,5 +1,14 @@
 # Tool suites
 
+**2026-10-25 audit** (docs/research/tool-audit.md): 7 tools and 22 tabs removed (Logs and traces, HTML accessibility
+audit, Writing analysis, Versions and packages, File names and manifests, NoSQL lab, File compressor; tabs such as
+Multipart, IDN, Snowflake, DST, JSON Pointer, INI, NDJSON, the SVG viewBox/paths/sprite tools, Alpha, Lottie, Data URI,
+Contact sheet, Hex viewer, Markdown organize), 5 merged into a neighbour's page (line wrap and smart quotes into Text
+kit's Transforms, ISO week into Date format, hour overlap into Meeting planner, TSV to Markdown into the CSV converter),
+and Web workbench's pasted-headers check replaced by a Website check that fetches a live URL. Every removed slug and tab
+alias now lands on its closest neighbour. The tables below describe how the suites were formed; rows for removed tools
+are history.
+
 The first pass turned 100 registry entries into 36 (27 suites, 91 tabs, 9 standalone). Later additions (the database labs, CV studio, office documents, sidecars and the Craft apps) brought it to 42 entries; the 0.6 menu pass merged small neighbouring suites (CSS, web, dates, tables, JSON and config, IDs and secrets, Lottie into the image inspector) and placeholder text into the text kit: 32 entries today, 25 suites with 128 tabs and 7 standalone tools. Every
 folded slug is a permanent alias (`SLUG_ALIASES` in `src/lib/registry.ts`) that
 the `/tools/[slug]` route redirects (308) to `/tools/<suite>?tab=<tab>`, so no

@@ -52,7 +52,15 @@ test("merged suites: the old slug keeps its tab (?tab= carried over), else the o
   assert.equal(toolHref("csv-profile", "duplicates"), "/tools/csv?tab=duplicates");
   assert.equal(toolHref("yaml-json", "xml"), "/tools/json?tab=xml");
   assert.equal(toolHref("jwt", "password"), "/tools/ids?tab=password");
-  assert.equal(toolHref("lottie-inspector"), "/tools/image-compare?tab=lottie");
+  assert.equal(toolHref("lottie-inspector"), "/tools/image-compare");
+  // Tools and tabs removed in the 2026-10-25 audit land on their closest neighbour.
+  assert.equal(toolHref("heading-audit"), "/tools/web?tab=check");
+  assert.equal(toolHref("http-headers", "headers"), "/tools/web?tab=check");
+  assert.equal(toolHref("stacktrace", "ansi"), "/tools/text?tab=kit");
+  assert.equal(toolHref("nosql-lab", "redis"), "/tools/sql-lab?tab=format");
+  assert.equal(toolHref("file-compressor"), "/tools/pdf");
+  assert.equal(toolHref("line-wrap"), "/tools/text?tab=kit");
+  assert.equal(toolHref("iso-week"), "/tools/dates?tab=format");
   // An older alias that pointed at a now-merged suite is retargeted.
   assert.equal(toolHref("css-clamp"), "/tools/css?tab=clamp");
   assert.equal(toolHref("password"), "/tools/ids?tab=password");

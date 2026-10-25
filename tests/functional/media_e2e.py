@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Real-browser functional test for the media tools.
 
-Covers image-crop (crop/trim/sheet), image-compare (compare/alpha),
-image-resize (resize/scrub/responsive/favicon/data-uri), svg-optimize (all six
-tabs), lottie-inspector, qr and color. Every tab is fed real fixtures, driven
+Covers image-crop (crop/trim), image-compare, image-resize
+(resize/scrub/responsive/favicon), svg-optimize (optimize/sanitize/png), qr and
+color. Every tab is fed real fixtures, driven
 through the real UI, and asserted on actual output (text, downloaded bytes
 parsed with PIL / an XML parser, clipboard content). Each tab runs at 1280px
 and at 390px; the latter also asserts there is no horizontal overflow.
@@ -15,7 +15,6 @@ No model or network service is used.
 import base64
 import colorsys
 import io
-import json
 import os
 import shutil
 import sys
@@ -147,10 +146,6 @@ def settle(page, ms=700):
     page.wait_for_timeout(ms)
 
 
-def textarea_by_label(page, label):
-    return page.get_by_label(label, exact=True)
-
-
 def near(a, b, tol=2):
     return all(abs(x - y) <= tol for x, y in zip(a, b))
 
@@ -211,33 +206,8 @@ def t_trim(page, fx):
     check(True, "fully transparent image reports an error")
 
 
-def t_sheet(page, fx):
-    goto(page, "/tools/image-crop?tab=sheet")
-    upload(page, [fx["sheet0"], fx["sheet1"], fx["sheet2"]])
-    page.get_by_text("3 image(s) selected").wait_for()
-    name, data = download(page, lambda: page.get_by_role("button", name="Build and download PNG").click())
-    im = img_of(data).convert("RGB")
-    check(name == "contact-sheet.png" and im.size == (880, 180), f"sheet is 4 cols x 1 row = 880x180 (got {im.size})")
-    cx = lambda i: i * 220 + 110
-    check(near(im.getpixel((cx(0), 70)), (255, 0, 0), 2), "cell 0 holds the red image")
-    check(near(im.getpixel((cx(1), 70)), (0, 255, 0), 2), "cell 1 holds the green image")
-    check(near(im.getpixel((cx(2), 70)), (0, 0, 255), 2), "cell 2 holds the blue image")
-    check(im.getpixel((cx(3), 70)) == (255, 255, 255), "cell 3 is empty white")
-    # filename label drawn: some dark pixels in the caption strip of cell 0
-    strip = im.crop((0, 150, 220, 180))
-    check(any(sum(p) < 200 for p in strip.getdata()), "filename caption is drawn")
-    page.get_by_text("Built 3 thumbnails.").wait_for()
-    check(page.evaluate("document.querySelector('canvas').width") == 880, "preview canvas is rendered")
-    # 22 files -> only 20 used, notice shown
-    upload(page, fx["tiny"])
-    page.get_by_text("20 image(s) selected").wait_for()
-    check(page.get_by_text("Only the first 20 files are included.").count() == 1, "over-20 notice is shown")
-    _, data = download(page, lambda: page.get_by_role("button", name="Build and download PNG").click())
-    check(img_of(data).size == (880, 5 * 180), "20 images -> 5 rows")
-
-
 def t_compare(page, fx):
-    goto(page, "/tools/image-compare?tab=compare")
+    goto(page, "/tools/image-compare")
     ins = page.locator("input[type=file]")
     btn = page.get_by_role("button", name="Compare images")
     check(btn.is_disabled(), "compare disabled until both images chosen")
@@ -264,20 +234,6 @@ def t_compare(page, fx):
     btn.click()
     page.get_by_text("0.00%", exact=True).wait_for()
     check(page.get_by_text("100×100", exact=True).count() == 1, "different-size second image is resized to the first")
-
-
-def t_alpha(page, fx):
-    goto(page, "/tools/image-compare?tab=alpha")
-    upload(page, fx["alpha"])
-    page.get_by_text("10 × 10", exact=True).wait_for()
-    vals = page.evaluate(
-        "Object.fromEntries([...document.querySelectorAll('div')].filter(d=>['Transparent pixels','Partial alpha','Opaque pixels'].includes(d.firstElementChild?.textContent?.trim())).map(d=>[d.firstElementChild.textContent.trim(), d.lastElementChild.textContent.trim()]))"
-    )
-    check(vals.get("Transparent pixels") == "20", f"20 transparent ({vals})")
-    check(vals.get("Partial alpha") == "30", "30 partial")
-    check(vals.get("Opaque pixels") == "50", "50 opaque")
-    widths = page.evaluate("[...document.querySelectorAll('.h-4 span')].map(s=>s.style.width)")
-    check(widths == ["20%", "30%", "50%"], f"coverage bar widths {widths}")
 
 
 def wait_render(page):
@@ -412,34 +368,6 @@ def t_favicon(page, fx):
         check(near(im.getpixel((size // 2, size // 2)), (200, 30, 90, 255), 3), f"icon-{size} colour preserved")
 
 
-def t_datauri(page, fx):
-    goto(page, "/tools/image-resize?tab=data-uri")
-    raw = open(fx["sq300"], "rb").read()
-    b64 = base64.b64encode(raw).decode()
-    upload(page, fx["sq300"])
-    out = page.locator("pre").last
-    out.wait_for()
-    check(out.inner_text() == f"data:image/png;base64,{b64}", "data URI equals the real file base64")
-    check(page.get_by_text(f"{len(out.inner_text()):,}", exact=True).count() >= 1, "character stat matches output length")
-    page.get_by_label("Output shape").select_option("base64")
-    check(out.inner_text() == b64, "raw base64 mode")
-    page.get_by_label("Output shape").select_option("css")
-    check(out.inner_text() == f'background-image: url("data:image/png;base64,{b64}");', "css mode")
-    page.get_by_label("Output shape").select_option("html")
-    check(out.inner_text() == f'<img src="data:image/png;base64,{b64}" alt="sq300.png" />', "html mode")
-    page.get_by_label("Output shape").select_option("markdown")
-    check(out.inner_text() == f"![sq300](data:image/png;base64,{b64})", "markdown mode")
-    page.get_by_role("button", name="Copy", exact=True).click()
-    check(clip(page) == out.inner_text(), "copy puts the current output on the clipboard")
-    name, data = download(page, lambda: page.get_by_role("button", name="Save .txt").click())
-    check(name == "sq300.txt" and data.decode() == out.inner_text(), "Save .txt downloads the exact output")
-    check(page.get_by_text("is a lot of base64").count() == 0, "no size warning for small file")
-    page.get_by_role("button", name="Clear").click()
-    upload(page, fx["noise"])
-    page.get_by_text("is a lot of base64").wait_for()
-    check(True, "size warning for >250 KB file")
-
-
 # ---- SVG
 def parse_xml_ok(s):
     try:
@@ -508,87 +436,6 @@ def t_svg_sanitize(page, fx):
     check(True, "invalid input shows error")
 
 
-def t_svg_viewbox(page, fx):
-    goto(page, "/tools/svg-optimize?tab=viewbox")
-    page.get_by_role("button", name="Add missing viewBox").click()
-    res = page.get_by_label("Result")
-    res.wait_for()
-    check('viewBox="0 0 120 80"' in res.input_value() and parse_xml_ok(res.input_value()), "viewBox derived from width/height")
-    name, data = download(page, lambda: page.get_by_role("button", name="Download SVG").click())
-    check(name == "viewbox-fixed.svg" and data.decode() == res.input_value(), "download equals result")
-    page.get_by_label("SVG markup").fill('<svg xmlns="http://www.w3.org/2000/svg" width="50px" height="20" viewBox="1 2 3 4"/>')
-    page.get_by_role("button", name="Add missing viewBox").click()
-    page.wait_for_function("document.querySelector('textarea[readonly]')?.value.includes('1 2 3 4')")
-    check('viewBox="1 2 3 4"' in res.input_value(), "existing viewBox is not overridden")
-    page.get_by_label("SVG markup").fill('<svg xmlns="http://www.w3.org/2000/svg" width="50.5px" height="20.25"/>')
-    page.get_by_role("button", name="Add missing viewBox").click()
-    page.wait_for_function("document.querySelector('textarea[readonly]')?.value.includes('50.5')")
-    check('viewBox="0 0 50.5 20.25"' in res.input_value(), "px unit and decimals")
-    page.get_by_label("SVG markup").fill('<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"/>')
-    page.get_by_role("button", name="Add missing viewBox").click()
-    page.get_by_text("Relative width/height").wait_for()
-    check(True, "percent dimensions rejected instead of a bogus viewBox")
-    page.get_by_label("SVG markup").fill('<svg xmlns="http://www.w3.org/2000/svg"/>')
-    page.get_by_role("button", name="Add missing viewBox").click()
-    page.get_by_text("A numeric width and height are needed").wait_for()
-    check(True, "missing dimensions rejected")
-
-
-def t_svg_paths(page, fx):
-    goto(page, "/tools/svg-optimize?tab=paths")
-    page.get_by_role("button", name="Inspect paths").click()
-    page.get_by_text("Path elements").wait_for()
-    rows = page.locator("tbody tr").all_inner_texts()
-    check(len(rows) == 1 and "M:2 L:2 V:1" in rows[0].replace("\t", " ") and "28" in rows[0], f"path row {rows}")
-    check(page.get_by_text("Subpaths (M/m commands)").locator("xpath=..").inner_text().split()[-1] == "2", "2 subpaths")
-    svg = ('<svg xmlns="http://www.w3.org/2000/svg"><path id="a" d="m0 0 l1 1 z m5 5 c1 1 2 2 3 3 Z"/>'
-           '<g><path id="b" d="M0 0h10v10H0z"/></g><path/></svg>')
-    page.get_by_label("SVG markup").fill(svg)
-    page.get_by_role("button", name="Inspect paths").click()
-    page.wait_for_function("document.querySelectorAll('tbody tr').length === 3")
-    rows = [r.replace("\t", " ") for r in page.locator("tbody tr").all_inner_texts()]
-    check("a" in rows[0] and "M:2 L:1 Z:2 C:1" in rows[0], f"case-insensitive counts {rows[0]}")
-    check("b" in rows[1] and "M:1 H:2 V:1 Z:1" in rows[1], f"nested path {rows[1]}")
-    check("none" in rows[2], "empty path reports none")
-    check(page.get_by_text("Path elements").locator("xpath=..").inner_text().split()[-1] == "3", "3 path elements")
-    page.get_by_label("SVG markup").fill("<svg")
-    page.get_by_role("button", name="Inspect paths").click()
-    page.get_by_text("Input must be well-formed SVG.").wait_for()
-    check(True, "invalid svg error")
-
-
-def t_svg_sprite(page, fx):
-    goto(page, "/tools/svg-optimize?tab=sprite")
-    page.get_by_role("button", name="Build safe symbol").click()
-    sprite = page.get_by_label("Sprite SVG")
-    sprite.wait_for()
-    s = sprite.input_value()
-    check(parse_xml_ok(s) and '<symbol id="add" viewBox="0 0 24 24">' in s and "<path" in s, f"symbol built: {s}")
-    check('icons.svg#add"' in page.get_by_label("Reference example").input_value(), "reference example uses the id")
-    page.get_by_role("button", name="Copy sprite").click()
-    check(clip(page) == s, "copy sprite")
-    page.get_by_label("Symbol name").fill("My Icon!")
-    page.get_by_role("button", name="Build safe symbol").click()
-    page.wait_for_function("document.querySelector('textarea[readonly]')?.value.includes('my-icon')")
-    s = sprite.input_value()
-    ref = page.get_by_label("Reference example").input_value()
-    check('<symbol id="my-icon"' in s, f"symbol id slugified: {s[:60]}")
-    check('icons.svg#my-icon"' in ref, f"reference id matches symbol id: {ref}")
-    page.get_by_label("Symbol name").fill("!!!")
-    page.get_by_role("button", name="Build safe symbol").click()
-    page.wait_for_function("document.querySelector('textarea[readonly]')?.value.includes('id=\"icon\"')")
-    check('icons.svg#icon"' in page.get_by_label("Reference example").input_value(), "fallback id 'icon' consistent")
-    page.get_by_label("SVG icon markup").fill('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5"><script>x()</script><rect width="5" height="5" onclick="z()"/></svg>')
-    page.get_by_role("button", name="Build safe symbol").click()
-    page.wait_for_function("document.querySelector('textarea[readonly]')?.value.includes('rect')")
-    s = sprite.input_value()
-    check("script" not in s and "onclick" not in s, "sprite is sanitized")
-    page.get_by_label("SVG icon markup").fill('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')
-    page.get_by_role("button", name="Build safe symbol").click()
-    page.get_by_text("Each SVG needs an explicit viewBox.").wait_for()
-    check(True, "missing viewBox error")
-
-
 def t_svg_png(page, fx):
     goto(page, "/tools/svg-optimize?tab=png")
     name, data = download(page, lambda: page.get_by_role("button", name="Rasterize and download").click())
@@ -620,38 +467,6 @@ def stat_value(page, label):
     return t.replace(label, "", 1).strip()
 
 
-def t_lottie(page, fx):
-    goto(page, "/tools/lottie-inspector")
-    check(stat_value(page, "Version / FPS") == "5.12.2 / 30", "version/fps")
-    check(stat_value(page, "Dimensions") == "512 × 512", "dimensions")
-    check(stat_value(page, "Duration") == "3.00 s", "duration (90-0)/30")
-    check(stat_value(page, "Layers") == "2" and stat_value(page, "Assets") == "1" and stat_value(page, "Fonts") == "0", "layers/assets/fonts")
-    check(page.get_by_label("Layer types").input_value() == "type 4: 1\ntype 2: 1", "layer types")
-    check(page.get_by_text("External image assets: images/image.png").count() == 1, "external asset listed")
-    anim = {"v": "5.7.0", "fr": 60, "ip": 10, "op": 130, "w": 100, "h": 50,
-            "layers": [{"ty": 0}, {"ty": 0}, {"ty": 1}, {"ty": 3}],
-            "assets": [{"id": "a", "p": "data:image/png;base64,AAAA", "e": 1}, {"id": "b", "u": "https://cdn/x/", "p": "pic.png", "e": 0}, {"id": "c", "layers": []}],
-            "fonts": {"list": [{}, {}]}}
-    page.get_by_label("Lottie / Bodymovin JSON").fill(json.dumps(anim))
-    check(stat_value(page, "Version / FPS") == "5.7.0 / 60", "custom version/fps")
-    check(stat_value(page, "Duration") == "2.00 s", "custom duration (130-10)/60")
-    check(stat_value(page, "Dimensions") == "100 × 50" and stat_value(page, "Fonts") == "2" and stat_value(page, "Assets") == "3", "custom stats")
-    check(page.get_by_label("Layer types").input_value() == "type 0: 2\ntype 1: 1\ntype 3: 1", "custom layer types")
-    ext = page.get_by_text("External image assets:").inner_text()
-    check("https://cdn/x/pic.png" in ext and "data:image" not in ext, f"embedded asset excluded, external included ({ext})")
-    anim2 = {"v": "5", "fr": 24, "layers": [], "w": 1, "h": 1}
-    page.get_by_label("Lottie / Bodymovin JSON").fill(json.dumps(anim2))
-    check("NaN" not in stat_value(page, "Duration"), f"missing op/ip does not give NaN ({stat_value(page, 'Duration')})")
-    page.get_by_label("Lottie / Bodymovin JSON").fill('{"layers":[null,{"ty":4}]}')
-    check(stat_value(page, "Layers") == "2", "null layer entries do not crash")
-    page.get_by_label("Lottie / Bodymovin JSON").fill("{bad json")
-    page.get_by_role("alert").or_(page.locator("[role=alert], .text-danger")).first.wait_for()
-    check(page.get_by_label("Layer types").count() == 0, "invalid JSON shows error, hides stats")
-    page.get_by_label("Lottie / Bodymovin JSON").fill('{"a":1}')
-    page.get_by_text("Expected a Lottie object with a layers array.").wait_for()
-    check(True, "missing layers error")
-
-
 # ---- qr
 def decode_qr(data):
     if cv2 is None:
@@ -667,7 +482,7 @@ def t_qr(page, fx):
     goto(page, "/tools/qr")
     page.locator("svg rect, svg path").first.wait_for()
     default = "https://github.com/GenorTG/samurai-knife"
-    check(page.get_by_text("Characters").locator("xpath=..").inner_text().split()[-1] == str(len(default)), "characters stat")
+    check(page.locator("main").get_by_text("Characters", exact=True).locator("xpath=..").inner_text().split()[-1] == str(len(default)), "characters stat")
     name, data = download(page, lambda: page.get_by_role("button", name="Download PNG").click())
     im = img_of(data)
     check(name == "qr-512.png" and im.size == (512, 512), f"png {name} {im.size}")
@@ -819,14 +634,12 @@ def t_color(page, fx):
 
 # ------------------------------------------------------------------ runner
 TESTS = [
-    ("image-crop/crop", t_crop), ("image-crop/trim", t_trim), ("image-crop/sheet", t_sheet),
-    ("image-compare/compare", t_compare), ("image-compare/alpha", t_alpha),
+    ("image-crop/crop", t_crop), ("image-crop/trim", t_trim),
+    ("image-compare", t_compare),
     ("image-resize/resize", t_resize), ("image-resize/scrub", t_scrub), ("image-resize/responsive", t_responsive),
-    ("image-resize/favicon", t_favicon), ("image-resize/data-uri", t_datauri),
-    ("svg-optimize/optimize", t_svg_optimize), ("svg-optimize/sanitize", t_svg_sanitize),
-    ("svg-optimize/viewbox", t_svg_viewbox), ("svg-optimize/paths", t_svg_paths),
-    ("svg-optimize/sprite", t_svg_sprite), ("svg-optimize/png", t_svg_png),
-    ("lottie-inspector", t_lottie), ("qr", t_qr), ("color", t_color),
+    ("image-resize/favicon", t_favicon),
+    ("svg-optimize/optimize", t_svg_optimize), ("svg-optimize/sanitize", t_svg_sanitize), ("svg-optimize/png", t_svg_png),
+    ("qr", t_qr), ("color", t_color),
 ]
 
 CLIP_STUB = "window.__clip = null; Object.defineProperty(navigator, 'clipboard', {value: {writeText: async (t) => { window.__clip = t; }}, configurable: true});"

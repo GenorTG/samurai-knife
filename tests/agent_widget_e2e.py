@@ -375,11 +375,11 @@ with sync_playwright() as pw:
     check("open_tool rejects an unknown tab and names the valid ones", res.get("ok") is False and "cron" in res.get("error", ""), res)
 
     # 7c. upload_file feeds a real file input ----------------------------------------------------------------------
-    send(page, key, 'CALL:open_tool:{"slug":"characters","tab":"hex"}')
-    page.wait_for_url("**/tools/characters?tab=hex")
+    send(page, key, 'CALL:open_tool:{"slug":"characters","tab":"encoding"}')
+    page.wait_for_url("**/tools/characters?tab=encoding")
     snap = tool_result(send(page, key, "CALL:page_snapshot:{}"), "page_snapshot")
     fid = control_id(snap, "file")
-    check("snapshot exposes the hex tab file input with an upload hint", fid is not None, snap.get("controls", [])[:5])
+    check("snapshot exposes the encoding tab file input with an upload hint", fid is not None, snap.get("controls", [])[:5])
     if fid:
         res = tool_result(send(page, key, "CALL:upload_file:" + json.dumps({"id": fid, "name": "hello.txt", "text": "hello agent"})), "upload_file")
         check("upload_file attaches agent-made text", res.get("ok") is True and res.get("bytes") == 11, res)
