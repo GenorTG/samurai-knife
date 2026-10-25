@@ -28,10 +28,10 @@ export type TrustMode = "strict" | "standard" | "destructive" | "free";
 export type ApprovalDecision = "allow" | "allow_run" | "deny";
 
 export const TRUST_MODES: { id: TrustMode; label: string; hint: string }[] = [
-  { id: "strict", label: "All", hint: "Ask before every action, even filling a field." },
-  { id: "standard", label: "Most", hint: "Ask before anything that runs, opens a page or uploads; filling fields is free." },
-  { id: "destructive", label: "Risky", hint: "Ask only before deleting, clearing, resetting, overwriting or leaving a page with your input." },
-  { id: "free", label: "None", hint: "Never ask; the assistant acts on its own." },
+  { id: "strict", label: "All", hint: "Asks before every action, even typing into a field." },
+  { id: "standard", label: "Most", hint: "Asks before running, opening a page or uploading; typing is free." },
+  { id: "destructive", label: "Risky", hint: "Asks before deleting, overwriting or leaving unsaved input." },
+  { id: "free", label: "None", hint: "Never asks: it acts on its own." },
 ];
 
 export interface WaitResult {

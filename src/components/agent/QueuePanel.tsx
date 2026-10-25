@@ -5,7 +5,7 @@ import { cx } from "@/lib/format";
 import { cancelQueued, clearQueue, editQueued, resumeQueue } from "@/lib/agent-client/message-queue";
 import { useRuntime } from "@/lib/agent-client/runtime-store";
 
-const chipButton = "shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 text-[11px] text-muted hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40";
+const chipButton = "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] text-muted hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40";
 
 /**
  * Everything the run state says about the conversation that is not in the transcript, pinned above the

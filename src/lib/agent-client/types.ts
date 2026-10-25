@@ -93,6 +93,8 @@ export interface ProviderTestResult {
   ok: boolean;
   status?: number;
   modelCount?: number;
+  /** Model ids the provider lists (GET /models), sorted. */
+  models?: string[];
   error?: string;
 }
 

@@ -159,10 +159,7 @@ export async function saveProvider(input: ProviderInput): Promise<ApiResult<null
   return { ok: true, value: null };
 }
 
-export async function testProvider(profileId?: string): Promise<ApiResult<ProviderTestResult>> {
-  const r = await call("/api/account/provider/test", { method: "POST", body: profileId ? { profileId } : {} });
-  if ("failure" in r) return { ok: false, failure: r.failure };
-  const { res, body } = r;
+function testResult(res: Response, body: unknown): ApiResult<ProviderTestResult> {
   if (!isRecord(body)) return { ok: false, failure: failureFrom(res, body) };
   if (!res.ok && body.ok === undefined) return { ok: false, failure: failureFrom(res, body) };
   return {
@@ -171,9 +168,23 @@ export async function testProvider(profileId?: string): Promise<ApiResult<Provid
       ok: body.ok === true,
       status: typeof body.status === "number" ? body.status : undefined,
       modelCount: typeof body.modelCount === "number" ? body.modelCount : undefined,
+      models: Array.isArray(body.models) ? body.models.filter((m): m is string => typeof m === "string") : undefined,
       error: str(body.error) ?? undefined,
     },
   };
+}
+
+export async function testProvider(profileId?: string): Promise<ApiResult<ProviderTestResult>> {
+  const r = await call("/api/account/provider/test", { method: "POST", body: profileId ? { profileId } : {} });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  return testResult(r.res, r.body);
+}
+
+/** The models a provider lists for the fields as typed (not saved); the stored key only for the stored address. */
+export async function listModels(input: { baseUrl: string; apiKey?: string; extraHeaders?: Record<string, string> }): Promise<ApiResult<ProviderTestResult>> {
+  const r = await call("/api/account/provider/models", { method: "POST", body: input });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  return testResult(r.res, r.body);
 }
 
 export async function login(id: string, password: string): Promise<ApiResult<null>> {

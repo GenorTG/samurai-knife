@@ -178,10 +178,22 @@ export interface ProviderTestResult {
   ok: boolean;
   status: number | null;
   modelCount?: number;
+  /** Model ids from GET /models (sorted, at most MAX_LISTED_MODELS), for the settings' model picker. */
+  models?: string[];
   error?: string;
 }
 
 const modelListSchema = z.object({ data: z.array(z.unknown()) }).passthrough();
+export const MAX_LISTED_MODELS = 400;
+
+function modelIds(entries: unknown[]): string[] {
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    const id = typeof entry === "object" && entry !== null ? (entry as { id?: unknown }).id : null;
+    if (typeof id === "string" && id.length > 0 && id.length <= 200 && !/[\u0000-\u001f]/.test(id)) ids.add(id);
+  }
+  return [...ids].sort((a, b) => a.localeCompare(b)).slice(0, MAX_LISTED_MODELS);
+}
 
 export async function testProvider(provider: ProviderConfig, net: ProviderNet): Promise<ProviderTestResult> {
   try {
@@ -197,7 +209,7 @@ export async function testProvider(provider: ProviderConfig, net: ProviderNet): 
     }
     const models = modelListSchema.safeParse(parsedJson);
     return models.success
-      ? { ok: true, status, modelCount: models.data.data.length }
+      ? { ok: true, status, modelCount: models.data.data.length, models: modelIds(models.data.data) }
       : { ok: true, status };
   } catch (error) {
     if (error instanceof UpstreamFailure) return { ok: false, status: null, error: failureMessage(error) };

@@ -113,6 +113,7 @@ with sync_playwright() as pw:
 
     # 6) settings table matches the API
     page.get_by_role("button", name="Settings").click()
+    page.locator("summary", has_text="Token usage").click()
     page.wait_for_selector("section[aria-label='Token usage'] table")
     api = ledger(page)
     cells = page.locator("section[aria-label='Token usage'] tbody tr").first.inner_text().split()

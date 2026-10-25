@@ -59,7 +59,10 @@ SHA-256 of the raw token only).
   `activate`), `update`, `duplicate`, `activate`, `delete` (deleting the active one activates the next, or leaves no
   provider); `GET` lists hints only. Every config passes the same checks as `PUT /api/account/provider`
   (`src/lib/accounts/provider-input.ts`). `POST /api/account/provider/test {profileId?}` tests one profile (no body = the
-  active provider). Workflow AI nodes pick any profile.
+  active provider) and returns the model ids it lists. `POST /api/account/provider/models {baseUrl, apiKey?,
+  extraHeaders?}` lists the models for fields not saved yet (the settings' "Load models"): the same checks as a save and
+  the Test budget; without `apiKey` the stored key is used only when `baseUrl` is the stored one, so a newly typed
+  address never receives the old key. Workflow AI nodes pick any profile.
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.

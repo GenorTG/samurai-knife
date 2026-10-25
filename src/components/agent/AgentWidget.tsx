@@ -366,7 +366,7 @@ function WidgetShell() {
                   onKeyDown={onComposerKeyDown}
                   aria-label="Message the assistant"
                   aria-describedby="sk-ai-notice"
-                  placeholder={queueing ? "Queue a message for after this run…" : "Ask for something…"}
+                  placeholder={queueing ? "Queue a message…" : "Ask for something…"}
                   className="sk-input max-h-32 min-h-10 min-w-0 flex-1 resize-none px-3 py-2.5 text-sm leading-snug"
                 />
                 {queueing ? (
@@ -394,8 +394,10 @@ function WidgetShell() {
               </form>
               {/* AI Act art. 50(1)/(5): say it is an AI system, clearly, at the first interaction (legal/terms.*.md "AI assistant"). */}
               <p id="sk-ai-notice" className="bg-surface px-3 pb-2 text-[11px] leading-snug text-faint">
-                You are chatting with an AI system. Replies come from the model configured for your account and can be wrong: check what
-                matters. <a href="/terms#ai" className="underline underline-offset-2 hover:text-ink">How it works</a>
+                You are chatting with an AI system; replies can be wrong.{" "}
+                <a href="/terms#ai" className="whitespace-nowrap underline underline-offset-2 hover:text-ink">
+                  How it works
+                </a>
               </p>
             </>
           ) : null}

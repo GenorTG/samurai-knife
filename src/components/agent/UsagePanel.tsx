@@ -35,16 +35,20 @@ export function UsagePanel() {
   }, []);
 
   return (
-    <section aria-label="Token usage" className="space-y-2 border-t border-line pt-3">
-      <h3 className="text-xs font-semibold tracking-wide text-faint uppercase">Token usage</h3>
+    <section aria-label="Token usage" className="space-y-2">
       {summary === "loading" ? <p className="text-xs text-faint">Loading…</p> : null}
       {summary === null ? <p role="alert" className="text-xs text-danger">Could not load usage.</p> : null}
       {summary && summary !== "loading" ? (
         <>
-          <table className="w-full text-xs text-ink">
+          <table className="w-full table-fixed text-xs text-ink">
+            <colgroup>
+              <col className="w-[22%]" />
+            </colgroup>
             <thead>
-              <tr className="text-faint">
-                <th scope="col" className="text-left font-normal"><span className="sr-only">Period</span></th>
+              <tr className="text-[11px] text-faint">
+                <th scope="col" className="text-left font-normal">
+                  <span className="sr-only">Period</span>
+                </th>
                 <th scope="col" className="px-1 text-right font-normal">Rounds</th>
                 <th scope="col" className="px-1 text-right font-normal">In</th>
                 <th scope="col" className="px-1 text-right font-normal">Cached</th>

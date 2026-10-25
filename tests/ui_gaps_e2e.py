@@ -105,12 +105,12 @@ with sync_playwright() as pw:
     page.locator("summary", has_text="Extra headers").click()
     metrics = form.evaluate("f => ({sw: f.scrollWidth, cw: f.clientWidth})")
     check("390px settings: still no overflow with headers open", metrics["sw"] <= metrics["cw"], metrics)
-    for name in ("Save", "Test connection"):
+    for name in ("Test the connection", "Load models"):
         btn = page.get_by_role("button", name=name, exact=True)
         btn.scroll_into_view_if_needed()
         b = btn.bounding_box() or {"x": -1, "width": 0}
         check(f"390px settings: '{name}' reachable", b["x"] >= 0 and b["x"] + b["width"] <= 390, b)
-    page.get_by_role("button", name="Test connection").click()
+    page.get_by_role("button", name="Test the connection").click()
     page.locator("[role=status]").filter(has_text="Connected").wait_for()
     check("390px settings: test connection works", True)
     page.set_viewport_size({"width": 1280, "height": 800})

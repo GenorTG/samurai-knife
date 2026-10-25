@@ -158,6 +158,12 @@ button {
   font: inherit;
 }
 
+/* The rule above is unlayered, so it beats every utility (text-xs, font-semibold…) on form controls app-wide. Inside the
+   assistant the controls are sized with utilities: hand the font back to the layers (preflight + utilities). */
+[data-agent-widget] :is(input, textarea, select, button) {
+  font: revert-layer;
+}
+
 button:not(:disabled),
 a[href],
 summary,

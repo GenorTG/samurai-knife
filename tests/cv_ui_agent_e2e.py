@@ -135,9 +135,8 @@ with sync_playwright() as pw:
     page.get_by_label("Base URL").fill(f"{MOCK}/v1")
     page.get_by_label("Model", exact=True).fill("mock-model")
     page.get_by_label("API key").fill(MOCK_KEY)
-    page.get_by_role("button", name="Save", exact=True).click()
-    page.wait_for_selector("text=Saved.")
-    page.locator("button[aria-label='Back to chat']").first.click()
+    page.get_by_role("button", name="Connect", exact=True).click()
+    # The first connection saves, tests and opens the chat by itself.
     page.wait_for_selector("textarea[aria-label='Message the assistant']")
     page.locator("[aria-label='Ask before acting']").get_by_role("radio", name="None", exact=True).click()
     key = storage_key(page)

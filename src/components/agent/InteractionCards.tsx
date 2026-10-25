@@ -17,7 +17,7 @@ export function TrustModeSwitch() {
   return (
     <div className="border-b border-line bg-surface px-3 py-1.5">
       <div role="radiogroup" aria-label="Ask before acting" className="flex items-center gap-1">
-        <span className="mr-1 text-[11px] tracking-wide text-faint uppercase">Ask</span>
+        <span className="mr-1 text-[11px] text-faint">Ask before acting:</span>
         {TRUST_MODES.map((o) => (
           <button
             autoComplete="off"
@@ -28,7 +28,7 @@ export function TrustModeSwitch() {
             title={o.hint}
             onClick={() => setTrustMode(o.id)}
             className={cx(
-              "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
               mode === o.id ? "bg-ai/15 text-ink ring-1 ring-ai/40" : "text-muted hover:bg-raised hover:text-ink",
             )}
           >
@@ -36,9 +36,7 @@ export function TrustModeSwitch() {
           </button>
         ))}
       </div>
-      <p className="mt-1 truncate text-[11px] text-faint" title={current.hint}>
-        {current.hint}
-      </p>
+      <p className="mt-0.5 text-[11px] leading-snug text-faint">{current.hint}</p>
     </div>
   );
 }
