@@ -66,6 +66,7 @@ const StacktraceFormatter = dynamic(() => import("@/tools/StacktraceFormatter"),
 const HttpHeaderInspector = dynamic(() => import("@/tools/HttpHeaderInspector"), { loading: ToolLoading });
 const CssClamp = dynamic(() => import("@/tools/CssClamp"), { loading: ToolLoading });
 const BoxShadowBuilder = dynamic(() => import("@/tools/BoxShadowBuilder"), { loading: ToolLoading });
+const CssPlayground = dynamic(() => import("@/tools/CssPlayground"), { loading: ToolLoading });
 const BorderRadiusBuilder = dynamic(() => import("@/tools/BorderRadiusBuilder"), { loading: ToolLoading });
 const SemverChecker = dynamic(() => import("@/tools/SemverChecker"), { loading: ToolLoading });
 const JsonPathExplorer = dynamic(() => import("@/tools/JsonPathExplorer"), { loading: ToolLoading });
@@ -173,6 +174,7 @@ const COMPONENTS: Record<string, ComponentType> = {
   stacktrace: StacktraceFormatter,
   "http-headers": HttpHeaderInspector,
   "css-clamp": CssClamp,
+  "css-playground": CssPlayground,
   "box-shadow": BoxShadowBuilder,
   "border-radius": BorderRadiusBuilder,
   semver: SemverChecker,
@@ -300,7 +302,8 @@ function MissingTool({ slug }: { slug: string }) {
  * Tools whose inputs must not be restored from a draft: they load their own server-held data (a stale draft would
  * overwrite it and autosave the old values back), manage credentials, or generate secrets.
  */
-const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password"]);
+// css-playground keeps its own files (browser storage); the draft snapshot only sees plain fields.
+const NO_DRAFT = new Set(["office", "sidecars", "learn-sql", "mcp-connect", "db-connect", "password", "css-playground"]);
 const NO_DRAFT_PREFIXES = ["cv-", "site-", "craft-", "wf-"];
 
 function renderComponent(key: string) {

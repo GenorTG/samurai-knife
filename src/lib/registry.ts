@@ -218,11 +218,12 @@ export const TOOLS: ToolMeta[] = [
   {
     slug: "css",
     name: "CSS studio",
-    tagline: "Shadows, radii, easing, grid, fluid type, CSS variables, design tokens and colour, in one place.",
+    tagline: "A live HTML, CSS and JS/TS playground with effect presets and export, plus shadow, radius, easing, grid, fluid type and colour builders.",
     category: "dev",
     family: "developer-data",
     kind: "client",
     tabs: [
+      { id: "playground", label: "Playground", component: "css-playground", wide: true },
       { id: "shadow", label: "Box shadow", component: "box-shadow" },
       { id: "radius", label: "Border radius", component: "border-radius" },
       { id: "easing", label: "Easing", component: "css-easing" },

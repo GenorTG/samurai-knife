@@ -45,9 +45,26 @@ has the overview; this is the reference for working on the code.
 
 1. Add an entry to `TOOLS` in `src/lib/registry.ts`; keep `category` broad, pick the closest `family`. Prefer a new tab in an existing suite when the tool fits one.
 2. Write the component in `src/tools/`, register it in `registry-client.tsx`.
-3. `npx tsc --noEmit && npm run lint`.
+3. Add the tool to ONE section of `src/lib/nav.ts` (see "Sidebar"); a new tab needs nothing there.
+4. `npx tsc --noEmit && npm run lint`; `tests/nav.test.mjs` fails until the tool is in the menu exactly once.
 
-Launcher, search, categories, counts, metadata and static params all read the registry; nothing else is wired by hand.
+Launcher, search, categories, counts, metadata and static params all read the registry; the sidebar layout is the one
+hand-made list.
+
+## Sidebar
+
+`src/lib/nav.ts` + `src/components/shell/Sidebar.tsx`, built on NN/g's guidance for left-side vertical navigation and
+menus (nngroup.com/articles/vertical-nav, /articles/menu-design): visible, left-aligned, key word first, the current
+location always shown, submenus marked by a chevron and opened by click.
+
+- One entry per destination: every tool exactly once (no tab entries, no "Recent" copy of entries). A suite's tabs are
+  local navigation, nested under the tool you are in. Only the Craft apps are listed per app, because that suite hides
+  its tabs on the page.
+- Sections are named by what people work on ("Documents and PDF", "Images", "Craft apps", "Data and databases", "Text",
+  "Web and code", "Career", "Automation", "Learning"); no "simple/advanced" levels. Within a section the big workspaces
+  come first, then the smaller tools by how often they are needed. Setup pages sit in the footer.
+- The section holding the current page stays open; other sections fold and remember it per browser. A filter at the top
+  matches tools and tab names. Breadcrumbs use the section label (`navSectionOf`).
 
 ## Rules
 
@@ -69,6 +86,7 @@ Launcher, search, categories, counts, metadata and static params all read the re
 - No user-supplied regex or parser on the server's main thread: Node has no regex timeout, so one backtracking pattern (`^(a+)+$`) or a crafted file stops the event loop for every user. Run it through the isolate pool (`runIsolated`, `src/lib/isolate/server.ts`; add a task in `tasks.ts`), cap its input size, and bound what it builds while it builds (`TextBudget` in `src/lib/office/text.ts`), not after. Constant patterns over user text are fine when they have no nested or overlapping quantifiers.
 - **Legal texts follow the features.** A feature that stores new personal data, sets a new cookie or browser storage entry, or sends data to a new recipient changes the privacy notice (and the Terms for a new service or rule) in the same release, both languages, as a new edition: `legal/versions.json` (editions + `covers`), `legal/editions/<n>/`, the texts' change history. `tests/legal.test.mjs` fails on a new cookie constant or `StorageArea` outside `covers`, and on a text change without its digest. Steps: `docs/LEGAL.md` "Changing the texts".
 - **Workspace pages** (registry `workspace`, Craft apps and Workflows): ToolShell marks `<main data-workspace>` in the server render, so on desktop the page has no tool heading or suite tabs and fills the window below the top bar from the first paint (globals.css); never switch that layout on from a client effect, the regular page would show first. `hideSidebar` (Workflows) hides the tool sidebar the same way; the toggle only peeks, the stored preference stays.
+- **Code fields** use `src/components/CodeEditor.tsx` (CodeMirror): the editable content carries `data-agent-code`, so the assistant's snapshot lists it as a textarea and `fill_field` replaces its text (events `knife:code-read` / `knife:code-fill`, dom-bridge.ts). A plain textarea needs nothing.
 - **Full screen is in the page**: `FullscreenButton` / `usePageFullscreen` (`src/components/ui.tsx`) make an element cover the page (`data-page-fullscreen`, globals.css; `data-page-fill` takes the rest of the height), never the browser Fullscreen API: that shows the element alone and loses Smart Knife's drawers and dialogs (a Craft app's file chooser). Embedded third-party apps are never linked bare: "Open in new tab" opens our page (`?full=1`), or Save/Open lose the account.
 - No new dependencies without a reason in the commit message; prefer Web APIs.
 - Type everything, no `any`. Typecheck and lint clean before reporting done.

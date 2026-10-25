@@ -84,7 +84,16 @@ const CONTROL_SELECTOR = [
   '[role="checkbox"]',
   '[role="radio"]',
   '[role="menuitem"]',
+  // Code fields (src/components/CodeEditor.tsx): read and filled through events, like a textarea.
+  "[data-agent-code]",
 ].join(",");
+
+/** A code field's whole text (CodeMirror renders only the visible lines, so the DOM text is not enough). */
+function readCode(el: Element): string {
+  const detail: { value: string | null } = { value: null };
+  el.dispatchEvent(new CustomEvent("knife:code-read", { detail }));
+  return detail.value ?? el.textContent ?? "";
+}
 
 const REGION_SELECTOR = [
   "section",
@@ -290,6 +299,12 @@ function describeControl(el: Element, titles: Map<Element, string>): ControlInfo
     info.kind = "textarea";
     setValueFields(info, el.value);
     if (el.readOnly) info.readonly = true;
+  } else if (el.hasAttribute("data-agent-code")) {
+    info.kind = "textarea";
+    info.type = `code:${el.getAttribute("data-agent-code")}`;
+    setValueFields(info, readCode(el));
+    if (el.getAttribute("aria-readonly") === "true") info.readonly = true;
+    info.hint = "code editor: fill_field replaces the whole text";
   } else if (el instanceof HTMLSelectElement) {
     info.kind = "select";
     setValueFields(info, el.value);
@@ -700,6 +715,15 @@ export function fillField(id: string, value: string): BridgeResult<{ id: string;
     if (el.checked !== want) el.click();
     settleOutputs();
     return { ok: true, id, value: String(el.checked) };
+  }
+  if (el.hasAttribute("data-agent-code")) {
+    if (el.getAttribute("aria-readonly") === "true") return fail(`Control ${id} is read-only.`);
+    highlight(el, "fill");
+    const detail: { value: string; ok?: boolean } = { value };
+    el.dispatchEvent(new CustomEvent("knife:code-fill", { detail }));
+    if (!detail.ok) return fail(`Control ${id} did not take the text.`);
+    settleOutputs();
+    return { ok: true, id, value: clip(readCode(el), VALUE_PREVIEW) };
   }
   if (
     el instanceof HTMLInputElement ||
