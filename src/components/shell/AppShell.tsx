@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Brand } from "@/components/ToolShell";
 import { cx } from "@/lib/format";
+import { navSectionOf } from "@/lib/nav";
 import { canonicalSlug, categoryLabel, findTool, TOOLS } from "@/lib/registry";
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { AccountLink } from "./AccountLink";
@@ -145,8 +146,13 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
           {tool ? (
             <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 text-sm md:flex">
               <span aria-hidden className="text-line-strong">/</span>
-              <span className="text-faint">{categoryLabel(tool.category)}</span>
-              <span aria-hidden className="text-line-strong">/</span>
+              {/* The section, unless it is the tool itself (Craft apps). */}
+              {(navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category)) !== tool.name ? (
+                <>
+                  <span className="text-faint">{navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category)}</span>
+                  <span aria-hidden className="text-line-strong">/</span>
+                </>
+              ) : null}
               <span className="truncate font-medium text-ink">{tool.name}</span>
             </nav>
           ) : null}

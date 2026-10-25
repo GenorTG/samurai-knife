@@ -1,14 +1,17 @@
 // Sidebar layout (src/lib/nav.ts) and the merged suites' redirects (src/lib/registry.ts toolHref/aliasTab): every menu
-// entry is a live tool or tab, every tool is reachable, each Craft app is listed once (under "Advanced"), and the
-// retired suites keep their old ?tab= links working.
+// entry is a live tool or tab, every tool is listed exactly once (no duplicates), tabs are never entries except the Craft
+// apps section, and the retired suites keep their old ?tab= links working.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/nav.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { NAV } = await import("../src/lib/nav.ts");
+const { NAV, NAV_FOOTER, navSectionOf } = await import("../src/lib/nav.ts");
 const { TOOLS, SLUG_ALIASES, toolHref, aliasTab, findTool } = await import("../src/lib/registry.ts");
 
-const items = NAV.flatMap((section) => section.groups.flatMap((group) => group.items.map((item) => ({ ...item, section: section.id, group: group.title }))));
+const items = [
+  ...NAV.flatMap((section) => section.items.map((item) => ({ ...item, section: section.id }))),
+  ...NAV_FOOTER.map((item) => ({ ...item, section: "footer" })),
+];
 
 test("every menu entry is a live tool, and a tab entry a live tab of it", () => {
   for (const item of items) {
@@ -16,22 +19,26 @@ test("every menu entry is a live tool, and a tab entry a live tab of it", () => 
     assert.ok(tool, `${item.section}: unknown slug ${item.slug}`);
     if (item.tab) assert.ok(tool.tabs?.some((tab) => tab.id === item.tab), `${item.slug} has no tab ${item.tab}`);
   }
-  const keys = items.map((item) => `${item.slug}?${item.tab ?? ""}`);
-  assert.equal(new Set(keys).size, keys.length, "no entry twice");
 });
 
-test("every tool is reachable from the menu (as a whole or through one of its tabs)", () => {
+test("every tool is listed exactly once; only the Craft apps section lists tabs (each app once)", () => {
+  const whole = items.filter((item) => !item.tab).map((item) => item.slug);
+  assert.equal(new Set(whole).size, whole.length, `a tool is listed twice: ${whole.filter((slug, i) => whole.indexOf(slug) !== i)}`);
+  const tabbed = items.filter((item) => item.tab);
+  assert.ok(tabbed.every((item) => item.section === "craft" && item.slug === "artcraft"), "tabs are local navigation, not menu entries");
+  assert.ok(!whole.includes("artcraft"), "the Craft suite is listed through its apps");
+  const craft = findTool("artcraft");
+  assert.deepEqual(tabbed.map((item) => item.tab).sort(), craft.tabs.map((tab) => tab.id).sort(), "each Craft app once");
   const reachable = new Set(items.map((item) => item.slug));
   for (const tool of TOOLS) assert.ok(reachable.has(tool.slug), `${tool.slug} is not in the menu`);
 });
 
-test("each Craft app has its own line, under an Advanced group", () => {
-  const craft = findTool("artcraft");
-  const listed = items.filter((item) => item.slug === "artcraft");
-  assert.deepEqual(listed.map((item) => item.tab).sort(), craft.tabs.map((tab) => tab.id).sort());
-  assert.ok(listed.every((item) => item.group === "Advanced"), "Craft apps are advanced tools");
-  const images = NAV.find((section) => section.id === "images");
-  assert.deepEqual(images.groups.map((group) => group.title), ["Simple", "Advanced"]);
+test("sections are non-empty, uniquely named, and breadcrumbs find a tool's section", () => {
+  assert.equal(new Set(NAV.map((section) => section.id)).size, NAV.length);
+  for (const section of NAV) assert.ok(section.items.length > 0, `${section.id} is empty`);
+  assert.equal(navSectionOf("pdf")?.id, "documents");
+  assert.equal(navSectionOf("artcraft")?.id, "craft");
+  assert.equal(navSectionOf("sidecars"), undefined, "setup pages live in the footer");
 });
 
 test("merged suites: the old slug keeps its tab (?tab= carried over), else the old suite's first tab", () => {

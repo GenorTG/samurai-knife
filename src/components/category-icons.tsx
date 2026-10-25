@@ -1,7 +1,7 @@
 import type { ToolCategory } from "@/lib/registry";
 
 /** A registry category, or one of the sidebar's own sections (src/lib/nav.ts). */
-export type IconName = ToolCategory | "media" | "setup" | "automate";
+export type IconName = ToolCategory | "media" | "setup" | "automate" | "craft" | "career";
 
 const PATHS: Record<IconName, string> = {
   images:
@@ -15,6 +15,8 @@ const PATHS: Record<IconName, string> = {
   media: "M4 6h12v12H4zM16 10l4-2.5v9L16 14",
   setup: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2M12 19v2M4.2 7.5l1.7 1M18.1 15.5l1.7 1M4.2 16.5l1.7-1M18.1 8.5l1.7-1",
   automate: "M4 6h5v5H4zM15 13h5v5h-5zM9 8.5h3a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2M4 17h5M6.5 14.5v5",
+  craft: "M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.6 0-.9-.8-1.3-.8-2.2 0-.9.7-1.4 1.6-1.4H17a4 4 0 0 0 4-4c0-4.9-4-8.8-9-8.8zM7.5 12h.01M9.5 7.5h.01M14.5 7.5h.01",
+  career: "M4 8h16v11H4zM9 8V5.5h6V8M4 13h16M11 13v2h2v-2",
 };
 
 /** Hue per category, applied to the shared accent so it follows the theme. */
@@ -29,6 +31,8 @@ const HUES: Record<IconName, number> = {
   media: 10,
   setup: 240,
   automate: 120,
+  craft: 50,
+  career: 260,
 };
 
 export function categoryTint(category: IconName): React.CSSProperties {
