@@ -243,7 +243,7 @@ export type CallRefusal =
   | { refused: "args_too_big"; bytes: number };
 
 /**
- * Ask the most recently active VISIBLE, listening tab (or `clientId`) to run `tool`. Refused at once when no such tab
+ * Ask the most recently active VISIBLE, listening tab that offers `tool` (or `clientId`) to run it. Refused at once when no such tab
  * exists, the page does not offer the tool right now, MAX_CALLS are in flight or the arguments are too big; otherwise
  * `outcome` settles with the tab's answer, `gone` (the tab closed / went away) or `timeout`.
  */
@@ -253,7 +253,10 @@ export function requestCall(
   now = Date.now(),
 ): CallRefusal | { callId: string; tab: UiPresence & { connected: boolean }; outcome: Promise<UiCallOutcome> } {
   const tabs = openTabs(accountId, now).filter((t) => t.connected && t.visible);
-  const tab = call.clientId ? tabs.find((t) => t.clientId === call.clientId) : tabs[0];
+  // Without a clientId: the most recently active tab that offers the tool (list_tools: one with any live tool), so a
+  // second visible window on another page never takes a call meant for the open document or Craft app.
+  const fits = (t: UiPresence) => (call.tool === LIST_TOOLS ? t.tools.length > 0 : t.tools.includes(call.tool));
+  const tab = call.clientId ? tabs.find((t) => t.clientId === call.clientId) : tabs.find(fits) ?? tabs[0];
   if (!tab) return { refused: "no_tab" };
   if (call.tool !== LIST_TOOLS && !tab.tools.includes(call.tool)) return { refused: "not_offered", tab };
   const bytes = Buffer.byteLength(JSON.stringify(call.args));

@@ -83,7 +83,7 @@ the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
 
 ## knife_ui_call: run the open page's live tools
 `knife_ui_call {tool, args?, clientId?, timeoutSeconds?}` runs ONE live tool in the user's most recently active
-**visible**, connected tab (or `clientId`) and returns its result: `doc_live_*` for the document open in the office
+**visible**, connected tab that offers it (or `clientId`; a second window on another page never takes the call) and returns its result: `doc_live_*` for the document open in the office
 editor, `craft_*` for the Craft app open on `/tools/artcraft` (VectorCraft, FilmCraft, EffectCraft). `tool:"list_tools"`
 returns the definitions (name, description, JSON-schema parameters) of the live tools that page offers now. Open the
 page first with `knife_ui_show` (`slug:"office", doc:<id>` or `slug:"artcraft", tab:"vectorcraft"`).

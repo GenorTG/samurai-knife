@@ -174,3 +174,17 @@ test("bounded: MAX_CALLS in flight per account, argument size cap; a tab that go
   resetUiBridge();
   assert.deepEqual(uiBridgeSize(), { accounts: 0, presence: 0, polls: 0, pending: 0, calls: 0 });
 });
+
+test("requestCall without clientId: the most recently active visible tab that OFFERS the tool, not just the newest", () => {
+  resetUiBridge();
+  const now = 70_000;
+  visibleDocTab("a", "tab-doc-00001", now - 5_000);
+  reportPresence("a", tab("tab-home-0001", "/", { tools: [] }), now);
+  takePoll("a", "tab-home-0001", now);
+  assert.equal(openTabs("a", now)[0].clientId, "tab-home-0001", "the home tab is the most recently active");
+  assert.equal(requestCall("a", { tool: "doc_live_read", args: {}, from: "MCP agent", timeoutMs: 1_000 }, now).tab.clientId, "tab-doc-00001");
+  assert.equal(requestCall("a", { tool: "list_tools", args: {}, from: "MCP agent", timeoutMs: 1_000 }, now).tab.clientId, "tab-doc-00001", "list_tools prefers a tab with live tools");
+  const named = requestCall("a", { tool: "doc_live_read", args: {}, from: "MCP agent", clientId: "tab-home-0001" }, now);
+  assert.equal(named.refused, "not_offered", "a named tab is still taken at its word");
+  resetUiBridge();
+});
