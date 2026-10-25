@@ -1,12 +1,13 @@
 """Screenshot regression diff for every tool and suite tab (see docs/TESTING.md).
 
 Subcommands:
-  shoot <base_url> <out_dir> [--only substr] [--themes dark,light] [--widths 1440,390] [--selector main]
+  shoot <base_url> <out_dir> [--only substr] [--themes dark,light] [--widths 1440,390x844] [--selector main] [--browser firefox]
       Screenshots the launcher, every standalone tool and every suite tab (from
-      src/lib/registry.ts) in each theme x width into <out_dir>/<theme>-<width>/.
+      src/lib/registry.ts), the account/admin/login pages, in each theme x width into <out_dir>/<theme>-<width>/.
       Animations, transitions and carets are disabled, Date/Math.random are frozen,
       the Next dev badge is hidden, so two servers with the same code give identical PNGs.
       Pages a server answers with 404 are skipped (listed in <out_dir>/missing.txt).
+      A width may carry its height (390x844; default 900). --browser picks chromium (default) or firefox.
   diff <dir_a> <dir_b> [--threshold 0.002] [--top 30] [--montage dir]
       Compares same-named PNGs: share of pixels whose channel delta exceeds 24.
       Prints the pages above the threshold (worst first, at most --top lines) and,
@@ -73,7 +74,23 @@ def pages(registry: Path = REGISTRY) -> list[tuple[str, str]]:
             out.append((slug, f"/tools/{slug}"))
         else:
             out.extend((f"{slug}__{tab}", f"/tools/{slug}?tab={tab}") for tab in tabs)
+    # pages outside the registry (404 in a mode that has no such page: listed in missing.txt)
+    out += [("account", "/account"), ("account__admin", "/account/admin"), ("account__logs", "/account/admin/logs"),
+            ("login", "/login"), ("register", "/register")]
     return out
+
+
+def viewports(spec: str) -> list[tuple[int, int]]:
+    """'1440,390x844' -> [(1440, 900), (390, 844)]."""
+    out = []
+    for part in spec.split(","):
+        w, _, h = part.partition("x")
+        out.append((int(w), int(h or 900)))
+    return out
+
+
+def launch(pw, browser: str):
+    return pw.firefox.launch() if browser == "firefox" else pw.chromium.launch()
 
 
 def shoot_page(page, base: str, stem: str, path: str, d: Path, selector: str) -> bool:
@@ -95,18 +112,18 @@ def shoot_page(page, base: str, stem: str, path: str, d: Path, selector: str) ->
     return True
 
 
-def shoot(base: str, out_dir: Path, only: str, themes: list[str], widths: list[int], selector: str = "") -> int:
+def shoot(base: str, out_dir: Path, only: str, themes: list[str], widths: list[tuple[int, int]], selector: str = "", browser_name: str = "chromium") -> int:
     from playwright.sync_api import sync_playwright
 
     todo = [p for p in pages() if only in p[0]]
     missing: list[str] = []
     count = 0
     with sync_playwright() as pw:
-        browser = pw.chromium.launch()
+        browser = launch(pw, browser_name)
         for theme in themes:
-            for width in widths:
+            for width, height in widths:
                 ctx = browser.new_context(
-                    viewport={"width": width, "height": 900},
+                    viewport={"width": width, "height": height},
                     reduced_motion="reduce",
                     locale="en-US",
                     timezone_id="UTC",
@@ -244,15 +261,15 @@ CONTRAST_JS = """
 }
 """
 
-def audit(base: str, only: str, widths: list[int], docked: bool, top: int, theme: str = "dark", contrast: float = 0) -> int:
+def audit(base: str, only: str, widths: list[tuple[int, int]], docked: bool, top: int, theme: str = "dark", contrast: float = 0, browser_name: str = "chromium") -> int:
     from playwright.sync_api import sync_playwright
 
     todo = [p for p in pages() if only in p[0]]
     found: list[str] = []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        for width in widths:
-            ctx = browser.new_context(viewport={"width": width, "height": 900}, reduced_motion="reduce")
+        browser = launch(pw, browser_name)
+        for width, height in widths:
+            ctx = browser.new_context(viewport={"width": width, "height": height}, reduced_motion="reduce")
             ctx.add_init_script(f"localStorage.setItem('sk-theme', '{theme}')")
             if docked:
                 ctx.add_init_script(
@@ -337,6 +354,7 @@ def main() -> int:
         p.add_argument("--themes", default="dark,light")
         p.add_argument("--widths", default="1440,390")
         p.add_argument("--selector", default="", help="screenshot only this element (e.g. main: the tool without shell chrome)")
+        p.add_argument("--browser", choices=("chromium", "firefox"), default="chromium")
 
     def diff_opts(p: argparse.ArgumentParser) -> None:
         p.add_argument("--threshold", type=float, default=0.002)
@@ -359,6 +377,7 @@ def main() -> int:
     a.add_argument("--top", type=int, default=30)
     a.add_argument("--theme", default="dark")
     a.add_argument("--contrast", type=float, default=0)
+    a.add_argument("--browser", choices=("chromium", "firefox"), default="chromium")
     c = sub.add_parser("compare")
     c.add_argument("url_a")
     c.add_argument("url_b")
@@ -368,19 +387,19 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.cmd == "shoot":
-        n = shoot(args.url.rstrip("/"), args.out, args.only, args.themes.split(","), [int(x) for x in args.widths.split(",")], args.selector)
+        n = shoot(args.url.rstrip("/"), args.out, args.only, args.themes.split(","), viewports(args.widths), args.selector, args.browser)
         print(f"{n} screenshots in {args.out}")
         return 0
     if args.cmd == "diff":
         diff_dirs(args.a, args.b, args.threshold, args.top, args.montage)
         return 0
     if args.cmd == "audit":
-        audit(args.url.rstrip("/"), args.only, [int(x) for x in args.widths.split(",")], args.docked, args.top, args.theme, args.contrast)
+        audit(args.url.rstrip("/"), args.only, viewports(args.widths), args.docked, args.top, args.theme, args.contrast, args.browser)
         return 0
-    themes, widths = args.themes.split(","), [int(x) for x in args.widths.split(",")]
+    themes, widths = args.themes.split(","), viewports(args.widths)
     with ProcessPoolExecutor(2) as ex:
-        fa = ex.submit(shoot, args.url_a.rstrip("/"), args.out / "a", args.only, themes, widths, args.selector)
-        fb = ex.submit(shoot, args.url_b.rstrip("/"), args.out / "b", args.only, themes, widths, args.selector)
+        fa = ex.submit(shoot, args.url_a.rstrip("/"), args.out / "a", args.only, themes, widths, args.selector, args.browser)
+        fb = ex.submit(shoot, args.url_b.rstrip("/"), args.out / "b", args.only, themes, widths, args.selector, args.browser)
         print(f"shot a={fa.result()} b={fb.result()}")
     diff_dirs(args.out / "a", args.out / "b", args.threshold, args.top, args.montage or args.out / "montage")
     return 0

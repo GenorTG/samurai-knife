@@ -151,17 +151,15 @@ samp {
   color: var(--c-ink);
 }
 
-input,
-textarea,
-select,
-button {
-  font: inherit;
-}
-
-/* The rule above is unlayered, so it beats every utility (text-xs, font-semibold…) on form controls app-wide. Inside the
-   assistant the controls are sized with utilities: hand the font back to the layers (preflight + utilities). */
-[data-agent-widget] :is(input, textarea, select, button) {
-  font: revert-layer;
+/* Form controls inherit the font in Tailwind's preflight (@layer base), so text-xs, font-mono, leading-* apply to them.
+   Phones and touch screens: iOS zooms into any text field under 16px on focus. Deliberately NOT layered, so this floor
+   beats the text-[13px]/text-sm utilities fields carry on the desktop. */
+@media (max-width: 639px), (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
 
 button:not(:disabled),

@@ -183,13 +183,14 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs text-faint">
+          <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-faint sm:flex-none">
             <span>Family</span>
+            {/* Phones: 16px field text (no iOS zoom) would push the count onto its own line; fill the row instead. */}
             <Select
               value={activeFamily}
               onChange={(event) => selectFamily(event.target.value)}
               disabled={familyOptions.length === 0}
-              className="h-8 w-auto min-w-40 text-xs"
+              className="h-8 min-w-0 flex-1 text-xs sm:w-auto sm:min-w-40 sm:flex-none"
             >
               <option value="all">All families</option>
               {familyOptions.map((item) => (
