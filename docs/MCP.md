@@ -73,17 +73,44 @@ the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
 ## Live view of the user's screen
 - Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast
   with Undo; nothing extra is needed after a `knife_cv_*` call.
-- `knife_ui_state`: the user's open app tabs (path, title, visible, connected, last activity), most recently active first.
+- `knife_ui_state`: the user's open app tabs (path, title, visible, connected, last activity, and for a page with live
+  tools `live` = its state line and `liveTools` = what `knife_ui_call` can run there now), most recently active first.
 - `knife_ui_show {slug, tab?, job?, variant?, focus?, doc?, note?, clientId?}`: brings the most recently active
   **visible** tab to `/tools/<slug>?tab=…&<deep link>` and shows `note` ("MCP agent: …") for 7 s. Only registry slugs,
   their tabs and the four deep-link keys are accepted (retired slugs map to their tab), so it never leaves the app.
   Deep links: `job` (Job offers), `variant` (CV versions), `focus` (a profile id-path), `doc` (office document).
   Returns `shown:false` when no tab is visible (the change is still saved; the user sees it when they open the app).
 
+## knife_ui_call: run the open page's live tools
+`knife_ui_call {tool, args?, clientId?, timeoutSeconds?}` runs ONE live tool in the user's most recently active
+**visible**, connected tab (or `clientId`) and returns its result: `doc_live_*` for the document open in the office
+editor, `craft_*` for the Craft app open on `/tools/artcraft` (VectorCraft, FilmCraft, EffectCraft). `tool:"list_tools"`
+returns the definitions (name, description, JSON-schema parameters) of the live tools that page offers now. Open the
+page first with `knife_ui_show` (`slug:"office", doc:<id>` or `slug:"artcraft", tab:"vectorcraft"`).
+- Same gate as the in-page assistant: the tab judges the call with `approval-policy.ts` under the tab's trust mode
+  (reads never ask; Standard asks for edits; destructive calls such as deleting paragraphs, replacing every match or
+  overwriting cells are asked in every mode but None). The card is the shell's (`[data-ui-call-approval]`, outside
+  `<main>`), names the agent and the tool, and has no "allow for this run": every call stands alone. Not while the
+  in-page assistant runs in that account (the run lock): `busy`.
+- Waits up to `timeoutSeconds` (default 60, 5-120) for the answer; an approval card still open then is dropped.
+- Result: `{called, tool, tab, ok, result}` with `result` = the tool's JSON text inside the untrusted-content envelope
+  (it carries the document's / app's content), or `{called:false|true, reason, note}` with `reason` = `no_tab`
+  (nothing visible), `not_offered` (the page lacks the tool now; `liveTools` says what it has), `declined` (the user
+  said no: do not retry), `busy`, `timeout` (picked up or not), `gone` (the tab closed), `too_many`, `args_too_big`.
+  A name that is not a live tool is an error.
+- Effect `write` + untrusted output (`openWorldHint`): MCP clients should treat the result as third-party text.
+
 ## How it works (`src/lib/ui-bridge/`)
 - Tabs report presence (`POST /api/ui/presence`, on navigation, focus/visibility change and every 20 s; id per tab in
   sessionStorage). A visible tab polls `GET /api/ui/poll?client=<id>` every 1.5 s; a tab that polled in the last 5 s is
   "connected". `knife_ui_show` queues one request for the target tab (a newer request replaces an unread one).
+- Presence carries the page's live tools (`tools`, only `doc_live_*` / `craft_*` names) and its live line; a tab
+  reports again as soon as they change (a document connects, a Craft app becomes ready).
+- Calls: `knife_ui_call` queues a call event (random `callId`, the arguments, a deadline) for the target tab and waits
+  on a promise. The tab's poll picks it up, the tab runs it and answers `POST /api/ui/call {clientId, callId, status,
+  ok, content}`; only the account AND the tab the call went to can settle it (anything else is accepted and ignored).
+  A deadline, the tab's presence going away (TTL, cap, restart) or the answer settles it once. Bounds: 4 calls in
+  flight per account, 1 MB of arguments, 60 000 characters of answer, 120 s deadline.
 - In memory per account on `globalThis` (the MCP and UI routes may be bundled separately in dev); a restart forgets
   tabs until they report again.
 - Bounded: at most 32 tabs per account (the oldest report is evicted). A poll from a client id with no presence is
@@ -94,8 +121,10 @@ the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
   Playwright suite and the assistant, and would hold one of HTTP/1.1's 6 connections per site per tab.
 
 ## Tests
-`tests/ui_bridge.test.mjs` (store + path rules), `tests/ui_bridge_e2e.py` (real browser; the test acts only through
-MCP: state, live CV edit, show with a version deep link and the note, refusals, idle network, hidden tab).
+`tests/ui_bridge.test.mjs` (store + path rules + calls: targeting, answer ownership, timeouts, bounds),
+`tests/ui_bridge_e2e.py` (real browser; the test acts only through MCP: state, live CV edit, show with a version deep
+link and the note, refusals, idle network, hidden tab), `tests/ui_call_e2e.py` (`knife_ui_call` against the real office
+editor: liveTools, list_tools, read, approval card Deny/Allow, destructive, timeout, refusals, closed tab).
 `tests/roles_mcp.test.mjs` (scopes, key store, credential parsing) and `tests/functional/roles_mcp_e2e.py` (public mode,
 two accounts: keys good/revoked/wrong user, cross-account data, admin tools and admin routes refused to a user over the
 widget route and MCP).

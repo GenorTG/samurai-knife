@@ -128,4 +128,14 @@ builds showed when loaded in Firefox:
 formatting, tables, bulleted/numbered lists, header and footer, track changes; spreadsheets get cell formats (number
 formats, fills, alignment), column widths, sorting and charts (formulas already worked through `cells_write`);
 presentations get slide text by shape, speaker notes and deleting a slide. Not yet: images, layouts/placeholders,
-PDF forms. "4. Outside agents (MCP) driving an open app" (`knife_ui_call`) is still open.
+PDF forms.
+
+## Done: outside agents (2026-10-25)
+
+"4. Outside agents (MCP) driving an open app" built as `knife_ui_call {tool, args?, clientId?, timeoutSeconds?}`
+(docs/MCP.md "knife_ui_call"): the call rides the UI bridge poll to the most recently active visible tab, which runs the
+`doc_live_*` / `craft_*` tool behind the same approval policy and trust mode (its own card in the shell, outside
+`<main>`, no "allow for this run"), never while the in-page assistant runs, and answers `POST /api/ui/call`; the MCP
+call waits up to 60 s (5-120). Presence carries the page's live tools, so `knife_ui_state` shows what can be called and
+`tool:"list_tools"` returns the definitions. Results come back in the untrusted-content envelope. Checked against the
+real office editor (tests/ui_call_e2e.py); the Craft path uses the same runner and the tools craft_e2e already covers.
