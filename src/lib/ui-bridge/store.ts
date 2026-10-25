@@ -53,6 +53,9 @@ export interface UiCallEvent {
   args: Record<string, unknown>;
   target: string;
   from: string;
+  /** The account the call is for: the tab refuses it when it was loaded by another account (a sign-in elsewhere in
+   *  the same browser switched the cookie under it; its file chain and app state are the other account's). */
+  account: string;
   /** ms epoch after which nobody waits for the answer (the tab drops an approval card still open then). */
   expiresAt: number;
   /** Set when handed to the tab: ms left until expiresAt (the tab's clock may differ from the server's). */
@@ -265,7 +268,7 @@ export function requestCall(
   if (b.calls.size >= MAX_CALLS) return { refused: "too_many" };
   const timeoutMs = Math.min(Math.max(call.timeoutMs ?? CALL_TIMEOUT_MS, 1), MAX_CALL_TIMEOUT_MS);
   const callId = randomUUID();
-  const event: UiCallEvent = { kind: "call", id: state().nextId++, callId, tool: call.tool, args: call.args, target: tab.clientId, from: call.from.slice(0, 80), expiresAt: now + timeoutMs };
+  const event: UiCallEvent = { kind: "call", id: state().nextId++, callId, tool: call.tool, args: call.args, target: tab.clientId, from: call.from.slice(0, 80), account: accountId, expiresAt: now + timeoutMs };
   const outcome = new Promise<UiCallOutcome>((resolve) => {
     const timer = setTimeout(() => {
       const waiter = b.calls.get(callId);

@@ -23,6 +23,8 @@ export interface ExternalCall {
   tool: string;
   args: Record<string, unknown>;
   from: string;
+  /** The account the server sent the call for (src/lib/ui-bridge/store.ts). */
+  account?: string;
 }
 
 export interface ExternalAnswer {
@@ -58,6 +60,12 @@ export function liveNote(): string {
 const clip = (text: string): string => (text.length > RESULT_LIMIT ? `${text.slice(0, RESULT_LIMIT - 40)}… [cut at ${RESULT_LIMIT} characters]` : text);
 
 export async function runExternalCall(call: ExternalCall, approve: ApproveFn, signal?: AbortSignal): Promise<ExternalAnswer> {
+  // This page was loaded by one account and the call is for another (someone signed in elsewhere in this browser): the
+  // open document, the Craft app and the file chain are the first account's, so nothing here may run for the second.
+  const loadedAs = runtime.get().accountId;
+  if (call.account && loadedAs && call.account !== loadedAs) {
+    return { status: "unavailable", ok: false, content: "This tab was opened while another account was signed in; the user has to reload it before an agent can use it." };
+  }
   if (call.tool === LIST_TOOLS) {
     const tools = ALL_DEFS.filter((d) => available(d.function.name)).map((d) => d.function);
     const app = activeCraft();

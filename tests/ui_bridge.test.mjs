@@ -126,7 +126,7 @@ test("a call travels in the poll and only the account + tab it went to can answe
   const { events } = takePoll("a", "tab-one-0001", now + 100);
   const call = events.find((e) => e.kind === "call");
   assert.ok(call && events.some((e) => e.kind === "show"), "a show request does not drop a waiting call");
-  assert.deepEqual([call.tool, call.args, call.target], ["doc_live_read", { what: "text" }, "tab-one-0001"]);
+  assert.deepEqual([call.tool, call.args, call.target, call.account], ["doc_live_read", { what: "text" }, "tab-one-0001", "a"], "the call names its account (a tab loaded by another refuses it)");
   assert.ok(call.ttlMs > 4_000 && call.ttlMs <= 4_900, String(call.ttlMs));
   const answer = { status: "done", ok: true, content: "y".repeat(MAX_CALL_RESULT_CHARS + 500) };
   assert.equal(answerCall("b", "tab-bbb-0001", call.callId, answer), false, "another account cannot answer it");

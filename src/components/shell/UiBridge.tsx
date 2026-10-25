@@ -45,6 +45,7 @@ interface CallEvent {
   args: Record<string, unknown>;
   target: string;
   from: string;
+  account?: string;
   ttlMs?: number;
 }
 
@@ -147,7 +148,7 @@ export function UiBridge() {
           setApproval(null);
         }, Math.max(0, (event.ttlMs ?? 60_000) - 500));
         try {
-          const answer = await runExternalCall({ tool: event.tool, args: event.args ?? {}, from: event.from }, gated, controller.signal);
+          const answer = await runExternalCall({ tool: event.tool, args: event.args ?? {}, from: event.from, account: event.account }, gated, controller.signal);
           if (controller.signal.aborted) return; // nobody waits for it any more
           await fetch("/api/ui/call", {
             method: "POST",
