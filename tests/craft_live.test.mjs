@@ -138,7 +138,7 @@ const run = async (name, args = {}) => {
 test("craft_* is a page-only group on /tools/artcraft, offered only while an app with the API is connected", () => {
   assert.equal(groupOf("craft_execute")?.id, "craft_live");
   assert.deepEqual([...initialGroups("/tools/artcraft", [])], ["craft_live"]);
-  assert.equal(CRAFT_TOOL_DEFS.length, 9);
+  assert.equal(CRAFT_TOOL_DEFS.length, 10);
   clearCraftPresence("democraft");
   setCraftPresence(null);
   assert.equal(craftToolAvailable("craft_inspect"), false);
@@ -152,7 +152,7 @@ test("craft_* is a page-only group on /tools/artcraft, offered only while an app
   assert.equal(craftToolAvailable("craft_inspect"), true);
   assert.equal(craftToolAvailable("craft_export"), false, "the app has no readFile");
   const visible = visibleTools(CRAFT_TOOL_DEFS, new Set(["craft_live"]), craftToolAvailable).map((d) => d.function.name);
-  assert.deepEqual(visible, ["craft_guide", "craft_commands", "craft_inspect", "craft_request"]);
+  assert.deepEqual(visible, ["craft_guide", "craft_commands", "craft_inspect", "craft_request", "craft_file_save"], "craft_file_save needs only a connected app");
   assert.match(craftStatusNote(), /CONNECTED/);
   // An unmount of another app's frame does not clear this one.
   clearCraftPresence("othercraft");
@@ -319,4 +319,84 @@ test("readFile: bytes from the app's own frame (another realm, where instanceof 
   assert.deepEqual([...new Uint8Array(hit.message.result.bytes)], [2, 3, 4], "the view's own bytes, not its whole buffer");
   const plain = bridge({ democraft: fakeApi({ readFile: async () => "nope" }).api });
   assert.equal((await plain("readFile", ["/x"])).message.error, "the app returned no bytes");
+});
+
+test("craft_file_save: a chain file into the account's Craft files (POST /api/craft/files), never replacing unless asked", async () => {
+  connect({ screenshot: { ok: true, result: { pngBase64: Buffer.from("png").toString("base64"), width: 2, height: 1 } } });
+  const real = globalThis.fetch;
+  const sent = [];
+  let reply = () => new Response(JSON.stringify({ file: { id: "a".repeat(20), name: "Poster.png", app: "democraft", mime: "image/png", size: 4, updatedAt: "2026-10-26T10:00:00.000Z" } }), { status: 201 });
+  globalThis.fetch = async (url, init) => (sent.push({ url, init, body: JSON.parse(init.body) }), reply());
+  try {
+    const shot = await run("craft_screenshot");
+    const id = shot.body.file.id;
+    const saved = await run("craft_file_save", { file: id, name: "Poster.png" });
+    assert.equal(saved.ok, true, JSON.stringify(saved.body));
+    assert.equal(saved.body.saved.id, "a".repeat(20));
+    assert.match(saved.body.note, /knife_craft_file_read/);
+    const req = sent.at(-1);
+    assert.equal(req.url, "/api/craft/files");
+    assert.equal(req.init.method, "POST");
+    assert.equal(req.init.credentials, "same-origin", "the tab's own session: its account, quota and rate");
+    assert.deepEqual({ ...req.body, data: undefined }, { action: "save", app: "democraft", name: "Poster.png", mime: "image/png", data: undefined, replace: false });
+    assert.equal(Buffer.from(req.body.data, "base64").toString(), "png", "the chain file's bytes");
+    // replace:true sends no `replace` (the route's default: same app + name replaces)
+    await run("craft_file_save", { file: id, replace: true });
+    assert.equal(sent.at(-1).body.replace, undefined);
+    assert.equal(sent.at(-1).body.name, "democraft-screenshot.png", "the chain file's own name by default");
+    // An existing name: refused with the hint, the server's message names the existing id.
+    reply = () => new Response(JSON.stringify({ error: 'A file named "Poster.png" from this app is already in your files (id bbb).', code: "file_exists" }), { status: 409 });
+    const taken = await run("craft_file_save", { file: id, name: "Poster.png" });
+    assert.equal(taken.ok, false);
+    assert.match(taken.body.error, /already in your files/);
+    assert.match(taken.body.hint, /replace:true/);
+    reply = () => new Response(JSON.stringify({ error: "Your storage is full.", code: "storage_quota_exceeded" }), { status: 507 });
+    assert.match((await run("craft_file_save", { file: id })).body.error, /Could not save .*storage is full/);
+    const calls = sent.length;
+    assert.match((await run("craft_file_save", { file: "../etc" })).body.error, /needs \{"file": "f3"\}/);
+    assert.match((await run("craft_file_save", { file: "f9999" })).body.error, /no longer in the file chain/);
+    assert.equal(sent.length, calls, "nothing is sent for a bad or missing id");
+  } finally {
+    globalThis.fetch = real;
+    clearCraftPresence("democraft");
+  }
+});
+
+test("craft_file_save trust: a save acts (asked in Standard/Strict), replace:true is destructive in every mode but None", async () => {
+  connect({ screenshot: { ok: true, result: { pngBase64: Buffer.from("png").toString("base64"), width: 2, height: 1 } } });
+  const id = (await run("craft_screenshot")).body.file.id;
+  assert.equal(craftRisk("craft_file_save", { file: id }), "act");
+  assert.equal(craftRisk("craft_file_save", { file: id, replace: true }), "destructive");
+  const save = assessCraftCall("craft_file_save", { file: id, name: "Poster.png" }, "standard", "d");
+  assert.equal(save.ask, true);
+  assert.equal(save.destructive, false);
+  assert.match(save.title, /Save Poster\.png to your files\?/);
+  assert.equal(assessCraftCall("craft_file_save", { file: id }, "destructive", "d").ask, false);
+  const replace = assessCraftCall("craft_file_save", { file: id, name: "Poster.png", replace: true }, "destructive", "d");
+  assert.equal(replace.ask, true);
+  assert.equal(replace.destructive, true);
+  assert.match(replace.title, /Replace Poster\.png/);
+  assert.equal(assessCraftCall("craft_file_save", { file: id, replace: true }, "free", "d").ask, false);
+  assert.equal(assessCraftCall("craft_file_save", { file: "f99999" }, "strict", "d").ask, false, "no such chain file: nothing to ask, the tool reports it");
+  assert.equal(assessCraftCall("craft_file_save", { file: "../x", replace: true }, "standard", "d").ask, false);
+  assert.match(assessCraftCall("craft_file_save", { file: id }, "strict", "d").title, /democraft-screenshot\.png/, "the card names the chain file");
+  assert.ok(!PAGE_READS.has("craft_file_save"), "its result is our own metadata, like craft_screenshot");
+  clearCraftPresence("democraft");
+});
+
+test("an outside agent's call is refused in a tab loaded by another account (a sign-in elsewhere switched the cookie)", async () => {
+  const { runExternalCall } = await import("../src/lib/agent-client/external-call.ts");
+  const { runtime } = await import("../src/lib/agent-client/runtime-store.ts");
+  connect();
+  runtime.setAccount("alice");
+  const approve = async () => true;
+  const other = await runExternalCall({ tool: "craft_file_save", args: { file: "f1" }, from: "MCP agent", account: "bob" }, approve);
+  assert.equal(other.status, "unavailable");
+  assert.match(other.content, /another account/);
+  assert.equal((await runExternalCall({ tool: "list_tools", args: {}, from: "MCP agent", account: "bob" }, approve)).status, "unavailable", "not even the definitions");
+  const own = await runExternalCall({ tool: "list_tools", args: {}, from: "MCP agent", account: "alice" }, approve);
+  assert.equal(own.status, "done");
+  assert.ok(JSON.parse(own.content).tools.some((t) => t.name === "craft_file_save"));
+  runtime.setAccount(null);
+  clearCraftPresence("democraft");
 });

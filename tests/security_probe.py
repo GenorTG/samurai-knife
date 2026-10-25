@@ -10,7 +10,7 @@ live one), the way tests/prod_smoke.py documents:
 
 Covers: guests reach no tool, account or API (pages redirect to /login, APIs answer 401/403); the Origin guard; the open
 redirect shapes (`/\\t/evil.com`) on /login and the GitHub start route; cross-account isolation over MCP (CV offers,
-office documents, UI bridge); the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
+office documents, UI bridge, Craft files kept by craft_file_save and read over MCP); the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
 login brute force is limited; security headers; path tricks on document ids. Exit 1 on any failure.
 """
 from __future__ import annotations
@@ -158,6 +158,7 @@ def main() -> int:
         ("POST", "/api/sql", {"action": "format", "sql": "select 1"}), ("POST", "/api/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
         ("GET", "/api/ui/poll?client=AAAAAAAAAAAAAAAA", None), ("GET", "/api/learn", None),
         ("POST", "/api/ui/call", {"clientId": "AAAAAAAAAAAAAAAA", "callId": "00000000-0000-4000-8000-000000000000", "status": "done", "ok": True, "content": "x"}),
+        ("GET", "/api/craft/files", None),
         ("GET", "/api/workflows", None), ("GET", "/api/workflows/credentials", None), ("GET", "/api/workflows/oauth/start?credential=abcdefabcdef", None),
         ("POST", "/api/workflows", {"action": "create", "name": "x"}),
     ):
@@ -251,6 +252,28 @@ def main() -> int:
     check("alice's agent gets her tab's answer, enveloped, never bob's", ok and "alice answer" in text and "forged by bob" not in text and "UNTRUSTED_CONTENT" in text, text[:300])
     status, _, _ = raw("POST", "/api/ui/call", json.dumps(answer).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
     check("a cross-origin call answer is refused by the Origin guard", status == 403, status)
+
+    # --------------------------------------------------------------------------------------------- Craft files (craft_file_save + MCP reads)
+    # What a tab's craft_file_save posts: alice's own session, never overwriting unless asked; bob's agent reads none of it.
+    save = {"action": "save", "app": "vectorcraft", "name": "alice-craft.txt", "mime": "text/plain", "data": base64.b64encode(b"alice craft secret").decode(), "replace": False}
+    status, body, _ = api.call("POST", "/api/craft/files", save, cookie=alice, ip="198.51.100.10")
+    craft_id = body.get("file", {}).get("id", "") if isinstance(body, dict) else ""
+    check("alice keeps a file in her Craft files (replace:false, new)", status == 201 and bool(craft_id), (status, body))
+    status, body, _ = api.call("POST", "/api/craft/files", {**save, "data": base64.b64encode(b"overwritten").decode()}, cookie=alice, ip="198.51.100.10")
+    check("replace:false never overwrites (409 file_exists)", status == 409 and isinstance(body, dict) and body.get("code") == "file_exists", (status, body))
+    status, _, _ = raw("POST", "/api/craft/files", json.dumps(save).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
+    check("a cross-origin Craft file save is refused by the Origin guard", status == 403, status)
+    status, _, _ = raw("POST", "/api/craft/files", json.dumps(save).encode(), {"Content-Type": "application/json", "Origin": BASE})
+    check("a guest cannot save a Craft file", status in (401, 403), status)
+    ok, text, _ = mcp(api, "knife_craft_files", {}, hb, "198.51.100.20")
+    check("bob's knife_craft_files never lists alice's file", ok and "alice-craft" not in text and '"total":0' in text.replace(" ", ""), text[:200])
+    if craft_id:
+        ok, text, _ = mcp(api, "knife_craft_file_read", {"id": craft_id}, hb, "198.51.100.20")
+        check("bob cannot read alice's Craft file by id", (not ok) and "alice craft secret" not in text and "Unknown file" in text, text[:200])
+        ok, text, _ = mcp(api, "knife_craft_file_read", {"id": craft_id}, ha, "198.51.100.10")
+        check("alice reads her own Craft file, enveloped, unchanged by the refused overwrite", ok and "alice craft secret" in text and "overwritten" not in text and "UNTRUSTED_CONTENT" in text, text[:300])
+    ok, text, _ = mcp(api, "knife_craft_file_read", {"id": "../../accounts"}, ha, "198.51.100.10")
+    check("a path as a Craft file id is refused", not ok and "accounts" not in text.replace("../../accounts", ""), text[:200])
 
     # --------------------------------------------------------------------------------------------- workflows
     status, hdrs, text = raw("POST", "/api/hooks/" + "A" * 24 + "/x", b"{}", {"Content-Type": "application/json"})

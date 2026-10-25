@@ -32,9 +32,12 @@ export interface CraftFile {
 
 export class CraftFileError extends Error {
   readonly status: number;
-  constructor(message: string, status = 400) {
+  /** Machine-readable reason where a caller acts on it (`file_exists`: a save with replace:false met a file). */
+  readonly code?: string;
+  constructor(message: string, status = 400, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -104,15 +107,18 @@ export function readCraftFile(accountId: string, id: string): { file: CraftFile;
 
 /**
  * Stores what an app saved. Same app + same name = the same file, replaced (only the growth counts against the quota);
- * otherwise a new one. Throws QuotaExceededError (507) when it does not fit, CraftFileError for bad input.
+ * otherwise a new one. `replace: false` refuses to replace (409, the existing file named): an agent's craft_file_save
+ * never overwrites a file the person keeps unless it asked to. Throws QuotaExceededError (507) when it does not fit,
+ * CraftFileError for bad input.
  */
-export function saveCraftFile(accountId: string, input: { app: string; name: string; mime?: string; bytes: Uint8Array }, now = new Date()): CraftFile {
+export function saveCraftFile(accountId: string, input: { app: string; name: string; mime?: string; bytes: Uint8Array; replace?: boolean }, now = new Date()): CraftFile {
   if (!ARTCRAFT_APPS.some((app) => app.id === input.app)) throw new CraftFileError("Unknown app.");
   if (input.bytes.byteLength === 0) throw new CraftFileError("The app saved an empty file.");
   if (input.bytes.byteLength > MAX_CRAFT_FILE_BYTES) throw new CraftFileError(`Files over ${MAX_CRAFT_FILE_BYTES / 1048576} MB cannot be saved to your files; download it instead.`, 413);
   const name = cleanFileName(input.name);
   const files = readIndex(accountId);
   const existing = files.find((file) => file.app === input.app && file.name === name);
+  if (existing && input.replace === false) throw new CraftFileError(`A file named "${name}" from this app is already in your files (id ${existing.id}).`, 409, "file_exists");
   if (!existing && files.length >= MAX_CRAFT_FILES) throw new CraftFileError(`You have ${MAX_CRAFT_FILES} Craft files; delete some first.`, 409);
   const at = now.toISOString();
   const file: CraftFile = existing

@@ -129,7 +129,7 @@ SANDBOX["soundcraft"] = "allow-scripts allow-same-origin"
 ALLOW = {app: "fullscreen; clipboard-read; clipboard-write" for app in APPS}
 ALLOW["soundcraft"] = "fullscreen; autoplay; clipboard-read; clipboard-write"
 # New modules a fresh checkout may not have committed yet (the scratch worktree holds tracked files only).
-OVERLAY = ["src/lib/craft", "src/app/api/craft", "src/tools/craft", "src/lib/services/sites.ts", "scripts/craft-proxy.mjs"]
+OVERLAY = ["src/lib/craft", "src/lib/mcp", "src/app/api/craft", "src/tools/craft", "src/lib/services/sites.ts", "scripts/craft-proxy.mjs"]
 # Console text that means the craft origin's headers or the iframe sandbox got in an app's way. Firefox's own note that
 # it does not know the `clipboard-read`/`clipboard-write` permission names (the iframe's `allow`, from the apps' notes)
 # is not one of them.
@@ -441,6 +441,124 @@ def agent_checks(page, app: str, shots: Path) -> None:
     page.locator("button[aria-label='Close assistant']").first.click()
 
 
+CARD = "[data-ui-call-approval]"
+
+
+def mcp_raw(base: str, name: str, args: dict | None = None, timeout: float = 150) -> dict:
+    """One MCP tools/call (no Origin header, like an outside client); the whole `result` (every content block)."""
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}}).encode()
+    req = urllib.request.Request(base + "/api/mcp", data=body, method="POST", headers={"content-type": "application/json", "accept": "application/json, text/event-stream"})
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        raw = res.read().decode()
+    return json.loads(raw[raw.find("{"):])["result"]
+
+
+def mcp_json(base: str, name: str, args: dict | None = None, timeout: float = 150) -> dict:
+    result = mcp_raw(base, name, args, timeout)
+    text = result["content"][0]["text"]
+    try:
+        out = json.loads(text)
+    except ValueError:
+        out = {"text": text}
+    if result.get("isError"):
+        out = {"error": text}
+    return out if isinstance(out, dict) else {"value": out}
+
+
+class McpCall:
+    """A knife_ui_call that waits for the user's answer in the tab while the test drives the browser."""
+
+    def __init__(self, base: str, args: dict) -> None:
+        import threading
+
+        self.value: dict | None = None
+        self.thread = threading.Thread(target=self._run, args=(base, args), daemon=True)
+        self.thread.start()
+
+    def _run(self, base: str, args: dict) -> None:
+        try:
+            self.value = mcp_json(base, "knife_ui_call", args)
+        except Exception as exc:  # noqa: BLE001 - reported by the check
+            self.value = {"error": str(exc)}
+
+    def result(self, timeout: float = 150) -> dict:
+        self.thread.join(timeout)
+        return self.value or {"error": "no answer"}
+
+
+def mcp_file_checks(page, url: str, api: "Api", app: str, shots: Path) -> None:
+    """An agent OUTSIDE the app gets a file a live tool made: knife_ui_call craft_screenshot -> a chain id only;
+    craft_file_save behind the tab's approval card (Standard: Deny / Allow; replace:true asked as destructive) keeps it
+    in the account's Craft files; knife_craft_files / knife_craft_file_read return it (an image block, base64 chunks)
+    byte for byte what GET /api/craft/files/<id> serves."""
+    import base64
+    import hashlib
+
+    page.evaluate("localStorage.setItem('sk.agent.mode.v1', 'standard')")
+    page.reload()
+    page.locator(f"[data-craft-app={app}] [data-craft-agent=connected]").wait_for(timeout=240_000)
+    tab: dict = {}
+    deadline = time.time() + 30
+    while time.time() < deadline and not tab:
+        tab = next((t for t in mcp_json(url, "knife_ui_state").get("tabs", []) if "craft_file_save" in t.get("liveTools", [])), {})
+        if not tab:
+            time.sleep(0.5)
+    check(f"{app} MCP: the tab offers craft_file_save in liveTools", bool(tab), json.dumps(tab)[:300])
+
+    shot = mcp_json(url, "knife_ui_call", {"tool": "craft_screenshot"})
+    found = re.search(r'"id":"(f\d+)"', shot.get("result", ""))
+    check(f"{app} MCP: craft_screenshot (a read: no card) returns only a chain id, no image data", shot.get("ok") is True and bool(found) and "pngBase64" not in shot.get("result", "") and page.locator(CARD).count() == 0, json.dumps(shot)[:300])
+    chain_id = found.group(1) if found else "f1"
+    name = f"mcp-{app}-shot.png"
+
+    call = McpCall(url, {"tool": "craft_file_save", "args": {"file": chain_id, "name": name}})
+    page.locator(CARD).wait_for(timeout=20_000)
+    card = page.locator(CARD).inner_text()
+    check(f"{app} MCP: Standard asks before keeping the file (card names the agent, the tool, the file)", "MCP agent" in card and "craft_file_save" in card and name in card and page.locator(CARD).get_attribute("data-ui-call-approval") != "destructive", card[:300])
+    page.screenshot(path=str(shots / f"61-{app}-file-save-card.png"))
+    page.locator(CARD).get_by_role("button", name="Deny", exact=True).click()
+    denied = call.result()
+    check(f"{app} MCP: Deny -> declined, nothing stored", denied.get("reason") == "declined" and not any(name in json.dumps(f) for f in api.craft_files()), json.dumps(denied)[:300])
+
+    call = McpCall(url, {"tool": "craft_file_save", "args": {"file": chain_id, "name": name}})
+    page.locator(CARD).wait_for(timeout=20_000)
+    page.locator(CARD).get_by_role("button", name="Allow", exact=True).click()
+    allowed = call.result()
+    saved = re.search(r'"saved":\{"id":"([0-9a-f]{20})"', allowed.get("result", ""))
+    check(f"{app} MCP: Allow -> the chain file is in the account's Craft files", allowed.get("ok") is True and bool(saved), json.dumps(allowed)[:300])
+    file_id = saved.group(1) if saved else ""
+
+    listed = mcp_json(url, "knife_craft_files", {"app": app})
+    check(f"{app} MCP: knife_craft_files lists it (name inside the envelope)", any(f.get("id") == file_id and name in f.get("name", "") and "UNTRUSTED_CONTENT" in f.get("name", "") and f.get("mime") == "image/png" for f in listed.get("files", [])), json.dumps(listed)[:300])
+    status, served, _ = api.raw(f"/api/craft/files/{file_id}")
+    read = mcp_raw(url, "knife_craft_file_read", {"id": file_id})
+    meta = json.loads(read["content"][0]["text"])
+    image = next((b for b in read["content"][1:] if b.get("type") == "image"), {})
+    got = base64.b64decode(image.get("data", ""))
+    check(f"{app} MCP: knife_craft_file_read returns the PNG as an image block, byte for byte the stored file", status == 200 and got == served and got[:8] == b"\x89PNG\r\n\x1a\n" and image.get("mimeType") == "image/png" and meta["file"]["sha256"] == hashlib.sha256(served).hexdigest(), json.dumps(meta)[:300])
+    parts, offset = [], 0
+    while offset is not None and len(parts) < 400:
+        chunk = mcp_json(url, "knife_craft_file_read", {"id": file_id, "as": "base64", "offset": offset, "length": 65536})
+        parts.append(base64.b64decode(chunk.get("base64", "")))
+        offset = chunk.get("nextOffset")
+    check(f"{app} MCP: base64 chunks reassemble to the same sha256", b"".join(parts) == served, f"{len(parts)} chunks, {sum(map(len, parts))} of {len(served)} bytes")
+
+    call = McpCall(url, {"tool": "craft_file_save", "args": {"file": chain_id, "name": name}})
+    page.locator(CARD).wait_for(timeout=20_000)
+    page.locator(CARD).get_by_role("button", name="Allow", exact=True).click()
+    again = call.result()
+    check(f"{app} MCP: the same name again is refused without replace (the stored file is kept)", again.get("ok") is False and "already in your files" in again.get("result", "") and api.raw(f"/api/craft/files/{file_id}")[1] == served, json.dumps(again)[:300])
+    call = McpCall(url, {"tool": "craft_file_save", "args": {"file": chain_id, "name": name, "replace": True}})
+    page.locator(CARD).wait_for(timeout=20_000)
+    kind = page.locator(CARD).get_attribute("data-ui-call-approval")
+    page.locator(CARD).get_by_role("button", name="Allow", exact=True).click()
+    replaced = call.result()
+    check(f"{app} MCP: replace:true is asked as destructive and keeps the same id", kind == "destructive" and replaced.get("ok") is True and file_id in replaced.get("result", ""), f"{kind} {json.dumps(replaced)[:300]}")
+    out = mcp_json(url, "knife_ui_call", {"tool": "craft_file_save", "args": {"file": "f99999"}})
+    check(f"{app} MCP: a chain id that is not there -> ok:false, nothing asked", out.get("ok") is False and "no longer in the file chain" in out.get("result", ""), json.dumps(out)[:300])
+    page.evaluate("localStorage.setItem('sk.agent.mode.v1', 'free')")
+
+
 def wait_app(page, app: str, timeout_s: float = 180) -> dict:
     frame = None
     deadline = time.monotonic() + timeout_s
@@ -655,6 +773,8 @@ def main() -> int:
                         continue
                     check(f"{app}: 'Assistant ready' once the app's agent API answers", badge.is_visible())
                     agent_checks(page, app, shots)
+                    if app == "vectorcraft":
+                        mcp_file_checks(page, url, api, app, shots)
                 mock.close()
 
             if len(only) == len(APPS):

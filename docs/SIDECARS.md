@@ -428,8 +428,10 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
     downloads as before and the page says so. A browser with the File System Access API (Chromium) may let an app save
     through `showSaveFilePicker` instead, which the bridge does not see; Firefox has no such API.
   - Server: `GET /api/craft/files` (list + usage), `POST /api/craft/files {action:"save", app, name, mime, data}`
-    (base64 in JSON like the office upload: `readJsonBody`, Origin guard; 50 MB per file, 500 files, 30 saves a minute
-    per account; same app + same name replaces the file; 507 with the quota message when it does not fit),
+    (base64 in JSON like the office upload: `readJsonBody`, Origin guard; an upload slot before the body is read
+    (upload-budget.ts: per account, server-wide, in-flight bytes, the data disk's floor; 429/503 with Retry-After); 50 MB
+    per file, 500 files, 30 saves a minute per account; same app + same name replaces the file, unless `replace:false`
+    (409 `file_exists`, the assistant's craft_file_save); 507 with the quota message when it does not fit),
     `GET /api/craft/files/<id>` (always `application/octet-stream` as an attachment, `nosniff`, `CSP: sandbox`: the
     content comes from third-party apps and is never rendered on the app's origin; the real type in `X-Craft-Type`),
     `DELETE /api/craft/files/<id>`. Stored sealed in `craft-files/<account>/`, removed with the account.
@@ -467,6 +469,12 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
     File data an app returns inline (`dataBase64` / `pngBase64` / `png` of 512+ characters, e.g. VectorCraft's
     `document.export` without a path, which the web build requires) is filed in the chain and replaced by `{file}`, so an
     export never lands in the model's context.
+    `craft_file_save {file, name?, replace?}` keeps a chain file in the account's Craft files under the open app (the
+    tab posts it to `POST /api/craft/files` with its own session: quota, upload slot, save rate and 50 MB cap as an app's
+    Save; offered while any app with an agent API is connected, since it calls nothing in the app). It is how an agent
+    OUTSIDE the app gets a file a tool made: the chain is browser memory and a `knife_ui_call` answer only names `f3`, so
+    the agent saves it here and reads it with the MCP-only `knife_craft_file_read` (docs/MCP.md "Files a live tool
+    made"). It never replaces: the same app + name answers `ok:false` with the kept file's id unless `replace:true`.
   - Guides (src/lib/craft/guides.ts, `craft_guide`; a one-line `brief` in the snapshot note; the whole guide in
     `knife_ui_call {tool:"list_tools"}` for outside agents): per app its units and coordinates, how to read the document
     (VectorCraft `document.inspect`, FilmCraft `project.inspect` / `sequence.inspect`, EffectCraft `comp.info` /
@@ -478,10 +486,11 @@ and LightCraft's library live in the browser's storage for the craft origin. Fac
     update channel moved past it gets a note to confirm commands with `craft_commands {command}`. When a pin moves:
     dump the new catalogue's ids into a new fixture, re-run the recipes (`tests/craft_e2e.py` runs one per app through
     the assistant), update the guide and its `verified`.
-  - Trust: reads never ask; execute, request (except ui.inspect/ui.elements/ui.menu.list/engine.commands/perf.stats)
-    and import act; an id or method naming delete/remove/clear/reset/revert/discard/close/quit/exit/purge/wipe/erase/
-    overwrite (also inside `ui.menu.invoke {command}`) is destructive. Every app answer counts as third-party text for
-    the conversation's taint (`PAGE_READS`): app code and the files it opens are not ours.
+  - Trust: reads never ask; execute, request (except ui.inspect/ui.elements/ui.menu.list/engine.commands/perf.stats),
+    import and craft_file_save act; an id or method naming delete/remove/clear/reset/revert/discard/close/quit/exit/
+    purge/wipe/erase/overwrite (also inside `ui.menu.invoke {command}`) and craft_file_save with `replace:true` are
+    destructive. Every app answer counts as third-party text for the conversation's taint (`PAGE_READS`): app code and
+    the files it opens are not ours.
 - **Updates** (src/lib/craft/updates.ts, admin drawer "Updates" in every tab, `GET`/`POST /api/craft/updates`):
   - Source: each app's GitHub releases, one `GET /repos/storytold/<app>/releases?per_page=20` per app per check with
     `If-None-Match` (13 requests; GitHub allows 60 unauthenticated an hour per address). A 403/429 stops the check and

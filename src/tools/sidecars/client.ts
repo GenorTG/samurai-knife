@@ -271,9 +271,10 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Stores what an app saved (POST /api/craft/files); same app + name replaces the file. */
-export function saveCraftFile(app: string, name: string, mime: string, bytes: ArrayBuffer): Promise<{ file: CraftFile }> {
-  return request<{ file: CraftFile }>("POST", "/api/craft/files", { action: "save", app, name, mime, data: bytesToBase64(new Uint8Array(bytes)) });
+/** Stores what an app saved (POST /api/craft/files); same app + name replaces the file, unless `replace: false` (then
+ *  an ApiError with code `file_exists`, 409). */
+export function saveCraftFile(app: string, name: string, mime: string, bytes: ArrayBuffer, options: { replace?: boolean } = {}): Promise<{ file: CraftFile }> {
+  return request<{ file: CraftFile }>("POST", "/api/craft/files", { action: "save", app, name, mime, data: bytesToBase64(new Uint8Array(bytes)), ...(options.replace === false ? { replace: false } : {}) });
 }
 
 export function deleteCraftFile(id: string): Promise<{ ok: true }> {

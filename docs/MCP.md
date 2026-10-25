@@ -100,6 +100,39 @@ page first with `knife_ui_show` (`slug:"office", doc:<id>` or `slug:"artcraft", 
   A name that is not a live tool is an error.
 - Effect `write` + untrusted output (`openWorldHint`): MCP clients should treat the result as third-party text.
 
+## Files a live tool made (`craft_file_save`, `knife_craft_files`, `knife_craft_file_read`)
+Tools that produce files (`craft_screenshot`, `craft_export`, a `craft_execute` whose app returned file data inline, such as
+VectorCraft's `document.export`) put them in the tab's file chain (src/lib/agent-client/artifacts.ts, browser memory) and
+answer only `{id:"f3", name, mime, bytes}`. The bytes never ride the call answer (60 000 characters, cut, not chunked:
+a screenshot is hundreds of KB). To get one:
+1. `knife_ui_call {tool:"craft_file_save", args:{file:"f3", name?, replace?}}`: the tab uploads the chain file to the
+   account's Craft files ("My files", src/lib/craft/files.ts) through the same route the apps' Save uses
+   (`POST /api/craft/files`, the tab's own session and Origin: its account only, its storage quota (507 when full), an
+   upload slot (upload-budget.ts: per account, server-wide, in-flight bytes, the data disk's floor), 30 saves a minute,
+   50 MB a file), under the open app. Judged by the tab's trust mode like any edit (`act`: asked in Standard/Strict); it
+   never overwrites: a file of that app with that name answers `ok:false` with its id unless `replace:true`, which is
+   destructive (asked in every mode but None; the route's `replace:false` makes the refusal atomic, 409 `file_exists`).
+   The answer names the stored file: `saved: {id (20 hex), name, app, mime, size, updatedAt}`. Offered whenever a Craft
+   app with an agent API is connected (it calls nothing in the app); the in-page assistant has it too.
+2. MCP-only reads (src/lib/mcp/tools-craft-files.ts; never offered to the built-in assistant, which passes chain files
+   between tools by id and must not hold base64), scope `account`, effect `read`, `untrustedOutput` (app code chose the
+   names and the bytes):
+   - `knife_craft_files {app?, query?, limit?}`: newest first, each name inside the untrusted envelope, plus storage use.
+   - `knife_craft_file_read {id, as?, offset?, length?}`: `as=auto` gives a PNG/JPEG/GIF/WebP up to 3.5 MB as an MCP
+     **image block** (the client's model sees the picture; the text block says it is data), text types (SVG, JSON, CSV,
+     text/*) inside the envelope paged by characters (20 000 by default, 200 000 at most), everything else (or
+     `as=base64`) as a base64 chunk paged by bytes (512 KB by default, 2 MB at most) with `nextOffset`; every answer carries
+     the whole file's `sha256` so a client that writes the chunks to disk can check them. Another account's id, a missing
+     one and a path all answer "Unknown file".
+- Why not bytes through `POST /api/ui/call`: the answer would need its own size class (tens of MB through the in-memory
+  call store and a poll-answer route held to 256 KB), would land in the agent's context unless the client knew to save
+  it, and would leave nothing the user can see. Saved files show in My files, count against the quota, open in any Craft
+  app and are removed with the account; the user deletes them there.
+- Shared browsers: the chain lives in the tab's memory and a sign-out reloads the page (it is cleared). A different
+  account signing in through ANOTHER tab of the same browser switches the cookie under a tab still showing the first
+  account's document, app and chain: every call names its account (`account` in the call event) and a tab loaded by
+  another account refuses it (`not_offered`, "reload it"), for every live tool and list_tools.
+
 ## How it works (`src/lib/ui-bridge/`)
 - Tabs report presence (`POST /api/ui/presence`, on navigation, focus/visibility change and every 20 s; id per tab in
   sessionStorage). A visible tab polls `GET /api/ui/poll?client=<id>` every 1.5 s; a tab that polled in the last 5 s is
@@ -109,6 +142,7 @@ page first with `knife_ui_show` (`slug:"office", doc:<id>` or `slug:"artcraft", 
 - Calls: `knife_ui_call` queues a call event (random `callId`, the arguments, a deadline) for the target tab and waits
   on a promise. The tab's poll picks it up, the tab runs it and answers `POST /api/ui/call {clientId, callId, status,
   ok, content}`; only the account AND the tab the call went to can settle it (anything else is accepted and ignored).
+  The event names the account it is for; the tab runs nothing when it was loaded by another one (external-call.ts).
   A deadline, the tab's presence going away (TTL, cap, restart) or the answer settles it once. Bounds: 4 calls in
   flight per account, 1 MB of arguments, 60 000 characters of answer, 120 s deadline.
 - In memory per account on `globalThis` (the MCP and UI routes may be bundled separately in dev); a restart forgets
@@ -122,6 +156,9 @@ page first with `knife_ui_show` (`slug:"office", doc:<id>` or `slug:"artcraft", 
 
 ## Tests
 `tests/ui_bridge.test.mjs` (store + path rules + calls: targeting, answer ownership, timeouts, bounds),
+`tests/mcp_craft_files.test.mjs` (craft_file_save's no-overwrite save, knife_craft_files / knife_craft_file_read: image
+block, envelope, chunks to sha256, other accounts), `tests/craft_e2e.py` (VectorCraft: knife_ui_call craft_screenshot,
+craft_file_save Deny/Allow/replace through the card, the stored PNG read back byte for byte),
 `tests/ui_bridge_e2e.py` (real browser; the test acts only through MCP: state, live CV edit, show with a version deep
 link and the note, refusals, idle network, hidden tab), `tests/ui_call_e2e.py` (`knife_ui_call` against the real office
 editor: liveTools, list_tools, read, approval card Deny/Allow, destructive, timeout, refusals, closed tab).

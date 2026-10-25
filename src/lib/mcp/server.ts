@@ -1,6 +1,7 @@
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
-import { toolAllowed, type KnifeToolContext, type KnifeToolEffectInfo } from "@/lib/mcp/define";
+import { KnifeRichResult, toolAllowed, type KnifeToolContext, type KnifeToolEffectInfo } from "@/lib/mcp/define";
 import { KNIFE_TOOLS, modelDescription, serializeKnifeToolResult } from "@/lib/mcp/tools";
+import { CRAFT_FILE_TOOLS } from "@/lib/mcp/tools-craft-files";
 import { UI_BRIDGE_TOOLS } from "@/lib/mcp/tools-ui";
 import { UNTRUSTED_RULE } from "@/lib/security/untrusted";
 
@@ -22,18 +23,24 @@ export function annotationsFor(tool: KnifeToolEffectInfo): { readOnlyHint: boole
   };
 }
 
+/** Tools only MCP clients get: the UI bridge (the built-in assistant navigates the page itself) and the Craft files'
+ *  bytes (the built-in assistant holds files in its chain, and base64 never belongs in its context). */
+export const MCP_ONLY_TOOLS = [...UI_BRIDGE_TOOLS, ...CRAFT_FILE_TOOLS];
+
 /** One server per request, for one caller: only the tools its role may use are registered (listed and callable). */
 export function createKnifeMcpServer(ctx: KnifeToolContext): McpServer {
   const server = new McpServer({ name: "samurai-knife", version: "0.1.0" }, { instructions: MCP_INSTRUCTIONS });
 
-  // UI bridge tools are for agents outside the app; the built-in assistant navigates the page itself (open_tool).
-  for (const tool of [...KNIFE_TOOLS, ...UI_BRIDGE_TOOLS].filter((candidate) => toolAllowed(candidate, ctx))) {
+  for (const tool of [...KNIFE_TOOLS, ...MCP_ONLY_TOOLS].filter((candidate) => toolAllowed(candidate, ctx))) {
     server.registerTool(
       tool.name,
       { description: modelDescription(tool), inputSchema: tool.schema, annotations: annotationsFor(tool) },
       async (input) => {
         try {
           const result = await tool.execute(input, ctx);
+          if (result instanceof KnifeRichResult) {
+            return { content: [{ type: "text", text: serializeKnifeToolResult(result.value) }, ...result.images] };
+          }
           return { content: [{ type: "text", text: serializeKnifeToolResult(result) }] };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

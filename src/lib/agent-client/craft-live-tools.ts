@@ -1,6 +1,7 @@
 import { activeCraft, craftPresence, type ActiveCraft } from "@/lib/craft/live";
-import { addArtifact, artifactFile, ARTIFACT_ID } from "./artifacts";
+import { addArtifact, artifactFile, artifactInfo, ARTIFACT_ID } from "./artifacts";
 import { craftGuide } from "@/lib/craft/guides";
+import { ApiError, errorText, saveCraftFile } from "@/tools/sidecars/client";
 import type { Assessment } from "./approval-policy";
 import type { TrustMode } from "./interaction";
 import type { FunctionToolDef, ToolRunResult } from "./types";
@@ -73,6 +74,12 @@ export const CRAFT_TOOL_DEFS: FunctionToolDef[] = [
     { files: { type: "array", minItems: 1, maxItems: 20, items: { type: "string" } } },
     ["files"],
   ),
+  def(
+    "craft_file_save",
+    "Keep a file of your file chain (an id like \"f3\": a craft_screenshot, craft_export or an export craft_execute returned) in the user's own files (\"My files\" of the Craft apps, counted in their storage), under this app. Returns its id there: it opens in any Craft app on any device, and an agent outside the app reads it with knife_craft_file_read {id}. name defaults to the file's name; a file of this app with that name is replaced only with replace:true (asked as destructive). Up to 50 MB.",
+    { file: { type: "string", description: "A file chain id, e.g. \"f3\"." }, name: { type: "string", description: "File name in the user's files (default: the chain file's name)." }, replace: { type: "boolean", description: "Replace a file of this app with the same name (default false: refused, and the existing id is named)." } },
+    ["file"],
+  ),
 ];
 
 /** The app function each tool needs (probe reports which ones the app has). */
@@ -88,6 +95,9 @@ const NEEDS: Record<string, string> = {
   craft_import: "import",
 };
 
+/** Tools that need only a connected app (they never call it): the app's id names where the file goes. */
+const APP_ONLY = new Set(["craft_file_save"]);
+
 export function isCraftTool(name: string): boolean {
   return name.startsWith(CRAFT_TOOL_PREFIX);
 }
@@ -96,6 +106,7 @@ export function isCraftTool(name: string): boolean {
 export function craftToolAvailable(name: string): boolean {
   if (!isCraftTool(name)) return true;
   const app = activeCraft();
+  if (APP_ONLY.has(name)) return app !== null;
   const need = NEEDS[name];
   return app !== null && need !== undefined && app.methods.includes(need);
 }
@@ -147,6 +158,9 @@ export function craftRisk(name: string, args: Args): CraftRisk {
     }
     case "craft_import":
       return "act";
+    case "craft_file_save":
+      // Writes the account's storage; replacing a file the person keeps loses its old contents.
+      return args.replace === true ? "destructive" : "act";
     default:
       return "read";
   }
@@ -158,6 +172,15 @@ export function assessCraftCall(name: string, args: Args, mode: TrustMode, detai
   const risk = craftRisk(name, args);
   if (risk === "read") return NO;
   const app = activeCraft()?.appName ?? "the Craft app";
+  if (name === "craft_file_save") {
+    // No such chain file: nothing would be saved, the tool itself says so (like a click on a stale id).
+    const chain = ARTIFACT_ID.test(str(args, "file")) ? artifactInfo(str(args, "file")) : null;
+    if (!chain) return NO;
+    const label = str(args, "name") || chain.name;
+    if (risk === "destructive") return { ask: true, destructive: true, title: `Replace ${label.slice(0, 60)} in your files?`, detail: `${detail} (the file of the same name saved from ${app} is overwritten)` };
+    if (mode === "destructive") return NO;
+    return { ask: true, destructive: false, title: `Save ${label.slice(0, 60)} to your files?`, detail: `${detail} (${Math.max(1, Math.round(chain.bytes / 1024))} KB into your storage)` };
+  }
   const what = name === "craft_execute" ? str(args, "command") : name === "craft_request" ? str(args, "method") : "import files";
   if (risk === "destructive") return { ask: true, destructive: true, title: `Run ${what.slice(0, 60)} in ${app}?`, detail: `${detail} (it may lose work; undo with Ctrl+Z in the app if it allows)` };
   if (mode === "destructive") return NO;
@@ -259,6 +282,7 @@ export async function runCraftTool(name: string, args: Args, signal?: AbortSigna
     const note = craftStatusNote();
     return fail(`${note ?? "No Craft app is open on this page."} To use one: open_tool artcraft with tab vectorcraft, filmcraft or effectcraft and wait until page_snapshot says it is connected.`);
   }
+  if (name === "craft_file_save") return saveToFiles(app, args);
   const need = NEEDS[name];
   if (!need) return fail(`Unknown tool "${name}".`);
   if (!app.methods.includes(need)) return fail(`${app.appName} ${app.version} has no ${need}(); ${name} does not work in it.`);
@@ -369,6 +393,36 @@ export async function runCraftTool(name: string, args: Args, signal?: AbortSigna
     }
   }
   return fail(`Unknown tool "${name}".`);
+}
+
+/**
+ * craft_file_save: a chain file (bytes in this tab only) into the account's Craft files through the same route the
+ * apps' Save uses (POST /api/craft/files, this tab's session: its quota, upload slot and save rate), so it outlives the
+ * tab and an agent outside the app can read it (knife_craft_file_read). Never replaces unless asked (replace:true).
+ */
+async function saveToFiles(app: ActiveCraft, args: Args): Promise<ToolRunResult> {
+  const id = str(args, "file");
+  if (!ARTIFACT_ID.test(id)) return fail(`craft_file_save needs {"file": "f3"} (an id from new_files or a craft_* result)${id ? `; "${id.slice(0, 40)}" is not one` : ""}.`);
+  const file = artifactFile(id, str(args, "name").slice(0, 160) || undefined);
+  if (!file) return fail(`File ${id} is no longer in the file chain (it keeps the 16 newest files of this tab).`);
+  if (file.size > MAX_IMPORT) return fail(`${file.name} is larger than 50 MB; it cannot be kept in your files.`);
+  if (file.size === 0) return fail(`${file.name} is empty.`);
+  const replace = args.replace === true;
+  try {
+    const saved = (await saveCraftFile(app.appId, file.name, file.type || "application/octet-stream", await file.arrayBuffer(), { replace })).file;
+    return out(true, {
+      ok: true,
+      app: app.appName,
+      saved: { id: saved.id, name: saved.name, app: saved.app, mime: saved.mime, size: saved.size, updatedAt: saved.updatedAt },
+      from: id,
+      note: `In the user's files ("My files" in every Craft app). An agent outside the app reads it with knife_craft_file_read {"id":"${saved.id}"}.`,
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "file_exists") {
+      return out(false, { ok: false, error: error.message, hint: 'Pass another name, or replace:true to overwrite it (the user is asked).' });
+    }
+    return fail(`Could not save ${file.name} to your files: ${errorText(error)}`);
+  }
 }
 
 /** Keys under which the apps return a file's bytes inline (VectorCraft document.export without a path, clipboard.exportPng, …). */

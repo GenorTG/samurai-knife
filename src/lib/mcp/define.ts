@@ -61,6 +61,26 @@ export interface KnifeToolDefinition extends KnifeToolEffectInfo {
 
 export const ADMIN_TOOL_MESSAGE = "needs an administrator on this server (it uses the server owner's own GitHub login or files)";
 
+/** An MCP image content block (base64 `data`): the client shows the image to its model as an image, not as text. */
+export interface KnifeImageBlock {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
+/**
+ * A result that carries image blocks after its JSON text (knife_craft_file_read on a picture). MCP-only tools return it;
+ * the MCP server sends `value` as the text block, then `images`. No TypeScript parameter properties (type stripping).
+ */
+export class KnifeRichResult {
+  readonly value: unknown;
+  readonly images: KnifeImageBlock[];
+  constructor(value: unknown, images: KnifeImageBlock[]) {
+    this.value = value;
+    this.images = images;
+  }
+}
+
 export class KnifeToolForbiddenError extends Error {
   readonly code = "admin_required";
   constructor(name: string) {
