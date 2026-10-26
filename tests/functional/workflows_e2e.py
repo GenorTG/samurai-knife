@@ -15,6 +15,7 @@ Run: python3 tests/functional/workflows_e2e.py [--headed]
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 import traceback
@@ -137,6 +138,22 @@ def run(page: Page, base: str, browser_name: str) -> None:
     http_panel = page.get_by_role("dialog", name="Node HTTP Request")
     check(f"{tag} picker adds the searched node and opens it", http_panel.is_visible() or http_panel.wait_for(timeout=10_000) is None)
     http_panel.get_by_role("button", name="Close node panel").click()
+    # A service node: the picker finds it, its operation picks the fields, and a run without a credential says so.
+    page.get_by_role("button", name="Add a node").click()
+    search = page.get_by_role("textbox", name="Search nodes")
+    search.fill("github")
+    search.press("Enter")
+    gh_panel = page.get_by_role("dialog", name="Node GitHub")
+    gh_panel.wait_for(timeout=10_000)
+    operation = gh_panel.get_by_label("Operation", exact=True)
+    labels = operation.evaluate("(el) => [...el.options].map((o) => o.textContent)")
+    check(f"{tag} GitHub node lists its operations", "Create an issue" in labels and "List repository issues" in labels, labels)
+    operation.select_option("createIssue")
+    gh_panel.get_by_label("Repository owner", exact=True).fill("octo")
+    gh_panel.get_by_label("Repository", exact=True).fill("demo")
+    check(f"{tag} createIssue shows its own fields", gh_panel.get_by_label("Title", exact=True).count() == 1)
+    check(f"{tag} the service node asks for its connection (credential slot)", gh_panel.get_by_text(re.compile(r"GitHub connection", re.I)).count() > 0)
+    gh_panel.get_by_role("button", name="Close node panel").click()
     expect(page.get_by_text("Unsaved", exact=True)).to_be_visible()
     page.get_by_role("button", name="Save", exact=True).click()
     expect(page.get_by_text("Saved.", exact=True)).to_be_visible(timeout=15_000)
@@ -197,8 +214,8 @@ def run(page: Page, base: str, browser_name: str) -> None:
     page.get_by_role("button", name="New credential").first.click()
     form = page.get_by_role("form", name="New credential")
     form.get_by_label("Service setup").select_option("slack")
-    expect(form.get_by_label("Type", exact=True)).to_have_value("oAuth2Api")
-    expect(form.get_by_label("Scopes", exact=True)).to_have_value("chat:write,channels:read")
+    expect(form.get_by_label(re.compile(r"^Type"))).to_have_value("oAuth2Api")
+    expect(form.get_by_label(re.compile(r"^Scopes"))).to_have_value("chat:write,channels:read")
     expect(form.get_by_label("Send client credentials")).to_have_value("header")
     check(f"{tag} service recipe shows provider setup and callback", "Register an app" in form.inner_text() and "/api/workflows/oauth/callback" in form.inner_text())
     form.get_by_label("Name", exact=True).fill(f"Slack setup {browser_name}")
@@ -209,7 +226,7 @@ def run(page: Page, base: str, browser_name: str) -> None:
     expect(entry).to_contain_text("Not connected", timeout=15_000)
     entry.get_by_role("button", name="Edit", exact=True).click()
     edit_form = page.get_by_role("form", name=f"Edit credential Slack setup {browser_name}")
-    expect(edit_form.get_by_label("Token URL", exact=True)).to_have_value("https://slack.com/api/oauth.v2.access")
+    expect(edit_form.get_by_label(re.compile(r"^Token URL"))).to_have_value("https://slack.com/api/oauth.v2.access")
     expect(edit_form.get_by_label("Send client credentials")).to_have_value("header")
     check(f"{tag} service recipe persisted defaults and keeps client secret hidden", "scratch-client-secret" not in page.content())
     edit_form.get_by_role("button", name="Cancel", exact=True).click()
@@ -218,9 +235,9 @@ def run(page: Page, base: str, browser_name: str) -> None:
     form = page.get_by_role("form", name="New credential")
     form.get_by_label("Service setup").select_option("notion")
     expect(form.get_by_label("Send client credentials")).to_have_value("header")
-    expect(form.get_by_label("Token URL", exact=True)).to_have_value("https://api.notion.com/v1/oauth/token")
+    expect(form.get_by_label(re.compile(r"^Token URL"))).to_have_value("https://api.notion.com/v1/oauth/token")
     check(f"{tag} Notion recipe provides page-sharing guidance", "select/share pages" in form.inner_text())
-    form.get_by_label("Type", exact=True).select_option("httpHeaderAuth")
+    form.get_by_label(re.compile(r"^Type")).select_option("httpHeaderAuth")
     expect(form.get_by_label("Header name *")).to_have_value("")
     expect(form.get_by_label("Value *")).to_have_value("")
     check(f"{tag} changing credential type clears service fields", form.get_by_label("Service setup").input_value() == "")

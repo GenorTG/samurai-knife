@@ -151,3 +151,34 @@ body for POST/PUT/PATCH), JavaScript (sandboxed, the arguments in `input`), a su
 calculator, the clock. Memory "per session key" keeps the last N messages in the workflow's static data. JSON answers
 are parsed (fenced or surrounded by prose) and retried once when unreadable. A run makes at most 200 model calls. Every
 call's token usage goes to the account's usage ledger (the same counters as the assistant).
+
+## Service nodes
+
+Named nodes for third-party APIs (`src/lib/workflows/integrations/*` = declarative specs shared by the editor catalog
+and the worker; `catalog/integrations.ts`, `nodes/integrations.ts`). Each spec has a fixed, documented API host: the
+node cannot be pointed at another host (no base-URL field, path segments strictly percent-encoded, an ID is never
+resolved as a URL, no redirects), so a credential only ever reaches its own provider. Every request goes through
+`sendAuthorized` (the run's policy-checked transport, OAuth refresh before expiry or once after a 401). Inputs are
+validated before any side effect; provider error envelopes (Slack `ok:false`, Graph/Google `error` objects) fail the
+item with the provider's message; list operations take a bounded limit and follow the provider's pagination only up to
+it. Each operation names its official API reference in the spec (`docs`).
+
+| Node | Operations | Credential (recipe in the Credentials tab) |
+|---|---|---|
+| GitHub | list issues, get an issue, create an issue | fine-grained token (bearer) or OAuth2 (`github`) |
+| GitLab | list project issues, create an issue | token (bearer/header) or OAuth2 (`gitlab`, GitLab.com) |
+| Slack | send a message, channel history | bot token (bearer) or OAuth2 (`slack`) |
+| Discord | send a message, list channel messages | bot token as header `Authorization: Bot …` |
+| Notion | search by title, get page properties, append blocks | internal token (bearer) or OAuth2 (`notion`); pages must be shared with the connection |
+| Airtable | list records, create a record | personal access token (bearer) |
+| Google Sheets | read a range, append rows | OAuth2 (`google`, spreadsheets scope) or bearer |
+| Google Drive | list files, create a folder | OAuth2 (`google`, `drive.file`) or bearer |
+| Google Calendar | list events, create a timed event | OAuth2 (`google`, `calendar.events`) or bearer |
+| Microsoft Outlook | list mail messages, send mail | OAuth2 (`microsoft`, Mail.Read / Mail.Send) or bearer |
+| Microsoft Teams | list channel messages, send a channel message | OAuth2 (`microsoft`, ChannelMessage.Send…) or bearer |
+| HubSpot | list contacts, create a contact | private app token (bearer) |
+
+12 nodes, 26 operations. Covered by `tests/workflow_integrations.test.mjs` (full `runWorkflow` against fake provider
+HTTP: method, path, auth header, body and output of every operation, provider errors, malicious IDs, OAuth refresh,
+several items). **Provider-live unverified**: no operation has been run against the real service yet. The full list of
+documented n8n nodes and what is planned next: `docs/research/n8n-nodes.md`.

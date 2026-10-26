@@ -121,3 +121,12 @@ test("inventory has 12 isomorphic integrations, every exposed operation has an i
     }
   }
 });
+
+test("a service node without a credential fails with a message that says what to do, and sends nothing", async () => {
+  let calls = 0;
+  const result = await run("github", { operation: "listIssues", owner: "octocat", repository: "hello-world" }, async () => { calls += 1; return reply("https://api.github.com/x", []); }, { credential: null });
+  assert.equal(result.status, "error");
+  assert.match(result.error?.message ?? "", /needs a credential/);
+  assert.match(result.error?.description ?? "", /Credentials/);
+  assert.equal(calls, 0);
+});
