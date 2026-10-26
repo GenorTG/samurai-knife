@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:cr
 import { closeSync, existsSync, openSync, readFileSync, readSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Per-account files at rest (CV, office library, conversations, course progress, usage ledger, tool drafts): every file
@@ -34,7 +35,7 @@ export function storageKeyPath(): string {
 
 function parseKey(path: string): Buffer {
   const text = readFileSync(path, "utf8").trim();
-  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(`${path} is malformed (expected 64 hex characters)`);
+  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(msgf("{path} is malformed (expected 64 hex characters)", { path }));
   return Buffer.from(text, "hex");
 }
 

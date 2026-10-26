@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { ARTCRAFT_APPS, findSidecar, type SidecarSite } from "@/lib/services/definitions";
 import { activeRelease, releaseRoot } from "@/lib/services/sites";
 import { serviceDir } from "@/lib/services/state";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Licence and notice texts of each Craft app version, for the suite's "Licences & notices" view. The release zips carry
@@ -47,14 +48,14 @@ export class NoticeError extends Error {}
 
 function appOf(id: string): SidecarSite {
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === id);
-  if (!app) throw new NoticeError("Unknown app.");
+  if (!app) throw new NoticeError(msg("Unknown app."));
   return app;
 }
 
 /** `storytold/photocraft` from the definition's repo URL. */
 function repoPath(app: SidecarSite): string {
   const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/.exec(app.repo);
-  if (!match) throw new NoticeError(`${app.name}: unexpected repository URL`);
+  if (!match) throw new NoticeError(msgf("{name}: unexpected repository URL", { name: app.name }));
   return match[1];
 }
 
@@ -165,10 +166,10 @@ export function appNotices(id: string, version?: string, fetcher: typeof fetch =
     return Promise.reject(error);
   }
   const def = findSidecar("craft");
-  if (!def) return Promise.reject(new NoticeError("No Craft apps sidecar."));
+  if (!def) return Promise.reject(new NoticeError(msg("No Craft apps sidecar.")));
   const served = activeRelease(def, app);
   const wanted = version ?? served.version;
-  if (!VERSION.test(wanted)) return Promise.reject(new NoticeError("Invalid version."));
+  if (!VERSION.test(wanted)) return Promise.reject(new NoticeError(msg("Invalid version.")));
   const key = `${app.id}@${wanted}`;
   const running = inflight.get(key);
   if (running) return running;

@@ -11,6 +11,7 @@ import { extractTextBounded, type ExtractedText } from "../office/text";
 import type { OfficeFormat } from "../office/templates";
 import { buildGeneration, type AnchorMode, type Generation } from "../regexgen";
 import type { HandlersFor } from "../workers/runtime";
+import { msgf } from "@/lib/i18n/msg";
 
 // A type alias, not an interface: it must be assignable to TaskMap (an index signature) without declaring one.
 export type IsolateTasks = {
@@ -25,7 +26,7 @@ function parseJson(text: string, what: string): unknown {
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
-    throw new Error(`Invalid ${what} text: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(msgf("Invalid {what} text: {value}", { what, value: error instanceof Error ? error.message : String(error) }));
   }
 }
 

@@ -4,6 +4,7 @@ import { applyOps, CvOpError, type CvOp } from "@/lib/cv/ops";
 import { cvStoreErrorResponse } from "@/lib/cv/http";
 import { mutateCv } from "@/lib/cv/store";
 import { factWarnings } from "@/lib/cv/text/guard";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 512 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Expected { ops }: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Expected { ops }: {message}", { message: parsed.error.issues[0].message }), 422);
   try {
     const { data, result } = mutateCv(auth.account.id, (current) => {
       const applied = applyOps(current.profile, parsed.data.ops as CvOp[]);

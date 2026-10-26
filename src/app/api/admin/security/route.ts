@@ -5,6 +5,7 @@ import { rateLimitStats } from "@/lib/accounts/rate-limit";
 import { alertStatus } from "@/lib/security/alerts";
 import { loadSecurityHistory, recentSecurityEvents, recordSecurityEvent } from "@/lib/security/events";
 import { currentGuard } from "@/lib/security/guard.mjs";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = await parseBody(request, bodySchema, '{ action: "unblock", key }');
   if ("response" in parsed) return parsed.response;
   const guard = currentGuard();
-  if (!guard) return jsonError("The abuse guard is not running in this server process (start it with npm run start).", 503);
+  if (!guard) return jsonError(msg("The abuse guard is not running in this server process (start it with npm run start)."), 503);
   const removed = guard.unblock(parsed.data.key);
   recordSecurityEvent({ kind: "unblock", ipPrefix: parsed.data.key, account: auth.account.id, detail: removed ? "block lifted" : "no active block" });
   return json({ ok: true, removed });

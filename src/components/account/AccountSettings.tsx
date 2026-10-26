@@ -9,6 +9,9 @@ import type { PublicAccount } from "@/lib/accounts/store";
 import { clearAccountStorage } from "@/lib/client-account";
 import { call, fetchMe, hardNavigate } from "./api";
 import { GithubLink } from "./GithubLink";
+import { useT } from "@/lib/i18n/react";
+import { LanguageChoice } from "@/components/LanguageSwitcher";
+import { msg } from "@/lib/i18n/msg";
 
 type Note = { tone: "good" | "error"; text: string } | null;
 
@@ -17,6 +20,7 @@ function Status({ note }: { note: Note }) {
 }
 
 function ChangePassword() {
+  const { t, tn } = useT();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [working, setWorking] = useState(false);
@@ -31,26 +35,26 @@ function ChangePassword() {
     if (reply.ok) {
       setCurrent("");
       setNext("");
-      const keys = reply.body.mcpKeysRevoked > 0 ? ` ${reply.body.mcpKeysRevoked} MCP key(s) were revoked: create new ones for your agents.` : "";
-      setNote({ tone: "good", text: `Password changed. ${reply.body.signedOut} other session(s) were signed out.${keys}` });
+      const keys = reply.body.mcpKeysRevoked > 0 ? ` ${tn("{n} MCP key was revoked: create a new one for your agents.", "{n} MCP keys were revoked: create new ones for your agents.", reply.body.mcpKeysRevoked)}` : "";
+      setNote({ tone: "good", text: `${t("Password changed.")} ${tn("{n} other session was signed out.", "{n} other sessions were signed out.", reply.body.signedOut)}${keys}` });
     } else {
       setNote({ tone: "error", text: reply.message });
     }
   }
 
   return (
-    <Panel title="Change password">
-      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" aria-label="Change password">
-        <Field label="Current password">
+    <Panel title={t("Change password")}>
+      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" aria-label={t("Change password")}>
+        <Field label={t("Current password")}>
           <TextInput type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
         </Field>
-        <Field label="New password" hint="At least 10 characters. Signs out your other devices and revokes your MCP keys.">
+        <Field label={t("New password")} hint={t("At least 10 characters. Signs out your other devices and revokes your MCP keys.")}>
           <TextInput type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={10} />
         </Field>
         <div className="space-y-3 sm:col-span-2">
           <Status note={note} />
           <Button type="submit" variant="primary" disabled={working || !current || next.length < 10}>
-            {working ? "Saving…" : "Change password"}
+            {working ? t("Saving…") : t("Change password")}
           </Button>
         </div>
       </form>
@@ -59,6 +63,7 @@ function ChangePassword() {
 }
 
 function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged: () => void }) {
+  const { t } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
@@ -80,23 +85,23 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
   }
 
   return (
-    <Panel title="Change email">
-      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" aria-label="Change email">
+    <Panel title={t("Change email")}>
+      <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" aria-label={t("Change email")}>
         {account.pendingEmail ? (
           <div className="sm:col-span-2">
-            <Notice tone="info">Waiting for confirmation of {account.pendingEmail}: open the link sent there. Until then {account.email} stays in use.</Notice>
+            <Notice tone="info">{t("Waiting for confirmation of {pendingEmail}: open the link sent there. Until then {email} stays in use.", { pendingEmail: account.pendingEmail, email: account.email })}</Notice>
           </div>
         ) : null}
-        <Field label="New email">
+        <Field label={t("New email")}>
           <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
-        <Field label="Password" hint="To confirm it is you.">
+        <Field label={t("Password")} hint={t("To confirm it is you.")}>
           <TextInput type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </Field>
         <div className="space-y-3 sm:col-span-2">
           <Status note={note} />
           <Button type="submit" disabled={working || !email.trim() || !password}>
-            {working ? "Sending…" : "Send confirmation link"}
+            {working ? t("Sending…") : t("Send confirmation link")}
           </Button>
         </div>
       </form>
@@ -105,20 +110,21 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
 }
 
 const AREAS: [keyof StorageUsage["areas"], string][] = [
-  ["docs", "Office documents (with versions and trash)"],
-  ["cv", "CV studio (profile, snapshots, photo)"],
-  ["conversations", "Assistant conversations"],
-  ["workspace", "Tool drafts"],
-  ["site", "Website studio (connection, audits)"],
-  ["craft", "Craft apps files"],
-  ["workflows", "Workflows (runs, credentials)"],
-  ["jobs", "Running and finished jobs (temporary)"],
-  ["learn", "Course progress"],
-  ["usage", "Usage counters"],
+  ["docs", msg("Office documents (with versions and trash)")],
+  ["cv", msg("CV studio (profile, snapshots, photo)")],
+  ["conversations", msg("Assistant conversations")],
+  ["workspace", msg("Tool drafts")],
+  ["site", msg("Website studio (connection, audits)")],
+  ["craft", msg("Craft apps files")],
+  ["workflows", msg("Workflows (runs, credentials)")],
+  ["jobs", msg("Running and finished jobs (temporary)")],
+  ["learn", msg("Course progress")],
+  ["usage", msg("Usage counters")],
 ];
 
 /** Used / quota for this account (GET /api/account/storage) and what takes the space. */
 function Storage() {
+  const { t } = useT();
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -128,27 +134,28 @@ function Storage() {
     });
   }, []);
   return (
-    <Panel title="Storage">
+    <Panel title={t("Storage")}>
       {usage ? (
         <div className="space-y-3">
-          <StorageMeter usedBytes={usage.usedBytes} quotaBytes={usage.quotaBytes} label="Your storage" />
-          {usage.quotaBytes === null ? <p className="text-xs text-faint">No storage limit on this account.</p> : null}
-          <KeyValues rows={AREAS.filter(([key]) => usage.areas[key] > 0).map(([key, label]) => [label, formatBytes(usage.areas[key])])} />
+          <StorageMeter usedBytes={usage.usedBytes} quotaBytes={usage.quotaBytes} label={t("Your storage")} />
+          {usage.quotaBytes === null ? <p className="text-xs text-faint">{t("No storage limit on this account.")}</p> : null}
+          <KeyValues rows={AREAS.filter(([key]) => usage.areas[key] > 0).map(([key, label]) => [t(label), formatBytes(usage.areas[key])])} />
           <p className="text-sm text-muted">
-            To free space, empty the trash or prune old versions in{" "}
-            <Link className="text-accent-soft underline underline-offset-2" href="/tools/office">Office documents</Link>.
+            {t("To free space, empty the trash or prune old versions in")}{" "}
+            <Link className="text-accent-soft underline underline-offset-2" href="/tools/office">{t("Office documents")}</Link>.
           </p>
         </div>
       ) : error ? (
         <Notice tone="error">{error}</Notice>
       ) : (
-        <p role="status" className="text-sm text-muted">Measuring your storage…</p>
+        <p role="status" className="text-sm text-muted">{t("Measuring your storage…")}</p>
       )}
     </Panel>
   );
 }
 
 function Sessions({ username }: { username: string }) {
+  const { t, tn } = useT();
   const [count, setCount] = useState<number | null>(null);
   const [note, setNote] = useState<Note>(null);
   const [revokeKeys, setRevokeKeys] = useState(false);
@@ -169,19 +176,19 @@ function Sessions({ username }: { username: string }) {
   }
 
   return (
-    <Panel title="Sessions">
+    <Panel title={t("Sessions")}>
       <div className="space-y-3">
         <p className="text-sm text-muted">
-          {count === null ? "Counting your sessions…" : `${count} signed-in session(s) (browsers and devices), this one included.`}
+          {count === null ? t("Counting your sessions…") : tn("{n} signed-in session (browsers and devices), this one included.", "{n} signed-in sessions (browsers and devices), this one included.", count)}
         </p>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={revokeKeys} onChange={(e) => setRevokeKeys(e.target.checked)} />
-          With &quot;Log out everywhere&quot;, also revoke every MCP key (agents lose access until you create a new key)
+          {t("With \"Log out everywhere\", also revoke every MCP key (agents lose access until you create a new key)")}
         </label>
         <Status note={note} />
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void logout(false)}>Log out</Button>
-          <Button variant="danger" onClick={() => void logout(true)}>Log out everywhere</Button>
+          <Button onClick={() => void logout(false)}>{t("Log out")}</Button>
+          <Button variant="danger" onClick={() => void logout(true)}>{t("Log out everywhere")}</Button>
         </div>
       </div>
     </Panel>
@@ -195,6 +202,7 @@ const when = (iso: string | null): string => (iso ? `${iso.slice(0, 16).replace(
 
 /** Per-account MCP credentials (docs/MCP.md): an agent outside the browser acts on this account only. */
 function McpKeys({ username }: { username: string }) {
+  const { t } = useT();
   const [keys, setKeys] = useState<McpKeyRow[] | null>(null);
   const [name, setName] = useState("");
   const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
@@ -228,7 +236,7 @@ function McpKeys({ username }: { username: string }) {
     setNote(null);
     const reply = await call("POST", "/api/account/mcp-keys", { action: "revoke", id: row.id });
     if (reply.ok) {
-      setNote({ tone: "good", text: `Revoked "${row.name}". Agents using it are refused from now on.` });
+      setNote({ tone: "good", text: t("Revoked \"{name}\". Agents using it are refused from now on.", { name: row.name }) });
       load();
     } else {
       setNote({ tone: "error", text: reply.message });
@@ -237,42 +245,41 @@ function McpKeys({ username }: { username: string }) {
 
   const endpoint = typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`;
   return (
-    <Panel title="MCP keys">
+    <Panel title={t("MCP keys")}>
       <div className="space-y-3">
         <p className="text-sm text-muted">
-          Let an agent outside the browser (OpenClaw, Claude, Cursor…) use this account&apos;s tools at <code className="font-mono">{endpoint}</code>.
-          It sends your username <code className="font-mono">{username}</code> and a key (HTTP Basic auth, or <code className="font-mono">Authorization: Bearer &lt;key&gt;</code> with <code className="font-mono">X-Knife-User: {username}</code>) and only ever reaches this account&apos;s data.
+          {t("Let an agent outside the browser (OpenClaw, Claude, Cursor…) use this account's tools at")}{" "} <code className="font-mono">{endpoint}</code>{t(". It sends your username")}{" "} <code className="font-mono">{username}</code> {" "}{t("and a key (HTTP Basic auth, or")}{" "} <code className="font-mono">Authorization: Bearer &lt;key&gt;</code> {" "}{t("with")}{" "} <code className="font-mono">X-Knife-User: {username}</code>{t(") and only ever reaches this account's data.")}
         </p>
         {created ? (
           <Notice tone="good">
-            <span className="block">Key &quot;{created.name}&quot; created. Copy it now: it is not shown again.</span>
+            <span className="block">{t("Key \"{name}\" created. Copy it now: it is not shown again.", { name: created.name })}</span>
             <code data-testid="mcp-key-value" className="mt-2 block font-mono text-[13px] break-all select-all">{created.key}</code>
           </Notice>
         ) : null}
         <Status note={note} />
         {keys === null ? (
-          <p className="text-sm text-muted">Loading keys…</p>
+          <p className="text-sm text-muted">{t("Loading keys…")}</p>
         ) : keys.length === 0 ? (
-          <p className="text-sm text-muted">No MCP keys yet.</p>
+          <p className="text-sm text-muted">{t("No MCP keys yet.")}</p>
         ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line" aria-label="MCP keys">
+          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t("MCP keys")}>
             {keys.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span className="min-w-0">
                   <span className="font-medium text-ink">{row.name}</span>{" "}
-                  <span className="font-mono text-faint">{row.hint}</span>
-                  <span className="block text-xs text-muted">created {when(row.createdAt)} · last used {when(row.lastUsedAt)}</span>
+                  <span className="font-mono text-faint">{t(row.hint)}</span>
+                  <span className="block text-xs text-muted">{t("created {createdAt} · last used", { createdAt: when(row.createdAt) })}{" "} {when(row.lastUsedAt)}</span>
                 </span>
-                <Button size="sm" variant="danger" onClick={() => void revoke(row)} aria-label={`Revoke ${row.name}`}>Revoke</Button>
+                <Button size="sm" variant="danger" onClick={() => void revoke(row)} aria-label={t("Revoke {name}", { name: row.name })}>{t("Revoke")}</Button>
               </li>
             ))}
           </ul>
         )}
-        <form onSubmit={create} className="flex flex-wrap items-end gap-2" aria-label="New MCP key">
-          <Field label="Key name" hint="Where it is used, e.g. laptop OpenClaw." className="min-w-0 flex-1">
+        <form onSubmit={create} className="flex flex-wrap items-end gap-2" aria-label={t("New MCP key")}>
+          <Field label={t("Key name")} hint={t("Where it is used, e.g. laptop OpenClaw.")} className="min-w-0 flex-1">
             <TextInput value={name} maxLength={60} onChange={(e) => setName(e.target.value)} required />
           </Field>
-          <Button type="submit" disabled={working || !name.trim()}>{working ? "Creating…" : "Create key"}</Button>
+          <Button type="submit" disabled={working || !name.trim()}>{working ? t("Creating…") : t("Create key")}</Button>
         </form>
       </div>
     </Panel>
@@ -280,6 +287,7 @@ function McpKeys({ username }: { username: string }) {
 }
 
 function DeleteAccount({ username, requiresPassword }: { username: string; requiresPassword: boolean }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
@@ -299,27 +307,27 @@ function DeleteAccount({ username, requiresPassword }: { username: string; requi
   }
 
   return (
-    <Panel title="Delete account">
+    <Panel title={t("Delete account")}>
       {!open ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted">Removes the account, every session and MCP key, and all of its data on this server: CV studio, documents, assistant conversations, course progress and usage counters. It cannot be undone.</p>
-          <Button variant="danger" onClick={() => setOpen(true)}>Delete my account…</Button>
+          <p className="text-sm text-muted">{t("Removes the account, every session and MCP key, and all of its data on this server: CV studio, documents, assistant conversations, course progress and usage counters. It cannot be undone.")}</p>
+          <Button variant="danger" onClick={() => setOpen(true)}>{t("Delete my account…")}</Button>
         </div>
       ) : (
-        <form onSubmit={submit} className="space-y-3" aria-label="Delete account">
+        <form onSubmit={submit} className="space-y-3" aria-label={t("Delete account")}>
           {requiresPassword ? (
-            <Field label="Password" hint="Type it to delete the account for good.">
+            <Field label={t("Password")} hint={t("Type it to delete the account for good.")}>
               <TextInput autoFocus type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Field>
           ) : (
-            <Field label="Your username" hint={`You sign in with GitHub: type ${username} to delete the account for good.`}>
+            <Field label={t("Your username")} hint={t("You sign in with GitHub: type {username} to delete the account for good.", { username })}>
               <TextInput autoFocus autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Field>
           )}
           <Status note={note} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="danger" disabled={working || !password}>{working ? "Deleting…" : "Delete account and data"}</Button>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Keep it</Button>
+            <Button type="submit" variant="danger" disabled={working || !password}>{working ? t("Deleting…") : t("Delete account and data")}</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t("Keep it")}</Button>
           </div>
         </form>
       )}
@@ -329,6 +337,7 @@ function DeleteAccount({ username, requiresPassword }: { username: string; requi
 
 /** /account: who you are, password, email, sessions, deletion (public mode); private mode shows the identity and sessions. */
 export function AccountSettings() {
+  const { t } = useT();
   const [account, setAccount] = useState<PublicAccount | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "anonymous" | "error">("loading");
 
@@ -344,13 +353,13 @@ export function AccountSettings() {
   }, []);
   useEffect(load, [load]);
 
-  if (state === "loading") return <p role="status" className="text-sm text-muted">Loading your account…</p>;
+  if (state === "loading") return <p role="status" className="text-sm text-muted">{t("Loading your account…")}</p>;
   if (state !== "ready" || !account) {
     return (
       <Panel>
         <Notice tone={state === "anonymous" ? "info" : "error"}>
-          {state === "anonymous" ? "You are not logged in." : "Could not load the account."}{" "}
-          <Link className="underline underline-offset-2" href="/login?next=/account">Log in</Link>
+          {state === "anonymous" ? t("You are not logged in.") : t("Could not load the account.")}{" "}
+          <Link className="underline underline-offset-2" href="/login?next=/account">{t("Log in")}</Link>
         </Notice>
       </Panel>
     );
@@ -358,19 +367,23 @@ export function AccountSettings() {
   const publicMode = account.authMode === "public";
   return (
     <div className="space-y-4">
-      <Panel title="Account" right={<Badge tone={account.isAdmin && publicMode ? "accent" : "neutral"}>{account.role}</Badge>}>
+      <Panel title={t("Account")} right={<Badge tone={account.isAdmin && publicMode ? "accent" : "neutral"}>{account.role}</Badge>}>
         <div className="space-y-3">
           <KeyValues
             rows={[
-              ["Username", account.id],
-              ["Email", account.email ? `${account.email}${account.emailVerified ? "" : " (not confirmed)"}` : "—"],
+              [t("Username"), account.id],
+              [t("Email"), account.email ? `${account.email}${account.emailVerified ? "" : ` ${t("(not confirmed)")}`}` : "—"],
             ]}
           />
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-muted">{t("Interface language")}</span>
+            <LanguageChoice />
+          </div>
           {account.isAdmin ? (
             <p className="text-sm text-muted">
-              <Link className="text-accent-soft underline underline-offset-2" href="/account/admin">Manage users</Link>
+              <Link className="text-accent-soft underline underline-offset-2" href="/account/admin">{t("Manage users")}</Link>
               {" · "}
-              <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">Sidecar services</Link>
+              <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">{t("Sidecar services")}</Link>
             </p>
           ) : null}
         </div>
@@ -378,8 +391,8 @@ export function AccountSettings() {
       <Storage />
       {publicMode && account.requiresPassword ? <ChangePassword /> : null}
       {publicMode && !account.requiresPassword ? (
-        <Panel title="Password">
-          <p className="text-sm text-muted">You sign in with GitHub. To be able to log in with a password too, log out and use “Forgot your password?” with {account.email ?? "your email address"}.</p>
+        <Panel title={t("Password")}>
+          <p className="text-sm text-muted">{t("You sign in with GitHub. To be able to log in with a password too, log out and use “Forgot your password?” with")}{" "} {account.email ?? t("your email address")}.</p>
         </Panel>
       ) : null}
       <GithubLink account={account} onChanged={load} />

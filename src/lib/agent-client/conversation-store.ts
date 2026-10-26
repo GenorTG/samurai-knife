@@ -5,6 +5,7 @@ import * as z from "zod/v4";
 import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir } from "@/lib/storage/scope";
 import type { TranscriptMessage } from "./types";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 const toolCallSchema = z.object({
   id: z.string(),
@@ -90,10 +91,10 @@ export function readConversation(accountId: string, providerId: string): Durable
   try {
     raw = JSON.parse(readAccountText(accountId, path)) as unknown;
   } catch (error) {
-    throw new Error(`Conversation file is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(msgf("Conversation file is not valid JSON: {value}", { value: error instanceof Error ? error.message : String(error) }));
   }
   const parsed = conversationSchema.safeParse(raw);
-  if (!parsed.success) throw new Error("Conversation file has an invalid shape.");
+  if (!parsed.success) throw new Error(msg("Conversation file has an invalid shape."));
   return parsed.data as DurableConversation;
 }
 

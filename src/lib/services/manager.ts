@@ -29,6 +29,7 @@ import { writePrivateFile } from "@/lib/accounts/store";
 import { isIpAddress } from "@/lib/net/address-policy";
 import { addressScope, normalizeIp } from "@/lib/net/client-ip.mjs";
 import { knifeHosts } from "@/lib/hosts";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Sidecar lifecycle shared by the HTTP API (src/app/api/services) and the CLI (scripts/services.ts): install, start,
@@ -339,7 +340,7 @@ export async function pushSiteContent(backend: SidecarBackend, def: SidecarDefin
   const result = await compose(backend, def, { verb: "content" }, { timeoutMs: 900_000, onLine: (line) => reporter?.log(line) });
   if (result.code === 64 && /unknown verb content/.test(result.stderr)) {
     throw new SidecarError(
-      "The host's sidecar helper is older than this release (no `content` verb).",
+      msg("The host's sidecar helper is older than this release (no `content` verb)."),
       409,
       "On the host, as root: re-run deploy/install.sh (it installs the new helper), then sudo knife-sidecar sync craft.",
     );
@@ -499,7 +500,7 @@ export function install(id: string, options: InstallOptions, reporter: OpReporte
 
 function requireState(id: string): SidecarState {
   const state = readState(id);
-  if (!state) throw new SidecarError(`${id} is not installed`, 409);
+  if (!state) throw new SidecarError(msgf("{id} is not installed", { id }), 409);
   return state;
 }
 
@@ -547,7 +548,7 @@ export function remove(id: string, options: { purge?: boolean; removeImage?: boo
   return withLock(id, "remove", async () => {
     const backend = await requireBackend();
     const state = readState(id);
-    if (!state && !options.purge) throw new SidecarError(`${id} is not installed`, 409);
+    if (!state && !options.purge) throw new SidecarError(msgf("{id} is not installed", { id }), 409);
     if (state) writeCompose(def, state);
     reporter.phase(options.purge ? "Removing the container and its data volumes" : "Removing the container (data volumes kept)");
     const action: BackendAction = { verb: "down", volumes: Boolean(options.purge), removeImages: Boolean(options.removeImage) };

@@ -14,6 +14,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { searchToolsLoose } from "@/lib/registry";
 import { runIsolated } from "@/lib/isolate/server";
 import { resolveJsonPointer } from "@/lib/json-pointer";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export type { KnifeToolContext, KnifeToolDefinition, KnifeToolEffectInfo } from "./define";
 
@@ -126,7 +127,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
         { positiveExamples, negativeExamples: negativeExamples ?? "", anchorMode: (anchorMode ?? "line") as AnchorMode },
         { owner: ctx?.accountId },
       );
-      if (!result) throw new Error("At least one positive example is required.");
+      if (!result) throw new Error(msg("At least one positive example is required."));
       return result;
     },
   }),
@@ -181,7 +182,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
       const date = isNumeric
         ? new Date(resolvedUnit === "seconds" ? numeric * 1_000 : numeric)
         : new Date(value);
-      if (!Number.isFinite(date.getTime())) throw new Error("The value is not a valid timestamp or date.");
+      if (!Number.isFinite(date.getTime())) throw new Error(msg("The value is not a valid timestamp or date."));
 
       const zone = timeZone ?? "UTC";
       const inTimeZone = new Intl.DateTimeFormat("en-GB", {
@@ -272,7 +273,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
       try {
         parsed = JSON.parse(document) as unknown;
       } catch (error) {
-        throw new Error(`Invalid JSON document: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(msgf("Invalid JSON document: {value}", { value: error instanceof Error ? error.message : String(error) }));
       }
       return { pointer, ...resolveJsonPointer(parsed, pointer) };
     },
@@ -309,7 +310,7 @@ export function getToolEffects(ctx: KnifeToolContext): Record<string, KnifeToolE
 
 export async function callKnifeTool(name: string, input: unknown, ctx?: KnifeToolContext): Promise<unknown> {
   const tool = KNIFE_TOOLS.find((candidate) => candidate.name === name);
-  if (!tool) throw new Error(`Unknown Smart Knife tool: ${name}`);
+  if (!tool) throw new Error(msgf("Unknown Smart Knife tool: {name}", { name }));
   if (tool.scope === "admin" && ctx?.accountId && !ctx.admin) throw new KnifeToolForbiddenError(name);
   return tool.execute(input, ctx);
 }

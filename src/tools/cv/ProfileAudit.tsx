@@ -6,6 +6,7 @@ import { errorText, getAudit, isUnavailable, type AuditResult } from "@/lib/cv/c
 import { labelForPath } from "@/lib/cv/diff";
 import type { CvLang, Profile } from "@/lib/cv/schema";
 import { SeverityBadge } from "./shared";
+import { useT } from "@/lib/i18n/react";
 
 export interface AuditState {
   phase: "loading" | "ready" | "unavailable" | "error";
@@ -36,6 +37,7 @@ export function useAudit(lang: CvLang, revision: number | null): AuditState {
 const SHOWN = 10;
 
 export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; profile: Profile; lang: CvLang; onGo: (path: string) => void }) {
+  const { t } = useT();
   const [all, setAll] = useState(false);
   const result = audit.result;
   const paths = result ? Object.keys(result.findings).filter((p) => result.findings[p].length > 0) : [];
@@ -44,18 +46,18 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
 
   return (
     <Panel
-      title={`Audit (${lang.toUpperCase()})`}
-      right={<Button size="sm" onClick={audit.rerun} disabled={audit.phase === "loading"}>Re-run audit</Button>}
+      title={t("Audit ({value})", { value: lang.toUpperCase() })}
+      right={<Button size="sm" onClick={audit.rerun} disabled={audit.phase === "loading"}>{t("Re-run audit")}</Button>}
     >
       <div className="space-y-3" data-agent-region="cv-audit">
-        {audit.phase === "loading" ? <p role="status" className="text-sm text-muted">Checking the profile…</p> : null}
-        {audit.phase === "unavailable" ? <Notice>The audit is not available yet on this server.</Notice> : null}
-        {audit.phase === "error" ? <Notice tone="error">Audit failed: {audit.error}</Notice> : null}
+        {audit.phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Checking the profile…")}</p> : null}
+        {audit.phase === "unavailable" ? <Notice>{t("The audit is not available yet on this server.")}</Notice> : null}
+        {audit.phase === "error" ? <Notice tone="error">{t("Audit failed:")}{" "} {audit.error}</Notice> : null}
         {result ? (
           <>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(result.counts).map(([key, n]) => <Badge key={key} tone={/err|high/i.test(key) && n > 0 ? "danger" : n > 0 ? "warn" : "good"}>{key}: {n}</Badge>)}
-              {total === 0 ? <Badge tone="good">No findings</Badge> : null}
+              {total === 0 ? <Badge tone="good">{t("No findings")}</Badge> : null}
             </div>
             {Object.keys(result.byRule).length > 0 ? (
               <p className="text-xs leading-relaxed text-muted">
@@ -67,14 +69,14 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
                 <li key={path} className="rounded-lg border border-line bg-raised/40 p-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="min-w-0 text-xs font-medium text-ink wrap-anywhere">{labelForPath(profile, path)}</span>
-                    <Button size="sm" variant="ghost" aria-label={`Go to ${labelForPath(profile, path)}`} onClick={() => onGo(path)}>Go to field</Button>
+                    <Button size="sm" variant="ghost" aria-label={t("Go to {profile}", { profile: labelForPath(profile, path) })} onClick={() => onGo(path)}>{t("Go to field")}</Button>
                   </div>
                   <ul className="mt-1.5 space-y-1.5">
                     {result.findings[path].map((f, i) => (
                       <li key={`${f.rule}-${i}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted">
                         <SeverityBadge severity={f.severity} />
                         <Badge>{f.rule}</Badge>
-                        <span className="min-w-0 flex-1 basis-40 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">Tip:</b> {f.fix}</> : null}</span>
+                        <span className="min-w-0 flex-1 basis-40 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {f.fix}</> : null}</span>
                       </li>
                     ))}
                   </ul>
@@ -82,7 +84,7 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
               ))}
             </ul>
             {paths.length > SHOWN ? (
-              <Button size="sm" variant="ghost" onClick={() => setAll((v) => !v)}>{all ? "Show fewer" : `Show all ${paths.length} fields`}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setAll((v) => !v)}>{all ? t("Show fewer") : t("Show all {paths} fields", { paths: paths.length })}</Button>
             ) : null}
           </>
         ) : null}

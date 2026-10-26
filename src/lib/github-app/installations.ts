@@ -1,6 +1,7 @@
 import { checkRepo, gh } from "@/lib/site/github";
 import { SiteError } from "@/lib/site/net";
 import { appJwt, loadApp } from "./config";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Installation tokens: minted per call need with the app's JWT, scoped to ONE repository when one is named, valid one
@@ -35,7 +36,7 @@ export async function installationToken(installationId: number, repo?: string): 
     }
     throw error;
   }
-  if (!res.token) throw new SiteError("GitHub returned no installation token", 502);
+  if (!res.token) throw new SiteError(msg("GitHub returned no installation token"), 502);
   const expiresAt = res.expires_at ? Date.parse(res.expires_at) : Date.now() + 55 * 60_000;
   cache().set(key, { token: res.token, expiresAt });
   return res.token;

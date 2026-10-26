@@ -13,6 +13,7 @@ import { factWarnings } from "@/lib/cv/text/guard";
 import { rewriteWarningsFor } from "@/lib/cv/rewrites";
 import { priorityWarnings } from "@/lib/cv/priorities";
 import { CV_TAILOR_TOOLS } from "./tools-cv-tailor";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * CV studio tools. Principle: tools gather evidence and apply deterministic checks; the model (the widget's own
@@ -104,7 +105,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
     description: "Revert the last CV data change (profile, variants, jobs or applications).",
     schema: z.object({}).strict(),
     run(_input, ctx) {
-      if (!undoCv(account(ctx))) throw new Error("Nothing to undo.");
+      if (!undoCv(account(ctx))) throw new Error(msg("Nothing to undo."));
       return { undone: true, revision: loadCv(account(ctx)).revision };
     },
   }),
@@ -175,7 +176,7 @@ const CORE_CV_TOOLS: KnifeToolDefinition[] = [
     schema: z.object({ id: z.string().min(1).max(64) }).strict(),
     run({ id }, ctx) {
       const variant = loadCv(account(ctx)).variants.find((v) => v.id === id);
-      if (!variant) throw new Error(`No variant '${id}'.`);
+      if (!variant) throw new Error(msgf("No variant '{id}'.", { id }));
       return variant;
     },
   }),

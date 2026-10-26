@@ -2,11 +2,12 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Button, Field, Notice, Panel, TextArea } from "@/components/ui";
-import { cx, plural } from "@/lib/format";
+import { cx } from "@/lib/format";
 import { callSql } from "@/lib/sql/client";
 import { useStoredDialect, useStoredSchema } from "@/lib/sql/schema-store";
 import type { SqlActionMap, SqlIssue } from "@/lib/sql/types";
 import { CurrentSchemaRegion, DialectSelect, IssueList } from "./sql-shared";
+import { useT } from "@/lib/i18n/react";
 
 type Validation = SqlActionMap["validate"]["out"];
 
@@ -32,6 +33,7 @@ JOIN orders o ON o.customer_id = c.id;`;
 
 /** Source listing with a caret row under each line that has a positioned issue. Pure text, so assistants read it as-is. */
 function SourceListing({ sql, issues }: { sql: string; issues: SqlIssue[] }) {
+  const { t } = useT();
   const lines = sql.split("\n");
   const width = String(lines.length).length;
   const byLine = new Map<number, SqlIssue[]>();
@@ -41,7 +43,7 @@ function SourceListing({ sql, issues }: { sql: string; issues: SqlIssue[] }) {
   }
   return (
     <pre
-      aria-label="SQL with error markers"
+      aria-label={t("SQL with error markers")}
       data-agent-region="validation-source"
       className="sk-input max-h-[50vh] overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre"
     >
@@ -70,6 +72,7 @@ function SourceListing({ sql, issues }: { sql: string; issues: SqlIssue[] }) {
 }
 
 export default function SqlValidate() {
+  const { t, tn } = useT();
   const [dialect, setDialect] = useStoredDialect("postgres");
   const [sql, setSql] = useState(VALID_SAMPLE);
   const [result, setResult] = useState<Validation | null>(null);
@@ -131,36 +134,36 @@ export default function SqlValidate() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="min-w-0 space-y-4">
-        <Panel title="SQL to validate">
+        <Panel title={t("SQL to validate")}>
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Sample queries">
-              <span className="text-xs text-faint">Samples:</span>
-              <Button size="sm" onClick={() => setSql(VALID_SAMPLE)}>Sample: valid</Button>
-              <Button size="sm" onClick={() => setSql(BROKEN_SAMPLE)}>Sample: syntax error</Button>
-              <Button size="sm" onClick={() => setSql(UNKNOWN_SAMPLE)}>Sample: unknown names</Button>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("Sample queries")}>
+              <span className="text-xs text-faint">{t("Samples:")}</span>
+              <Button size="sm" onClick={() => setSql(VALID_SAMPLE)}>{t("Sample: valid")}</Button>
+              <Button size="sm" onClick={() => setSql(BROKEN_SAMPLE)}>{t("Sample: syntax error")}</Button>
+              <Button size="sm" onClick={() => setSql(UNKNOWN_SAMPLE)}>{t("Sample: unknown names")}</Button>
             </div>
-            <Field label="Dialect">
-              <DialectSelect label="Dialect" value={dialect} onChange={setDialect} className="max-w-64" />
+            <Field label={t("Dialect")}>
+              <DialectSelect label={t("Dialect")} value={dialect} onChange={setDialect} className="max-w-64" />
             </Field>
-            <Field label="SQL" hint="Parsed only, never executed. Validation runs a moment after you stop typing.">
-              <TextArea rows={14} spellCheck={false} value={sql} onChange={(e) => setSql(e.target.value)} placeholder="Paste one or more SQL statements…" />
+            <Field label="SQL" hint={t("Parsed only, never executed. Validation runs a moment after you stop typing.")}>
+              <TextArea rows={14} spellCheck={false} value={sql} onChange={(e) => setSql(e.target.value)} placeholder={t("Paste one or more SQL statements…")} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => void validate()} disabled={busy}>{busy ? "Validating…" : "Validate SQL"}</Button>
-              <Button variant="ghost" onClick={() => setSql("")} disabled={!sql}>Clear SQL</Button>
+              <Button variant="primary" onClick={() => void validate()} disabled={busy}>{busy ? t("Validating…") : t("Validate SQL")}</Button>
+              <Button variant="ghost" onClick={() => setSql("")} disabled={!sql}>{t("Clear SQL")}</Button>
             </div>
           </div>
         </Panel>
 
-        <Panel title="Check against schema">
+        <Panel title={t("Check against schema")}>
           <div className="space-y-3">
-            <CurrentSchemaRegion hint="No schema stored yet. Paste DDL in the Schema tab and choose “Use as current schema”, then check tables and columns here." />
-            <Button onClick={() => void checkSchema()} disabled={!stored || schemaBusy || !sql.trim()}>{schemaBusy ? "Checking…" : "Check against schema"}</Button>
+            <CurrentSchemaRegion hint={t("No schema stored yet. Paste DDL in the Schema tab and choose “Use as current schema”, then check tables and columns here.")} />
+            <Button onClick={() => void checkSchema()} disabled={!stored || schemaBusy || !sql.trim()}>{schemaBusy ? t("Checking…") : t("Check against schema")}</Button>
             {schemaError ? <div role="alert"><Notice tone="error">{schemaError}</Notice></div> : null}
             <div role="status" data-agent-region="schema-check">
               {schemaIssues && schemaIssues.sql === sql && schemaIssues.dialect === dialect ? (
                 schemaIssues.ok && schemaIssues.issues.length === 0 ? (
-                  <Notice tone="good">Every table and column exists in the current schema.</Notice>
+                  <Notice tone="good">{t("Every table and column exists in the current schema.")}</Notice>
                 ) : (
                   <IssueList issues={schemaIssues.issues} />
                 )
@@ -171,17 +174,17 @@ export default function SqlValidate() {
       </div>
 
       <div className="min-w-0 space-y-4">
-        <Panel title="Result">
+        <Panel title={t("Result")}>
           <div className="space-y-3" data-agent-region="validation-result">
             {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
-            {!error && !result ? <p className="text-sm text-faint">Enter SQL to validate it.</p> : null}
+            {!error && !result ? <p className="text-sm text-faint">{t("Enter SQL to validate it.")}</p> : null}
             {result ? (
               <div role="status">
                 {result.ok && result.issues.length === 0 ? (
-                  <Notice tone="good">Valid {dialect} SQL: {plural(result.statements.length, "statement")}.</Notice>
+                  <Notice tone="good">{t("Valid {dialect} SQL: {statements}.", { dialect, statements: tn("{n} statement", "{n} statements", result.statements.length) })}</Notice>
                 ) : (
                   <Notice tone={errors ? "error" : "warn"}>
-                    {errors ? `${plural(errors, "error")}` : "No errors"}{warnings ? `, ${plural(warnings, "warning")}` : ""} found.
+                    {errors ? `${tn("{n} error", "{n} errors", errors)}` : t("No errors")}{warnings ? `, ${tn("{n} warning", "{n} warnings", warnings)}` : ""} {" "}{t("found.")}
                   </Notice>
                 )}
               </div>
@@ -192,12 +195,12 @@ export default function SqlValidate() {
         </Panel>
 
         {result && result.statements.length ? (
-          <Panel title="Statements">
-            <div className="overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label="Statement summary">
+          <Panel title={t("Statements")}>
+            <div className="overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label={t("Statement summary")}>
               <table className="w-full border-collapse text-[13px]">
                 <thead className="bg-raised">
                   <tr>
-                    {["#", "Kind", "Tables", "Columns"].map((h) => (
+                    {["#", t("Kind"), t("Tables"), t("Columns")].map((h) => (
                       <th key={h} scope="col" className="border-b border-line-strong px-3 py-1.5 text-left font-semibold text-ink">{h}</th>
                     ))}
                   </tr>

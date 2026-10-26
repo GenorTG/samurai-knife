@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Field, Panel, Select, TextArea } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 
 function normalize(text: string, mode: "typographic" | "plain"): string {
   if (mode === "plain") return text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, "-");
@@ -10,13 +11,14 @@ function normalize(text: string, mode: "typographic" | "plain"): string {
     .replace(/(^|\s)--(?=\s|$)/g, "$1—").replace(/(?<![\d-])(\d{1,4})-(\d{1,4})(?![\d-])/g, "$1–$2");
 }
 export default function SmartPunctuation() {
+  const { t } = useT();
   const [text, setText] = useState('"Hello," she said. It\'s a well-known example -- with quotes.');
   const [mode, setMode] = useState<"typographic" | "plain">("typographic");
   const output = useMemo(() => normalize(text, mode), [mode, text]);
-  return <Panel title="Smart punctuation normalizer">
-    <div className="space-y-3"><Field label="Quotes and dashes"><Select className="max-w-64" value={mode} onChange={(e) => setMode(e.target.value as "typographic" | "plain")}><option value="typographic">Straight → typographic</option><option value="plain">Typographic → straight</option></Select></Field>
-      <div className="grid gap-3 lg:grid-cols-2"><Field label="Text to normalize"><TextArea rows={12} value={text} onChange={(e) => setText(e.target.value)} /></Field><Field label="Normalized text"><TextArea rows={12} readOnly value={output} /></Field></div>
-      <p className="text-xs text-faint">Typographic conversion uses nearby whitespace and punctuation to guess opening versus closing quotes. Review code, measurements, and apostrophes before use.</p>
+  return <Panel title={t("Smart punctuation normalizer")}>
+    <div className="space-y-3"><Field label={t("Quotes and dashes")}><Select className="max-w-64" value={mode} onChange={(e) => setMode(e.target.value as "typographic" | "plain")}><option value="typographic">{t("Straight → typographic")}</option><option value="plain">{t("Typographic → straight")}</option></Select></Field>
+      <div className="grid gap-3 lg:grid-cols-2"><Field label={t("Text to normalize")}><TextArea rows={12} value={text} onChange={(e) => setText(e.target.value)} /></Field><Field label={t("Normalized text")}><TextArea rows={12} readOnly value={output} /></Field></div>
+      <p className="text-xs text-faint">{t("Typographic conversion uses nearby whitespace and punctuation to guess opening versus closing quotes. Review code, measurements, and apostrophes before use.")}</p>
     </div>
   </Panel>;
 }

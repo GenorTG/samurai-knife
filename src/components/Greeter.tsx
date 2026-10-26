@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { GithubButton } from "@/components/account/GithubButton";
 import { ButtonLink } from "@/components/ui";
 import { TOOLS } from "@/lib/registry";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * First screen for a signed-out visitor on the public server (`/`): what the app does, why it is safe to use, and the way
@@ -47,65 +51,65 @@ const FEATURES: { icon: keyof typeof ICONS; hue: number; title: string; href: st
   {
     icon: "cv",
     hue: 25,
-    title: "CV studio",
+    title: msg("CV studio"),
     href: "/tools/cv-studio",
-    text: "One bilingual PL/EN CV profile. Save job offers, get a tailored version for each one with an ATS check, and track every application.",
+    text: msg("One bilingual PL/EN CV profile. Save job offers, get a tailored version for each one with an ATS check, and track every application."),
   },
   {
     icon: "office",
     hue: 200,
-    title: "Office documents",
+    title: msg("Office documents"),
     href: "/tools/office",
     text: "A private library of Word, Excel and PowerPoint files with folders, versions and trash, edited in a full office editor in the browser.",
   },
   {
     icon: "site",
     hue: 155,
-    title: "Website studio",
+    title: msg("Website studio"),
     href: "/tools/site-studio",
-    text: "Connect your site's GitHub repository, audit SEO, copy and Lighthouse scores, and ship the fixes as pull requests you review.",
+    text: msg("Connect your site's GitHub repository, audit SEO, copy and Lighthouse scores, and ship the fixes as pull requests you review."),
   },
   {
     icon: "learn",
     hue: 290,
-    title: "Database course",
+    title: msg("Database course"),
     href: "/tools/db-course",
     text: "SQL and PostGIS in short lessons, run against a real PostgreSQL database with instant checks and hints when you get stuck.",
   },
   {
     icon: "ai",
     hue: 330,
-    title: "An assistant that uses the tools",
+    title: msg("An assistant that uses the tools"),
     href: "/tools/mcp-connect",
-    text: "The chat assistant opens tools, fills fields and works through a task with you on the model you pick; you approve the risky steps. Your own agents (Claude, Cursor…) connect over MCP.",
+    text: msg("The chat assistant opens tools, fills fields and works through a task with you on the model you pick; you approve the risky steps. Your own agents (Claude, Cursor…) connect over MCP."),
   },
   {
     icon: "tools",
     hue: 80,
-    title: "The everyday toolbox",
+    title: msg("The everyday toolbox"),
     href: "/tools/json",
     text: "PDF editing and OCR, image export, JSON, CSV, SQL, regex, JWT, colours, cron and more. Small, sharp and fast.",
   },
 ];
 
 const PROMISES: { icon: keyof typeof ICONS; title: string; text: string }[] = [
-  { icon: "browser", title: "Browser first", text: "Most tools work on your files inside this tab. Nothing is uploaded unless a tool says it needs the server." },
-  { icon: "lock", title: "Private per account", text: "Your CV, documents and drafts belong to your account only and are encrypted at rest on the server." },
-  { icon: "key", title: "Your model, your key", text: "Use any OpenAI-compatible provider. The key stays on the server and never reaches the page." },
+  { icon: "browser", title: msg("Browser first"), text: msg("Most tools work on your files inside this tab. Nothing is uploaded unless a tool says it needs the server.") },
+  { icon: "lock", title: msg("Private per account"), text: msg("Your CV, documents and drafts belong to your account only and are encrypted at rest on the server.") },
+  { icon: "key", title: msg("Your model, your key"), text: msg("Use any OpenAI-compatible provider. The key stays on the server and never reaches the page.") },
 ];
 
 const STEPS: { title: string; text: string }[] = [
-  { title: "Pick a username", text: "Register with an email address and a password, or in one click with GitHub." },
-  { title: "Confirm your email", text: "Open the link we send you. Nothing else: no card, no trial clock, no approval queue." },
-  { title: "Use everything", text: "All the tools, the studios, the assistant and your own MCP key, with 1 GB of private storage." },
+  { title: msg("Pick a username"), text: msg("Register with an email address and a password, or in one click with GitHub.") },
+  { title: msg("Confirm your email"), text: msg("Open the link we send you. Nothing else: no card, no trial clock, no approval queue.") },
+  { title: msg("Use everything"), text: msg("All the tools, the studios, the assistant and your own MCP key, with 1 GB of private storage.") },
 ];
 
 const MEMBER = [
-  "Every browser tool: PDF, images, JSON, CSV, text, dev helpers",
+  msg("Every browser tool: PDF, images, JSON, CSV, text, dev helpers"),
   "CV studio, office library, website studio, database course",
-  "Server tools: searchable PDFs (OCR), SQL checks",
-  "The AI assistant and a personal MCP key for your agents",
-  "Drafts saved to your account, encrypted at rest",
+  msg("Server tools: searchable PDFs (OCR), SQL checks"),
+  msg("The AI assistant and a personal MCP key for your agents"),
+  msg("Drafts saved to your account, encrypted at rest"),
 ];
 
 function Check({ on }: { on: boolean }) {
@@ -117,17 +121,18 @@ function Check({ on }: { on: boolean }) {
 }
 
 function CallToAction({ github, size = "lg" }: { github: boolean; size?: "md" | "lg" }) {
+  const { t } = useT();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <ButtonLink href="/register" variant="primary" size={size}>
-        Create a free account
+        {t("Create a free account")}
       </ButtonLink>
       <ButtonLink href="/login" size={size}>
-        Log in
+        {t("Log in")}
       </ButtonLink>
       {github ? (
         <span className="w-56">
-          <GithubButton label="Sign up with GitHub" />
+          <GithubButton label={t("Sign up with GitHub")} />
         </span>
       ) : null}
     </div>
@@ -147,6 +152,7 @@ function Section({ id, eyebrow, title, children }: { id?: string; eyebrow: strin
 }
 
 export function Greeter({ github }: { github: boolean }) {
+  const { t } = useT();
   // Counted in tabs (what a visitor sees as a tool), not in suites.
   const count = (tools: typeof TOOLS) => tools.reduce((sum, tool) => sum + (tool.tabs?.length ?? 1), 0);
   const toolCount = count(TOOLS);
@@ -159,20 +165,19 @@ export function Greeter({ github }: { github: boolean }) {
         <div>
           <p className="inline-flex items-center gap-2 rounded-full border border-line bg-surface/70 px-3 py-1 font-mono text-xs text-muted shadow-xs">
             <span className="size-1.5 rounded-full bg-good" aria-hidden />
-            Free · self-hosted · no ads, no tracking
+            {t("Free · self-hosted · no ads, no tracking")}
           </p>
           <h1 id="greeter-title" className="mt-5 text-4xl font-semibold leading-[1.08] tracking-tight text-ink sm:text-5xl">
-            Every small tool you reach for,{" "}
-            <span className="bg-linear-to-r from-accent via-accent-soft to-ai bg-clip-text text-transparent">in one sharp place.</span>
+            {t("Every small tool you reach for,")}{" "}
+            <span className="bg-linear-to-r from-accent via-accent-soft to-ai bg-clip-text text-transparent">{t("in one sharp place.")}</span>
           </h1>
           <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-muted">
-            {toolCount} hand-made tools for documents, data, code and your job search, plus an AI assistant that can drive all of
-            them. Most run right in your browser, so your files stay on your machine.
+            {t("{toolCount} hand-made tools for documents, data, code and your job search, plus an AI assistant that can drive all of them. Most run right in your browser, so your files stay on your machine.", { toolCount })}
           </p>
           <div className="mt-8">
             <CallToAction github={github} />
           </div>
-          <p className="mt-4 text-sm text-faint">Only an email confirmation. No card, no trial clock.</p>
+          <p className="mt-4 text-sm text-faint">{t("Only an email confirmation. No card, no trial clock.")}</p>
         </div>
 
         {/* A still life of the app, not a screenshot: the assistant at work on a CV. */}
@@ -183,19 +188,19 @@ export function Greeter({ github }: { github: boolean }) {
               <span className="size-2.5 rounded-full bg-danger/70" />
               <span className="size-2.5 rounded-full bg-warn/70" />
               <span className="size-2.5 rounded-full bg-good/70" />
-              <span className="ml-3 font-mono text-xs text-faint">/tools/cv-studio</span>
+              <span className="ml-3 font-mono text-xs text-faint">{t("/tools/cv-studio")}</span>
             </div>
             <div className="space-y-3 p-4 text-sm">
               <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-raised px-3.5 py-2 text-ink">
-                Tailor my CV for the AI engineer offer I saved and check it against their ATS.
+                {t("Tailor my CV for the AI engineer offer I saved and check it against their ATS.")}
               </div>
               <div className="w-fit max-w-[90%] space-y-2 rounded-2xl rounded-bl-md border border-ai/30 bg-ai/5 px-3.5 py-2.5 text-muted">
-                <p className="text-ink">Done. I made a version for that offer:</p>
+                <p className="text-ink">{t("Done. I made a version for that offer:")}</p>
                 <ul className="space-y-1">
-                  {["Opened CV studio, offer “AI engineer”", "Moved LLM projects to the top", "ATS check: 2 fixable gaps, 0 missing skills"].map((line) => (
+                  {[t("Opened CV studio, offer “AI engineer”"), t("Moved LLM projects to the top"), "ATS check: 2 fixable gaps, 0 missing skills"].map((line) => (
                     <li key={line} className="flex gap-2">
                       <Check on />
-                      <span>{line}</span>
+                      <span>{t(line)}</span>
                     </li>
                   ))}
                 </ul>
@@ -217,7 +222,7 @@ export function Greeter({ github }: { github: boolean }) {
         </div>
       </section>
 
-      <Section id="features" eyebrow="What's inside" title="Big studios and small sharp tools">
+      <Section id="features" eyebrow={t("What's inside")} title={t("Big studios and small sharp tools")}>
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((feature) => (
             <li key={feature.title}>
@@ -226,15 +231,15 @@ export function Greeter({ github }: { github: boolean }) {
                 className="group flex h-full flex-col gap-3 rounded-tool border border-line bg-surface p-5 shadow-card transition-colors hover:border-line-strong hover:bg-raised/40"
               >
                 <IconTile name={feature.icon} hue={feature.hue} />
-                <h3 className="text-[15px] font-semibold tracking-tight text-ink">{feature.title}</h3>
-                <p className="text-sm leading-relaxed text-muted">{feature.text}</p>
+                <h3 className="text-[15px] font-semibold tracking-tight text-ink">{t(feature.title)}</h3>
+                <p className="text-sm leading-relaxed text-muted">{t(feature.text)}</p>
               </Link>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="privacy" eyebrow="How it treats your data" title="Built to keep your things yours">
+      <Section id="privacy" eyebrow={t("How it treats your data")} title={t("Built to keep your things yours")}>
         <ul className="grid gap-4 md:grid-cols-3">
           {PROMISES.map((promise) => (
             <li key={promise.title} className="flex gap-4 rounded-tool border border-line bg-surface/60 p-5">
@@ -242,15 +247,15 @@ export function Greeter({ github }: { github: boolean }) {
                 <Icon name={promise.icon} size={22} />
               </span>
               <div>
-                <h3 className="text-[15px] font-semibold tracking-tight text-ink">{promise.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted">{promise.text}</p>
+                <h3 className="text-[15px] font-semibold tracking-tight text-ink">{t(promise.title)}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{t(promise.text)}</p>
               </div>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section id="account" eyebrow="Getting in" title="Three steps to your own toolbox">
+      <Section id="account" eyebrow={t("Getting in")} title={t("Three steps to your own toolbox")}>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <ol className="grid gap-3">
             {STEPS.map((step, i) => (
@@ -259,25 +264,25 @@ export function Greeter({ github }: { github: boolean }) {
                   {i + 1}
                 </span>
                 <div>
-                  <h3 className="text-[15px] font-semibold tracking-tight text-ink">{step.title}</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted">{step.text}</p>
+                  <h3 className="text-[15px] font-semibold tracking-tight text-ink">{t(step.title)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted">{t(step.text)}</p>
                 </div>
               </li>
             ))}
           </ol>
           <div className="rounded-tool border border-accent/40 bg-surface p-5 shadow-card ring-1 ring-accent/10">
-            <h3 className="text-[15px] font-semibold text-ink">What your free account includes</h3>
+            <h3 className="text-[15px] font-semibold text-ink">{t("What your free account includes")}</h3>
             <ul className="mt-3 space-y-2 text-sm text-muted">
               {MEMBER.map((line) => (
                 <li key={line} className="flex gap-2">
                   <Check on />
-                  <span>{line}</span>
+                  <span>{t(line)}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-5">
               <ButtonLink href="/register" variant="primary">
-                Register now
+                {t("Register now")}
               </ButtonLink>
             </div>
           </div>
@@ -286,9 +291,9 @@ export function Greeter({ github }: { github: boolean }) {
 
       <section aria-labelledby="greeter-cta" className="mt-16 rounded-tool border border-line bg-surface px-6 py-10 text-center shadow-card sm:mt-20 sm:px-10">
         <h2 id="greeter-cta" className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-          Your toolbox is one email away.
+          {t("Your toolbox is one email away.")}
         </h2>
-        <p className="mx-auto mt-3 max-w-lg text-[15px] text-muted">Pick a username, confirm your address, and everything above is yours.</p>
+        <p className="mx-auto mt-3 max-w-lg text-[15px] text-muted">{t("Pick a username, confirm your address, and everything above is yours.")}</p>
         <div className="mt-7 flex justify-center">
           <CallToAction github={github} size="md" />
         </div>

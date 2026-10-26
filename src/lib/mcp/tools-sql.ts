@@ -2,6 +2,7 @@ import * as z from "zod/v4";
 import { defineTool, type KnifeToolDefinition } from "./define";
 import { runSql } from "@/lib/sql/engine";
 import { sqlDialectSchema, sqlSchemaSchema } from "@/lib/sql/types";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Deterministic SQL tools for the assistant and MCP (`knife_sql_*`): format, transpile, validate, extract a schema,
@@ -101,15 +102,15 @@ export const SQL_KNIFE_TOOLS: KnifeToolDefinition[] = [
     description: "Verify SQL against a schema: every table and column must exist; reports unknown tables/columns with a did-you-mean, ambiguous columns, unknown aliases and wrong value counts in INSERT. ALWAYS call this after writing or editing SQL from natural language, with the user's real schema (`schema` from knife_sql_schema, or `ddl`), and fix every issue with level 'error' before presenting the query. Never invent column names to make a query look plausible: ask or inspect the schema instead.",
     schema: checkSchema,
     run: async ({ sql, dialect: d, schema, ddl }, ctx) => {
-      if (schema && ddl) throw new Error("Pass either `schema` or `ddl`, not both.");
-      if (!schema && !ddl) throw new Error("Pass the schema to check against: `schema` ({ tables: [...] }) or `ddl` (CREATE TABLE statements).");
+      if (schema && ddl) throw new Error(msg("Pass either `schema` or `ddl`, not both."));
+      if (!schema && !ddl) throw new Error(msg("Pass the schema to check against: `schema` ({ tables: [...] }) or `ddl` (CREATE TABLE statements)."));
       let resolved = schema;
       const schemaIssues: unknown[] = [];
       if (ddl) {
         const built = unwrap(await runSql("schema", { ddl, dialect: d }, undefined, ctx?.accountId));
         const errors = built.issues.filter((issue) => issue.level === "error");
         if (errors.length) {
-          throw new Error(`The DDL does not parse: ${errors.map((issue) => `${issue.message}${issue.line ? ` (line ${issue.line})` : ""}`).join("; ")}`);
+          throw new Error(msgf("The DDL does not parse: {value}", { value: errors.map((issue) => `${issue.message}${issue.line ? ` (line ${issue.line})` : ""}`).join("; ") }));
         }
         resolved = built.schema;
         schemaIssues.push(...built.issues);

@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { requireAdmin } from "@/lib/accounts/authz";
 import { LogAccessError, listLogSources, openLogFile, readLogTail } from "@/lib/logs/viewer";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   const source = params.get("source");
   const file = params.get("file");
   if (source === null && file === null) return json(await listLogSources());
-  if (!source || !file) return jsonError("Give both source and file.", 400);
+  if (!source || !file) return jsonError(msg("Give both source and file."), 400);
   try {
     if (params.get("download") === "1") {
       const opened = await openLogFile(source, file);

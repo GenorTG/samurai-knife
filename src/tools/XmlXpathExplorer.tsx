@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button, CopyButton, Field, Notice, Panel, Select, TextArea } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 const SAMPLE = `<?xml version="1.0"?>\n<catalog><book id="b1"><title>Local tools</title><price>12.5</price></book></catalog>`;
 function prettyXml(source: string): string {
   const xml = new DOMParser().parseFromString(source, "application/xml");
@@ -20,6 +21,7 @@ function prettyXml(source: string): string {
   return [...xml.childNodes].map((node) => render(node, 0)).filter(Boolean).join("\n");
 }
 export default function XmlXpathExplorer() {
+  const { t } = useT();
   const [source, setSource] = useState(SAMPLE), [query, setQuery] = useState("//book/title/text()"), [mode, setMode] = useState<"query" | "format">("query"), [output, setOutput] = useState(""), [error, setError] = useState("");
   const run = () => {
     try {
@@ -32,15 +34,15 @@ export default function XmlXpathExplorer() {
       if (value.resultType === XPathResult.BOOLEAN_TYPE) { setOutput(String(value.booleanValue)); setError(""); return; }
       const nodes: string[] = []; let node = value.iterateNext();
       while (node && nodes.length < 500) { nodes.push(node.nodeType === Node.TEXT_NODE ? node.nodeValue ?? "" : new XMLSerializer().serializeToString(node)); node = value.iterateNext(); }
-      setOutput(nodes.length ? nodes.join("\n") : "No matching nodes."); setError("");
-    } catch (e) { setOutput(""); setError(e instanceof Error ? e.message : "Could not evaluate XPath."); }
+      setOutput(nodes.length ? nodes.join("\n") : t("No matching nodes.")); setError("");
+    } catch (e) { setOutput(""); setError(e instanceof Error ? e.message : t("Could not evaluate XPath.")); }
   };
-  return <Panel title="XML formatter & XPath explorer" right={<CopyButton text={output} label="Copy result" />}><div className="space-y-3">
-    <Field label="Operation"><Select className="max-w-64" value={mode} onChange={(e) => setMode(e.target.value as "query" | "format")}><option value="query">Run XPath</option><option value="format">Pretty-format XML</option></Select></Field>
-    {mode === "query" && <Field label="XPath expression"><TextArea rows={2} value={query} onChange={(e) => setQuery(e.target.value)} /></Field>}
-    <Field label="XML document"><TextArea rows={12} spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} /></Field>
-    <Button variant="primary" onClick={run}>{mode === "query" ? "Run XPath" : "Format XML"}</Button>
-    {error ? <Notice tone="error">{error}</Notice> : output && <Field label={mode === "query" ? "XPath result" : "Formatted XML"}><TextArea rows={7} readOnly value={output} /></Field>}
-    <p className="text-xs text-faint">Uses browser XML parsing and XPath 1.0. XML stays local; formatting is a readability pass for markup, not a canonicalizer.</p>
+  return <Panel title={t("XML formatter & XPath explorer")} right={<CopyButton text={output} label={t("Copy result")} />}><div className="space-y-3">
+    <Field label={t("Operation")}><Select className="max-w-64" value={mode} onChange={(e) => setMode(e.target.value as "query" | "format")}><option value="query">{t("Run XPath")}</option><option value="format">{t("Pretty-format XML")}</option></Select></Field>
+    {mode === "query" && <Field label={t("XPath expression")}><TextArea rows={2} value={query} onChange={(e) => setQuery(e.target.value)} /></Field>}
+    <Field label={t("XML document")}><TextArea rows={12} spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} /></Field>
+    <Button variant="primary" onClick={run}>{mode === "query" ? t("Run XPath") : t("Format XML")}</Button>
+    {error ? <Notice tone="error">{error}</Notice> : output && <Field label={mode === "query" ? t("XPath result") : t("Formatted XML")}><TextArea rows={7} readOnly value={output} /></Field>}
+    <p className="text-xs text-faint">{t("Uses browser XML parsing and XPath 1.0. XML stays local; formatting is a readability pass for markup, not a canonicalizer.")}</p>
   </div></Panel>;
 }

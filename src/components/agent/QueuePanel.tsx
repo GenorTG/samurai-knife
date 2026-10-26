@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cx } from "@/lib/format";
 import { cancelQueued, clearQueue, editQueued, resumeQueue } from "@/lib/agent-client/message-queue";
 import { useRuntime } from "@/lib/agent-client/runtime-store";
+import { useT } from "@/lib/i18n/react";
 
 const chipButton = "inline-flex h-7 shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] text-muted hover:bg-raised hover:text-ink disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -13,6 +14,7 @@ const chipButton = "inline-flex h-7 shrink-0 cursor-pointer items-center rounded
  * running turn, and the queued messages themselves (cancel, edit, send now).
  */
 export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
+  const { t } = useT();
   const queue = useRuntime((s) => s.queue);
   const steering = useRuntime((s) => s.steering);
   const paused = useRuntime((s) => s.paused);
@@ -33,8 +35,8 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
         <p role="status" data-agent-lock="" className="flex items-center gap-2 rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-ink">
           <span aria-hidden className="size-1.5 shrink-0 animate-pulse rounded-full bg-warn" />
           <span className="min-w-0 flex-1">
-            Another tab is running this conversation.
-            {remoteActivity ? <span className="text-muted"> {remoteActivity}</span> : null} New messages wait in the queue.
+            {t("Another tab is running this conversation.")}
+            {remoteActivity ? <span className="text-muted"> {remoteActivity}</span> : null} {" "}{t("New messages wait in the queue.")}
           </span>
         </p>
       ) : null}
@@ -42,13 +44,13 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
       {paused && queue.length > 0 ? (
         <div role="status" data-agent-queue-paused={paused} className="flex flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-raised/60 px-2.5 py-1.5 text-xs text-ink">
           <span className="min-w-0 flex-1">
-            Queue paused{paused === "stopped" ? " (you stopped the run)" : " (the run failed)"}: {queue.length} waiting.
+            {t("Queue paused")}{paused === "stopped" ? t(" (you stopped the run)") : t(" (the run failed)")}{t(": {queue} waiting.", { queue: queue.length })}
           </span>
           <button autoComplete="off" type="button" onClick={resumeQueue} className="rounded-md bg-accent px-2 py-1 font-semibold text-accent-fg hover:brightness-110">
-            Resume
+            {t("Resume")}
           </button>
           <button autoComplete="off" type="button" onClick={clearQueue} className="rounded-md border border-line-strong px-2 py-1 text-ink hover:bg-raised">
-            Clear
+            {t("Clear")}
           </button>
         </div>
       ) : null}
@@ -59,12 +61,12 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
           <span className="min-w-0 flex-1 truncate text-ink" title={m.text}>
             {m.text}
           </span>
-          <span className="shrink-0 text-faint">joins the run at its next step</span>
+          <span className="shrink-0 text-faint">{t("joins the run at its next step")}</span>
         </p>
       ))}
 
       {queue.length > 0 ? (
-        <ul aria-label="Queued messages" className="max-h-32 space-y-1 overflow-y-auto">
+        <ul aria-label={t("Queued messages")} className="max-h-32 space-y-1 overflow-y-auto">
           {queue.map((m, index) => (
             <li
               key={m.id}
@@ -76,7 +78,7 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
                 <>
                   <input
                     autoFocus
-                    aria-label="Edit queued message"
+                    aria-label={t("Edit queued message")}
                     value={editing.text}
                     onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
                     onKeyDown={(e) => {
@@ -91,10 +93,10 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
                     className="sk-input min-w-0 flex-1 px-2 py-1 text-xs"
                   />
                   <button autoComplete="off" type="button" onClick={save} className={chipButton}>
-                    Save
+                    {t("Save")}
                   </button>
                   <button autoComplete="off" type="button" onClick={() => setEditing(null)} className={chipButton}>
-                    Back
+                    {t("Back")}
                   </button>
                 </>
               ) : (
@@ -107,15 +109,15 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
                     type="button"
                     onClick={() => onSendNow(m.id)}
                     disabled={lock === "other"}
-                    title={lock === "other" ? "Another tab is running this conversation" : "Deliver this message to the assistant now, without waiting for the run to end"}
+                    title={lock === "other" ? t("Another tab is running this conversation") : t("Deliver this message to the assistant now, without waiting for the run to end")}
                     className={chipButton}
                   >
-                    Send now
+                    {t("Send now")}
                   </button>
                   <button autoComplete="off" type="button" onClick={() => setEditing({ id: m.id, text: m.text })} className={chipButton}>
-                    Edit
+                    {t("Edit")}
                   </button>
-                  <button autoComplete="off" type="button" onClick={() => cancelQueued(m.id)} aria-label="Cancel queued message" title="Remove from the queue" className={chipButton}>
+                  <button autoComplete="off" type="button" onClick={() => cancelQueued(m.id)} aria-label={t("Cancel queued message")} title={t("Remove from the queue")} className={chipButton}>
                     ✕
                   </button>
                 </>

@@ -7,6 +7,8 @@ import { formatBytes } from "@/lib/format";
 import { ARTCRAFT_APPS } from "@/lib/services/definitions";
 import { craftFileBytes, craftFileDownloadUrl, deleteCraftFile, errorText, listCraftFiles, type CraftFile, type CraftFilesList } from "@/tools/sidecars/client";
 import type { OpenRequest, PickedFile } from "./useCraftBridge";
+import { useT } from "@/lib/i18n/react";
+import type { Translator } from "@/lib/i18n/core";
 
 const appName = (id: string) => ARTCRAFT_APPS.find((app) => app.id === id)?.name ?? id;
 /** UTC, pinned format (never locale-dependent output). */
@@ -37,32 +39,34 @@ function useFiles(open: boolean): { list: CraftFilesList | null; error: string |
   return { list, error, reload: () => setTick((value) => value + 1) };
 }
 
-function usageLine(list: CraftFilesList): string {
+function usageLine(list: CraftFilesList, { t, tn }: Translator): string {
   const total = list.files.reduce((sum, file) => sum + file.size, 0);
-  const quota = list.usage.quotaBytes === null ? "no storage limit" : `${formatBytes(list.usage.usedBytes)} of your ${formatBytes(list.usage.quotaBytes)} used in all`;
-  return `${list.files.length} file${list.files.length === 1 ? "" : "s"}, ${formatBytes(total)} · ${quota}`;
+  const quota = list.usage.quotaBytes === null ? t("no storage limit") : t("{used} of your {quota} used in all", { used: formatBytes(list.usage.usedBytes), quota: formatBytes(list.usage.quotaBytes) });
+  return `${tn("{n} file", "{n} files", list.files.length)}, ${formatBytes(total)} · ${quota}`;
 }
 
 /** "My files": everything the Craft apps saved to this account, with Download and Delete. */
 export function CraftFilesDrawer({ open, onClose, highlight }: { open: boolean; onClose: () => void; highlight?: string | null }) {
+  const i18n = useT();
+  const { t } = i18n;
   const { list, error, reload } = useFiles(open);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   return (
-    <Drawer open={open} title="Craft files" onClose={onClose}>
+    <Drawer open={open} title={t("Craft files")} onClose={onClose}>
       <p className="text-sm text-muted">
-        What you save in the Craft apps is kept in your account, so you can open it again on any browser or device. Download puts a copy on this computer.
+        {t("What you save in the Craft apps is kept in your account, so you can open it again on any browser or device. Download puts a copy on this computer.")}
       </p>
       {error || problem ? <Notice tone="error">{error ?? problem}</Notice> : null}
       {!list && !error ? (
         <p role="status" className="text-sm text-muted">
-          Loading…
+          {t("Loading…")}
         </p>
       ) : null}
-      {list ? <p className="text-xs text-faint">{usageLine(list)}</p> : null}
-      {list && list.files.length === 0 ? <p className="text-sm text-muted">Nothing saved yet: use Save or Export in an app.</p> : null}
+      {list ? <p className="text-xs text-faint">{usageLine(list, i18n)}</p> : null}
+      {list && list.files.length === 0 ? <p className="text-sm text-muted">{t("Nothing saved yet: use Save or Export in an app.")}</p> : null}
       {list && list.files.length ? (
-        <ul className="divide-y divide-line rounded-tool border border-line" aria-label="Craft files">
+        <ul className="divide-y divide-line rounded-tool border border-line" aria-label={t("Craft files")}>
           {list.files.map((file) => (
             <li key={file.id} className={`space-y-1 px-3 py-2.5 ${highlight === file.id ? "bg-raised" : ""}`} data-craft-file={file.name}>
               <div className="flex flex-wrap items-baseline gap-x-2">
@@ -73,14 +77,14 @@ export function CraftFilesDrawer({ open, onClose, highlight }: { open: boolean; 
               </div>
               <div className="flex flex-wrap gap-2">
                 <a className="inline-flex h-7 items-center rounded-lg border border-line-strong px-2.5 text-xs text-ink hover:bg-raised" href={craftFileDownloadUrl(file.id)} download={file.name}>
-                  Download
+                  {t("Download")}
                 </a>
                 <Button
                   size="sm"
                   variant="danger"
                   disabled={busy !== null}
                   onClick={async () => {
-                    if (!window.confirm(`Delete ${file.name}? This cannot be undone.`)) return;
+                    if (!window.confirm(t("Delete {name}? This cannot be undone.", { name: file.name }))) return;
                     setBusy(file.id);
                     setProblem(null);
                     try {
@@ -93,7 +97,7 @@ export function CraftFilesDrawer({ open, onClose, highlight }: { open: boolean; 
                     }
                   }}
                 >
-                  {busy === file.id ? "Deleting…" : "Delete"}
+                  {busy === file.id ? t("Deleting…") : t("Delete")}
                 </Button>
               </div>
             </li>
@@ -109,6 +113,7 @@ export function CraftFilesDrawer({ open, onClose, highlight }: { open: boolean; 
  * that match the app's `accept`, or files from this computer (an input of this page: the person's click is here).
  */
 export function CraftOpenChooser({ app, request, onPick, onCancel }: { app: string; request: OpenRequest | null; onPick: (files: PickedFile[]) => void; onCancel: () => void }) {
+  const { t } = useT();
   const { list, error } = useFiles(request !== null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -137,15 +142,15 @@ export function CraftOpenChooser({ app, request, onPick, onCancel }: { app: stri
         </span>
       </span>
       <Button size="sm" disabled={busy} onClick={() => void pick(file)}>
-        Open
+        {t("Open")}
       </Button>
     </li>
   );
   return (
-    <Drawer open={request !== null} title={`Open in ${appName(app)}`} onClose={onCancel}>
+    <Drawer open={request !== null} title={t("Open in {app}", { app: appName(app) })} onClose={onCancel}>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" disabled={busy} onClick={() => local.current?.click()}>
-          From this computer…
+          {t("From this computer…")}
         </Button>
         <input
           ref={local}
@@ -166,25 +171,25 @@ export function CraftOpenChooser({ app, request, onPick, onCancel }: { app: stri
           }}
         />
         <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
       </div>
       {error || problem ? <Notice tone="error">{error ?? problem}</Notice> : null}
       {!list && !error ? (
         <p role="status" className="text-sm text-muted">
-          Loading your files…
+          {t("Loading your files…")}
         </p>
       ) : null}
-      {list && !matching.length ? <p className="text-sm text-muted">None of your Craft files fit what {appName(app)} opens here.</p> : null}
+      {list && !matching.length ? <p className="text-sm text-muted">{t("None of your Craft files fit what {app} opens here.", { app: appName(app) })}</p> : null}
       {mine.length ? (
         <section className="space-y-1">
-          <h3 className="text-xs font-semibold text-muted">Saved in {appName(app)}</h3>
+          <h3 className="text-xs font-semibold text-muted">{t("Saved in")}{" "} {appName(app)}</h3>
           <ul className="divide-y divide-line rounded-tool border border-line">{mine.map(row)}</ul>
         </section>
       ) : null}
       {others.length ? (
         <section className="space-y-1">
-          <h3 className="text-xs font-semibold text-muted">From other Craft apps</h3>
+          <h3 className="text-xs font-semibold text-muted">{t("From other Craft apps")}</h3>
           <ul className="divide-y divide-line rounded-tool border border-line">{others.map(row)}</ul>
         </section>
       ) : null}

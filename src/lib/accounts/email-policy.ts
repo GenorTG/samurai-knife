@@ -1,4 +1,5 @@
 import { statSync, readFileSync } from "node:fs";
+import { msg } from "@/lib/i18n/msg";
 import { Resolver } from "node:dns/promises";
 import { join } from "node:path";
 import { dataDir } from "@/lib/accounts/store";
@@ -22,7 +23,7 @@ import { asciiDomain, canonicalEmailKey, domainAndParents, splitAddress } from "
  */
 
 /** What the routes answer for every refused address: it says nothing about accounts. */
-export const EMAIL_POLICY_MESSAGE = "We can't send mail to that address.";
+export const EMAIL_POLICY_MESSAGE = msg("We can't send mail to that address.");
 
 export type EmailRejectReason =
   | "syntax"

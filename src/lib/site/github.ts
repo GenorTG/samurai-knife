@@ -2,6 +2,7 @@
 // (net.ts), no git binary and no clone. Changes are made with the Git Data API (one commit per call, any number of files)
 // on a work branch; the default branch is only ever changed by merging a pull request (docs/WEBSITE-STUDIO.md).
 import { apiJson, SiteError, type NetDeps } from "./net";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export const GITHUB_API = (): string => (process.env.KNIFE_GITHUB_API_URL?.trim() || "https://api.github.com").replace(/\/+$/, "");
 
@@ -37,7 +38,7 @@ export function checkPath(path: string, forWrite = false): string {
   if (parts[0] === ".git") throw new SiteError("the .git directory is not part of the files");
   if (forWrite && parts[0] === ".github" && parts[1] === "workflows") throw new SiteError("CI workflow files are not edited from the studio (they run code in GitHub Actions)");
   const base = parts.at(-1)!;
-  if (forWrite && /^\.env(\..+)?$/.test(base) && !/^\.env\.(example|sample|template)$/.test(base)) throw new SiteError(`${base} holds secrets: it is not written from the studio`);
+  if (forWrite && /^\.env(\..+)?$/.test(base) && !/^\.env\.(example|sample|template)$/.test(base)) throw new SiteError(msgf("{base} holds secrets: it is not written from the studio", { base }));
   return p;
 }
 
@@ -57,13 +58,13 @@ export async function gh<T = unknown>(token: string, method: "GET" | "POST" | "P
   }, deps);
   if (res.status >= 200 && res.status < 300) return res.body as T;
   const message = typeof (res.body as Json | null)?.message === "string" ? String((res.body as Json).message).slice(0, 300) : `HTTP ${res.status}`;
-  if (res.status === 401) throw new SiteError("GitHub refused the token (expired or revoked): connect again with a new one", 401);
-  if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") throw new SiteError("GitHub's API rate limit for this token is used up; try again later", 429);
-  if (res.status === 403) throw new SiteError(`GitHub: the token may not do this (${message}). A fine-grained token needs Contents and Pull requests: read and write on the repository`, 403);
-  if (res.status === 404) throw new SiteError(`GitHub: not found or no access (${method} ${path.split("?")[0]})`, 404);
-  if (res.status === 409) throw new SiteError(`GitHub: conflict (${message})`, 409);
-  if (res.status === 422) throw new SiteError(`GitHub rejected the request: ${message}`, 422);
-  throw new SiteError(`GitHub answered HTTP ${res.status}: ${message}`, 502);
+  if (res.status === 401) throw new SiteError(msg("GitHub refused the token (expired or revoked): connect again with a new one"), 401);
+  if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") throw new SiteError(msg("GitHub's API rate limit for this token is used up; try again later"), 429);
+  if (res.status === 403) throw new SiteError(msgf("GitHub: the token may not do this ({message}). A fine-grained token needs Contents and Pull requests: read and write on the repository", { message }), 403);
+  if (res.status === 404) throw new SiteError(msgf("GitHub: not found or no access ({method} {value})", { method, value: path.split("?")[0] }), 404);
+  if (res.status === 409) throw new SiteError(msgf("GitHub: conflict ({message})", { message }), 409);
+  if (res.status === 422) throw new SiteError(msgf("GitHub rejected the request: {message}", { message }), 422);
+  throw new SiteError(msgf("GitHub answered HTTP {status}: {message}", { status: res.status, message }), 502);
 }
 
 export interface RepoInfo {
@@ -148,7 +149,7 @@ function looksBinary(bytes: Buffer): boolean {
 export async function getFile(token: string, repo: string, path: string, ref: string, deps?: GitHubDeps): Promise<RepoFile> {
   const p = checkPath(path);
   const got = await gh<Json | Json[]>(token, "GET", `/repos/${checkRepo(repo)}/contents/${encodePath(p)}?ref=${encodeURIComponent(ref)}`, undefined, deps);
-  if (Array.isArray(got)) throw new SiteError(`${p} is a directory: list it with the file tree instead`);
+  if (Array.isArray(got)) throw new SiteError(msgf("{p} is a directory: list it with the file tree instead", { p }));
   const size = Number(got.size ?? 0);
   const sha = String(got.sha ?? "");
   if (size > MAX_FILE_BYTES) return { path: p, ref, sha, size, text: null, note: `larger than ${MAX_FILE_BYTES / 1_000_000} MB: not read` };

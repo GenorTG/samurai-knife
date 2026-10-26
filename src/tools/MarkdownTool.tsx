@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Button, CopyButton, Field, KeyValues, OutputBlock, Panel, Stat, StatGrid, TextArea } from "@/components/ui";
-import { cx, plural } from "@/lib/format";
+import { cx } from "@/lib/format";
 import { downloadText } from "@/lib/format";
 import { countLinksAndImages } from "@/lib/markdown-counts";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Markdown bench. Preview is sanitised through DOMPurify before it touches the
@@ -30,7 +31,9 @@ const PREVIEW_CLASS = cx(
   "[&_img]:max-w-full [&_hr]:border-line [&_hr]:my-3",
 );
 
-const SAMPLE = `# Samurai notes
+/** The starter document, in the interface language (a sample to overwrite, never user data). */
+const SAMPLES = {
+  en: `# Samurai notes
 
 Two things this preview does:
 
@@ -44,7 +47,23 @@ const knife = "swiss army";
 \`\`\`
 
 [registry](/tools/regex)
-`;
+`,
+  pl: `# Notatki samuraja
+
+Dwie rzeczy, które robi ten podgląd:
+
+1. **Oczyszcza** — znaczniki script i atrybuty \`onerror\` nigdy nie trafiają do DOM.
+2. **Liczy** — nagłówki, linki, obrazy i bloki kodu są liczone na żywo.
+
+> Wszystko zostaje w przeglądarce.
+
+\`\`\`ts
+const knife = "swiss army";
+\`\`\`
+
+[rejestr](/tools/regex)
+`,
+} as const;
 
 function escapeCell(value: string): string {
   return value.replace(/\|/g, "\\|").trim();
@@ -187,7 +206,8 @@ function htmlToMarkdown(source: string): string {
 }
 
 export default function MarkdownTool() {
-  const [markdown, setMarkdown] = useState(SAMPLE);
+  const { t, tn, locale } = useT();
+  const [markdown, setMarkdown] = useState<string>(SAMPLES[locale]);
   const [htmlInput, setHtmlInput] = useState("<h1>Imported</h1>\n<p>Some <strong>rich</strong> text with a <a href=\"https://example.com\">link</a>.</p>\n<ul><li>one</li><li>two</li></ul>");
   const [showHtml, setShowHtml] = useState(false);
 
@@ -230,14 +250,14 @@ export default function MarkdownTool() {
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel
-          title="Markdown"
+          title={t("Markdown")}
           right={
             <div className="flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => setMarkdown(SAMPLE)}>
-                Sample
+              <Button size="sm" variant="ghost" onClick={() => setMarkdown(SAMPLES[locale])}>
+                {t("Sample")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setMarkdown("")}>
-                Clear
+                {t("Clear")}
               </Button>
             </div>
           }
@@ -247,30 +267,30 @@ export default function MarkdownTool() {
               value={markdown}
               spellCheck={false}
               onChange={(e) => setMarkdown(e.target.value)}
-              placeholder="# Start typing…"
+              placeholder={t("# Start typing…")}
             />
             <StatGrid>
-              <Stat label="Words" value={counts.words} />
-              <Stat label="Lines" value={counts.lines} />
-              <Stat label="Headings" value={counts.headings} />
-              <Stat label="Read time" value={`${counts.minutes} min`} />
-              <Stat label="Links" value={counts.links} />
-              <Stat label="Images" value={counts.images} />
-              <Stat label="Code blocks" value={counts.fences} />
-              <Stat label="Chars" value={counts.chars} />
+              <Stat label={t("Words")} value={counts.words} />
+              <Stat label={t("Lines")} value={counts.lines} />
+              <Stat label={t("Headings")} value={counts.headings} />
+              <Stat label={t("Read time")} value={`${counts.minutes} min`} />
+              <Stat label={t("Links")} value={counts.links} />
+              <Stat label={t("Images")} value={counts.images} />
+              <Stat label={t("Code blocks")} value={counts.fences} />
+              <Stat label={t("Chars")} value={counts.chars} />
             </StatGrid>
             <p className="text-xs text-faint">
-              {plural(counts.headings, "heading")} in this document — the outline is on the right.
+              {t("{headings} in this document — the outline is on the right.", { headings: tn("{n} heading", "{n} headings", counts.headings) })}
             </p>
           </div>
         </Panel>
 
         <Panel
-          title="Preview"
+          title={t("Preview")}
           right={
             <div className="flex gap-1.5">
               <Button size="sm" variant="subtle" onClick={() => setShowHtml((v) => !v)}>
-                {showHtml ? "Rendered" : "HTML"}
+                {showHtml ? t("Rendered") : "HTML"}
               </Button>
               <CopyButton text={showHtml ? rendered : markdown} />
               <Button
@@ -279,13 +299,13 @@ export default function MarkdownTool() {
                 disabled={!markdown}
                 onClick={() => downloadText(markdown, "notes.md")}
               >
-                Save .md
+                {t("Save .md")}
               </Button>
             </div>
           }
         >
           {showHtml ? (
-            <OutputBlock value={rendered} rows={22} empty="Nothing rendered." />
+            <OutputBlock value={rendered} rows={22} empty={t("Nothing rendered.")} />
           ) : (
             <div
               className={cx("rounded-tool border border-line bg-surface p-4 min-h-64 max-h-[32rem] overflow-auto", PREVIEW_CLASS)}
@@ -297,32 +317,32 @@ export default function MarkdownTool() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-        <Panel title="Outline">
+        <Panel title={t("Outline")}>
           {structure.length ? (
             <KeyValues rows={structure.map((title, index) => [String(index + 1), title])} />
           ) : (
-            <p className="text-sm text-faint">No headings yet — add a <code>#</code> line.</p>
+            <p className="text-sm text-faint">{t("No headings yet — add a")}{" "} <code>#</code> {" "}{t("line.")}</p>
           )}
         </Panel>
 
         <Panel
-          title="HTML → Markdown"
+          title={t("HTML → Markdown")}
           right={
             <div className="flex gap-1.5">
-              <CopyButton text={htmlToMd} label="Copy markdown" />
+              <CopyButton text={htmlToMd} label={t("Copy markdown")} />
               <Button
                 size="sm"
                 variant="subtle"
                 disabled={!htmlToMd}
                 onClick={() => downloadText(htmlToMd, "converted.md")}
               >
-                Save .md
+                {t("Save .md")}
               </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <Field label="Paste markup" hint="Parsed with DOMParser — scripts are stripped before conversion.">
+            <Field label={t("Paste markup")} hint={t("Parsed with DOMParser — scripts are stripped before conversion.")}>
               <TextArea
                 value={htmlInput}
                 spellCheck={false}
@@ -330,7 +350,7 @@ export default function MarkdownTool() {
                 placeholder="<h1>…</h1>"
               />
             </Field>
-            <OutputBlock value={htmlToMd} rows={16} empty="Paste markup above." />
+            <OutputBlock value={htmlToMd} rows={16} empty={t("Paste markup above.")} />
           </div>
         </Panel>
       </div>

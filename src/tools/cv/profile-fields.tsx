@@ -6,6 +6,7 @@ import type { AuditFinding } from "@/lib/cv/client";
 import type { CvOp } from "@/lib/cv/ops";
 import type { CvLang } from "@/lib/cv/schema";
 import { cx } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 /** Everything the inline-edit fields of the Profile tab share. */
 export interface ProfileEnv {
@@ -70,6 +71,7 @@ interface FieldProps {
  * Escape cancels, the API's 422 reason stays visible under the field. Audit findings for the path render underneath.
  */
 export function EditableField({ path, value, label, placeholder, multiline = false, className, list = false, reference, biPath, keepInFilter = false, nullable = false }: FieldProps) {
+  const { t } = useT();
   const env = useProfileEnv();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -170,34 +172,34 @@ export function EditableField({ path, value, label, placeholder, multiline = fal
           />
           {/* Explicit controls too: mouse and assistant users have no Ctrl+Enter. mousedown must not blur (= save) the field first. */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button size="sm" variant="primary" aria-label={`Save ${label}`} disabled={saving} onMouseDown={(event) => event.preventDefault()} onClick={() => void commit()}>Save</Button>
-            <Button size="sm" variant="ghost" aria-label={`Cancel editing ${label}`} onMouseDown={(event) => event.preventDefault()} onClick={cancel}>Cancel</Button>
-            <span className="hidden text-[11px] text-faint sm:inline">Ctrl+Enter saves · Esc cancels</span>
+            <Button size="sm" variant="primary" aria-label={t("Save {label}", { label })} disabled={saving} onMouseDown={(event) => event.preventDefault()} onClick={() => void commit()}>{t("Save")}</Button>
+            <Button size="sm" variant="ghost" aria-label={t("Cancel editing {label}", { label })} onMouseDown={(event) => event.preventDefault()} onClick={cancel}>{t("Cancel")}</Button>
+            <span className="hidden text-[11px] text-faint sm:inline">{t("Ctrl+Enter saves · Esc cancels")}</span>
           </div>
         </div>
       ) : (
         <button
           autoComplete="off"
           type="button"
-          aria-label={`Edit ${label}`}
+          aria-label={t("Edit {label}", { label })}
           onClick={open}
           className={cx(
             "group block w-full cursor-text rounded-md border border-transparent px-2.5 py-1 text-left text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap transition-colors hover:border-line-strong hover:bg-raised/60",
             value ? "text-ink" : "text-faint italic",
           )}
         >
-          {value || placeholder || "Click to write"}
+          {value || placeholder || t("Click to write")}
           <span aria-hidden className="ml-1.5 text-xs text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">✎</span>
         </button>
       )}
       {!value && !editing && reference ? <p className="px-2.5 pb-1 text-xs text-faint wrap-anywhere"><span className="sk-label">{env.other}</span> {reference}</p> : null}
       {error ? <p role="alert" className="px-2.5 pt-1 text-xs text-danger wrap-anywhere">{error}</p> : null}
       {found.length > 0 ? (
-        <ul className="space-y-1 px-2.5 pt-1" aria-label={`Findings for ${label}`}>
+        <ul className="space-y-1 px-2.5 pt-1" aria-label={t("Findings for {label}", { label })}>
           {found.map((f, i) => (
             <li key={`${f.rule}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-xs text-warn">
               <Badge tone="warn">{f.rule}</Badge>
-              <span className="min-w-0 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">Tip:</b> {f.fix}</> : null}</span>
+              <span className="min-w-0 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {f.fix}</> : null}</span>
             </li>
           ))}
         </ul>
@@ -243,7 +245,8 @@ export function AddRow({ label, buttonLabel, placeholder, onAdd }: { label: stri
 }
 
 export function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return <Button size="sm" variant="ghost" aria-label={label} onClick={onClick} className="text-faint hover:text-danger">Remove</Button>;
+  const { t } = useT();
+  return <Button size="sm" variant="ghost" aria-label={label} onClick={onClick} className="text-faint hover:text-danger">{t("Remove")}</Button>;
 }
 
 export function ItemCard({ children, path, title, right }: { children: ReactNode; path: string; title?: ReactNode; right?: ReactNode }) {
@@ -262,6 +265,7 @@ export function ItemCard({ children, path, title, right }: { children: ReactNode
 
 /** Priority toggle: a pinned item is always kept and listed first when a CV version is tailored for an offer. */
 export function PinButton({ path, pinned, name }: { path: string; pinned: boolean; name: string }) {
+  const { t } = useT();
   const env = useProfileEnv();
   if (env.onlyMissing) return null;
   return (
@@ -270,11 +274,11 @@ export function PinButton({ path, pinned, name }: { path: string; pinned: boolea
       type="button"
       aria-pressed={pinned}
       aria-label={`${pinned ? "Unpin" : "Pin"} ${name}`}
-      title="Pinned = priority: always included and listed first in tailored versions"
+      title={t("Pinned = priority: always included and listed first in tailored versions")}
       onClick={() => void env.save([{ op: "set", path: `${path}/pinned`, value: !pinned }])}
       className="cursor-pointer"
     >
-      <Badge tone={pinned ? "accent" : "neutral"}>{pinned ? "★ pinned" : "☆ pin"}</Badge>
+      <Badge tone={pinned ? "accent" : "neutral"}>{pinned ? t("★ pinned") : t("☆ pin")}</Badge>
     </button>
   );
 }

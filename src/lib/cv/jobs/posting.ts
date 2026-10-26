@@ -1,6 +1,7 @@
 import { detectLang, type DetectedLang } from "../langdetect";
 import { postingSections } from "./sections";
 import { decodeEntities, findAll, findFirst, parseHtml, plainText, rawText, readableText, tidyText, type HtmlElement } from "./html";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Turn a pasted text or a fetched document into a posting draft. Pure (no network, no node APIs); the guarded
@@ -216,7 +217,7 @@ function bodyText(root: HtmlElement): string {
 }
 
 function shell(url: string, got: number): FetchError {
-  return new FetchError(`${url || "the page"} yielded only ${got} characters of text: it is probably rendered by JavaScript or behind a login. ${PASTE_HINT}`);
+  return new FetchError(msgf("{value} yielded only {got} characters of text: it is probably rendered by JavaScript or behind a login. {pasteHint}", { value: url || "the page", got, pasteHint: PASTE_HINT }));
 }
 
 function assemble(url: string, ld: LdFields | null, fallback: { title: string; text: string }): FetchedPosting {
@@ -243,7 +244,7 @@ export function parsePage(body: string, url = ""): FetchedPosting {
   const root = parseHtml(body);
   const postings = ldPostings(root);
   if (postings.length > 1) {
-    throw new FetchError(`${url || "this page"} lists ${postings.length} postings (a search/listing page). Open ONE posting and give me its URL, or paste its text.`);
+    throw new FetchError(msgf("{value} lists {postings} postings (a search/listing page). Open ONE posting and give me its URL, or paste its text.", { value: url || "this page", postings: postings.length }));
   }
   const ld = postings.length ? fromJsonLd(postings[0]) : null;
   return assemble(url, ld, { title: pageTitle(root), text: bodyText(root) });
@@ -253,8 +254,8 @@ export function parsePage(body: string, url = ""): FetchedPosting {
 export function parseJsonDocument(body: string, url = ""): FetchedPosting {
   const data = parseLooseJson(body.trim());
   const postings = data === undefined ? [] : [...walkForJobPosting(data)];
-  if (postings.length > 1) throw new FetchError(`${url || "this document"} lists ${postings.length} postings (a search/listing page). Open ONE posting and give me its URL, or paste its text.`);
-  if (!postings.length) throw new FetchError(`${url || "the document"} is JSON but not a schema.org JobPosting. ${PASTE_HINT}`);
+  if (postings.length > 1) throw new FetchError(msgf("{value} lists {postings} postings (a search/listing page). Open ONE posting and give me its URL, or paste its text.", { value: url || "this document", postings: postings.length }));
+  if (!postings.length) throw new FetchError(msgf("{value} is JSON but not a schema.org JobPosting. {pasteHint}", { value: url || "the document", pasteHint: PASTE_HINT }));
   return assemble(url, fromJsonLd(postings[0]), { title: "", text: "" });
 }
 

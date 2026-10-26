@@ -5,6 +5,7 @@ import { showcaseErrorResponse } from "@/lib/cv/showcase/http";
 import { addProjectFromGithub } from "@/lib/cv/showcase/service";
 import { CvStoreError } from "@/lib/cv/store";
 import { quotaErrorResponse } from "@/lib/storage/http";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 16 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   try {
     return json(await addProjectFromGithub(auth.account.id, parsed.data.repo, parsed.data.pinned ?? false));
   } catch (error) {

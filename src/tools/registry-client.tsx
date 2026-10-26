@@ -7,11 +7,13 @@ import { findTool } from "@/lib/registry";
 import { ARTCRAFT_APPS } from "@/lib/services/definitions";
 import McpConnect from "@/tools/McpConnect";
 import { WorkspaceDraft } from "@/components/WorkspaceDraft";
+import { useT } from "@/lib/i18n/react";
 
 function ToolLoading() {
+  const { t } = useT();
   return (
     <p role="status" className="py-10 text-center text-sm text-muted">
-      Loading tool…
+      {t("Loading tool…")}
     </p>
   );
 }
@@ -198,10 +200,10 @@ const COMPONENTS: Record<string, ComponentType> = {
 };
 
 function MissingTool({ slug }: { slug: string }) {
+  const { t } = useT();
   return (
     <p className="rounded-tool border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
-      <span className="font-mono text-ink">{slug}</span> is registered but has
-      no component yet.
+      <span className="font-mono text-ink">{slug}</span> {" "}{t("is registered but has no component yet.")}
     </p>
   );
 }
@@ -227,6 +229,7 @@ function renderComponent(key: string) {
  * component directly.
  */
 export function ToolView({ slug }: { slug: string }) {
+  const { t } = useT();
   const tabs = findTool(slug)?.tabs;
   if (!tabs) return renderComponent(slug);
 
@@ -234,7 +237,7 @@ export function ToolView({ slug }: { slug: string }) {
   return (
     <SuiteShell
       tabs={tabs}
-      label={`${findTool(slug)?.name ?? slug} sections`}
+      label={t("{value} sections", { value: findTool(slug)?.name ?? slug })}
       renderTab={(id) => renderComponent(components.get(id) ?? id)}
     />
   );

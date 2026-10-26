@@ -5,6 +5,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import { cx } from "@/lib/format";
 import { outputLabels, type NodeMeta, type WorkflowNode } from "@/lib/workflows/types";
+import { useT } from "@/lib/i18n/react";
 
 export interface NodeStatus {
   state: "running" | "success" | "error" | "waiting";
@@ -64,6 +65,7 @@ function hueOf(meta: NodeMeta | undefined): number {
 }
 
 export const NodeCard = memo(function NodeCard({ data, selected }: NodeProps<CardNode>) {
+  const { t, tn } = useT();
   const { node, meta, status } = data;
   const inputs = meta?.inputs ?? 1;
   const outputs = meta ? outputLabels(meta, node.parameters) : ["main"];
@@ -113,7 +115,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: NodeProps<Car
           )}
           title={status.error}
         >
-          {status.state === "running" ? "Running…" : status.state === "waiting" ? "Waiting" : status.state === "error" ? (status.error ?? "Failed") : `${(status.counts ?? []).reduce((a, b) => a + b, 0)} item${(status.counts ?? []).reduce((a, b) => a + b, 0) === 1 ? "" : "s"}`}
+          {status.state === "running" ? t("Running…") : status.state === "waiting" ? t("Waiting") : status.state === "error" ? (status.error ?? t("Failed")) : tn("{n} item", "{n} items", (status.counts ?? []).reduce((a, b) => a + b, 0))}
         </p>
       ) : null}
       {allOutputs.map((label, index) => (

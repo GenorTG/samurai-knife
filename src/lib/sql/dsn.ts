@@ -1,3 +1,4 @@
+import { msg } from "@/lib/i18n/msg";
 /**
  * Connection-string model for the Connection tab. Pure functions, no network: nothing here ever opens a connection.
  * Build and parse are exact inverses for every kind (user/password/database are percent-encoded, `params` is kept verbatim).
@@ -49,19 +50,19 @@ export interface KindInfo {
 }
 
 export const DSN_KINDS: KindInfo[] = [
-  { id: "postgres", label: "PostgreSQL", scheme: "postgresql", defaultPort: "5432", databaseLabel: "Database", envVar: "DATABASE_URL", hasAuth: true, example: "postgresql://app:s3cret@db.internal:5432/shop?sslmode=require" },
-  { id: "mysql", label: "MySQL", scheme: "mysql", defaultPort: "3306", databaseLabel: "Database", envVar: "DATABASE_URL", hasAuth: true, example: "mysql://app:s3cret@db.internal:3306/shop?charset=utf8mb4" },
-  { id: "mariadb", label: "MariaDB", scheme: "mariadb", defaultPort: "3306", databaseLabel: "Database", envVar: "DATABASE_URL", hasAuth: true, example: "mariadb://app:s3cret@db.internal:3306/shop" },
-  { id: "sqlite", label: "SQLite (file)", scheme: "sqlite", defaultPort: "", databaseLabel: "File path", envVar: "DATABASE_URL", hasAuth: false, file: true, example: "sqlite:///./data/app.db" },
-  { id: "sqlserver", label: "SQL Server", scheme: "sqlserver", defaultPort: "1433", databaseLabel: "Database", envVar: "DATABASE_URL", hasAuth: true, example: "sqlserver://sa:s3cret@db.internal:1433/shop?encrypt=true" },
-  { id: "oracle", label: "Oracle", scheme: "oracle", defaultPort: "1521", databaseLabel: "Service name", envVar: "ORACLE_URL", hasAuth: true, example: "oracle://app:s3cret@db.internal:1521/ORCLPDB1" },
-  { id: "mongodb", label: "MongoDB", scheme: "mongodb", defaultPort: "27017", databaseLabel: "Database", envVar: "MONGODB_URI", hasAuth: true, multiHost: true, example: "mongodb://app:s3cret@db1.internal:27017,db2.internal:27017/shop?replicaSet=rs0&authSource=admin" },
-  { id: "mongodb-srv", label: "MongoDB Atlas (mongodb+srv)", scheme: "mongodb+srv", defaultPort: "", databaseLabel: "Database", envVar: "MONGODB_URI", hasAuth: true, noPort: true, example: "mongodb+srv://app:s3cret@cluster0.abcde.mongodb.net/shop?retryWrites=true&w=majority" },
-  { id: "redis", label: "Redis", scheme: "redis", defaultPort: "6379", databaseLabel: "Database index", envVar: "REDIS_URL", hasAuth: true, example: "redis://default:s3cret@cache.internal:6379/0" },
-  { id: "rediss", label: "Redis (TLS, rediss)", scheme: "rediss", defaultPort: "6379", databaseLabel: "Database index", envVar: "REDIS_URL", hasAuth: true, example: "rediss://default:s3cret@cache.internal:6380/0" },
-  { id: "clickhouse", label: "ClickHouse", scheme: "clickhouse", defaultPort: "8123", databaseLabel: "Database", envVar: "CLICKHOUSE_URL", hasAuth: true, example: "clickhouse://default:s3cret@ch.internal:8123/analytics" },
-  { id: "chroma", label: "Chroma (http)", scheme: "http", defaultPort: "8000", databaseLabel: "Path", envVar: "CHROMA_URL", hasAuth: false, example: "http://localhost:8000" },
-  { id: "chroma-tls", label: "Chroma (https)", scheme: "https", defaultPort: "443", databaseLabel: "Path", envVar: "CHROMA_URL", hasAuth: false, example: "https://chroma.example.com:443" },
+  { id: "postgres", label: "PostgreSQL", scheme: "postgresql", defaultPort: "5432", databaseLabel: msg("Database"), envVar: "DATABASE_URL", hasAuth: true, example: "postgresql://app:s3cret@db.internal:5432/shop?sslmode=require" },
+  { id: "mysql", label: "MySQL", scheme: "mysql", defaultPort: "3306", databaseLabel: msg("Database"), envVar: "DATABASE_URL", hasAuth: true, example: "mysql://app:s3cret@db.internal:3306/shop?charset=utf8mb4" },
+  { id: "mariadb", label: "MariaDB", scheme: "mariadb", defaultPort: "3306", databaseLabel: msg("Database"), envVar: "DATABASE_URL", hasAuth: true, example: "mariadb://app:s3cret@db.internal:3306/shop" },
+  { id: "sqlite", label: "SQLite (file)", scheme: "sqlite", defaultPort: "", databaseLabel: msg("File path"), envVar: "DATABASE_URL", hasAuth: false, file: true, example: "sqlite:///./data/app.db" },
+  { id: "sqlserver", label: "SQL Server", scheme: "sqlserver", defaultPort: "1433", databaseLabel: msg("Database"), envVar: "DATABASE_URL", hasAuth: true, example: "sqlserver://sa:s3cret@db.internal:1433/shop?encrypt=true" },
+  { id: "oracle", label: "Oracle", scheme: "oracle", defaultPort: "1521", databaseLabel: msg("Service name"), envVar: "ORACLE_URL", hasAuth: true, example: "oracle://app:s3cret@db.internal:1521/ORCLPDB1" },
+  { id: "mongodb", label: "MongoDB", scheme: "mongodb", defaultPort: "27017", databaseLabel: msg("Database"), envVar: "MONGODB_URI", hasAuth: true, multiHost: true, example: "mongodb://app:s3cret@db1.internal:27017,db2.internal:27017/shop?replicaSet=rs0&authSource=admin" },
+  { id: "mongodb-srv", label: "MongoDB Atlas (mongodb+srv)", scheme: "mongodb+srv", defaultPort: "", databaseLabel: msg("Database"), envVar: "MONGODB_URI", hasAuth: true, noPort: true, example: "mongodb+srv://app:s3cret@cluster0.abcde.mongodb.net/shop?retryWrites=true&w=majority" },
+  { id: "redis", label: "Redis", scheme: "redis", defaultPort: "6379", databaseLabel: msg("Database index"), envVar: "REDIS_URL", hasAuth: true, example: "redis://default:s3cret@cache.internal:6379/0" },
+  { id: "rediss", label: "Redis (TLS, rediss)", scheme: "rediss", defaultPort: "6379", databaseLabel: msg("Database index"), envVar: "REDIS_URL", hasAuth: true, example: "rediss://default:s3cret@cache.internal:6380/0" },
+  { id: "clickhouse", label: "ClickHouse", scheme: "clickhouse", defaultPort: "8123", databaseLabel: msg("Database"), envVar: "CLICKHOUSE_URL", hasAuth: true, example: "clickhouse://default:s3cret@ch.internal:8123/analytics" },
+  { id: "chroma", label: "Chroma (http)", scheme: "http", defaultPort: "8000", databaseLabel: msg("Path"), envVar: "CHROMA_URL", hasAuth: false, example: "http://localhost:8000" },
+  { id: "chroma-tls", label: "Chroma (https)", scheme: "https", defaultPort: "443", databaseLabel: msg("Path"), envVar: "CHROMA_URL", hasAuth: false, example: "https://chroma.example.com:443" },
 ];
 
 export function kindInfo(kind: DsnKind): KindInfo {

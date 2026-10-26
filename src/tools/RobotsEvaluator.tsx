@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Field, Notice, Panel, TextArea, TextInput } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 
 type Rule = { allow: boolean; path: string; order: number };
 function patternMatches(pattern: string, path: string): boolean {
@@ -11,6 +12,7 @@ function patternMatches(pattern: string, path: string): boolean {
   return regex.test(path);
 }
 export default function RobotsEvaluator() {
+  const { t } = useT();
   const [text, setText] = useState("User-agent: *\nDisallow: /private/\nAllow: /private/public/\nDisallow: /tmp\n\nUser-agent: Googlebot\nDisallow: /preview/");
   const [agent, setAgent] = useState("*");
   const [path, setPath] = useState("/private/public/page");
@@ -43,11 +45,11 @@ export default function RobotsEvaluator() {
     const rules = matching.flatMap((item) => item.rules).filter((rule) => patternMatches(rule.path, target)).sort((a, b) => b.path.length - a.path.length || Number(b.allow) - Number(a.allow) || a.order - b.order);
     return { matchedGroups: matching.length, rule: rules[0] ?? null };
   }, [agent, path, text]);
-  return <Panel title="robots.txt path evaluator">
-    <div className="space-y-3"><Field label="User-agent"><TextInput value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="* or a crawler name" /></Field><Field label="Path to check"><TextInput value={path} onChange={(e) => setPath(e.target.value)} placeholder="/docs/page" /></Field>
-      <Field label="robots.txt"><TextArea rows={12} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} /></Field>
-      {!result.matchedGroups ? <Notice>No matching user-agent group found. Crawlers with no applicable group may fetch everything.</Notice> : result.rule ? <Notice tone={result.rule.allow ? "good" : "error"}>{result.rule.allow ? "Allowed" : "Disallowed"} by “{result.rule.allow ? "Allow" : "Disallow"}: {result.rule.path}” (longest matching rule wins).</Notice> : <Notice tone="good">Allowed: no matching Allow/Disallow rule. robots.txt is advisory, not access control.</Notice>}
-      <p className="text-xs text-faint">Evaluates pasted rules only. Supports wildcard * and terminal $, group-specific and wildcard agents, and longest-rule precedence; it does not fetch robots.txt or implement every crawler-specific extension.</p>
+  return <Panel title={t("robots.txt path evaluator")}>
+    <div className="space-y-3"><Field label={t("User-agent")}><TextInput value={agent} onChange={(e) => setAgent(e.target.value)} placeholder={t("* or a crawler name")} /></Field><Field label={t("Path to check")}><TextInput value={path} onChange={(e) => setPath(e.target.value)} placeholder={t("/docs/page")} /></Field>
+      <Field label={t("robots.txt")}><TextArea rows={12} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+      {!result.matchedGroups ? <Notice>{t("No matching user-agent group found. Crawlers with no applicable group may fetch everything.")}</Notice> : result.rule ? <Notice tone={result.rule.allow ? "good" : "error"}>{result.rule.allow ? t("Allowed") : t("Disallowed")} {" "}{t("by “")}{result.rule.allow ? t("Allow") : t("Disallow")}{t(": {path}” (longest matching rule wins).", { path: result.rule.path })}</Notice> : <Notice tone="good">{t("Allowed: no matching Allow/Disallow rule. robots.txt is advisory, not access control.")}</Notice>}
+      <p className="text-xs text-faint">{t("Evaluates pasted rules only. Supports wildcard * and terminal $, group-specific and wildcard agents, and longest-rule precedence; it does not fetch robots.txt or implement every crawler-specific extension.")}</p>
     </div>
   </Panel>;
 }

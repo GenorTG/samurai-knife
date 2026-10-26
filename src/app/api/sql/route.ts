@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { queueFullOrNull } from "@/lib/queue-http";
 import { runSql } from "@/lib/sql/engine";
 import { SQL_ACTIONS } from "@/lib/sql/types";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 1024 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError("Expected { action, params }.", 400, { ok: false });
+  if (!parsed.success) return jsonError(msg("Expected { action, params }."), 400, { ok: false });
 
   // The engine validates per-action params; the cast keeps this route generic over actions.
   try {

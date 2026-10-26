@@ -4,6 +4,8 @@ import { CHART_TYPES, HIGHLIGHTS, LIVE_TOOL_EDITORS, liveRisk, toLiveCall } from
 import type { Assessment } from "./approval-policy";
 import type { TrustMode } from "./interaction";
 import type { FunctionToolDef, ToolRunResult } from "./types";
+import { ct } from "@/lib/i18n/client-locale";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * doc_live_* : the assistant reads and edits the document OPEN in the office editor, through the editor plugin
@@ -241,21 +243,31 @@ export function assessLiveCall(name: string, args: Record<string, unknown>, mode
   if (mode === "free") return NO;
   const risk = liveRisk(name, args);
   if (risk === "read") return NO;
-  const where = docName ? ` in “${docName}”` : "";
+  // whole sentences (with or without the document's name), so each translates as one text
+  const doc = docName;
   if (risk === "destructive") {
-    const slide = typeof args.index === "number" ? ` ${args.index + 1}` : "";
-    const titles: Record<string, string> = {
-      doc_live_delete: `Delete paragraphs${where}?`,
-      doc_live_replace: `Replace every “${String(args.search ?? "").slice(0, 40)}”${where}?`,
-      doc_live_delete_slide: `Delete slide${slide}${where}?`,
-      doc_live_slide_text: `Replace text on slide${slide}${where}?`,
-      doc_live_header_footer: `Replace the header or footer${where}?`,
-    };
-    const title = titles[name] ?? `Overwrite cells${where}?`;
-    return { ask: true, destructive: true, title, detail: `${detail} (undo with Ctrl+Z in the editor)` };
+    const slide = typeof args.index === "number" ? args.index + 1 : "";
+    const search = String(args.search ?? "").slice(0, 40);
+    const titles: Record<string, string> = doc
+      ? {
+          doc_live_delete: ct("Delete paragraphs in “{doc}”?", { doc }),
+          doc_live_replace: ct("Replace every “{search}” in “{doc}”?", { search, doc }),
+          doc_live_delete_slide: ct("Delete slide {slide} in “{doc}”?", { slide, doc }),
+          doc_live_slide_text: ct("Replace text on slide {slide} in “{doc}”?", { slide, doc }),
+          doc_live_header_footer: ct("Replace the header or footer in “{doc}”?", { doc }),
+        }
+      : {
+          doc_live_delete: ct("Delete paragraphs?"),
+          doc_live_replace: ct("Replace every “{search}”?", { search }),
+          doc_live_delete_slide: ct("Delete slide {slide}?", { slide }),
+          doc_live_slide_text: ct("Replace text on slide {slide}?", { slide }),
+          doc_live_header_footer: ct("Replace the header or footer?"),
+        };
+    const title = titles[name] ?? (doc ? ct("Overwrite cells in “{doc}”?", { doc }) : ct("Overwrite cells?"));
+    return { ask: true, destructive: true, title, detail: ct("{detail} (undo with Ctrl+Z in the editor)", { detail }) };
   }
   if (mode === "destructive") return NO;
-  return { ask: true, destructive: false, title: `Edit the open document${where}?`, detail };
+  return { ask: true, destructive: false, title: doc ? ct("Edit the open document “{doc}”?", { doc }) : ct("Edit the open document?"), detail };
 }
 
 function out(ok: boolean, body: object): ToolRunResult {
@@ -301,11 +313,11 @@ export async function runLiveTool(name: string, args: Record<string, unknown>, s
  */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new Error("Stopped by the user."));
+    if (signal?.aborted) return reject(new Error(msg("Stopped by the user.")));
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => {
       clearTimeout(timer);
-      reject(new Error("Stopped by the user."));
+      reject(new Error(msg("Stopped by the user.")));
     }, { once: true });
   });
 }

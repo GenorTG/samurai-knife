@@ -6,51 +6,53 @@ import { cx } from "@/lib/format";
 import { RegexRunner } from "@/lib/regex-client";
 import type { RegexMatch } from "@/lib/regex-run";
 import { buildGeneration, CLASS_LEGEND, type AnchorMode } from "@/lib/regexgen";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const SAMPLES: { label: string; pattern: string; flags: string; text: string }[] = [
   {
-    label: "Emails",
+    label: msg("Emails"),
     // Capture groups are deliberate: the default replacement template uses $1/$2.
     pattern: "([\\w.+-]+)@([\\w-]+\\.[\\w.-]+)",
     flags: "gi",
-    text: "Contact genor@samurai.dev or support+team@mail.example.org.\nBad: @nope, nope@no",
+    text: msg("Contact genor@samurai.dev or support+team@mail.example.org.\nBad: @nope, nope@no"),
   },
   {
     label: "ISO dates",
     pattern: "(\\d{4})-(\\d{2})-(\\d{2})",
     flags: "g",
-    text: "Start 2026-10-01, end 2026-12-24, legacy 1999-01-07",
+    text: msg("Start 2026-10-01, end 2026-12-24, legacy 1999-01-07"),
   },
   {
-    label: "Markdown links",
+    label: msg("Markdown links"),
     pattern: "\\[([^\\]]+)\\]\\((https?:\\/\\/[^)]+)\\)",
     flags: "g",
-    text: "See [the docs](https://example.com/docs) and [repo](https://github.com/GenorTG).",
+    text: msg("See [the docs](https://example.com/docs) and [repo](https://github.com/GenorTG)."),
   },
 ];
 
 const FLAG_INFO: Record<string, string> = {
-  g: "global — every match, not just the first",
-  i: "ignoreCase — case-insensitive",
-  m: "multiline — ^ and $ match per line",
-  s: "dotAll — . also matches newlines",
-  u: "unicode — treat pattern as UTF-16 code points",
-  y: "sticky — match only from lastIndex",
+  g: msg("global — every match, not just the first"),
+  i: msg("ignoreCase — case-insensitive"),
+  m: msg("multiline — ^ and $ match per line"),
+  s: msg("dotAll — . also matches newlines"),
+  u: msg("unicode — treat pattern as UTF-16 code points"),
+  y: msg("sticky — match only from lastIndex"),
 };
 
 const GEN_PRESETS: { label: string; positives: string; negatives: string }[] = [
   {
-    label: "Emails only",
+    label: msg("Emails only"),
     positives: "genor@samurai.dev\nsupport+team@mail.example.org",
     negatives: "@nope\nnope@no\nplain text",
   },
   {
-    label: "Version tags",
+    label: msg("Version tags"),
     positives: "v1.2.3\nv10.0.42",
     negatives: "1.2.3\nv1.2\nversion 1.2.3",
   },
   {
-    label: "Polish plates",
+    label: msg("Polish plates"),
     positives: "PO 12345\nKR7X91 4",
     negatives: "PO 123\nP0 12345\nABCDEF",
   },
@@ -77,6 +79,7 @@ interface RunResult {
 const NO_RESULT: RunResult = { matches: [], truncated: false, replaced: "" };
 
 export default function RegexLab() {
+  const { t, m } = useT();
   const [pattern, setPattern] = useState(SAMPLES[0].pattern);
   const [flags, setFlags] = useState(SAMPLES[0].flags);
   const [text, setText] = useState(SAMPLES[0].text);
@@ -95,9 +98,9 @@ export default function RegexLab() {
     try {
       return { ok: true as const, re: new RegExp(pattern, flags) };
     } catch (exc) {
-      return { ok: false as const, message: exc instanceof Error ? exc.message : "Invalid pattern." };
+      return { ok: false as const, message: exc instanceof Error ? exc.message : t("Invalid pattern.") };
     }
-  }, [flags, pattern]);
+  }, [t, flags, pattern]);
 
   // The user's pattern runs in a worker with a 1 s budget: a catastrophic one is stopped instead of freezing the tab.
   const runnerRef = useRef<RegexRunner | null>(null);
@@ -159,10 +162,10 @@ export default function RegexLab() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Generator — examples in, regex out"
+        title={t("Generator — examples in, regex out")}
         right={
           <div className="flex flex-wrap gap-1.5">
-            <CopyButton text={generated?.pattern ?? ""} label="Copy regex" />
+            <CopyButton text={generated?.pattern ?? ""} label={t("Copy regex")} />
             <Button
               size="sm"
               variant="subtle"
@@ -173,7 +176,7 @@ export default function RegexLab() {
                 setFlags(generated.flags);
               }}
             >
-              Use in pattern
+              {t("Use in pattern")}
             </Button>
             <Button
               size="sm"
@@ -181,30 +184,30 @@ export default function RegexLab() {
               disabled={!generated}
               onClick={() => setText(generated!.positives.join("\n"))}
             >
-              Load as subject
+              {t("Load as subject")}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <div className="grid gap-3 lg:grid-cols-2">
-            <Field label="Must match" hint="One example per line. These define the shape.">
+            <Field label={t("Must match")} hint={t("One example per line. These define the shape.")}>
               <TextArea
                 rows={5}
                 spellCheck={false}
                 value={positiveText}
                 onChange={(e) => setPositiveText(e.target.value)}
-                placeholder={"genor@samurai.dev\nsupport+team@mail.example.org"}
+                placeholder={t("genor@samurai.dev\nsupport+team@mail.example.org")}
                 className="font-mono text-[13px]"
               />
             </Field>
-            <Field label="Must NOT match" hint="Used to build look-ahead guards.">
+            <Field label={t("Must NOT match")} hint={t("Used to build look-ahead guards.")}>
               <TextArea
                 rows={5}
                 spellCheck={false}
                 value={negativeText}
                 onChange={(e) => setNegativeText(e.target.value)}
-                placeholder={"@nope\nnope@no"}
+                placeholder={t("@nope\nnope@no")}
                 className="font-mono text-[13px]"
               />
             </Field>
@@ -216,9 +219,9 @@ export default function RegexLab() {
               onChange={(e) => setAnchor(e.target.value as AnchorMode)}
               className="w-44"
             >
-              <option value="line">Whole line (^…$)</option>
-              <option value="string">Whole string</option>
-              <option value="off">Anywhere</option>
+              <option value="line">{t("Whole line (^…$)")}</option>
+              <option value="string">{t("Whole string")}</option>
+              <option value="off">{t("Anywhere")}</option>
             </Select>
             <div className="flex flex-wrap gap-1.5 pb-1">
               {GEN_PRESETS.map((preset) => (
@@ -231,7 +234,7 @@ export default function RegexLab() {
                     setNegativeText(preset.negatives);
                   }}
                 >
-                  {preset.label}
+                  {t(preset.label)}
                 </Button>
               ))}
             </div>
@@ -245,22 +248,21 @@ export default function RegexLab() {
 
               <StatGrid>
                 <Stat
-                  label="Positives matched"
+                  label={t("Positives matched")}
                   value={`${generated.positiveHits.filter(Boolean).length}/${generated.positives.length}`}
                 />
                 <Stat
-                  label="Negatives rejected"
+                  label={t("Negatives rejected")}
                   value={`${generated.negatives.length - generated.negativeHits.filter(Boolean).length}/${generated.negatives.length}`}
                 />
-                <Stat label="Guards" value={generated.guards.length} />
+                <Stat label={t("Guards")} value={generated.guards.length} />
               </StatGrid>
 
               {generated.clean ? (
-                <Notice tone="good">Every positive matches and no negative does — verified against these examples.</Notice>
+                <Notice tone="good">{t("Every positive matches and no negative does — verified against these examples.")}</Notice>
               ) : (
                 <Notice tone="error">
-                  Not clean. The examples below show exactly which ones fail — add a positive to
-                  teach the shape, or a negative to sharpen the guard.
+                  {t("Not clean. The examples below show exactly which ones fail — add a positive to teach the shape, or a negative to sharpen the guard.")}
                 </Notice>
               )}
 
@@ -292,7 +294,7 @@ export default function RegexLab() {
                           : "border-good/30 bg-good/10 text-ink",
                       )}
                     >
-                      {generated.negativeHits[index] ? "✗ matches" : "✓ rejected"} {sample}
+                      {generated.negativeHits[index] ? t("✗ matches") : t("✓ rejected")} {sample}
                     </li>
                   ))}
                 </ul>
@@ -301,13 +303,13 @@ export default function RegexLab() {
               {generated.notes.length ? (
                 <ul className="space-y-1 text-xs text-muted">
                   {generated.notes.map((note, index) => (
-                    <li key={index}>• {note}</li>
+                    <li key={index}>• {m(note)}</li>
                   ))}
                 </ul>
               ) : null}
 
               <details className="text-xs text-faint">
-                <summary className="cursor-pointer">What the atoms mean</summary>
+                <summary className="cursor-pointer">{t("What the atoms mean")}</summary>
                 <ul className="mt-2 space-y-1">
                   {CLASS_LEGEND.map(([atom, meaning]) => (
                     <li key={atom}>
@@ -316,32 +318,31 @@ export default function RegexLab() {
                   ))}
                 </ul>
                 <p className="mt-2">
-                  A guard is a look-ahead that rejects any string containing that exact
-                  substring. It is the shortest one that separates the negatives from the positives.
+                  {t("A guard is a look-ahead that rejects any string containing that exact substring. It is the shortest one that separates the negatives from the positives.")}
                 </p>
               </details>
             </div>
           ) : (
-            <p className="text-sm text-faint">Add at least one positive example.</p>
+            <p className="text-sm text-faint">{t("Add at least one positive example.")}</p>
           )}
         </div>
       </Panel>
 
-      <Panel title="Pattern">
+      <Panel title={t("Pattern")}>
         <div className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Regex" className="min-w-[240px] flex-1">
+            <Field label={t("Regex")} className="min-w-[240px] flex-1">
               <TextInput
                 value={pattern}
                 spellCheck={false}
                 autoCapitalize="off"
                 autoCorrect="off"
                 onChange={(e) => setPattern(e.target.value)}
-                placeholder="pattern…"
+                placeholder={t("pattern…")}
                 className="font-mono"
               />
             </Field>
-            <Field label="Flags" className="w-28">
+            <Field label={t("Flags")} className="w-28">
               <TextInput
                 value={flags}
                 spellCheck={false}
@@ -359,7 +360,7 @@ export default function RegexLab() {
                 autoComplete="off"
                 key={flag}
                 type="button"
-                title={info}
+                title={t(info)}
                 onClick={() => setFlags((current) => (current.includes(flag) ? current.replace(flag, "") : current + flag))}
                 className={cx(
                   "rounded-md border px-2 py-1 font-mono text-[11px] transition-colors",
@@ -381,12 +382,12 @@ export default function RegexLab() {
           <div role="status" aria-live="polite" data-agent-region="match-status" className="space-y-2">
             {runnable && run.status === "running" && now - run.since > 300 ? (
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-                <span>Matching… {((now - run.since) / 1000).toFixed(1)} s (stops automatically after 1 s)</span>
-                <Button size="sm" variant="danger" onClick={() => cancelRef.current?.abort()}>Cancel matching</Button>
+                <span>{t("Matching… {value} s (stops automatically after 1 s)", { value: ((now - run.since) / 1000).toFixed(1) })}</span>
+                <Button size="sm" variant="danger" onClick={() => cancelRef.current?.abort()}>{t("Cancel matching")}</Button>
               </div>
             ) : null}
-            {runnable && run.status === "cancelled" ? <Notice>Matching cancelled. Edit the pattern or subject to run again.</Notice> : null}
-            {runnable && shown.truncated ? <Notice tone="warn">Showing the first {MAX_MATCHES.toLocaleString("en-US")} matches only.</Notice> : null}
+            {runnable && run.status === "cancelled" ? <Notice>{t("Matching cancelled. Edit the pattern or subject to run again.")}</Notice> : null}
+            {runnable && shown.truncated ? <Notice tone="warn">{t("Showing the first {value} matches only.", { value: MAX_MATCHES.toLocaleString("en-US") })}</Notice> : null}
           </div>
           {runnable && (run.status === "timeout" || run.status === "error") ? (
             <div role="alert">
@@ -406,7 +407,7 @@ export default function RegexLab() {
                   setText(sample.text);
                 }}
               >
-                {sample.label}
+                {t(sample.label)}
               </Button>
             ))}
           </div>
@@ -414,26 +415,26 @@ export default function RegexLab() {
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Subject">
+        <Panel title={t("Subject")}>
           <TextArea
             rows={12}
             spellCheck={false}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            aria-label="Subject text"
-            placeholder="Paste the text to test against…"
+            aria-label={t("Subject text")}
+            placeholder={t("Paste the text to test against…")}
           />
         </Panel>
 
         <Panel
-          title="Highlighted"
-          right={<span className="font-mono text-[11px] text-faint">{matches.length} hits</span>}
+          title={t("Highlighted")}
+          right={<span className="font-mono text-[11px] text-faint">{matches.length} {" "}{t("hits")}</span>}
         >
           <pre className="sk-input max-h-[42vh] overflow-auto px-3 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words">
             {(() => {
               const visible = text.length > HIGHLIGHT_LIMIT ? text.slice(0, HIGHLIGHT_LIMIT) : text;
               if (matches.length === 0) {
-                return <span className="text-faint">{visible || "No text."}</span>;
+                return <span className="text-faint">{visible || t("No text.")}</span>;
               }
               const nodes: React.ReactNode[] = [];
               let cursor = 0;
@@ -456,20 +457,20 @@ export default function RegexLab() {
           </pre>
           {text.length > HIGHLIGHT_LIMIT || matches.length > HIGHLIGHT_MARKS ? (
             <p className="mt-2 text-xs text-faint" data-agent-region="highlight-limit">
-              Highlighting shows at most the first {HIGHLIGHT_LIMIT.toLocaleString("en-US")} characters and {HIGHLIGHT_MARKS.toLocaleString("en-US")} matches; all {matches.length.toLocaleString("en-US")} matches are still counted and listed.
+              {t("Highlighting shows at most the first {value} characters and {value2} matches; all {value3} matches are still counted and listed.", { value: HIGHLIGHT_LIMIT.toLocaleString("en-US"), value2: HIGHLIGHT_MARKS.toLocaleString("en-US"), value3: matches.length.toLocaleString("en-US") })}
             </p>
           ) : null}
         </Panel>
       </div>
 
       {hasGroups ? (
-        <Panel title="Capture groups" bodyClassName="p-0">
+        <Panel title={t("Capture groups")} bodyClassName="p-0">
           <div className="max-h-[32vh] overflow-auto">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead className="sticky top-0 bg-raised">
                 <tr>
                   <th className="border-b border-line px-3 py-2 font-mono text-[11px] text-faint uppercase">#</th>
-                  <th className="border-b border-line px-3 py-2 font-mono text-[11px] text-faint uppercase">Match</th>
+                  <th className="border-b border-line px-3 py-2 font-mono text-[11px] text-faint uppercase">{t("Match")}</th>
                   {Array.from({ length: Math.max(...matches.map((m) => m.groups.length)) }, (_, i) => (
                     <th key={i} className="border-b border-line px-3 py-2 font-mono text-[11px] text-faint uppercase">
                       ${i + 1}
@@ -503,18 +504,18 @@ export default function RegexLab() {
       ) : null}
 
       <Panel
-        title="Replace"
+        title={t("Replace")}
         right={
           <div className="flex gap-1.5">
             <CopyButton text={replaced} />
             <Button size="sm" variant="subtle" disabled={!replaced} onClick={() => setText(replaced)}>
-              Apply to subject
+              {t("Apply to subject")}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
-          <Field label="Replacement" hint="Use $1, $2… for groups. $& is the whole match, $` the text before, $' after.">
+          <Field label={t("Replacement")} hint={t("Use $1, $2… for groups. $& is the whole match, $` the text before, $' after.")}>
             <TextInput
               value={replacement}
               spellCheck={false}
@@ -524,16 +525,16 @@ export default function RegexLab() {
             />
           </Field>
           <StatGrid>
-            <Stat label="Input chars" value={text.length} />
-            <Stat label="Output chars" value={replaced.length} />
-            <Stat label="Replacements" value={flags.includes("g") ? matches.length : Math.min(1, matches.length)} />
+            <Stat label={t("Input chars")} value={text.length} />
+            <Stat label={t("Output chars")} value={replaced.length} />
+            <Stat label={t("Replacements")} value={flags.includes("g") ? matches.length : Math.min(1, matches.length)} />
           </StatGrid>
           <pre className="sk-input max-h-[32vh] overflow-auto px-3 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words">
-            {replaced ? (replaced.length > HIGHLIGHT_LIMIT ? replaced.slice(0, HIGHLIGHT_LIMIT) : replaced) : <span className="text-faint">Nothing replaced.</span>}
+            {replaced ? (replaced.length > HIGHLIGHT_LIMIT ? replaced.slice(0, HIGHLIGHT_LIMIT) : replaced) : <span className="text-faint">{t("Nothing replaced.")}</span>}
           </pre>
           {replaced.length > HIGHLIGHT_LIMIT ? (
             <p className="text-xs text-faint">
-              Preview shows the first {HIGHLIGHT_LIMIT.toLocaleString("en-US")} characters; Copy and Apply use the full {replaced.length.toLocaleString("en-US")}.
+              {t("Preview shows the first {value} characters; Copy and Apply use the full {value2}.", { value: HIGHLIGHT_LIMIT.toLocaleString("en-US"), value2: replaced.length.toLocaleString("en-US") })}
             </p>
           ) : null}
         </div>

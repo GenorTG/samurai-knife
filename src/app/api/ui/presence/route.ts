@@ -1,6 +1,7 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { LIVE_TOOL_NAME, reportPresence, validClientId } from "@/lib/ui-bridge/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 4 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success || !validClientId(parsed.data.clientId)) return jsonError("Bad request: presence", 422);
+  if (!parsed.success || !validClientId(parsed.data.clientId)) return jsonError(msg("Bad request: presence"), 422);
   reportPresence(auth.account.id, parsed.data);
   return json({ ok: true });
 }

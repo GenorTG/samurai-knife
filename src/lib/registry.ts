@@ -6,46 +6,49 @@
  * Components live in `src/tools/registry-client.tsx`, keyed by the same slug.
  */
 
+import { msg } from "@/lib/i18n/msg";
+import { translate } from "@/lib/i18n/core";
+
 /** client = browser only; server = this app's server; remote = a model endpoint; sidecar = an optional docker service. */
 export type ToolKind = "client" | "server" | "remote" | "sidecar";
 
 export type ToolCategory = "images" | "documents" | "data" | "text" | "dev" | "learn" | "sidecars";
 
 export const TOOL_FAMILIES = [
-  { id: "image-editing", label: "Image editing" },
-  { id: "file-encoding", label: "File encoding" },
-  { id: "file-compression", label: "File compression" },
-  { id: "pdf", label: "PDF" },
-  { id: "structured-data", label: "Structured data" },
-  { id: "file-conversion", label: "File conversion" },
-  { id: "schema-validation", label: "Schema validation" },
-  { id: "tabular-data", label: "Tabular data" },
-  { id: "text-transform", label: "Text transforms" },
-  { id: "text-inspection", label: "Character inspection" },
-  { id: "text-generators", label: "Text generators" },
-  { id: "pattern-matching", label: "Patterns & regex" },
-  { id: "identifiers", label: "IDs & hashes" },
-  { id: "qr-codes", label: "QR codes" },
-  { id: "security", label: "Security" },
-  { id: "date-time", label: "Date & time" },
-  { id: "diff", label: "Compare & diff" },
-  { id: "color", label: "Colour & contrast" },
-  { id: "web", label: "Web addresses" },
-  { id: "markup", label: "Markup" },
-  { id: "document-organization", label: "Document organization" },
-  { id: "ai-assistant", label: "AI assistants" },
-  { id: "text-analysis", label: "Text analysis" },
-  { id: "data-inspection", label: "Data inspection" },
-  { id: "developer-data", label: "Developer data" },
-  { id: "databases", label: "Databases" },
-  { id: "accessibility", label: "Accessibility" },
-  { id: "career", label: "CV & career" },
-  { id: "image-inspection", label: "Image inspection" },
-  { id: "office-documents", label: "Office documents" },
-  { id: "sidecar-services", label: "Sidecar services" },
-  { id: "creative-apps", label: "Creative apps" },
-  { id: "courses", label: "Courses" },
-  { id: "automation", label: "Automation" },
+  { id: "image-editing", label: msg("Image editing") },
+  { id: "file-encoding", label: msg("File encoding") },
+  { id: "file-compression", label: msg("File compression") },
+  { id: "pdf", label: msg("PDF") },
+  { id: "structured-data", label: msg("Structured data") },
+  { id: "file-conversion", label: msg("File conversion") },
+  { id: "schema-validation", label: msg("Schema validation") },
+  { id: "tabular-data", label: msg("Tabular data") },
+  { id: "text-transform", label: msg("Text transforms") },
+  { id: "text-inspection", label: msg("Character inspection") },
+  { id: "text-generators", label: msg("Text generators") },
+  { id: "pattern-matching", label: msg("Patterns & regex") },
+  { id: "identifiers", label: msg("IDs & hashes") },
+  { id: "qr-codes", label: msg("QR codes") },
+  { id: "security", label: msg("Security") },
+  { id: "date-time", label: msg("Date & time") },
+  { id: "diff", label: msg("Compare & diff") },
+  { id: "color", label: msg("Colour & contrast") },
+  { id: "web", label: msg("Web addresses") },
+  { id: "markup", label: msg("Markup") },
+  { id: "document-organization", label: msg("Document organization") },
+  { id: "ai-assistant", label: msg("AI assistants") },
+  { id: "text-analysis", label: msg("Text analysis") },
+  { id: "data-inspection", label: msg("Data inspection") },
+  { id: "developer-data", label: msg("Developer data") },
+  { id: "databases", label: msg("Databases") },
+  { id: "accessibility", label: msg("Accessibility") },
+  { id: "career", label: msg("CV & career") },
+  { id: "image-inspection", label: msg("Image inspection") },
+  { id: "office-documents", label: msg("Office documents") },
+  { id: "sidecar-services", label: msg("Sidecar services") },
+  { id: "creative-apps", label: msg("Creative apps") },
+  { id: "courses", label: msg("Courses") },
+  { id: "automation", label: msg("Automation") },
 ] as const;
 
 export type ToolFamily = (typeof TOOL_FAMILIES)[number]["id"];
@@ -101,30 +104,30 @@ export interface ToolMeta {
 }
 
 export const CATEGORIES: { id: ToolCategory; label: string }[] = [
-  { id: "images", label: "Images" },
-  { id: "documents", label: "Documents" },
-  { id: "data", label: "Data" },
-  { id: "text", label: "Text" },
-  { id: "dev", label: "Dev" },
-  { id: "learn", label: "Learn" },
-  { id: "sidecars", label: "Sidecars" },
+  { id: "images", label: msg("Images") },
+  { id: "documents", label: msg("Documents") },
+  { id: "data", label: msg("Data") },
+  { id: "text", label: msg("Text") },
+  { id: "dev", label: msg("Dev") },
+  { id: "learn", label: msg("Learn") },
+  { id: "sidecars", label: msg("Sidecars") },
 ];
 
 export const TOOLS: ToolMeta[] = [
   {
     slug: "web",
-    name: "Web workbench",
-    tagline: "Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps.",
+    name: msg("Web workbench"),
+    tagline: msg("Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps."),
     category: "dev",
     family: "web",
     kind: "client",
     tabs: [
-      { id: "check", label: "Website check", component: "website-check" },
-      { id: "csp", label: "CSP", component: "csp-builder" },
-      { id: "curl", label: "cURL", component: "curl-builder" },
-      { id: "url", label: "URL", component: "url" },
-      { id: "robots", label: "robots.txt", component: "robots-txt" },
-      { id: "sitemap", label: "Sitemap", component: "sitemap-xml" },
+      { id: "check", label: msg("Website check"), component: "website-check" },
+      { id: "csp", label: msg("CSP"), component: "csp-builder" },
+      { id: "curl", label: msg("cURL"), component: "curl-builder" },
+      { id: "url", label: msg("URL"), component: "url" },
+      { id: "robots", label: msg("robots.txt"), component: "robots-txt" },
+      { id: "sitemap", label: msg("Sitemap"), component: "sitemap-xml" },
     ],
     keywords: [
       "http",
@@ -186,20 +189,20 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "css",
-    name: "CSS studio",
-    tagline: "A live HTML, CSS and JS/TS playground with effect presets and export, plus shadow, radius, easing, grid, fluid type and colour builders.",
+    name: msg("CSS studio"),
+    tagline: msg("A live HTML, CSS and JS/TS playground with effect presets and export, plus shadow, radius, easing, grid, fluid type and colour builders."),
     category: "dev",
     family: "developer-data",
     kind: "client",
     tabs: [
-      { id: "playground", label: "Playground", component: "css-playground", wide: true },
-      { id: "shadow", label: "Box shadow", component: "box-shadow" },
-      { id: "radius", label: "Border radius", component: "border-radius" },
-      { id: "easing", label: "Easing", component: "css-easing" },
-      { id: "grid", label: "Grid", component: "css-grid" },
-      { id: "clamp", label: "clamp()", component: "css-clamp" },
-      { id: "type-scale", label: "Type scale", component: "type-scale" },
-      { id: "colour", label: "Colour", component: "color" },
+      { id: "playground", label: msg("Playground"), component: "css-playground", wide: true },
+      { id: "shadow", label: msg("Box shadow"), component: "box-shadow" },
+      { id: "radius", label: msg("Border radius"), component: "border-radius" },
+      { id: "easing", label: msg("Easing"), component: "css-easing" },
+      { id: "grid", label: msg("Grid"), component: "css-grid" },
+      { id: "clamp", label: msg("clamp()"), component: "css-clamp" },
+      { id: "type-scale", label: msg("Type scale"), component: "type-scale" },
+      { id: "colour", label: msg("Colour"), component: "color" },
     ],
     keywords: [
       "css",
@@ -266,18 +269,18 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "sql-lab",
-    name: "SQL lab",
-    tagline: "Format, convert between dialects, validate, build from JSON, check schemas and run SQL on a file.",
+    name: msg("SQL lab"),
+    tagline: msg("Format, convert between dialects, validate, build from JSON, check schemas and run SQL on a file."),
     category: "data",
     family: "databases",
     kind: "client",
     tabs: [
-      { id: "format", label: "Format", component: "sql-format" },
-      { id: "convert", label: "Convert", component: "sql-convert" },
-      { id: "validate", label: "Validate", component: "sql-validate" },
-      { id: "schema", label: "Schema", component: "sql-schema" },
-      { id: "run", label: "Run", component: "sql-run", wide: true },
-      { id: "connect", label: "Connection", component: "db-connect" },
+      { id: "format", label: msg("Format"), component: "sql-format" },
+      { id: "convert", label: msg("Convert"), component: "sql-convert" },
+      { id: "validate", label: msg("Validate"), component: "sql-validate" },
+      { id: "schema", label: msg("Schema"), component: "sql-schema" },
+      { id: "run", label: msg("Run"), component: "sql-run", wide: true },
+      { id: "connect", label: msg("Connection"), component: "db-connect" },
     ],
     keywords: [
       "sql",
@@ -321,15 +324,15 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "svg-optimize",
-    name: "SVG workshop",
-    tagline: "Sanitize, optimize, fix viewBoxes, inspect paths, build sprites and export SVG to PNG.",
+    name: msg("SVG workshop"),
+    tagline: msg("Sanitize, optimize, fix viewBoxes, inspect paths, build sprites and export SVG to PNG."),
     category: "images",
     family: "markup",
     kind: "client",
     tabs: [
-      { id: "optimize", label: "Optimize", component: "svg-optimize" },
-      { id: "sanitize", label: "Sanitize", component: "svg-sanitize" },
-      { id: "png", label: "To PNG", component: "svg-to-png" },
+      { id: "optimize", label: msg("Optimize"), component: "svg-optimize" },
+      { id: "sanitize", label: msg("Sanitize"), component: "svg-sanitize" },
+      { id: "png", label: msg("To PNG"), component: "svg-to-png" },
     ],
     keywords: [
       "svg",
@@ -373,14 +376,14 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "image-crop",
-    name: "Image crop and layout",
-    tagline: "Crop to a ratio, trim transparent margins and arrange images into a contact sheet.",
+    name: msg("Image crop and layout"),
+    tagline: msg("Crop to a ratio, trim transparent margins and arrange images into a contact sheet."),
     category: "images",
     family: "image-editing",
     kind: "client",
     tabs: [
-      { id: "crop", label: "Crop", component: "image-crop" },
-      { id: "trim", label: "Trim", component: "transparent-trim" },
+      { id: "crop", label: msg("Crop"), component: "image-crop" },
+      { id: "trim", label: msg("Trim"), component: "transparent-trim" },
     ],
     keywords: [
       "image",
@@ -408,8 +411,8 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "image-compare",
-    name: "Image compare",
-    tagline: "Compare two images side by side, as an overlay or as a pixel difference.",
+    name: msg("Image compare"),
+    tagline: msg("Compare two images side by side, as an overlay or as a pixel difference."),
     category: "images",
     family: "image-inspection",
     kind: "client",
@@ -438,16 +441,16 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "image-resize",
-    name: "Image export",
-    tagline: "Resize and convert images, scrub metadata, build srcset variants, favicons and data URIs.",
+    name: msg("Image export"),
+    tagline: msg("Resize and convert images, scrub metadata, build srcset variants, favicons and data URIs."),
     category: "images",
     family: "image-editing",
     kind: "client",
     tabs: [
-      { id: "resize", label: "Resize", component: "image-resize" },
-      { id: "scrub", label: "Scrub metadata", component: "image-scrub" },
-      { id: "responsive", label: "Responsive set", component: "responsive-images" },
-      { id: "favicon", label: "Favicons", component: "favicon-packager" },
+      { id: "resize", label: msg("Resize"), component: "image-resize" },
+      { id: "scrub", label: msg("Scrub metadata"), component: "image-scrub" },
+      { id: "responsive", label: msg("Responsive set"), component: "responsive-images" },
+      { id: "favicon", label: msg("Favicons"), component: "favicon-packager" },
     ],
     keywords: [
       "png",
@@ -491,14 +494,14 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "pdf",
-    name: "PDF toolkit",
-    tagline: "Edit PDFs and image scans, extract text in the browser, or create searchable PDFs with local-server OCR. Merge, split, compress and protect PDFs.",
+    name: msg("PDF toolkit"),
+    tagline: msg("Edit PDFs and image scans, extract text in the browser, or create searchable PDFs with local-server OCR. Merge, split, compress and protect PDFs."),
     category: "documents",
     family: "pdf",
     kind: "server",
     tabs: [
-      { id: "tools", label: "Tools", component: "pdf" },
-      { id: "editor", label: "Editor & OCR", component: "pdf-editor", wide: true },
+      { id: "tools", label: msg("Tools"), component: "pdf" },
+      { id: "editor", label: msg("Editor & OCR"), component: "pdf-editor", wide: true },
     ],
     keywords: [
       "pdf",
@@ -534,18 +537,18 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "json",
-    name: "JSON and config",
-    tagline: "Lint, query, diagram and validate JSON and NDJSON, and convert YAML, INI and XML.",
+    name: msg("JSON and config"),
+    tagline: msg("Lint, query, diagram and validate JSON and NDJSON, and convert YAML, INI and XML."),
     category: "data",
     family: "structured-data",
     kind: "client",
     tabs: [
-      { id: "lint", label: "Lint & format", component: "json" },
-      { id: "path", label: "JSONPath", component: "jsonpath" },
-      { id: "diagram", label: "Diagram", component: "json-diagram" },
-      { id: "schema", label: "Schema", component: "json-schema" },
-      { id: "yaml", label: "YAML ⇄ JSON", component: "yaml-json" },
-      { id: "xml", label: "XML & XPath", component: "xml-xpath" },
+      { id: "lint", label: msg("Lint & format"), component: "json" },
+      { id: "path", label: msg("JSONPath"), component: "jsonpath" },
+      { id: "diagram", label: msg("Diagram"), component: "json-diagram" },
+      { id: "schema", label: msg("Schema"), component: "json-schema" },
+      { id: "yaml", label: msg("YAML ⇄ JSON"), component: "yaml-json" },
+      { id: "xml", label: msg("XML & XPath"), component: "xml-xpath" },
     ],
     keywords: [
       "json",
@@ -615,19 +618,19 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "csv",
-    name: "Tables and CSV",
-    tagline: "Convert, select, merge, pivot and reshape CSV, then profile it, find duplicates, detect delimiters and compare tables.",
+    name: msg("Tables and CSV"),
+    tagline: msg("Convert, select, merge, pivot and reshape CSV, then profile it, find duplicates, detect delimiters and compare tables."),
     category: "data",
     family: "tabular-data",
     kind: "client",
     tabs: [
-      { id: "convert", label: "CSV ⇄ JSON", component: "csv" },
-      { id: "columns", label: "Columns", component: "csv-select-columns" },
-      { id: "merge", label: "Merge", component: "csv-merge" },
-      { id: "pivot", label: "Pivot", component: "csv-pivot" },
-      { id: "profile", label: "Profile", component: "csv-profile" },
-      { id: "duplicates", label: "Duplicates", component: "duplicate-rows" },
-      { id: "compare", label: "Compare", component: "table-compare" },
+      { id: "convert", label: msg("CSV ⇄ JSON"), component: "csv" },
+      { id: "columns", label: msg("Columns"), component: "csv-select-columns" },
+      { id: "merge", label: msg("Merge"), component: "csv-merge" },
+      { id: "pivot", label: msg("Pivot"), component: "csv-pivot" },
+      { id: "profile", label: msg("Profile"), component: "csv-profile" },
+      { id: "duplicates", label: msg("Duplicates"), component: "duplicate-rows" },
+      { id: "compare", label: msg("Compare"), component: "table-compare" },
     ],
     keywords: [
       "csv",
@@ -690,14 +693,14 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "text",
-    name: "Text kit",
-    tagline: "Transform, generate, wrap and format text with line-by-line tools.",
+    name: msg("Text kit"),
+    tagline: msg("Transform, generate, wrap and format text with line-by-line tools."),
     category: "text",
     family: "text-transform",
     kind: "client",
     tabs: [
-      { id: "kit", label: "Transforms", component: "text" },
-      { id: "generate", label: "Generate", component: "placeholder-text" },
+      { id: "kit", label: msg("Transforms"), component: "text" },
+      { id: "generate", label: msg("Generate"), component: "placeholder-text" },
     ],
     keywords: [
       "uppercase",
@@ -739,8 +742,8 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "regex",
-    name: "Regex lab",
-    tagline: "Live matches, capture groups and a replace preview you can trust.",
+    name: msg("Regex lab"),
+    tagline: msg("Live matches, capture groups and a replace preview you can trust."),
     category: "text",
     family: "pattern-matching",
     kind: "client",
@@ -748,15 +751,15 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "ids",
-    name: "IDs, tokens and passwords",
-    tagline: "Generate IDs and hashes, decode Snowflakes and JWTs, and make strong passwords.",
+    name: msg("IDs, tokens and passwords"),
+    tagline: msg("Generate IDs and hashes, decode Snowflakes and JWTs, and make strong passwords."),
     category: "dev",
     family: "identifiers",
     kind: "client",
     tabs: [
-      { id: "ids", label: "IDs & hashes", component: "ids" },
-      { id: "jwt", label: "JWT", component: "jwt" },
-      { id: "password", label: "Passwords", component: "password" },
+      { id: "ids", label: msg("IDs & hashes"), component: "ids" },
+      { id: "jwt", label: msg("JWT"), component: "jwt" },
+      { id: "password", label: msg("Passwords"), component: "password" },
     ],
     keywords: [
       "uuid",
@@ -798,8 +801,8 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "qr",
-    name: "QR codes",
-    tagline: "Encode text, links or Wi-Fi configs as SVG or PNG, generated locally.",
+    name: msg("QR codes"),
+    tagline: msg("Encode text, links or Wi-Fi configs as SVG or PNG, generated locally."),
     category: "images",
     family: "qr-codes",
     kind: "client",
@@ -807,8 +810,8 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "mcp-connect",
-    name: "MCP connect",
-    tagline: "Copy the MCP endpoint and config so an external agent can call the deterministic tools.",
+    name: msg("MCP connect"),
+    tagline: msg("Copy the MCP endpoint and config so an external agent can call the deterministic tools."),
     category: "dev",
     family: "ai-assistant",
     kind: "client",
@@ -816,19 +819,19 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "dates",
-    name: "Dates and scheduling",
-    tagline: "Convert epochs and zones, format and add dates, plan meetings across time zones, workdays, DST, cron and recurrence rules.",
+    name: msg("Dates and scheduling"),
+    tagline: msg("Convert epochs and zones, format and add dates, plan meetings across time zones, workdays, DST, cron and recurrence rules."),
     category: "dev",
     family: "date-time",
     kind: "client",
     tabs: [
-      { id: "epoch", label: "Epoch & zones", component: "epoch" },
-      { id: "format", label: "Date format", component: "date-format" },
-      { id: "duration", label: "Durations", component: "duration-math" },
-      { id: "meeting", label: "Meeting planner", component: "meeting-timezones" },
-      { id: "workdays", label: "Workdays", component: "workday-calculator" },
-      { id: "cron", label: "Cron", component: "cron" },
-      { id: "recurrence", label: "Recurrence rules", component: "rrule-preview" },
+      { id: "epoch", label: msg("Epoch & zones"), component: "epoch" },
+      { id: "format", label: msg("Date format"), component: "date-format" },
+      { id: "duration", label: msg("Durations"), component: "duration-math" },
+      { id: "meeting", label: msg("Meeting planner"), component: "meeting-timezones" },
+      { id: "workdays", label: msg("Workdays"), component: "workday-calculator" },
+      { id: "cron", label: msg("Cron"), component: "cron" },
+      { id: "recurrence", label: msg("Recurrence rules"), component: "rrule-preview" },
     ],
     keywords: [
       "unix",
@@ -901,8 +904,8 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "diff",
-    name: "Diff",
-    tagline: "Line and word level diff with a copyable unified patch.",
+    name: msg("Diff"),
+    tagline: msg("Line and word level diff with a copyable unified patch."),
     category: "text",
     family: "diff",
     kind: "client",
@@ -910,13 +913,13 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "markdown",
-    name: "Markdown",
-    tagline: "Live sanitised preview, HTML to Markdown, and tidying headings, lists and tables of contents.",
+    name: msg("Markdown"),
+    tagline: msg("Live sanitised preview, HTML to Markdown, and tidying headings, lists and tables of contents."),
     category: "text",
     family: "markup",
     kind: "client",
     tabs: [
-      { id: "preview", label: "Preview & convert", component: "markdown" },
+      { id: "preview", label: msg("Preview & convert"), component: "markdown" },
     ],
     keywords: [
       "markdown",
@@ -938,14 +941,14 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "characters",
-    name: "Character, encoding and binary inspector",
-    tagline: "Inspect Unicode graphemes and invisible characters, detect a file's text encoding, and view bytes as hex.",
+    name: msg("Character, encoding and binary inspector"),
+    tagline: msg("Inspect Unicode graphemes and invisible characters, detect a file's text encoding, and view bytes as hex."),
     category: "text",
     family: "text-inspection",
     kind: "client",
     tabs: [
-      { id: "characters", label: "Characters", component: "characters" },
-      { id: "encoding", label: "File encoding", component: "encoding-detect" },
+      { id: "characters", label: msg("Characters"), component: "characters" },
+      { id: "encoding", label: msg("File encoding"), component: "encoding-detect" },
     ],
     keywords: [
       "unicode",
@@ -978,25 +981,25 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "cv-studio",
-    name: "CV studio",
-    tagline: "Keep one bilingual PL/EN CV profile, save job offers, tailor a CV per offer and track applications.",
+    name: msg("CV studio"),
+    tagline: msg("Keep one bilingual PL/EN CV profile, save job offers, tailor a CV per offer and track applications."),
     category: "documents",
     family: "career",
     kind: "server",
     tabs: [
-      { id: "profile", label: "Profile", component: "cv-profile", wide: true },
-      { id: "jobs", label: "Job offers", component: "cv-jobs", wide: true },
-      { id: "variants", label: "CV versions", component: "cv-variants", wide: true },
-      { id: "applications", label: "Applications", component: "cv-applications", wide: true },
-      { id: "showcase", label: "Showcase", component: "cv-showcase" },
-      { id: "website", label: "Website", component: "site-copy", wide: true },
+      { id: "profile", label: msg("Profile"), component: "cv-profile", wide: true },
+      { id: "jobs", label: msg("Job offers"), component: "cv-jobs", wide: true },
+      { id: "variants", label: msg("CV versions"), component: "cv-variants", wide: true },
+      { id: "applications", label: msg("Applications"), component: "cv-applications", wide: true },
+      { id: "showcase", label: msg("Showcase"), component: "cv-showcase" },
+      { id: "website", label: msg("Website"), component: "site-copy", wide: true },
     ],
     keywords: ["cv", "resume", "curriculum vitae", "życiorys", "cv po polsku", "job", "job offer", "application", "recruitment", "linkedin", "tailor", "rodo", "career", "praca", "oferta pracy", "aplikacja"],
   },
   {
     slug: "workflows",
-    name: "Workflows",
-    tagline: "n8n-style automations: connect nodes on a canvas and run them by hand, on a schedule or from a webhook. Code runs sandboxed.",
+    name: msg("Workflows"),
+    tagline: msg("n8n-style automations: connect nodes on a canvas and run them by hand, on a schedule or from a webhook. Code runs sandboxed."),
     category: "dev",
     family: "automation",
     kind: "server",
@@ -1004,30 +1007,30 @@ export const TOOLS: ToolMeta[] = [
     workspace: true,
     hideSidebar: true,
     tabs: [
-      { id: "editor", label: "Workflows", component: "wf-editor", wide: true },
-      { id: "credentials", label: "Credentials", component: "wf-credentials" },
+      { id: "editor", label: msg("Workflows"), component: "wf-editor", wide: true },
+      { id: "credentials", label: msg("Credentials"), component: "wf-credentials" },
     ],
     keywords: ["workflow", "automation", "automate", "n8n", "zapier", "make", "integromat", "webhook", "cron", "schedule", "pipeline", "nodes", "flow", "integration", "oauth", "api", "etl", "trigger", "javascript", "code"],
   },
   {
     slug: "site-studio",
-    name: "Website studio",
-    tagline: "Connect your website's GitHub repo, score it (SEO, copy, CV fit, Lighthouse) and ship improvements as reviewed pull requests.",
+    name: msg("Website studio"),
+    tagline: msg("Connect your website's GitHub repo, score it (SEO, copy, CV fit, Lighthouse) and ship improvements as reviewed pull requests."),
     category: "documents",
     family: "career",
     kind: "server",
     tabs: [
-      { id: "connect", label: "Connect", component: "site-connect" },
-      { id: "score", label: "Score", component: "site-score", wide: true },
-      { id: "copy", label: "Copy & CV", component: "site-copy", wide: true },
-      { id: "changes", label: "Changes", component: "site-changes", wide: true },
+      { id: "connect", label: msg("Connect"), component: "site-connect" },
+      { id: "score", label: msg("Score"), component: "site-score", wide: true },
+      { id: "copy", label: msg("Copy & CV"), component: "site-copy", wide: true },
+      { id: "changes", label: msg("Changes"), component: "site-changes", wide: true },
     ],
     keywords: ["website", "strona", "strona www", "portfolio", "personal site", "seo", "lighthouse", "pagespeed", "copywriting", "audit", "github", "pull request", "vercel", "landing page", "personal brand", "cv"],
   },
   {
     slug: "office",
-    name: "Office documents",
-    tagline: "Create, upload and edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in a self-hosted editor.",
+    name: msg("Office documents"),
+    tagline: msg("Create, upload and edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in a self-hosted editor."),
     category: "sidecars",
     family: "office-documents",
     kind: "sidecar",
@@ -1036,23 +1039,23 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "db-course",
-    name: "Database course",
-    tagline: "Learn SQL and PostGIS step by step: short lessons, real queries on a real PostgreSQL database, instant checks and hints.",
+    name: msg("Database course"),
+    tagline: msg("Learn SQL and PostGIS step by step: short lessons, real queries on a real PostgreSQL database, instant checks and hints."),
     category: "learn",
     family: "courses",
     kind: "sidecar",
     sidecar: "learn-db",
     // One tab per course; later courses (Redis, MongoDB…) become more tabs (docs/LEARN.md).
     tabs: [
-      { id: "sql", label: "SQL & PostGIS", component: "learn-sql", wide: true },
+      { id: "sql", label: msg("SQL & PostGIS"), component: "learn-sql", wide: true },
     ],
     keywords: ["sql", "postgres", "postgresql", "postgis", "course", "learn", "lesson", "tutorial", "exercise", "interview", "select", "join", "group by", "window function", "index", "explain", "st_dwithin", "gis", "spatial", "kurs", "nauka"],
   },
   {
     // Slug kept (slugs are permanent); the visible name avoids the ArtCraft name (their brand terms, docs/LEGAL.md).
     slug: "artcraft",
-    name: "Craft apps",
-    tagline: "Photos, vectors, video, raw, motion graphics, layouts, PDFs, UI design, documents, audio, slides, CAD and spreadsheets in thirteen open-source browser apps.",
+    name: msg("Craft apps"),
+    tagline: msg("Photos, vectors, video, raw, motion graphics, layouts, PDFs, UI design, documents, audio, slides, CAD and spreadsheets in thirteen open-source browser apps."),
     category: "sidecars",
     family: "creative-apps",
     kind: "sidecar",
@@ -1061,26 +1064,26 @@ export const TOOLS: ToolMeta[] = [
     workspace: true,
     // One tab per app of the `craft` sidecar (src/lib/services/definitions.ts ARTCRAFT_APPS); tab ids are the app ids.
     tabs: [
-      { id: "photocraft", label: "PhotoCraft", component: "craft-photocraft", wide: true },
-      { id: "vectorcraft", label: "VectorCraft", component: "craft-vectorcraft", wide: true },
-      { id: "filmcraft", label: "FilmCraft", component: "craft-filmcraft", wide: true },
-      { id: "lightcraft", label: "LightCraft", component: "craft-lightcraft", wide: true },
-      { id: "effectcraft", label: "EffectCraft", component: "craft-effectcraft", wide: true },
-      { id: "designcraft", label: "DesignCraft", component: "craft-designcraft", wide: true },
-      { id: "pdfcraft", label: "PdfCraft", component: "craft-pdfcraft", wide: true },
-      { id: "figcraft", label: "FigCraft", component: "craft-figcraft", wide: true },
-      { id: "wordcraft", label: "WordCraft", component: "craft-wordcraft", wide: true },
-      { id: "soundcraft", label: "SoundCraft", component: "craft-soundcraft", wide: true },
-      { id: "deckcraft", label: "DeckCraft", component: "craft-deckcraft", wide: true },
-      { id: "cadcraft", label: "CADCraft", component: "craft-cadcraft", wide: true },
-      { id: "gridcraft", label: "GridCraft", component: "craft-gridcraft", wide: true },
+      { id: "photocraft", label: msg("PhotoCraft"), component: "craft-photocraft", wide: true },
+      { id: "vectorcraft", label: msg("VectorCraft"), component: "craft-vectorcraft", wide: true },
+      { id: "filmcraft", label: msg("FilmCraft"), component: "craft-filmcraft", wide: true },
+      { id: "lightcraft", label: msg("LightCraft"), component: "craft-lightcraft", wide: true },
+      { id: "effectcraft", label: msg("EffectCraft"), component: "craft-effectcraft", wide: true },
+      { id: "designcraft", label: msg("DesignCraft"), component: "craft-designcraft", wide: true },
+      { id: "pdfcraft", label: msg("PdfCraft"), component: "craft-pdfcraft", wide: true },
+      { id: "figcraft", label: msg("FigCraft"), component: "craft-figcraft", wide: true },
+      { id: "wordcraft", label: msg("WordCraft"), component: "craft-wordcraft", wide: true },
+      { id: "soundcraft", label: msg("SoundCraft"), component: "craft-soundcraft", wide: true },
+      { id: "deckcraft", label: msg("DeckCraft"), component: "craft-deckcraft", wide: true },
+      { id: "cadcraft", label: msg("CADCraft"), component: "craft-cadcraft", wide: true },
+      { id: "gridcraft", label: msg("GridCraft"), component: "craft-gridcraft", wide: true },
     ],
     keywords: ["photoshop", "illustrator", "premiere", "lightroom", "after effects", "indesign", "acrobat", "photo editor", "image editor", "vector", "svg", "video editor", "raw", "motion graphics", "layout", "pdf editor", "wasm", "webassembly", "artcraft", "photocraft", "vectorcraft", "filmcraft", "lightcraft", "effectcraft", "designcraft", "pdfcraft", "figma", "word processor", "daw", "powerpoint", "presentation", "slides", "cad", "autocad", "excel", "spreadsheet", "figcraft", "wordcraft", "soundcraft", "deckcraft", "cadcraft", "gridcraft", "grafika", "edytor zdjęć", "montaż wideo"],
   },
   {
     slug: "sidecars",
-    name: "Sidecar services",
-    tagline: "Install, start, stop, update and remove the optional docker services some tools need.",
+    name: msg("Sidecar services"),
+    tagline: msg("Install, start, stop, update and remove the optional docker services some tools need."),
     category: "sidecars",
     family: "sidecar-services",
     kind: "server",
@@ -1233,8 +1236,8 @@ export function familyLabel(id: ToolFamily): string {
 }
 
 /**
- * Ranked search over name, tagline and keywords. Exact-name hits first, then
- * prefix, then substring, then keyword/tagline. Good enough and dependency-free.
+ * Ranked search over name, tagline and keywords, in English AND Polish (whatever language the user, or a model, types).
+ * Exact-name hits first, then prefix, then substring, then keyword/tagline. Good enough and dependency-free.
  */
 export function searchTools(query: string, pool: ToolMeta[] = TOOLS): ToolMeta[] {
   const q = query.trim().toLowerCase();
@@ -1245,20 +1248,22 @@ export function searchTools(query: string, pool: ToolMeta[] = TOOLS): ToolMeta[]
 
   for (const tool of pool) {
     const name = tool.name.toLowerCase();
-    const tag = tool.tagline.toLowerCase();
+    const namePl = translate("pl", tool.name).toLowerCase();
+    const tag = `${tool.tagline} ${translate("pl", tool.tagline)}`.toLowerCase();
     const family = familyLabel(tool.family).toLowerCase();
+    const familyPl = translate("pl", familyLabel(tool.family)).toLowerCase();
     const keys = tool.keywords.map((k) => k.toLowerCase());
-    const hay = `${name} ${tag} ${family} ${keys.join(" ")}`;
+    const hay = `${name} ${namePl} ${tag} ${family} ${familyPl} ${keys.join(" ")}`;
 
     if (!terms.every((t) => hay.includes(t))) continue;
 
     let score = 0;
     for (const t of terms) {
-      if (name === t) score += 100;
-      else if (name.startsWith(t)) score += 60;
-      else if (name.includes(t)) score += 40;
-      else if (family === t) score += 35;
-      else if (family.startsWith(t)) score += 18;
+      if (name === t || namePl === t) score += 100;
+      else if (name.startsWith(t) || namePl.startsWith(t)) score += 60;
+      else if (name.includes(t) || namePl.includes(t)) score += 40;
+      else if (family === t || familyPl === t) score += 35;
+      else if (family.startsWith(t) || familyPl.startsWith(t)) score += 18;
       else if (keys.some((k) => k === t)) score += 30;
       else if (keys.some((k) => k.startsWith(t))) score += 20;
       else if (tag.includes(t)) score += 10;

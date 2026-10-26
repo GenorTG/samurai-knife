@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, CopyButton, Field, KeyValues, Notice, OutputBlock, Panel, Select, Stat, StatGrid, TextArea, TextInput } from "@/components/ui";
 import { dataUriByteLength } from "@/lib/data-uri";
-import { downloadText, plural } from "@/lib/format";
+import { downloadText } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * URL workbench: parse, edit query parameters in place, percent-encode/decode,
@@ -88,6 +89,7 @@ function parseDataUri(input: string): Record<string, string> | null {
 }
 
 export default function UrlTool() {
+  const { t, tn } = useT();
   const [raw, setRaw] = useState("https://samurai.dev/search?q=knife&lang=pl#top");
   const [paramText, setParamText] = useState("");
   const [encodeOn, setEncodeOn] = useState(true);
@@ -155,12 +157,12 @@ export default function UrlTool() {
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
-          title="Parse"
+          title={t("Parse")}
           right={
             <div className="flex gap-1.5">
-              <CopyButton text={raw} label="Copy URL" />
+              <CopyButton text={raw} label={t("Copy URL")} />
               <Button size="sm" variant="ghost" onClick={() => { setRaw(""); setParamText(""); }}>
-                Clear
+                {t("Clear")}
               </Button>
             </div>
           }
@@ -171,7 +173,7 @@ export default function UrlTool() {
                 value={raw}
                 spellCheck={false}
                 onChange={(e) => setRaw(e.target.value)}
-                placeholder="https://…"
+                placeholder={t("https://…")}
                 className="font-mono"
               />
             </Field>
@@ -191,9 +193,9 @@ export default function UrlTool() {
                   ]}
                 />
                 <StatGrid>
-                  <Stat label="Parameters" value={params.length} />
-                  <Stat label="Chars" value={raw.trim().length} />
-                  <Stat label="Secure" value={parsed.protocol === "https:" ? "yes" : "no"} />
+                  <Stat label={t("Parameters")} value={params.length} />
+                  <Stat label={t("Chars")} value={raw.trim().length} />
+                  <Stat label={t("Secure")} value={parsed.protocol === "https:" ? "yes" : "no"} />
                 </StatGrid>
               </div>
             ) : null}
@@ -201,42 +203,42 @@ export default function UrlTool() {
         </Panel>
 
         <Panel
-          title="Edit parameters"
+          title={t("Edit parameters")}
           right={
             <div className="flex gap-1.5">
               <Button size="sm" variant="subtle" onClick={loadParams}>
-                Load current
+                {t("Load current")}
               </Button>
-              <CopyButton text={rebuilt} label="Copy rebuilt" />
+              <CopyButton text={rebuilt} label={t("Copy rebuilt")} />
               <Button size="sm" variant="subtle" disabled={!rebuilt} onClick={() => downloadText(rebuilt, "url.txt")}>
-                Save
+                {t("Save")}
               </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <Field label="One `key=value` per line" hint="Order is preserved. Blank values are allowed; a bare key becomes a flag.">
+            <Field label={t("One `key=value` per line")} hint={t("Order is preserved. Blank values are allowed; a bare key becomes a flag.")}>
               <TextArea
                 value={paramText}
                 spellCheck={false}
                 onChange={(e) => setParamText(e.target.value)}
-                placeholder={parsed ? "one per line…" : "press Load current first"}
+                placeholder={parsed ? t("one per line…") : t("press Load current first")}
                 className="font-mono text-[12px]"
               />
             </Field>
 
             <div className="flex flex-wrap items-end gap-2">
-              <Field label="Encoding" className="w-36">
+              <Field label={t("Encoding")} className="w-36">
                 <Select value={encodeOn ? "browser" : "manual"} onChange={(e) => setEncodeOn(e.target.value !== "manual")}>
-                  <option value="browser">browser</option>
-                  <option value="manual">manual</option>
+                  <option value="browser">{t("browser")}</option>
+                  <option value="manual">{t("manual")}</option>
                 </Select>
               </Field>
-              <Field label="Never escape" className="w-48 flex-1">
+              <Field label={t("Never escape")} className="w-48 flex-1">
                 <TextInput
                   value={keepExtra}
                   onChange={(e) => setKeepExtra(e.target.value)}
-                  placeholder="characters to leave literal"
+                  placeholder={t("characters to leave literal")}
                   className="font-mono"
                 />
               </Field>
@@ -244,16 +246,16 @@ export default function UrlTool() {
 
             <p className="text-xs text-faint">
               {encodeOn
-                ? "Browser mode normalises with URLSearchParams — canonical, but it reorders and re-encodes."
-                : "Manual mode keeps your exact bytes and order — right for signed URLs and cache-busters."}
+                ? t("Browser mode normalises with URLSearchParams — canonical, but it reorders and re-encodes.")
+                : t("Manual mode keeps your exact bytes and order — right for signed URLs and cache-busters.")}
             </p>
 
             {parsed ? (
               <div className="space-y-2">
-                <OutputBlock value={rebuilt} rows={4} empty="Nothing rebuilt." />
+                <OutputBlock value={rebuilt} rows={4} empty={t("Nothing rebuilt.")} />
                 <StatGrid>
-                  <Stat label="Params" value={plural(paramText.split("\n").filter((l) => l.trim()).length, "param")} />
-                  <Stat label="Rebuilt chars" value={rebuilt.length} />
+                  <Stat label={t("Params")} value={tn("{n} param", "{n} params", paramText.split("\n").filter((l) => l.trim()).length)} />
+                  <Stat label={t("Rebuilt chars")} value={rebuilt.length} />
                 </StatGrid>
               </div>
             ) : null}
@@ -263,7 +265,7 @@ export default function UrlTool() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
-          title="Percent encode"
+          title={t("Percent encode")}
           right={
             <div className="flex gap-1.5">
               <CopyButton text={encodedSample} />
@@ -271,7 +273,7 @@ export default function UrlTool() {
           }
         >
           <div className="space-y-3">
-            <Field label="Text to encode">
+            <Field label={t("Text to encode")}>
               <TextInput
                 value={sample}
                 spellCheck={false}
@@ -279,19 +281,19 @@ export default function UrlTool() {
                 className="font-mono"
               />
             </Field>
-            <Field label="Leave literal">
+            <Field label={t("Leave literal")}>
               <TextInput
                 value={keepExtra}
                 onChange={(e) => setKeepExtra(e.target.value)}
                 className="font-mono"
               />
             </Field>
-            <OutputBlock value={encodedSample} rows={4} empty="Type something above." />
+            <OutputBlock value={encodedSample} rows={4} empty={t("Type something above.")} />
           </div>
         </Panel>
 
         <Panel
-          title="Decode · inspect"
+          title={t("Decode · inspect")}
           right={
             <div className="flex gap-1.5">
               <CopyButton text={decoded} />
@@ -299,7 +301,7 @@ export default function UrlTool() {
           }
         >
           <div className="space-y-3">
-            <Field label="Percent-encoded or a data: URI">
+            <Field label={t("Percent-encoded or a data: URI")}>
               <TextInput
                 value={decoded || dataUri}
                 spellCheck={false}
@@ -313,7 +315,7 @@ export default function UrlTool() {
                     setDataUri("");
                   }
                 }}
-                placeholder="%E2%80%A6 · data:image/png;base64,…"
+                placeholder={t("%E2%80%A6 · data:image/png;base64,…")}
                 className="font-mono"
               />
             </Field>
@@ -322,7 +324,7 @@ export default function UrlTool() {
               <KeyValues rows={dataRows} />
             ) : decoded ? (
               <>
-                {!isValidPercent(decoded) ? <Notice tone="error">Malformed percent-encoding; showing the text unchanged.</Notice> : null}
+                {!isValidPercent(decoded) ? <Notice tone="error">{t("Malformed percent-encoding; showing the text unchanged.")}</Notice> : null}
                 <OutputBlock value={percentDecode(decoded)} rows={4} />
               </>
             ) : null}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { fetchUsage } from "@/lib/agent-client/api";
 import { cacheShare, formatTokens, type UsageBucket, type UsageSummary } from "@/lib/usage";
+import { useT } from "@/lib/i18n/react";
 
 /** Token counters from the server ledger: what this account's model rounds cost today, this week and in total. */
 
@@ -22,6 +23,7 @@ function row(label: string, b: UsageBucket) {
 }
 
 export function UsagePanel() {
+  const { t } = useT();
   const [summary, setSummary] = useState<UsageSummary | null | "loading">("loading");
 
   useEffect(() => {
@@ -35,9 +37,9 @@ export function UsagePanel() {
   }, []);
 
   return (
-    <section aria-label="Token usage" className="space-y-2">
-      {summary === "loading" ? <p className="text-xs text-faint">Loading…</p> : null}
-      {summary === null ? <p role="alert" className="text-xs text-danger">Could not load usage.</p> : null}
+    <section aria-label={t("Token usage")} className="space-y-2">
+      {summary === "loading" ? <p className="text-xs text-faint">{t("Loading…")}</p> : null}
+      {summary === null ? <p role="alert" className="text-xs text-danger">{t("Could not load usage.")}</p> : null}
       {summary && summary !== "loading" ? (
         <>
           <table className="w-full table-fixed text-xs text-ink">
@@ -47,20 +49,20 @@ export function UsagePanel() {
             <thead>
               <tr className="text-[11px] text-faint">
                 <th scope="col" className="text-left font-normal">
-                  <span className="sr-only">Period</span>
+                  <span className="sr-only">{t("Period")}</span>
                 </th>
-                <th scope="col" className="px-1 text-right font-normal">Rounds</th>
-                <th scope="col" className="px-1 text-right font-normal">In</th>
-                <th scope="col" className="px-1 text-right font-normal">Cached</th>
-                <th scope="col" className="px-1 text-right font-normal">Out</th>
-                <th scope="col" className="px-1 text-right font-normal">Avg</th>
-                <th scope="col" className="pl-1 text-right font-normal">Err</th>
+                <th scope="col" className="px-1 text-right font-normal">{t("Rounds")}</th>
+                <th scope="col" className="px-1 text-right font-normal">{t("In")}</th>
+                <th scope="col" className="px-1 text-right font-normal">{t("Cached")}</th>
+                <th scope="col" className="px-1 text-right font-normal">{t("Out")}</th>
+                <th scope="col" className="px-1 text-right font-normal">{t("Avg")}</th>
+                <th scope="col" className="pl-1 text-right font-normal">{t("Err")}</th>
               </tr>
             </thead>
             <tbody>
               {row("Today", summary.today)}
               {row("7 days", summary.last7Days)}
-              {row("All time", summary.total)}
+              {row(t("All time"), summary.total)}
             </tbody>
           </table>
           {summary.models.length > 0 ? (
@@ -68,7 +70,7 @@ export function UsagePanel() {
               {summary.models.map((m) => `${m.model}: ${m.bucket.requests} rounds, ${formatTokens(m.bucket.promptTokens + m.bucket.completionTokens)} tokens`).join(" · ")}
             </p>
           ) : null}
-          <p className="text-[11px] text-faint">Counts come from the provider; a provider that reports nothing is estimated (shown with “~” per turn). Prompts and answers are never stored here.</p>
+          <p className="text-[11px] text-faint">{t("Counts come from the provider; a provider that reports nothing is estimated (shown with “~” per turn). Prompts and answers are never stored here.")}</p>
         </>
       ) : null}
     </section>

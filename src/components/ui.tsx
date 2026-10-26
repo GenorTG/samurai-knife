@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { cx, copyText, formatBytes } from "@/lib/format";
 import { commitDraftValue, liveDraftValue, type NumberDraftSpec } from "@/lib/number-draft";
+import { useT } from "@/lib/i18n/react";
 
 /* ---------------------------------------------------------------- buttons */
 
@@ -102,6 +103,7 @@ export function CopyButton({
   size?: "sm" | "md" | "lg";
   disabled?: boolean;
 }) {
+  const { t } = useT();
   const [done, setDone] = useState(false);
   return (
     <Button
@@ -115,7 +117,7 @@ export function CopyButton({
         }
       }}
     >
-      {done ? "Copied" : label}
+      {done ? t("Copied") : t(label)}
     </Button>
   );
 }
@@ -176,10 +178,11 @@ export function usePageFullscreen(target: RefObject<HTMLElement | null>): { acti
 
 /** Full screen inside the page for `target` (see usePageFullscreen); the same button leaves it. */
 export function FullscreenButton({ target, size = "sm", label = "Full screen" }: { target: RefObject<HTMLElement | null>; size?: ButtonProps["size"]; label?: string }) {
+  const { t } = useT();
   const { active, enter, exit } = usePageFullscreen(target);
   return (
-    <Button size={size} aria-pressed={active} title={active ? "Back to the page (Esc)" : "Fill the page with it; Esc or Exit full screen comes back"} onClick={active ? exit : enter}>
-      {active ? "Exit full screen" : label}
+    <Button size={size} aria-pressed={active} title={active ? t("Back to the page (Esc)") : t("Fill the page with it; Esc or Exit full screen comes back")} onClick={active ? exit : enter}>
+      {active ? t("Exit full screen") : t(label)}
     </Button>
   );
 }
@@ -274,9 +277,10 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const { t } = useT();
   return (
     <label className={cx("block space-y-1.5", className)}>
-      <span className="sk-label block">{label}</span>
+      <span className="sk-label block">{t(label)}</span>
       {children}
       {hint ? <span className="block text-xs text-faint">{hint}</span> : null}
     </label>
@@ -323,6 +327,8 @@ export function Notice({
   tone?: "info" | "error" | "good" | "warn";
   children: ReactNode;
 }) {
+  // a plain message (often a server error) shows in the interface language when the catalogue knows it
+  const { m } = useT();
   const tones = {
     info: "border-line-strong bg-raised/60 text-muted",
     error: "border-danger/40 bg-danger/10 text-danger",
@@ -336,7 +342,7 @@ export function Notice({
         tones[tone],
       )}
     >
-      {children}
+      {typeof children === "string" ? m(children) : children}
     </p>
   );
 }
@@ -362,12 +368,13 @@ export function WorkStatus({
   cancelLabel?: string;
   onCancel: () => void;
 }) {
+  const { t } = useT();
   return (
     <div role="status" aria-live="polite" data-agent-region="work-status">
       {running && elapsedMs > 300 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-raised/60 px-3 py-2 text-sm text-muted">
           <span className="min-w-0 flex-1">
-            {label}… {(elapsedMs / 1000).toFixed(1)} s elapsed{detail ? `, ${detail}` : ""}. The page stays usable.
+            {t("{label}… {value} s elapsed", { label, value: (elapsedMs / 1000).toFixed(1) })}{detail ? `, ${detail}` : ""}{t(". The page stays usable.")}
           </span>
           <Button size="sm" variant="danger" onClick={onCancel}>{cancelLabel}</Button>
         </div>
@@ -377,9 +384,10 @@ export function WorkStatus({
 }
 
 export function Stat({ label, value }: { label: string; value: ReactNode }) {
+  const { t } = useT();
   return (
     <div className="min-w-0 rounded-lg border border-line bg-raised/50 px-3 py-2.5">
-      <div className="sk-label line-clamp-2 wrap-anywhere" title={typeof label === "string" ? label : undefined}>{label}</div>
+      <div className="sk-label line-clamp-2 wrap-anywhere" title={typeof label === "string" ? t(label) : undefined}>{t(label)}</div>
       <div className="mt-1 font-mono text-[15px] font-medium text-ink tabular-nums wrap-anywhere">{value}</div>
     </div>
   );
@@ -390,12 +398,14 @@ export function StatGrid({ children, className, "aria-label": ariaLabel }: { chi
   return <div role={ariaLabel ? "group" : undefined} aria-label={ariaLabel} className={cx("grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2", className)}>{children}</div>;
 }
 
+/** Label / value rows. Labels are interface texts (translated here; callers pass the English); values are data. */
 export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
+  const { t } = useT();
   return (
     <dl className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
       {rows.map(([key, value]) => (
         <div key={key} className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] gap-3 px-3 py-2 text-sm">
-          <dt className="text-faint">{key}</dt>
+          <dt className="text-faint">{t(key)}</dt>
           <dd className="font-mono text-[13px] break-words [overflow-wrap:anywhere] text-ink">{value}</dd>
         </div>
       ))}
@@ -418,6 +428,7 @@ export function Dropzone({
   onFiles: (files: File[]) => void;
   disabled?: boolean;
 }) {
+  const { t } = useT();
   const id = useId();
   const [over, setOver] = useState(false);
 
@@ -460,9 +471,9 @@ export function Dropzone({
         htmlFor={id}
         className="block cursor-pointer text-sm text-muted hover:text-ink"
       >
-        <span className="font-medium text-accent-soft">Choose file{multiple ? "s" : ""}</span>
+        <span className="font-medium text-accent-soft">{t("Choose file")}{multiple ? "s" : ""}</span>
         <span className="block text-xs text-faint">
-          {hint ?? "or drop it here"}
+          {hint ?? t("or drop it here")}
         </span>
       </label>
     </div>
@@ -535,6 +546,7 @@ export function SegmentedControl<T extends string>({
   onChange: (value: T) => void;
   className?: string;
 }) {
+  const { t } = useT();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const move = (event: KeyboardEvent, index: number) => {
     const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
@@ -567,7 +579,7 @@ export function SegmentedControl<T extends string>({
               selected ? "bg-accent text-accent-fg shadow-xs" : "text-muted hover:bg-raised hover:text-ink",
             )}
           >
-            {option.label}
+            {typeof option.label === "string" ? t(option.label) : option.label}
           </button>
         );
       })}
@@ -644,6 +656,7 @@ export function Drawer({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -668,7 +681,7 @@ export function Drawer({
     >
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">{title}</h2>
-        <Button size="sm" variant="ghost" onClick={onClose} aria-label={`Close ${title}`}>Close</Button>
+        <Button size="sm" variant="ghost" onClick={onClose} aria-label={t("Close {title}", { title })}>{t("Close")}</Button>
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">{children}</div>
       {footer ? <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line py-3 pr-20 pl-4">{footer}</footer> : null}

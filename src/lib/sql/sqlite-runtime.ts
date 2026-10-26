@@ -1,6 +1,7 @@
 import type { Database, SqlJsStatic, SqlValue, Statement } from "sql.js";
 import type { RunProgress } from "./sqlite-protocol";
 import type { SqlSchema } from "./types";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * SQLite helpers around sql.js (SQLite compiled to WebAssembly). Pure: no DOM, no globals. They run inside
@@ -23,13 +24,13 @@ export function looksLikeSqlite(bytes: Uint8Array): boolean {
 }
 
 export function openDatabase(sql: SqlJsStatic, bytes: Uint8Array): Database {
-  if (!looksLikeSqlite(bytes)) throw new Error("That file is not a SQLite database (missing the \"SQLite format 3\" header).");
+  if (!looksLikeSqlite(bytes)) throw new Error(msg("That file is not a SQLite database (missing the \"SQLite format 3\" header)."));
   const db = new sql.Database(bytes);
   try {
     db.exec("select count(*) from sqlite_master");
   } catch (e) {
     db.close();
-    throw new Error(`The database could not be read: ${e instanceof Error ? e.message : String(e)} (encrypted or corrupt files are not supported).`);
+    throw new Error(msgf("The database could not be read: {value} (encrypted or corrupt files are not supported).", { value: e instanceof Error ? e.message : String(e) }));
   }
   return db;
 }
@@ -293,7 +294,7 @@ function insertTable(db: Database, requested: string, headers: string[], rows: (
 
 /** Import parsed CSV/TSV (first row = header) as a new table with inferred INTEGER/REAL/TEXT columns. */
 export function importDelimited(db: Database, tableName: string, parsed: string[][], onProgress?: ImportProgressFn): ImportedTable {
-  if (parsed.length === 0) throw new Error("The file has no rows.");
+  if (parsed.length === 0) throw new Error(msg("The file has no rows."));
   const [header, ...rows] = parsed;
   return insertTable(db, tableName, header, rows, onProgress);
 }
@@ -308,12 +309,12 @@ export function importJson(db: Database, tableName: string, text: string, onProg
     try {
       data = lines.map((l) => JSON.parse(l) as unknown);
     } catch {
-      throw new Error("The file is neither valid JSON nor NDJSON (one JSON object per line).");
+      throw new Error(msg("The file is neither valid JSON nor NDJSON (one JSON object per line)."));
     }
   }
   const list = Array.isArray(data) ? data : [data];
   const objects = list.filter((v): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v));
-  if (objects.length === 0 || objects.length !== list.length) throw new Error("Expected a JSON array of objects (one object per row).");
+  if (objects.length === 0 || objects.length !== list.length) throw new Error(msg("Expected a JSON array of objects (one object per row)."));
   const headers: string[] = [];
   for (const o of objects) for (const k of Object.keys(o)) if (!headers.includes(k)) headers.push(k);
   const rows = objects.map((o) =>

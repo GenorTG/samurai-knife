@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { apiJson } from "@/lib/site/net";
 import { GITHUB_API } from "@/lib/site/github";
 import { GITHUB_WEB, saveApp, type GithubAppConfig } from "./config";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * GitHub's manifest flow (https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest):
@@ -103,7 +104,7 @@ export async function exchangeManifestCode(code: string): Promise<GithubAppConfi
   if (!/^[A-Za-z0-9_-]{8,100}$/.test(code)) throw new Error("invalid manifest code");
   const res = await apiJson(`${GITHUB_API()}/app-manifests/${code}/conversions`, { method: "POST", body: {} });
   const b = (res.body ?? {}) as Record<string, unknown>;
-  if (res.status !== 201 && res.status !== 200) throw new Error(`GitHub refused the app registration code (${String(b.message ?? `HTTP ${res.status}`).slice(0, 200)}); start again (codes expire after an hour)`);
+  if (res.status !== 201 && res.status !== 200) throw new Error(msgf("GitHub refused the app registration code ({value}); start again (codes expire after an hour)", { value: String(b.message ?? `HTTP ${res.status}`).slice(0, 200) }));
   const owner = ((b.owner ?? {}) as Record<string, unknown>).login;
   const app: GithubAppConfig = {
     appId: Number(b.id),

@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/accounts/secret-box";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Account store. Lives outside the repo (KNIFE_DATA_DIR or ~/.local/share/samurai-knife) in `accounts.json` (0600, atomic
@@ -120,6 +121,8 @@ const accountSchema = z.object({
    */
   termsAcceptedAt: z.string().nullable().default(null),
   termsVersion: z.string().max(64).nullable().default(null),
+  /** Interface language the user picked (src/lib/i18n): follows them to every device; null = the browser decides. */
+  language: z.enum(["en", "pl"]).nullable().default(null),
 });
 
 const storeSchema = z.object({
@@ -492,9 +495,9 @@ export function saveProviderProfile(id: string, input: { profileId?: string; nam
     if (!account) throw new ProfileError("account_not_found", 404);
     materializeProfiles(account);
     let profile = input.profileId ? account.providerProfiles.find((candidate) => candidate.id === input.profileId) : undefined;
-    if (input.profileId && !profile) throw new ProfileError("Unknown profile.", 404);
+    if (input.profileId && !profile) throw new ProfileError(msg("Unknown profile."), 404);
     if (!profile) {
-      if (account.providerProfiles.length >= MAX_PROVIDER_PROFILES) throw new ProfileError(`At most ${MAX_PROVIDER_PROFILES} profiles.`, 409);
+      if (account.providerProfiles.length >= MAX_PROVIDER_PROFILES) throw new ProfileError(msgf("At most {maxProviderProfiles} profiles.", { maxProviderProfiles: MAX_PROVIDER_PROFILES }), 409);
       profile = { id: newProfileId(account.providerProfiles), name: input.name, config: structuredClone(input.config) };
       account.providerProfiles.push(profile);
     } else {
@@ -516,7 +519,7 @@ export function activateProviderProfile(id: string, profileId: string): Account 
     if (!account) throw new ProfileError("account_not_found", 404);
     materializeProfiles(account);
     const profile = account.providerProfiles.find((candidate) => candidate.id === profileId);
-    if (!profile) throw new ProfileError("Unknown profile.", 404);
+    if (!profile) throw new ProfileError(msg("Unknown profile."), 404);
     account.activeProviderProfile = profile.id;
     account.provider = structuredClone(profile.config);
     return account;
@@ -530,7 +533,7 @@ export function deleteProviderProfile(id: string, profileId: string): Account {
     if (!account) throw new ProfileError("account_not_found", 404);
     materializeProfiles(account);
     const index = account.providerProfiles.findIndex((candidate) => candidate.id === profileId);
-    if (index < 0) throw new ProfileError("Unknown profile.", 404);
+    if (index < 0) throw new ProfileError(msg("Unknown profile."), 404);
     account.providerProfiles.splice(index, 1);
     if (account.activeProviderProfile === profileId) {
       const next = account.providerProfiles[0];
@@ -586,6 +589,8 @@ export interface PublicAccount {
   authMode: "private" | "public";
   /** Linked GitHub login, or null. */
   github: string | null;
+  /** Interface language the user picked, or null (the browser decides). */
+  language: "en" | "pl" | null;
 }
 
 export function maskKey(key: string): string | null {
@@ -622,5 +627,14 @@ export function toPublicAccount(account: Account, mode: "private" | "public" = "
     isAdmin: mode === "private" || account.role === "admin",
     authMode: mode,
     github: account.github?.login ?? null,
+    language: account.language ?? null,
   };
+}
+
+/** Saves the account's interface language (null: follow the browser). */
+export function setAccountLanguage(id: string, language: "en" | "pl" | null): void {
+  mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (account) account.language = language;
+  });
 }

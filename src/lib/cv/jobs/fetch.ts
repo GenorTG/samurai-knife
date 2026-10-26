@@ -16,6 +16,7 @@ import { decodeEntities, findFirst, parseHtml, readableText, tidyText } from "./
 import { justjoinApiUrl, justjoinSlug, parseJustjoinOffer } from "./justjoin";
 import { nofluffApiUrl, nofluffSlug, parseNofluffOffer } from "./nofluffjobs";
 import { classifyInput, FetchError, parseJsonDocument, parsePage, parsePlainDocument, pastedPosting, PASTE_HINT, type FetchedPosting } from "./posting";
+import { msgf } from "@/lib/i18n/msg";
 
 export { FetchError, type FetchedPosting } from "./posting";
 export type { ResolvedAddress, TransportRequest, TransportResponse } from "@/lib/net/safe-fetch";
@@ -111,7 +112,7 @@ function decodeBody(bytes: Uint8Array, contentType: string): string {
 
 async function readCapped(response: TransportResponse, url: string, maxBytes: number, signal: AbortSignal): Promise<Uint8Array> {
   const declared = Number(response.headers["content-length"]);
-  const tooBig = (): FetchError => new FetchError(`${url} is larger than ${(maxBytes / 1_000_000).toFixed(maxBytes % 1_000_000 ? 3 : 0)} MB. ${PASTE_HINT}`);
+  const tooBig = (): FetchError => new FetchError(msgf("{url} is larger than {value} MB. {pasteHint}", { url, value: (maxBytes / 1_000_000).toFixed(maxBytes % 1_000_000 ? 3 : 0), pasteHint: PASTE_HINT }));
   if (Number.isFinite(declared) && declared > maxBytes) {
     response.close();
     throw tooBig();
@@ -120,7 +121,7 @@ async function readCapped(response: TransportResponse, url: string, maxBytes: nu
   let total = 0;
   try {
     for await (const chunk of response.body) {
-      if (signal.aborted) throw new FetchError(`${url} timed out. ${PASTE_HINT}`);
+      if (signal.aborted) throw new FetchError(msgf("{url} timed out. {pasteHint}", { url, pasteHint: PASTE_HINT }));
       total += chunk.byteLength;
       if (total > maxBytes) throw tooBig();
       chunks.push(chunk);
@@ -178,12 +179,12 @@ async function download(start: URL, deps: FetchDeps, signal: AbortSignal): Promi
     if (REDIRECTS.has(response.status)) {
       const location = response.headers.location;
       response.close();
-      if (!location) throw new FetchError(`${current.host} redirected without a Location. ${PASTE_HINT}`);
+      if (!location) throw new FetchError(msgf("{host} redirected without a Location. {pasteHint}", { host: current.host, pasteHint: PASTE_HINT }));
       let next: URL;
       try {
         next = new URL(location, current);
       } catch {
-        throw new FetchError(`${current.host} redirected to an invalid URL. ${PASTE_HINT}`);
+        throw new FetchError(msgf("{host} redirected to an invalid URL. {pasteHint}", { host: current.host, pasteHint: PASTE_HINT }));
       }
       current = next; // re-validated from scratch at the top of the loop
       continue;
@@ -196,12 +197,12 @@ async function download(start: URL, deps: FetchDeps, signal: AbortSignal): Promi
     const mime = contentType.split(";")[0].trim();
     if (mime && !ALLOWED_TYPES.test(mime)) {
       response.close();
-      throw new FetchError(`${current.href} is '${mime}', not a web page. ${PASTE_HINT}`);
+      throw new FetchError(msgf("{href} is '{mime}', not a web page. {pasteHint}", { href: current.href, mime, pasteHint: PASTE_HINT }));
     }
     const bytes = await raceAbort(readCapped(response, current.href, maxBytes, signal), signal, timedOut);
     return { finalUrl: current.href, contentType: mime, body: decodeBody(bytes, contentType) };
   }
-  throw new FetchError(`${start.href} redirects more than ${MAX_REDIRECTS} times. ${PASTE_HINT}`);
+  throw new FetchError(msgf("{href} redirects more than {maxRedirects} times. {pasteHint}", { href: start.href, maxRedirects: MAX_REDIRECTS, pasteHint: PASTE_HINT }));
 }
 
 // --- entry point ----------------------------------------------------------------------------

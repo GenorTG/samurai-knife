@@ -11,6 +11,7 @@
  */
 import { QueueFullError } from "../work-queue";
 import type { RequestMessage, ResponseMessage, SerializedError, TaskMap } from "../workers/protocol";
+import { msg } from "@/lib/i18n/msg";
 
 /** The part of `worker_threads.Worker` the pool uses, so tests can pass an in-process fake. */
 export interface IsolateWorker {
@@ -282,7 +283,7 @@ export class IsolatePool<Tasks extends TaskMap> {
     const worker = slot.worker ?? this.spawn(slot);
     if (!worker) {
       this.counters.crashed += 1;
-      this.settle(job, "reject", new IsolateCrashError("The background worker could not be started."));
+      this.settle(job, "reject", new IsolateCrashError(msg("The background worker could not be started.")));
       this.pump();
       return;
     }

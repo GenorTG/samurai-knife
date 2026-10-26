@@ -14,6 +14,7 @@ import {
   snapshotOf,
 } from "./sqlite-runtime";
 import { parseDelimited } from "../delimited";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Owns the sql.js database off the main thread. Statements run synchronously here, so a runaway query only blocks this
@@ -31,7 +32,7 @@ async function engine(): Promise<SqlJsStatic> {
 }
 
 function current(): Database {
-  if (!db) throw new Error("No database is open.");
+  if (!db) throw new Error(msg("No database is open."));
   return db;
 }
 
@@ -118,13 +119,13 @@ serveTasks<SqlTasks>({
 
   rows({ statement, offset, limit }) {
     const stored = results.get(statement);
-    if (!stored) throw new Error("That result is no longer available (a newer run replaced it).");
+    if (!stored) throw new Error(msg("That result is no longer available (a newer run replaced it)."));
     return stored.rows.slice(offset, offset + limit);
   },
 
   exportRows({ statement, format }) {
     const stored = results.get(statement);
-    if (!stored) throw new Error("That result is no longer available (a newer run replaced it).");
+    if (!stored) throw new Error(msg("That result is no longer available (a newer run replaced it)."));
     const chunks = [...(format === "csv" ? csvChunks(stored.columns, stored.rows) : jsonChunks(stored.columns, stored.rows))];
     return new Blob(chunks, { type: format === "csv" ? "text/csv;charset=utf-8" : "application/json" });
   },

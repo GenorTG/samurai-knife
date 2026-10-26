@@ -9,15 +9,17 @@ import {
   useInteraction,
   TRUST_MODES,
 } from "@/lib/agent-client/interaction";
+import { useT } from "@/lib/i18n/react";
 
 /** Four-level trust switch: how much the assistant must ask before it acts. */
 export function TrustModeSwitch() {
+  const { t } = useT();
   const { mode } = useInteraction();
   const current = TRUST_MODES.find((m) => m.id === mode) ?? TRUST_MODES[2];
   return (
     <div className="border-b border-line bg-surface px-3 py-1.5">
-      <div role="radiogroup" aria-label="Ask before acting" className="flex items-center gap-1">
-        <span className="mr-1 text-[11px] text-faint">Ask before acting:</span>
+      <div role="radiogroup" aria-label={t("Ask before acting")} className="flex items-center gap-1">
+        <span className="mr-1 text-[11px] text-faint">{t("Ask before acting:")}</span>
         {TRUST_MODES.map((o) => (
           <button
             autoComplete="off"
@@ -25,24 +27,25 @@ export function TrustModeSwitch() {
             type="button"
             role="radio"
             aria-checked={mode === o.id}
-            title={o.hint}
+            title={t(o.hint)}
             onClick={() => setTrustMode(o.id)}
             className={cx(
               "rounded-md px-2 py-1 text-xs font-medium transition-colors",
               mode === o.id ? "bg-ai/15 text-ink ring-1 ring-ai/40" : "text-muted hover:bg-raised hover:text-ink",
             )}
           >
-            {o.label}
+            {t(o.label)}
           </button>
         ))}
       </div>
-      <p className="mt-0.5 text-[11px] leading-snug text-faint">{current.hint}</p>
+      <p className="mt-0.5 text-[11px] leading-snug text-faint">{t(current.hint)}</p>
     </div>
   );
 }
 
 /** Approval and waiting prompts, pinned above the composer so they are never scrolled away. */
 export function InteractionCards({ onStop }: { onStop: () => void }) {
+  const { t } = useT();
   const { approval, wait } = useInteraction();
   const allowRef = useRef<HTMLButtonElement>(null);
   const hasApproval = approval !== null;
@@ -75,7 +78,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             onClick={() => answerApproval("allow")}
             className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110"
           >
-            Allow
+            {t("Allow")}
           </button>
           <button
             autoComplete="off"
@@ -83,7 +86,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             onClick={() => answerApproval("deny")}
             className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-xs text-ink hover:bg-raised"
           >
-            Deny
+            {t("Deny")}
           </button>
           {approval.destructive ? null : (
             <button
@@ -91,9 +94,9 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
               type="button"
               onClick={() => answerApproval("allow_run")}
               className="ml-auto rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-raised hover:text-ink"
-              title="Stop asking for the rest of this run. Destructive steps still ask."
+              title={t("Stop asking for the rest of this run. Destructive steps still ask.")}
             >
-              Allow rest of this run
+              {t("Allow rest of this run")}
             </button>
           )}
         </div>
@@ -106,15 +109,15 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
       <div role="status" data-agent-wait="" className="space-y-2 border-t border-ai/40 bg-ai/8 px-3 py-2.5">
         <p className="flex items-center gap-2 text-sm font-medium text-ink">
           <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-ai" />
-          Waiting for you
+          {t("Waiting for you")}
         </p>
         <p className="text-sm break-words text-muted">{wait.message}</p>
         {wait.targetId ? (
           <p className="text-xs text-faint">
-            Use the highlighted control on the page{wait.targetLabel ? ` (${wait.targetLabel})` : ""}; I continue by myself once you do. Or reply below.
+            {t("Use the highlighted control on the page")}{wait.targetLabel ? ` (${wait.targetLabel})` : ""}{t("; I continue by myself once you do. Or reply below.")}
           </p>
         ) : (
-          <p className="text-xs text-faint">Reply below or press Continue when you are ready.</p>
+          <p className="text-xs text-faint">{t("Reply below or press Continue when you are ready.")}</p>
         )}
         <div className="flex items-center gap-1.5">
           <button
@@ -123,7 +126,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             onClick={() => answerWait("continue")}
             className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110"
           >
-            Continue
+            {t("Continue")}
           </button>
           <button
             autoComplete="off"
@@ -131,7 +134,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             onClick={onStop}
             className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs text-danger hover:bg-danger/10"
           >
-            Cancel run
+            {t("Cancel run")}
           </button>
         </div>
       </div>

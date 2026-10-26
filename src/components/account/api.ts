@@ -1,6 +1,8 @@
 import type { PublicAccount } from "@/lib/accounts/store";
 import type { AdminUserRow } from "@/lib/accounts/admin";
 import { safeReturnPath } from "@/lib/safe-return";
+import { cmsg, ct } from "@/lib/i18n/client-locale";
+import { msg } from "@/lib/i18n/msg";
 
 /** Browser helpers for the account pages: same-origin JSON, never throw, readable messages for every API error code. */
 
@@ -8,26 +10,26 @@ import { safeReturnPath } from "@/lib/safe-return";
 export type Reply<T> = { ok: true; status: number; body: T } | { ok: false; status: number; message: string; code: string; bits?: number };
 
 const MESSAGES: Record<string, string> = {
-  invalid_credentials: "Wrong username, email or password.",
-  invalid_or_expired: "This link is invalid, was already used, or has expired. Ask for a new one.",
-  wrong_password: "The current password is not right.",
-  login_required: "Log in first.",
-  forbidden_origin: "This page was opened from an address the server does not accept.",
-  forbidden_host: "This page was opened from an address the server does not accept.",
-  challenge_required: "The browser check did not finish in time. Try again.",
-  challenge_invalid: "The browser check did not pass. Try again.",
-  busy: "The server is busy right now. Try again in a few seconds.",
+  invalid_credentials: msg("Wrong username, email or password."),
+  invalid_or_expired: msg("This link is invalid, was already used, or has expired. Ask for a new one."),
+  wrong_password: msg("The current password is not right."),
+  login_required: msg("Log in first."),
+  forbidden_origin: msg("This page was opened from an address the server does not accept."),
+  forbidden_host: msg("This page was opened from an address the server does not accept."),
+  challenge_required: msg("The browser check did not finish in time. Try again."),
+  challenge_invalid: msg("The browser check did not pass. Try again."),
+  busy: msg("The server is busy right now. Try again in a few seconds."),
 };
 
 function messageFor(status: number, body: unknown): { message: string; code: string } {
   const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const code = typeof record.error === "string" ? record.error : `http_${status}`;
-  if (typeof record.message === "string") return { message: record.message, code };
+  if (typeof record.message === "string") return { message: cmsg(record.message), code };
   if (code === "rate_limited") {
     const wait = typeof record.retryAfterSeconds === "number" ? record.retryAfterSeconds : 60;
-    return { message: `Too many attempts. Try again in ${wait} s.`, code };
+    return { message: ct("Too many attempts. Try again in {wait} s.", { wait }), code };
   }
-  return { message: MESSAGES[code] ?? (code.includes(" ") ? code : `Request failed (${status}).`), code };
+  return { message: MESSAGES[code] ? ct(MESSAGES[code]) : code.includes(" ") ? cmsg(code) : ct("Request failed ({status}).", { status }), code };
 }
 
 export async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<Reply<T>> {
@@ -41,7 +43,7 @@ export async function call<T>(method: "GET" | "POST", path: string, body?: unkno
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (error) {
-    return { ok: false, status: 0, code: "network", message: `Network error: ${error instanceof Error ? error.message : String(error)}` };
+    return { ok: false, status: 0, code: "network", message: ct("Network error: {message}", { message: error instanceof Error ? error.message : String(error) }) };
   }
   let parsed: unknown = null;
   try {
@@ -52,6 +54,10 @@ export async function call<T>(method: "GET" | "POST", path: string, body?: unkno
   if (!response.ok) {
     const bits = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).bits : undefined;
     return { ok: false, status: response.status, ...messageFor(response.status, parsed), ...(typeof bits === "number" ? { bits } : {}) };
+  }
+  // A success message from the server (sign-up, reset…) is shown as is: translate it like the errors.
+  if (parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).message === "string") {
+    parsed = { ...(parsed as Record<string, unknown>), message: cmsg((parsed as Record<string, string>).message) };
   }
   return { ok: true, status: response.status, body: parsed as T };
 }

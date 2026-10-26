@@ -5,6 +5,7 @@ import { Button, Dropzone, Field, Notice, Panel } from "@/components/ui";
 import { errorText } from "@/lib/cv/client";
 import { cropRect, decodePicture, DEFAULT_CROP, drawCrop, encodePhoto, type Crop, type Picture } from "./photo-crop";
 import { useCvPhoto } from "./usePhoto";
+import { useT } from "@/lib/i18n/react";
 
 const PREVIEW = 224;
 
@@ -18,6 +19,7 @@ function Slider({ label, value, min, max, step, onChange }: { label: string; val
 
 /** Crop editor: live square preview with a round guide, drag to move, sliders for keyboard users. */
 function CropEditor({ picture, name, onSave, onCancel }: { picture: Picture; name: string; onSave: (dataUrl: string) => Promise<void>; onCancel: () => void }) {
+  const { t } = useT();
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; crop: Crop } | null>(null);
   const [crop, setCrop] = useState<Crop>(DEFAULT_CROP);
@@ -65,11 +67,11 @@ function CropEditor({ picture, name, onSave, onCancel }: { picture: Picture; nam
 
   return (
     <div className="space-y-3" data-agent-region="cv-photo-crop">
-      <p className="text-xs text-muted wrap-anywhere">Framing {name}: drag the picture or use the sliders. Only this square crop is uploaded.</p>
+      <p className="text-xs text-muted wrap-anywhere">{t("Framing {name}: drag the picture or use the sliders. Only this square crop is uploaded.", { name })}</p>
       <div className="relative mx-auto w-fit">
         <canvas
           ref={canvas}
-          aria-label="Photo crop preview"
+          aria-label={t("Photo crop preview")}
           role="img"
           style={{ width: PREVIEW, height: PREVIEW, touchAction: "none" }}
           className="block cursor-grab rounded-lg border border-line active:cursor-grabbing"
@@ -80,15 +82,15 @@ function CropEditor({ picture, name, onSave, onCancel }: { picture: Picture; nam
         />
         <span aria-hidden className="pointer-events-none absolute inset-0 rounded-full border-2 border-dashed border-white/80 shadow-[0_0_0_1px_rgb(0_0_0/0.25)]" />
       </div>
-      <Slider label="Zoom" value={crop.zoom} min={1} max={4} step={0.01} onChange={(zoom) => setCrop({ ...crop, ...shown, zoom })} />
+      <Slider label={t("Zoom")} value={crop.zoom} min={1} max={4} step={0.01} onChange={(zoom) => setCrop({ ...crop, ...shown, zoom })} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Slider label="Left / right" value={shown.cx} min={0} max={1} step={0.005} onChange={(cx) => setCrop({ ...crop, cx })} />
-        <Slider label="Up / down" value={shown.cy} min={0} max={1} step={0.005} onChange={(cy) => setCrop({ ...crop, cy })} />
+        <Slider label={t("Left / right")} value={shown.cx} min={0} max={1} step={0.005} onChange={(cx) => setCrop({ ...crop, cx })} />
+        <Slider label={t("Up / down")} value={shown.cy} min={0} max={1} step={0.005} onChange={(cy) => setCrop({ ...crop, cy })} />
       </div>
       {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save photo"}</Button>
-        <Button onClick={onCancel} disabled={busy}>Cancel</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? t("Saving…") : t("Save photo")}</Button>
+        <Button onClick={onCancel} disabled={busy}>{t("Cancel")}</Button>
       </div>
     </div>
   );
@@ -96,6 +98,7 @@ function CropEditor({ picture, name, onSave, onCancel }: { picture: Picture; nam
 
 /** Profile tab: the account's CV photo (upload, crop, replace, remove). Layouts decide where it prints. */
 export function PhotoPanel() {
+  const { t } = useT();
   const photo = useCvPhoto();
   const [picked, setPicked] = useState<{ picture: Picture; name: string } | null>(null);
   const [replacing, setReplacing] = useState(false);
@@ -116,18 +119,18 @@ export function PhotoPanel() {
   const showDropzone = !picked && (!photo.meta || replacing);
 
   return (
-    <Panel title="Photo">
+    <Panel title={t("Photo")}>
       <div className="space-y-3" data-cv-path="/photo">
         <p className="text-xs leading-relaxed text-muted">
-          Printed by the Modern, Sidebar and Elegant layouts (CV versions tab, switch it off per document there). The ATS layout never prints a photo.
+          {t("Printed by the Modern, Sidebar and Elegant layouts (CV versions tab, switch it off per document there). The ATS layout never prints a photo.")}
         </p>
-        {photo.phase === "error" ? <Notice tone="error">Could not load the photo: {photo.error}</Notice> : null}
+        {photo.phase === "error" ? <Notice tone="error">{t("Could not load the photo:")}{" "} {photo.error}</Notice> : null}
         {photo.meta && !picked ? (
           <div className="flex flex-wrap items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element -- private, authenticated image; next/image would proxy it */}
-            <img src={photo.url ?? ""} alt="Your CV photo" width={112} height={112} className="size-28 rounded-full border border-line object-cover" />
+            <img src={photo.url ?? ""} alt={t("Your CV photo")} width={112} height={112} className="size-28 rounded-full border border-line object-cover" />
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => setReplacing((v) => !v)} aria-expanded={replacing}>{replacing ? "Keep this photo" : "Change photo…"}</Button>
+              <Button size="sm" onClick={() => setReplacing((v) => !v)} aria-expanded={replacing}>{replacing ? t("Keep this photo") : t("Change photo…")}</Button>
               <Button
                 size="sm"
                 variant="danger"
@@ -145,12 +148,12 @@ export function PhotoPanel() {
                   }
                 }}
               >
-                Remove photo
+                {t("Remove photo")}
               </Button>
             </div>
           </div>
         ) : null}
-        {showDropzone ? <Dropzone accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" hint="JPEG, PNG or WebP · cropped in your browser" onFiles={(files) => void pick(files)} /> : null}
+        {showDropzone ? <Dropzone accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" hint={t("JPEG, PNG or WebP · cropped in your browser")} onFiles={(files) => void pick(files)} /> : null}
         {picked ? (
           <CropEditor
             key={picked.name}

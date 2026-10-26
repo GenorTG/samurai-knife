@@ -16,6 +16,7 @@ import { AddRow, EditableField, ItemCard, PinButton, ProfileEnvProvider, RemoveB
 import { CustomSectionsSection, GithubProjectAdd, TailoringSection } from "./ProfilePriority";
 import { CvFrame, flashElement, LangToggle, profileIsEmpty, useLang } from "./shared";
 import { useCvData } from "./useCvData";
+import { useT } from "@/lib/i18n/react";
 
 const TAB = "profile";
 
@@ -41,6 +42,7 @@ const bi = (lang: CvLang, text: string) => ({ pl: lang === "pl" ? text : "", en:
 /* ------------------------------------------------------------------ bullets */
 
 function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[]; owner: string }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   return (
@@ -57,8 +59,8 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
                 biPath={`${path}/text`}
                 value={b.text[lang]}
                 reference={b.text[other]}
-                label={`${owner} bullet ${b.id} text (${lang.toUpperCase()})`}
-                placeholder={`Write this bullet in ${lang === "pl" ? "Polish" : "English"}`}
+                label={t("{owner} bullet {id} text ({value})", { owner, id: b.id, value: lang.toUpperCase() })}
+                placeholder={t("Write this bullet in {value}", { value: lang === "pl" ? "Polish" : "English" })}
                 multiline
               />
             </div>
@@ -69,14 +71,14 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
                   autoComplete="off"
                   type="button"
                   aria-pressed={b.verified}
-                  aria-label={`${b.verified ? "Unmark" : "Mark"} ${owner} bullet ${b.id} as verified`}
-                  title="Verified = you confirmed this claim is true"
+                  aria-label={t("{value} {owner} bullet {id} as verified", { value: b.verified ? "Unmark" : "Mark", owner, id: b.id })}
+                  title={t("Verified = you confirmed this claim is true")}
                   onClick={() => void env.save([{ op: "set", path: `${path}/verified`, value: !b.verified }])}
                   className="cursor-pointer"
                 >
-                  <Badge tone={b.verified ? "good" : "neutral"}>{b.verified ? "verified" : "unverified"}</Badge>
+                  <Badge tone={b.verified ? "good" : "neutral"}>{b.verified ? t("verified") : t("unverified")}</Badge>
                 </button>
-                <RemoveButton label={`Remove ${owner} bullet ${b.id}`} onClick={() => void env.save([{ op: "remove", path }])} />
+                <RemoveButton label={t("Remove {owner} bullet {id}", { owner, id: b.id })} onClick={() => void env.save([{ op: "remove", path }])} />
               </div>
             ) : null}
           </div>
@@ -85,13 +87,13 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
       {!env.onlyMissing ? (
         <Button
           size="sm"
-          aria-label={`Add bullet to ${owner}`}
+          aria-label={t("Add bullet to {owner}", { owner })}
           onClick={() => {
             const id = uniqueId("bullet", new Set(bullets.map((b) => b.id)));
             void env.save([{ op: "add", path: `${base}/bullets/-`, value: { id, text: { pl: "", en: "" } } }], `${base}/bullets/id=${id}/text/${lang}`);
           }}
         >
-          Add bullet
+          {t("Add bullet")}
         </Button>
       ) : null}
     </div>
@@ -122,23 +124,24 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function ContactSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const { lang, other, onlyMissing } = useProfileEnv();
   const c = profile.contact;
   const L = lang.toUpperCase();
   return (
-    <Section id="contact" title="Contact">
+    <Section id="contact" title={t("Contact")}>
       {!onlyMissing ? (
         <>
-          <Row label="Name"><EditableField path="/contact/name" value={c.name} label="Name" placeholder="Full name" /></Row>
-          <Row label="E-mail"><EditableField path="/contact/email" value={c.email} label="E-mail" placeholder="name@example.com" /></Row>
-          <Row label="Phone"><EditableField path="/contact/phone" value={c.phone} label="Phone" placeholder="+48 …" /></Row>
+          <Row label={t("Name")}><EditableField path="/contact/name" value={c.name} label={t("Name")} placeholder={t("Full name")} /></Row>
+          <Row label={t("E-mail")}><EditableField path="/contact/email" value={c.email} label={t("E-mail")} placeholder={t("name@example.com")} /></Row>
+          <Row label={t("Phone")}><EditableField path="/contact/phone" value={c.phone} label={t("Phone")} placeholder="+48 …" /></Row>
         </>
       ) : null}
-      <Row label={`Headline ${L}`}>
-        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={`Headline (${L})`} placeholder="One-line positioning" />
+      <Row label={t("Headline {l}", { l: L })}>
+        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={t("Headline ({l})", { l: L })} placeholder={t("One-line positioning")} />
       </Row>
-      <Row label={`Location ${L}`}>
-        <EditableField path={`/contact/location/${lang}`} biPath="/contact/location" value={c.location[lang]} reference={c.location[other]} label={`Location (${L})`} placeholder="City, country" />
+      <Row label={t("Location {l}", { l: L })}>
+        <EditableField path={`/contact/location/${lang}`} biPath="/contact/location" value={c.location[lang]} reference={c.location[other]} label={t("Location ({l})", { l: L })} placeholder={t("City, country")} />
       </Row>
       {!onlyMissing ? <LinksEditor links={c.links} /> : null}
     </Section>
@@ -146,23 +149,24 @@ function ContactSection({ profile }: { profile: Profile }) {
 }
 
 function LinksEditor({ links }: { links: Profile["contact"]["links"] }) {
+  const { t } = useT();
   const env = useProfileEnv();
   return (
-    <Row label="Links">
+    <Row label={t("Links")}>
       <div className="space-y-1">
         {links.map((link, i) => (
           <div key={`${i}-${link.url}`} className="flex min-w-0 items-start gap-2" data-cv-path={`/contact/links/${i}`}>
             <div className="grid min-w-0 flex-1 gap-x-2 @md:grid-cols-[10rem_minmax(0,1fr)]">
-              <EditableField path={`/contact/links/${i}/label`} value={link.label} label={`Link ${i + 1} label`} placeholder="Label" />
-              <EditableField path={`/contact/links/${i}/url`} value={link.url} label={`Link ${i + 1} URL`} placeholder="https://…" />
+              <EditableField path={`/contact/links/${i}/label`} value={link.label} label={t("Link {value} label", { value: i + 1 })} placeholder={t("Label")} />
+              <EditableField path={`/contact/links/${i}/url`} value={link.url} label={t("Link {value} URL", { value: i + 1 })} placeholder={t("https://…")} />
             </div>
-            <RemoveButton label={`Remove link ${i + 1}`} onClick={() => void env.save([{ op: "remove", path: `/contact/links/${i}` }])} />
+            <RemoveButton label={t("Remove link {value}", { value: i + 1 })} onClick={() => void env.save([{ op: "remove", path: `/contact/links/${i}` }])} />
           </div>
         ))}
         <AddRow
-          label="New link URL"
-          buttonLabel="Add link"
-          placeholder="https://github.com/…"
+          label={t("New link URL")}
+          buttonLabel={t("Add link")}
+          placeholder={t("https://github.com/…")}
           onAdd={(url) => env.save([{ op: "add", path: "/contact/links/-", value: { label: url.replace(/^https?:\/\//, "").split("/")[0], url } }])}
         />
       </div>
@@ -171,28 +175,30 @@ function LinksEditor({ links }: { links: Profile["contact"]["links"] }) {
 }
 
 function SummarySection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const { lang, other } = useProfileEnv();
   return (
-    <Section id="summary" title="Summary">
-      <EditableField path={`/summary/${lang}`} biPath="/summary" value={profile.summary[lang]} reference={profile.summary[other]} label={`Summary (${lang.toUpperCase()})`} placeholder="Two or three sentences about you" multiline />
+    <Section id="summary" title={t("Summary")}>
+      <EditableField path={`/summary/${lang}`} biPath="/summary" value={profile.summary[lang]} reference={profile.summary[other]} label={t("Summary ({value})", { value: lang.toUpperCase() })} placeholder={t("Two or three sentences about you")} multiline />
     </Section>
   );
 }
 
 function ExperienceSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   const L = lang.toUpperCase();
   return (
-    <Section id="experience" title="Experience">
+    <Section id="experience" title={t("Experience")}>
       {profile.experience.map((e) => (
         <ExperienceCard key={e.id} exp={e} lang={lang} other={other} L={L} />
       ))}
       {!env.onlyMissing ? (
         <AddRow
-          label="New employer"
-          buttonLabel="Add experience"
-          placeholder="Employer name"
+          label={t("New employer")}
+          buttonLabel={t("Add experience")}
+          placeholder={t("Employer name")}
           onAdd={(org) => {
             const id = uniqueId(org, new Set(profile.experience.map((x) => x.id)));
             return env.save([{ op: "add", path: "/experience/-", value: { id, org, role: { pl: "", en: "" }, start: "", end: null, bullets: [] } }]);
@@ -204,6 +210,7 @@ function ExperienceSection({ profile }: { profile: Profile }) {
 }
 
 function ExperienceCard({ exp, lang, other, L }: { exp: Profile["experience"][number]; lang: CvLang; other: CvLang; L: string }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const base = `/experience/id=${exp.id}`;
   const hidden = useHidden(base);
@@ -211,39 +218,40 @@ function ExperienceCard({ exp, lang, other, L }: { exp: Profile["experience"][nu
   return (
     <ItemCard
       path={base}
-      title={<EditableField path={`${base}/org`} value={exp.org} label={`Employer ${exp.id}`} placeholder="Employer" keepInFilter />}
-      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={exp.pinned} name={`experience ${exp.org || exp.id}`} /><RemoveButton label={`Remove experience ${exp.org || exp.id}`} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
+      title={<EditableField path={`${base}/org`} value={exp.org} label={t("Employer {id}", { id: exp.id })} placeholder={t("Employer")} keepInFilter />}
+      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={exp.pinned} name={`experience ${exp.org || exp.id}`} /><RemoveButton label={t("Remove experience {value}", { value: exp.org || exp.id })} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
     >
       <div className="grid min-w-0 gap-x-3 @md:grid-cols-2">
-        <EditableField path={`${base}/role/${lang}`} biPath={`${base}/role`} value={exp.role[lang]} reference={exp.role[other]} label={`${exp.org} role (${L})`} placeholder={`Role in ${L}`} />
+        <EditableField path={`${base}/role/${lang}`} biPath={`${base}/role`} value={exp.role[lang]} reference={exp.role[other]} label={t("{org} role ({l})", { org: exp.org, l: L })} placeholder={t("Role in {l}", { l: L })} />
         {!env.onlyMissing ? (
           <div className="grid grid-cols-2 gap-x-2">
-            <EditableField path={`${base}/start`} value={exp.start} label={`${exp.org} start (YYYY-MM)`} placeholder="Start YYYY-MM" />
-            <EditableField path={`${base}/end`} value={exp.end ?? ""} label={`${exp.org} end (YYYY-MM)`} placeholder="Present" nullable />
+            <EditableField path={`${base}/start`} value={exp.start} label={t("{org} start (YYYY-MM)", { org: exp.org })} placeholder={t("Start YYYY-MM")} />
+            <EditableField path={`${base}/end`} value={exp.end ?? ""} label={t("{org} end (YYYY-MM)", { org: exp.org })} placeholder={t("Present")} nullable />
           </div>
         ) : null}
       </div>
-      {!env.onlyMissing ? <EditableField path={`${base}/location`} value={exp.location} label={`${exp.org} location`} placeholder="Location" /> : null}
-      <EditableField path={`${base}/note/${lang}`} biPath={`${base}/note`} value={exp.note[lang]} reference={exp.note[other]} label={`${exp.org} note (${L})`} placeholder={`Note in ${L} (optional)`} multiline />
+      {!env.onlyMissing ? <EditableField path={`${base}/location`} value={exp.location} label={t("{org} location", { org: exp.org })} placeholder={t("Location")} /> : null}
+      <EditableField path={`${base}/note/${lang}`} biPath={`${base}/note`} value={exp.note[lang]} reference={exp.note[other]} label={t("{org} note ({l})", { org: exp.org, l: L })} placeholder={t("Note in {l} (optional)", { l: L })} multiline />
       <BulletList base={base} bullets={exp.bullets} owner={exp.org || exp.id} />
     </ItemCard>
   );
 }
 
 function ProjectsSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   const L = lang.toUpperCase();
   return (
-    <Section id="projects" title="Projects">
+    <Section id="projects" title={t("Projects")}>
       {profile.projects.map((p) => (
         <ProjectCard key={p.id} project={p} lang={lang} other={other} L={L} />
       ))}
       {!env.onlyMissing ? (
         <AddRow
-          label="New project name"
-          buttonLabel="Add project"
-          placeholder="Project name"
+          label={t("New project name")}
+          buttonLabel={t("Add project")}
+          placeholder={t("Project name")}
           onAdd={(name) => {
             const id = uniqueId(name, new Set(profile.projects.map((x) => x.id)));
             return env.save([{ op: "add", path: "/projects/-", value: { id, name, url: "", summary: { pl: "", en: "" }, tech: [], bullets: [] } }]);
@@ -256,41 +264,43 @@ function ProjectsSection({ profile }: { profile: Profile }) {
 }
 
 function ProjectCard({ project: p, lang, other, L }: { project: Profile["projects"][number]; lang: CvLang; other: CvLang; L: string }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const base = `/projects/id=${p.id}`;
   if (useHidden(base)) return null;
   return (
     <ItemCard
       path={base}
-      title={<EditableField path={`${base}/name`} value={p.name} label={`Project ${p.id} name`} placeholder="Project" keepInFilter />}
-      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={p.pinned} name={`project ${p.name || p.id}`} /><RemoveButton label={`Remove project ${p.name || p.id}`} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
+      title={<EditableField path={`${base}/name`} value={p.name} label={t("Project {id} name", { id: p.id })} placeholder={t("Project")} keepInFilter />}
+      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={p.pinned} name={`project ${p.name || p.id}`} /><RemoveButton label={t("Remove project {value}", { value: p.name || p.id })} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
     >
       {!env.onlyMissing ? (
         <div className="grid min-w-0 gap-x-3 @md:grid-cols-2">
-          <EditableField path={`${base}/url`} value={p.url} label={`${p.name} link`} placeholder="https://…" />
-          <EditableField path={`${base}/tech`} value={p.tech.join(", ")} label={`${p.name} tech (comma separated)`} placeholder="Tech, comma separated" list />
+          <EditableField path={`${base}/url`} value={p.url} label={t("{name} link", { name: p.name })} placeholder={t("https://…")} />
+          <EditableField path={`${base}/tech`} value={p.tech.join(", ")} label={t("{name} tech (comma separated)", { name: p.name })} placeholder={t("Tech, comma separated")} list />
         </div>
       ) : null}
-      <EditableField path={`${base}/summary/${lang}`} biPath={`${base}/summary`} value={p.summary[lang]} reference={p.summary[other]} label={`${p.name} summary (${L})`} placeholder={`Summary in ${L}`} multiline />
+      <EditableField path={`${base}/summary/${lang}`} biPath={`${base}/summary`} value={p.summary[lang]} reference={p.summary[other]} label={t("{name} summary ({l})", { name: p.name, l: L })} placeholder={t("Summary in {l}", { l: L })} multiline />
       <BulletList base={base} bullets={p.bullets} owner={p.name || p.id} />
     </ItemCard>
   );
 }
 
 function SkillsSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   const L = lang.toUpperCase();
   return (
-    <Section id="skills" title="Skills">
+    <Section id="skills" title={t("Skills")}>
       {profile.skills.map((s) => (
         <SkillCard key={s.id} group={s} lang={lang} other={other} L={L} />
       ))}
       {!env.onlyMissing ? (
         <AddRow
-          label="New skill group name"
-          buttonLabel="Add skill group"
-          placeholder={`Group name in ${L}, e.g. Languages`}
+          label={t("New skill group name")}
+          buttonLabel={t("Add skill group")}
+          placeholder={t("Group name in {l}, e.g. Languages", { l: L })}
           onAdd={(name) => {
             const id = uniqueId(name, new Set(profile.skills.map((x) => x.id)));
             return env.save([{ op: "add", path: "/skills/-", value: { id, name: bi(lang, name), items: [] } }]);
@@ -302,40 +312,42 @@ function SkillsSection({ profile }: { profile: Profile }) {
 }
 
 function SkillCard({ group: s, lang, other, L }: { group: Profile["skills"][number]; lang: CvLang; other: CvLang; L: string }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const base = `/skills/id=${s.id}`;
   if (useHidden(base)) return null;
   return (
     <ItemCard
       path={base}
-      title={<EditableField path={`${base}/name/${lang}`} biPath={`${base}/name`} keepInFilter value={s.name[lang]} reference={s.name[other]} label={`Skill group ${s.id} name (${L})`} placeholder={`Group name in ${L}`} />}
-      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={s.pinned} name={`skill group ${s.name[lang] || s.id}`} /><RemoveButton label={`Remove skill group ${s.name[lang] || s.id}`} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
+      title={<EditableField path={`${base}/name/${lang}`} biPath={`${base}/name`} keepInFilter value={s.name[lang]} reference={s.name[other]} label={t("Skill group {id} name ({l})", { id: s.id, l: L })} placeholder={t("Group name in {l}", { l: L })} />}
+      right={!env.onlyMissing ? <span className="flex items-center gap-1"><PinButton path={base} pinned={s.pinned} name={`skill group ${s.name[lang] || s.id}`} /><RemoveButton label={t("Remove skill group {value}", { value: s.name[lang] || s.id })} onClick={() => void env.save([{ op: "remove", path: base }])} /></span> : undefined}
     >
-      {!env.onlyMissing ? <EditableField path={`${base}/items`} value={s.items.join(", ")} label={`${s.name[lang] || s.id} items (comma separated)`} placeholder="Skills, comma separated" list /> : null}
+      {!env.onlyMissing ? <EditableField path={`${base}/items`} value={s.items.join(", ")} label={t("{value} items (comma separated)", { value: s.name[lang] || s.id })} placeholder={t("Skills, comma separated")} list /> : null}
     </ItemCard>
   );
 }
 
 function EducationSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   const L = lang.toUpperCase();
   return (
-    <Section id="education" title="Education">
+    <Section id="education" title={t("Education")}>
       {profile.education.map((ed) => {
         const base = `/education/id=${ed.id}`;
         return (
           <EducationCard key={ed.id} base={base}>
             <ItemCard
               path={base}
-              title={<EditableField path={`${base}/institution`} value={ed.institution} label={`Institution ${ed.id}`} placeholder="Institution" keepInFilter />}
-              right={!env.onlyMissing ? <RemoveButton label={`Remove education ${ed.institution || ed.id}`} onClick={() => void env.save([{ op: "remove", path: base }])} /> : undefined}
+              title={<EditableField path={`${base}/institution`} value={ed.institution} label={t("Institution {id}", { id: ed.id })} placeholder={t("Institution")} keepInFilter />}
+              right={!env.onlyMissing ? <RemoveButton label={t("Remove education {value}", { value: ed.institution || ed.id })} onClick={() => void env.save([{ op: "remove", path: base }])} /> : undefined}
             >
-              <EditableField path={`${base}/detail/${lang}`} biPath={`${base}/detail`} value={ed.detail[lang]} reference={ed.detail[other]} label={`${ed.institution} detail (${L})`} placeholder={`Degree / field in ${L}`} />
+              <EditableField path={`${base}/detail/${lang}`} biPath={`${base}/detail`} value={ed.detail[lang]} reference={ed.detail[other]} label={t("{institution} detail ({l})", { institution: ed.institution, l: L })} placeholder={t("Degree / field in {l}", { l: L })} />
               {!env.onlyMissing ? (
                 <div className="grid grid-cols-2 gap-x-2">
-                  <EditableField path={`${base}/start`} value={ed.start} label={`${ed.institution} start (YYYY-MM)`} placeholder="Start YYYY-MM" />
-                  <EditableField path={`${base}/end`} value={ed.end ?? ""} label={`${ed.institution} end (YYYY-MM)`} placeholder="End YYYY-MM" nullable />
+                  <EditableField path={`${base}/start`} value={ed.start} label={t("{institution} start (YYYY-MM)", { institution: ed.institution })} placeholder={t("Start YYYY-MM")} />
+                  <EditableField path={`${base}/end`} value={ed.end ?? ""} label={t("{institution} end (YYYY-MM)", { institution: ed.institution })} placeholder={t("End YYYY-MM")} nullable />
                 </div>
               ) : null}
             </ItemCard>
@@ -344,9 +356,9 @@ function EducationSection({ profile }: { profile: Profile }) {
       })}
       {!env.onlyMissing ? (
         <AddRow
-          label="New institution"
-          buttonLabel="Add education"
-          placeholder="School or university"
+          label={t("New institution")}
+          buttonLabel={t("Add education")}
+          placeholder={t("School or university")}
           onAdd={(institution) => {
             const id = uniqueId(institution, new Set(profile.education.map((x) => x.id)));
             return env.save([{ op: "add", path: "/education/-", value: { id, institution, detail: { pl: "", en: "" }, start: "", end: null } }]);
@@ -362,30 +374,31 @@ function EducationCard({ base, children }: { base: string; children: React.React
 }
 
 function LanguagesSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const env = useProfileEnv();
   const { lang, other } = env;
   const L = lang.toUpperCase();
   return (
-    <Section id="languages" title="Spoken languages">
+    <Section id="languages" title={t("Spoken languages")}>
       {profile.languages.map((l) => {
         const base = `/languages/id=${l.id}`;
         return (
           <EducationCard key={l.id} base={base}>
             <div data-cv-path={base} className="flex min-w-0 items-start gap-2">
               <div className="grid min-w-0 flex-1 gap-x-3 @md:grid-cols-2">
-                <EditableField path={`${base}/name/${lang}`} biPath={`${base}/name`} value={l.name[lang]} reference={l.name[other]} label={`Language ${l.id} name (${L})`} placeholder={`Language in ${L}`} />
-                <EditableField path={`${base}/level/${lang}`} biPath={`${base}/level`} value={l.level[lang]} reference={l.level[other]} label={`Language ${l.id} level (${L})`} placeholder={`Level in ${L}`} />
+                <EditableField path={`${base}/name/${lang}`} biPath={`${base}/name`} value={l.name[lang]} reference={l.name[other]} label={t("Language {id} name ({l})", { id: l.id, l: L })} placeholder={t("Language in {l}", { l: L })} />
+                <EditableField path={`${base}/level/${lang}`} biPath={`${base}/level`} value={l.level[lang]} reference={l.level[other]} label={t("Language {id} level ({l})", { id: l.id, l: L })} placeholder={t("Level in {l}", { l: L })} />
               </div>
-              {!env.onlyMissing ? <RemoveButton label={`Remove language ${l.name[lang] || l.id}`} onClick={() => void env.save([{ op: "remove", path: base }])} /> : null}
+              {!env.onlyMissing ? <RemoveButton label={t("Remove language {value}", { value: l.name[lang] || l.id })} onClick={() => void env.save([{ op: "remove", path: base }])} /> : null}
             </div>
           </EducationCard>
         );
       })}
       {!env.onlyMissing ? (
         <AddRow
-          label="New spoken language"
-          buttonLabel="Add language"
-          placeholder={`Language in ${L}, e.g. English`}
+          label={t("New spoken language")}
+          buttonLabel={t("Add language")}
+          placeholder={t("Language in {l}, e.g. English", { l: L })}
           onAdd={(name) => {
             const id = uniqueId(name, new Set(profile.languages.map((x) => x.id)));
             return env.save([{ op: "add", path: "/languages/-", value: { id, name: bi(lang, name), level: { pl: "", en: "" } } }]);
@@ -397,15 +410,16 @@ function LanguagesSection({ profile }: { profile: Profile }) {
 }
 
 function FreeTextSection({ profile }: { profile: Profile }) {
+  const { t } = useT();
   const { lang, other } = useProfileEnv();
   const L = lang.toUpperCase();
   return (
     <>
-      <Section id="consent" title="Consent clause (RODO / GDPR)">
-        <EditableField path={`/consent/${lang}`} biPath="/consent" value={profile.consent[lang]} reference={profile.consent[other]} label={`Consent clause (${L})`} placeholder={`Clause printed on ${L} applications`} multiline />
+      <Section id="consent" title={t("Consent clause (RODO / GDPR)")}>
+        <EditableField path={`/consent/${lang}`} biPath="/consent" value={profile.consent[lang]} reference={profile.consent[other]} label={t("Consent clause ({l})", { l: L })} placeholder={t("Clause printed on {l} applications", { l: L })} multiline />
       </Section>
-      <Section id="extras" title="How I work">
-        <EditableField path={`/extras/${lang}`} biPath="/extras" value={profile.extras[lang]} reference={profile.extras[other]} label={`How I work (${L})`} placeholder={`Free-form paragraph in ${L}`} multiline />
+      <Section id="extras" title={t("How I work")}>
+        <EditableField path={`/extras/${lang}`} biPath="/extras" value={profile.extras[lang]} reference={profile.extras[other]} label={t("How I work ({l})", { l: L })} placeholder={t("Free-form paragraph in {l}", { l: L })} multiline />
       </Section>
     </>
   );
@@ -414,6 +428,7 @@ function FreeTextSection({ profile }: { profile: Profile }) {
 /* --------------------------------------------------------------------- tab */
 
 export default function ProfileTab() {
+  const { t } = useT();
   const live = useCvData();
   const lang = useLang(TAB);
   const params = useSearchParams();
@@ -472,42 +487,42 @@ export default function ProfileTab() {
       {(cv) =>
         profileIsEmpty(cv) && !replacing ? (
           <div className="space-y-4">
-            <EmptyState title="Your master profile starts here">
-              One bilingual profile feeds every CV version, the audit and the offer matching. Paste it below, or ask the assistant to structure your CV text and import it.
+            <EmptyState title={t("Your master profile starts here")}>
+              {t("One bilingual profile feeds every CV version, the audit and the offer matching. Paste it below, or ask the assistant to structure your CV text and import it.")}
             </EmptyState>
             <ProfileImport existing={null} onImported={() => void live.reload()} />
           </div>
         ) : (
           <div className="@container space-y-4">
-            <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Profile actions">
+            <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Profile actions")}>
               <LangToggle tab={TAB} />
               {missing.size > 0 ? (
-                <Badge tone="warn" title={`${missing.size} fields are written in ${env.other.toUpperCase()} but empty in ${lang.toUpperCase()}`}>
-                  {missing.size} untranslated in {lang.toUpperCase()}
+                <Badge tone="warn" title={t("{missing} fields are written in {value} but empty in {value2}", { missing: missing.size, value: env.other.toUpperCase(), value2: lang.toUpperCase() })}>
+                  {t("{missing} untranslated in {value}", { missing: missing.size, value: lang.toUpperCase() })}
                 </Badge>
               ) : (
-                <Badge tone="good">Fully translated to {lang.toUpperCase()}</Badge>
+                <Badge tone="good">{t("Fully translated to")}{" "} {lang.toUpperCase()}</Badge>
               )}
               <Button size="sm" aria-pressed={onlyMissing} variant={onlyMissing ? "primary" : "subtle"} disabled={missing.size === 0 && !onlyMissing} onClick={() => setOnlyMissing((v) => !v)}>
-                {onlyMissing ? "Show everything" : "Show untranslated"}
+                {onlyMissing ? t("Show everything") : t("Show untranslated")}
               </Button>
               <span className="flex-1" />
               <Button
                 size="sm"
                 onClick={async () => setUndoError(await live.undo())}
-                aria-label="Undo the last change"
+                aria-label={t("Undo the last change")}
               >
-                Undo
+                {t("Undo")}
               </Button>
-              <Button size="sm" onClick={() => setReplacing((v) => !v)}>{replacing ? "Close import" : "Replace profile…"}</Button>
+              <Button size="sm" onClick={() => setReplacing((v) => !v)}>{replacing ? t("Close import") : t("Replace profile…")}</Button>
             </div>
-            <StatGrid aria-label="Profile overview">
-              <Stat label="Roles" value={String(cv.profile.experience.length)} />
-              <Stat label="Bullets" value={String(cv.profile.experience.reduce((n, e) => n + e.bullets.length, 0) + cv.profile.projects.reduce((n, p) => n + p.bullets.length, 0))} />
-              <Stat label="Projects" value={String(cv.profile.projects.length)} />
-              <Stat label="Skill groups" value={String(cv.profile.skills.length)} />
-              <Stat label={`To translate (${lang.toUpperCase()})`} value={String(missing.size)} />
-              <Stat label="Audit findings" value={audit.result ? String(Object.values(audit.result.findings).reduce((n, f) => n + f.length, 0)) : "–"} />
+            <StatGrid aria-label={t("Profile overview")}>
+              <Stat label={t("Roles")} value={String(cv.profile.experience.length)} />
+              <Stat label={t("Bullets")} value={String(cv.profile.experience.reduce((n, e) => n + e.bullets.length, 0) + cv.profile.projects.reduce((n, p) => n + p.bullets.length, 0))} />
+              <Stat label={t("Projects")} value={String(cv.profile.projects.length)} />
+              <Stat label={t("Skill groups")} value={String(cv.profile.skills.length)} />
+              <Stat label={t("To translate ({value})", { value: lang.toUpperCase() })} value={String(missing.size)} />
+              <Stat label={t("Audit findings")} value={audit.result ? String(Object.values(audit.result.findings).reduce((n, f) => n + f.length, 0)) : "–"} />
             </StatGrid>
             {undoError ? <div role="alert"><Notice tone="warn">{undoError}</Notice></div> : null}
             {replacing ? <ProfileImport existing={cv.profile} onImported={() => { setReplacing(false); void live.reload(); }} onCancel={() => setReplacing(false)} /> : null}
@@ -525,9 +540,9 @@ export default function ProfileTab() {
                   <LanguagesSection profile={cv.profile} />
                   <CustomSectionsSection profile={cv.profile} />
                   <FreeTextSection profile={cv.profile} />
-                  {onlyMissing && missing.size === 0 ? <Notice tone="good">Nothing left to translate.</Notice> : null}
+                  {onlyMissing && missing.size === 0 ? <Notice tone="good">{t("Nothing left to translate.")}</Notice> : null}
                 </div>
-                <aside className="min-w-0 space-y-4 @4xl:sticky @4xl:top-4 @4xl:self-start" aria-label="Profile checks">
+                <aside className="min-w-0 space-y-4 @4xl:sticky @4xl:top-4 @4xl:self-start" aria-label={t("Profile checks")}>
                   <AuditPanel audit={audit} profile={cv.profile} lang={lang} onGo={go} />
                 </aside>
               </div>

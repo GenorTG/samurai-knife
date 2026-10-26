@@ -258,7 +258,7 @@ function onLockout(account: Account | undefined, ip: string): void {
     if (sent.size >= LOCKOUT_MAIL_MAX) return; // fewer notices rather than an unbounded map
   }
   sent.set(account.id, now);
-  sendMail(account.email, loginLockoutMail(account.id, `${publicBaseUrl()}/forgot-password`));
+  sendMail(account.email, loginLockoutMail(account.id, `${publicBaseUrl()}/forgot-password`, account.language ?? "en"));
 }
 
 /** Records the login and, when the stored hash uses old parameters, the rehash (sessions follow the new fingerprint). */

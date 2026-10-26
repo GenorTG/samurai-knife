@@ -6,33 +6,36 @@ import { downloadText, formatInt } from "@/lib/format";
 import { runTextKit, TEXTKIT_INLINE_LIMIT, TEXTKIT_PREVIEW_LIMIT, type Operation, type TextKitInput } from "@/lib/textkit";
 import { runTextKitInWorker } from "@/lib/textkit-client";
 import { useAdaptive } from "@/lib/workers/use-offloaded";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const OPERATIONS: { value: Operation; label: string; group: string }[] = [
-  { value: "upper", label: "UPPERCASE", group: "Case" },
-  { value: "lower", label: "lowercase", group: "Case" },
-  { value: "title", label: "Title Case", group: "Case" },
-  { value: "sentence", label: "Sentence case", group: "Case" },
-  { value: "snake", label: "snake_case", group: "Case" },
-  { value: "kebab", label: "kebab-case", group: "Case" },
-  { value: "camel", label: "camelCase", group: "Case" },
-  { value: "slug", label: "slug (ascii, no accents)", group: "Case" },
-  { value: "dedupe", label: "Dedupe lines", group: "Lines" },
-  { value: "sort", label: "Sort lines A→Z", group: "Lines" },
-  { value: "reverse", label: "Reverse line order", group: "Lines" },
-  { value: "trim", label: "Trim + drop blanks", group: "Lines" },
-  { value: "number", label: "Number lines", group: "Lines" },
-  { value: "base64", label: "Encode Base64", group: "Encode" },
-  { value: "unbase64", label: "Decode Base64", group: "Encode" },
-  { value: "urlencode", label: "URL-encode", group: "Encode" },
-  { value: "urldecode", label: "URL-decode", group: "Encode" },
-  { value: "html", label: "Escape HTML entities", group: "Encode" },
-  { value: "unhtml", label: "Unescape HTML entities", group: "Encode" },
-  { value: "strip", label: "Strip all whitespace", group: "Encode" },
+  { value: "upper", label: "UPPERCASE", group: msg("Case") },
+  { value: "lower", label: "lowercase", group: msg("Case") },
+  { value: "title", label: msg("Title Case"), group: msg("Case") },
+  { value: "sentence", label: msg("Sentence case"), group: msg("Case") },
+  { value: "snake", label: "snake_case", group: msg("Case") },
+  { value: "kebab", label: "kebab-case", group: msg("Case") },
+  { value: "camel", label: "camelCase", group: msg("Case") },
+  { value: "slug", label: "slug (ascii, no accents)", group: msg("Case") },
+  { value: "dedupe", label: msg("Dedupe lines"), group: msg("Lines") },
+  { value: "sort", label: msg("Sort lines A→Z"), group: msg("Lines") },
+  { value: "reverse", label: msg("Reverse line order"), group: msg("Lines") },
+  { value: "trim", label: msg("Trim + drop blanks"), group: msg("Lines") },
+  { value: "number", label: msg("Number lines"), group: msg("Lines") },
+  { value: "base64", label: msg("Encode Base64"), group: msg("Encode") },
+  { value: "unbase64", label: msg("Decode Base64"), group: msg("Encode") },
+  { value: "urlencode", label: "URL-encode", group: msg("Encode") },
+  { value: "urldecode", label: "URL-decode", group: msg("Encode") },
+  { value: "html", label: msg("Escape HTML entities"), group: msg("Encode") },
+  { value: "unhtml", label: msg("Unescape HTML entities"), group: msg("Encode") },
+  { value: "strip", label: msg("Strip all whitespace"), group: msg("Encode") },
 ];
 
 const GROUPS = ["Case", "Lines", "Encode"];
 
 export default function TextKit() {
+  const { t } = useT();
   const [input, setInput] = useState("");
   const [op, setOp] = useState<Operation>("title");
   const [chain, setChain] = useState<Operation[]>([]);
@@ -48,11 +51,11 @@ export default function TextKit() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
-      <Panel title="Transform">
+      <Panel title={t("Transform")}>
         <div className="space-y-4">
           {GROUPS.map((group) => (
             <div key={group} className="space-y-1.5">
-              <p className="sk-label">{group}</p>
+              <p className="sk-label">{t(group)}</p>
               <div className="flex flex-wrap gap-1.5">
                 {OPERATIONS.filter((o) => o.group === group).map((operation) => (
                   <Button
@@ -61,14 +64,14 @@ export default function TextKit() {
                     variant={op === operation.value ? "primary" : "subtle"}
                     onClick={() => setOp(operation.value)}
                   >
-                    {operation.label}
+                    {t(operation.label)}
                   </Button>
                 ))}
               </div>
             </div>
           ))}
 
-          <Field label="Chain" hint="Applied before the picked transform, in order.">
+          <Field label={t("Chain")} hint={t("Applied before the picked transform, in order.")}>
             <Select
               value=""
               onChange={(e) => {
@@ -76,10 +79,10 @@ export default function TextKit() {
                 if (value) setChain((current) => [...current, value]);
               }}
             >
-              <option value="">Add a step…</option>
+              <option value="">{t("Add a step…")}</option>
               {OPERATIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.group} · {o.label}
+                  {t(o.group)} · {t(o.label)}
                 </option>
               ))}
             </Select>
@@ -92,7 +95,7 @@ export default function TextKit() {
                   autoComplete="off"
                   key={`${step}-${index}`}
                   type="button"
-                  title="Remove step"
+                  title={t("Remove step")}
                   onClick={() => setChain((current) => current.filter((_, i) => i !== index))}
                   className="rounded-md border border-line-strong/60 px-2 py-1 font-mono text-[11px] text-muted hover:border-danger/50 hover:text-danger"
                 >
@@ -100,7 +103,7 @@ export default function TextKit() {
                 </button>
               ))}
               <Button size="sm" variant="ghost" onClick={() => setChain([])}>
-                Reset chain
+                {t("Reset chain")}
               </Button>
             </div>
           ) : null}
@@ -109,17 +112,17 @@ export default function TextKit() {
 
       <div className="space-y-4">
         <Panel
-          title="Input"
+          title={t("Input")}
           right={
             <div className="flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => setInput("")}>Clear</Button>
+              <Button size="sm" variant="ghost" onClick={() => setInput("")}>{t("Clear")}</Button>
               <Button
                 size="sm"
                 variant="subtle"
                 disabled={!output || running}
                 onClick={() => setInput(output)}
               >
-                Output → input
+                {t("Output → input")}
               </Button>
             </div>
           }
@@ -129,12 +132,12 @@ export default function TextKit() {
             spellCheck={false}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={"Paste text, lines, lists…\nOne per line works best."}
+            placeholder={t("Paste text, lines, lists…\nOne per line works best.")}
           />
         </Panel>
 
         <Panel
-          title="Output"
+          title={t("Output")}
           right={
             <div className="flex gap-1.5">
               <CopyButton text={running ? "" : output} />
@@ -144,24 +147,24 @@ export default function TextKit() {
                 disabled={!output || running}
                 onClick={() => downloadText(output, "text.txt")}
               >
-                Save .txt
+                {t("Save .txt")}
               </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <WorkStatus running={running} elapsedMs={job.elapsedMs} label="Transforming text" cancelLabel="Cancel transform" onCancel={job.cancel} />
-            {job.status === "cancelled" ? <Notice>Transform cancelled. Edit the text or pick a transform to run again.</Notice> : null}
+            <WorkStatus running={running} elapsedMs={job.elapsedMs} label={t("Transforming text")} cancelLabel={t("Cancel transform")} onCancel={job.cancel} />
+            {job.status === "cancelled" ? <Notice>{t("Transform cancelled. Edit the text or pick a transform to run again.")}</Notice> : null}
             {job.status === "error" ? <Notice tone="error">{job.error}</Notice> : null}
             {error ? <Notice tone="error">{error}</Notice> : null}
             <StatGrid>
-              <Stat label="In · chars" value={stats.chars} />
-              <Stat label="In · words" value={stats.words} />
-              <Stat label="In · lines" value={stats.lines} />
-              <Stat label="Out · chars" value={stats.outChars} />
+              <Stat label={t("In · chars")} value={stats.chars} />
+              <Stat label={t("In · words")} value={stats.words} />
+              <Stat label={t("In · lines")} value={stats.lines} />
+              <Stat label={t("Out · chars")} value={stats.outChars} />
             </StatGrid>
-            <OutputBlock value={preview} rows={12} empty="Pick a transform." />
-            {output.length > TEXTKIT_PREVIEW_LIMIT ? <p className="text-xs text-faint">Showing the first {formatInt(TEXTKIT_PREVIEW_LIMIT)} of {formatInt(output.length)} characters. Copy and Save .txt use the full output.</p> : null}
+            <OutputBlock value={preview} rows={12} empty={t("Pick a transform.")} />
+            {output.length > TEXTKIT_PREVIEW_LIMIT ? <p className="text-xs text-faint">{t("Showing the first {textkitPreviewLimit} of {output} characters. Copy and Save .txt use the full output.", { textkitPreviewLimit: formatInt(TEXTKIT_PREVIEW_LIMIT), output: formatInt(output.length) })}</p> : null}
           </div>
         </Panel>
       </div>

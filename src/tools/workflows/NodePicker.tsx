@@ -5,17 +5,19 @@ import { useMemo, useState } from "react";
 import { cx } from "@/lib/format";
 import { NODE_CATALOG } from "@/lib/workflows/catalog/index";
 import type { NodeGroup, NodeMeta } from "@/lib/workflows/types";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 export const GROUP_LABELS: Record<NodeGroup, string> = {
-  trigger: "Triggers",
-  flow: "Flow",
-  data: "Data",
-  transform: "Transform",
-  files: "Files",
-  network: "Network and APIs",
-  utility: "Utility",
-  ai: "AI",
-  apps: "Apps",
+  trigger: msg("Triggers"),
+  flow: msg("Flow"),
+  data: msg("Data"),
+  transform: msg("Transform"),
+  files: msg("Files"),
+  network: msg("Network and APIs"),
+  utility: msg("Utility"),
+  ai: msg("AI"),
+  apps: msg("Apps"),
 };
 const ORDER: NodeGroup[] = ["trigger", "network", "data", "flow", "transform", "files", "utility", "ai", "apps"];
 
@@ -53,18 +55,19 @@ export function NodeIcon({ meta, size = "size-6" }: { meta: NodeMeta; size?: str
 }
 
 export function NodePicker({ onPick, onClose, triggersOnly = false, noTriggers = false }: { onPick: (meta: NodeMeta) => void; onClose: () => void; triggersOnly?: boolean; noTriggers?: boolean }) {
+  const { t } = useT();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const results = useMemo(() => nodeResults(query, { triggersOnly, noTriggers }), [query, triggersOnly, noTriggers]);
   const pick = (meta: NodeMeta | undefined) => meta && onPick(meta);
   return (
-    <div role="dialog" aria-modal="true" aria-label="Add a node" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div role="dialog" aria-modal="true" aria-label={t("Add a node")} className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="sk-pop flex max-h-[75vh] w-full max-w-lg flex-col overflow-hidden rounded-tool border border-line-strong bg-surface shadow-pop">
         <div className="border-b border-line p-3">
           <input
             autoFocus
-            aria-label="Search nodes"
-            placeholder={triggersOnly ? "Search triggers…" : "Search nodes: http, code, if, merge, schedule…"}
+            aria-label={t("Search nodes")}
+            placeholder={triggersOnly ? t("Search triggers…") : t("Search nodes: http, code, if, merge, schedule…")}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -86,11 +89,11 @@ export function NodePicker({ onPick, onClose, triggersOnly = false, noTriggers =
             className="sk-input h-10 w-full px-3 text-sm"
           />
         </div>
-        <ul role="listbox" aria-label="Nodes" className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <ul role="listbox" aria-label={t("Nodes")} className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {results.map(({ meta, header }, index) => {
             return (
               <li key={meta.type} role="presentation">
-                {header ? <p className="px-2.5 pt-3 pb-1 font-mono text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">{header}</p> : null}
+                {header ? <p className="px-2.5 pt-3 pb-1 font-mono text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">{t(header)}</p> : null}
                 <button
                   type="button"
                   role="option"
@@ -104,16 +107,16 @@ export function NodePicker({ onPick, onClose, triggersOnly = false, noTriggers =
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[13px] font-semibold text-ink">
-                      {meta.label}
-                      {meta.alias && meta.alias !== meta.label ? <span className="ml-1.5 font-normal text-faint">({meta.alias})</span> : null}
+                      {t(meta.label)}
+                      {meta.alias && meta.alias !== meta.label ? <span className="ml-1.5 font-normal text-faint">({t(meta.alias)})</span> : null}
                     </span>
-                    <span className="block text-[12px] leading-snug text-muted">{meta.description}</span>
+                    <span className="block text-[12px] leading-snug text-muted">{t(meta.description)}</span>
                   </span>
                 </button>
               </li>
             );
           })}
-          {!results.length ? <li className="px-3 py-6 text-center text-sm text-faint">No node matches. Any HTTP API works with HTTP Request.</li> : null}
+          {!results.length ? <li className="px-3 py-6 text-center text-sm text-faint">{t("No node matches. Any HTTP API works with HTTP Request.")}</li> : null}
         </ul>
       </div>
     </div>

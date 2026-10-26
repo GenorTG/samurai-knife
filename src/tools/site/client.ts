@@ -1,5 +1,6 @@
 import type { AuditRun } from "@/lib/site/audit/types";
 import type { SiteView } from "@/lib/site/store";
+import { cmsg } from "@/lib/i18n/client-locale";
 
 /** Typed browser helpers for /api/site/*. Errors carry the API's own `error` text. */
 
@@ -14,8 +15,9 @@ export class SiteApiError extends Error {
   }
 }
 
+/** The error's message, in the interface language when the catalogue knows it (browser only). */
 export function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return cmsg(error instanceof Error ? error.message : String(error));
 }
 
 export async function siteRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {

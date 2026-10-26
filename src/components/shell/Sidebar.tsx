@@ -9,6 +9,7 @@ import { cx } from "@/lib/format";
 import { NAV, NAV_FOOTER, type NavItem } from "@/lib/nav";
 import { searchTools, TOOLS, type ToolMeta, type ToolTab } from "@/lib/registry";
 import { useToolPreferences } from "@/lib/tool-preferences";
+import { useT } from "@/lib/i18n/react";
 
 /** One sidebar line: a whole tool, or (Craft apps, filter results) one tab of a suite. */
 interface Entry {
@@ -27,16 +28,17 @@ const ROW_IDLE = "text-muted hover:bg-raised hover:text-ink";
 const ROW_ACTIVE = "bg-accent/12 font-medium text-ink shadow-[inset_2px_0_0_var(--c-accent)]";
 
 function EntryLink({ entry, active, onNavigate }: { entry: Entry; active: boolean; onNavigate?: () => void }) {
+  const { t } = useT();
   return (
     <Link
       href={hrefOf(entry)}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
-      title={entry.tab && !entry.hint ? `${entry.label}: ${entry.tool.name}` : entry.tool.tagline}
+      title={entry.tab && !entry.hint ? `${t(entry.label)}: ${t(entry.tool.name)}` : t(entry.tool.tagline)}
       className={cx(ROW, active ? ROW_ACTIVE : ROW_IDLE)}
     >
-      <span className="min-w-0 truncate">{entry.label}</span>
-      {entry.hint ? <span className="ml-auto min-w-0 shrink truncate text-[11px] font-normal text-faint">{entry.hint}</span> : null}
+      <span className="min-w-0 truncate">{t(entry.label)}</span>
+      {entry.hint ? <span className="ml-auto min-w-0 shrink truncate text-[11px] font-normal text-faint">{t(entry.hint)}</span> : null}
       {entry.tool.beta && !entry.tab ? <BetaBadge compact /> : null}
     </Link>
   );
@@ -44,9 +46,10 @@ function EntryLink({ entry, active, onNavigate }: { entry: Entry; active: boolea
 
 /** The tabs of the tool you are in, nested under it (local navigation; never listed on their own). */
 function LocalTabs({ tool, activeTab, onNavigate }: { tool: ToolMeta; activeTab: string | null; onNavigate?: () => void }) {
+  const { t } = useT();
   if (!tool.tabs || tool.tabs.length < 2) return null;
   return (
-    <ul aria-label={`${tool.name} sections`} className="mt-0.5 mb-1 ml-3.5 space-y-px border-l border-line pl-2">
+    <ul aria-label={t("{name} sections", { name: t(tool.name) })} className="mt-0.5 mb-1 ml-3.5 space-y-px border-l border-line pl-2">
       {tool.tabs.map((tab) => {
         const active = tab.id === activeTab;
         return (
@@ -57,7 +60,7 @@ function LocalTabs({ tool, activeTab, onNavigate }: { tool: ToolMeta; activeTab:
               aria-current={active ? "page" : undefined}
               className={cx("flex min-h-7 items-center rounded-md px-2 text-[12.5px] transition-colors", active ? "bg-accent/10 text-ink" : "text-muted hover:bg-raised hover:text-ink")}
             >
-              <span className="truncate">{tab.label}</span>
+              <span className="truncate">{t(tab.label)}</span>
             </Link>
           </li>
         );
@@ -122,17 +125,18 @@ function entryOf(item: NavItem): Entry | null {
 }
 
 /** Filter: matching tools (name, tagline, keywords), then tabs whose name matches, as "Tool · Tab". */
-function filterEntries(query: string): Entry[] {
+function filterEntries(query: string, t: (text: string) => string): Entry[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const tools = searchTools(q).map((tool): Entry => ({ tool, label: tool.name }));
   const tabs = TOOLS.flatMap((tool) =>
-    (tool.tabs ?? []).filter((tab) => tool.tabs!.length > 1 && tab.label.toLowerCase().includes(q)).map((tab): Entry => ({ tool, tab, label: tab.label, hint: tool.name })),
+    (tool.tabs ?? []).filter((tab) => tool.tabs!.length > 1 && (tab.label.toLowerCase().includes(q) || t(tab.label).toLowerCase().includes(q))).map((tab): Entry => ({ tool, tab, label: tab.label, hint: tool.name })),
   );
   return [...tools, ...tabs].slice(0, 40);
 }
 
 function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null; onNavigate?: () => void }) {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const { favorites, ready } = useToolPreferences();
   const [collapsed, toggle] = useCollapsed();
@@ -144,7 +148,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
   const sections = useMemo(() => NAV.map((section) => ({ ...section, entries: section.items.map(entryOf).filter((entry): entry is Entry => entry !== null) })), []);
   const footer = useMemo(() => NAV_FOOTER.map(entryOf).filter((entry): entry is Entry => entry !== null), []);
   const pinned = ready ? favorites.map((slug) => bySlug.get(slug)).filter((tool): tool is ToolMeta => Boolean(tool)) : [];
-  const results = useMemo(() => filterEntries(query), [query]);
+  const results = useMemo(() => filterEntries(query, t), [query, t]);
   // A whole tool is active on any of its tabs; a tab entry (Craft apps, results) only on its own tab.
   const isActive = (entry: Entry) => entry.tool.slug === activeSlug && (entry.tab ? entry.tab.id === activeTab : true);
 
@@ -161,7 +165,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
   );
 
   return (
-    <nav ref={navRef} aria-label="Tools" className="flex min-h-full flex-col gap-3 px-3 py-3">
+    <nav ref={navRef} aria-label={t("Tools")} className="flex min-h-full flex-col gap-3 px-3 py-3">
       <input
         type="search"
         value={query}
@@ -172,8 +176,8 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
             setQuery("");
           }
         }}
-        aria-label="Filter tools"
-        placeholder="Filter tools…"
+        aria-label={t("Filter tools")}
+        placeholder={t("Filter tools…")}
         autoComplete="off"
         spellCheck={false}
         className="sk-input h-8 w-full px-2.5 text-[13px]"
@@ -185,15 +189,15 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
         aria-current={activeSlug === null ? "page" : undefined}
         className={cx(ROW, "font-medium", activeSlug === null ? ROW_ACTIVE : ROW_IDLE)}
       >
-        All tools
+        {t("All tools")}
       </Link>
 
       {query.trim() ? (
-        <section aria-label="Filtered tools">
+        <section aria-label={t("Filtered tools")}>
           {results.length ? (
             <ul className="space-y-px">{results.map((entry) => line(entry, `${entry.tool.slug}:${entry.tab?.id ?? ""}`))}</ul>
           ) : (
-            <p className="px-2.5 py-2 text-[13px] text-faint">No tool matches. Ctrl K searches everything.</p>
+            <p className="px-2.5 py-2 text-[13px] text-faint">{t("No tool matches. Ctrl K searches everything.")}</p>
           )}
         </section>
       ) : (
@@ -201,7 +205,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
           {pinned.length > 0 ? (
             <section aria-labelledby="sk-nav-pinned">
               <h2 id="sk-nav-pinned" className="mb-1 px-2.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
-                Favorites
+                {t("Favorites")}
               </h2>
               <ul className="space-y-px">{pinned.map((tool) => line({ tool, label: tool.name }, `fav:${tool.slug}`))}</ul>
             </section>
@@ -227,7 +231,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
                   <span style={categoryTint(section.icon)} className="inline-flex">
                     <CategoryIcon category={section.icon} size={15} />
                   </span>
-                  <span className="truncate">{section.label}</span>
+                  <span className="truncate">{t(section.label)}</span>
                   <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden className="ml-auto shrink-0 transition-transform group-open/section:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                     <path d="M6 4l4 4-4 4" />
                   </svg>
@@ -239,7 +243,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
         </>
       )}
 
-      <ul aria-label="Setup" className="mt-auto space-y-px border-t border-line pt-3">
+      <ul aria-label={t("Setup")} className="mt-auto space-y-px border-t border-line pt-3">
         {footer.map((entry) => line(entry, `setup:${entry.tool.slug}`))}
       </ul>
     </nav>
@@ -251,12 +255,13 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
  * current tool's tabs nested under it, and the setup pages in the footer.
  */
 export function Sidebar({ activeSlug, onNavigate }: { activeSlug: string | null; onNavigate?: () => void }) {
+  const { t } = useT();
   return (
     <Suspense
       fallback={
-        <nav aria-label="Tools" className="space-y-2 px-3 py-3">
+        <nav aria-label={t("Tools")} className="space-y-2 px-3 py-3">
           <Link href="/" className="flex min-h-8 items-center px-2.5 text-[13px] text-muted">
-            All tools
+            {t("All tools")}
           </Link>
         </nav>
       }

@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Provider secrets at rest (API keys, extra-header values) in accounts.json: AES-256-GCM with a server key in
@@ -28,7 +29,7 @@ export function readKey(dir: string): Buffer | null {
   const path = keyPath(dir);
   if (!existsSync(path)) return null;
   const text = readFileSync(path, "utf8").trim();
-  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(`${KEY_FILE} is malformed (expected 64 hex characters)`);
+  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(msgf("{keyFile} is malformed (expected 64 hex characters)", { keyFile: KEY_FILE }));
   return Buffer.from(text, "hex");
 }
 

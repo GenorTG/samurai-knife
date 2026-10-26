@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { cx } from "@/lib/format";
 import { useToolPreferences } from "@/lib/tool-preferences";
+import { useT } from "@/lib/i18n/react";
 
 export function FavoriteButton({
   toolName,
@@ -17,9 +18,10 @@ export function FavoriteButton({
   disabled?: boolean;
   className?: string;
 }) {
+  const { t } = useT();
   const label = favorite
-    ? `Remove ${toolName} from favorites`
-    : `Add ${toolName} to favorites`;
+    ? t("Remove {toolName} from favorites", { toolName })
+    : t("Add {toolName} to favorites", { toolName });
 
   return (
     <button
@@ -27,7 +29,7 @@ export function FavoriteButton({
       type="button"
       aria-label={label}
       aria-pressed={favorite}
-      title={`${label}. Saved only in this browser.`}
+      title={t("{label}. Saved only in this browser.", { label })}
       disabled={disabled}
       onClick={onToggle}
       className={cx(

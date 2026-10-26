@@ -1,5 +1,6 @@
 import { createServer } from "node:net";
 import { knifeHosts } from "@/lib/hosts";
+import { msgf } from "@/lib/i18n/msg";
 import type { SidecarState } from "./state";
 
 /**
@@ -104,7 +105,7 @@ export function appUrl(state: SidecarState | null): AppUrlChoice {
     return {
       url: `http://host.docker.internal:${appPort()}`,
       source: "derived",
-      warning: `The app listens on ${host} only, which a container cannot reach. Bind the app to this machine's Tailscale/LAN address (KNIFE_HOST) or set the app URL to an address the container can reach.`,
+      warning: msgf("The app listens on {host} only, which a container cannot reach. Bind the app to this machine's Tailscale/LAN address (KNIFE_HOST) or set the app URL to an address the container can reach.", { host }),
     };
   }
   return { url, source: "derived" };

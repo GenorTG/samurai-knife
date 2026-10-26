@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Brand } from "@/components/ToolShell";
 import { cx } from "@/lib/format";
 import { navSectionOf } from "@/lib/nav";
@@ -14,6 +15,7 @@ import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { emitShell, SHELL_EVENTS, setSidebarCollapsed, useSidebarCollapsed } from "./shell-store";
 import { ShortcutsHelp } from "./ShortcutsHelp";
+import { useT } from "@/lib/i18n/react";
 
 function isTyping(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -54,6 +56,8 @@ function IconButton({
  * keyboard layer (palette, help, chords, prev/next tool).
  */
 export function AppShell({ children, version }: { children: React.ReactNode; version: string }) {
+  const { t } = useT();
+  const { t: tr } = useT();
   const pathname = usePathname();
   const router = useRouter();
   const collapsed = useSidebarCollapsed();
@@ -134,26 +138,26 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
     <div className="flex min-h-dvh flex-col">
       <div className="sticky top-0 z-40 shrink-0">
         <header className="group/header sk-glass flex h-14 items-center gap-3 border-b border-line px-3 sm:px-4">
-          <IconButton label="Toggle sidebar (b)" onClick={() => emitShell(SHELL_EVENTS.sidebar)}>
+          <IconButton label={tr("Toggle sidebar (b)")} onClick={() => emitShell(SHELL_EVENTS.sidebar)}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </IconButton>
           <Brand />
-          <span title="Build version (MAJOR.MINOR.PATCH.BUILD)" className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint tabular-nums sm:inline">
+          <span title={tr("Build version (MAJOR.MINOR.PATCH.BUILD)")} className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint tabular-nums sm:inline">
             v{version}
           </span>
           {tool ? (
-            <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-2 text-sm md:flex">
+            <nav aria-label={tr("Breadcrumb")} className="hidden min-w-0 items-center gap-2 text-sm md:flex">
               <span aria-hidden className="text-line-strong">/</span>
               {/* The section, unless it is the tool itself (Craft apps). */}
               {(navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category)) !== tool.name ? (
                 <>
-                  <span className="text-faint">{navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category)}</span>
+                  <span className="text-faint">{t(navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category))}</span>
                   <span aria-hidden className="text-line-strong">/</span>
                 </>
               ) : null}
-              <span className="truncate font-medium text-ink">{tool.name}</span>
+              <span className="truncate font-medium text-ink">{t(tool.name)}</span>
             </nav>
           ) : null}
           <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -162,20 +166,21 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
               autoComplete="off"
               type="button"
               onClick={() => emitShell(SHELL_EVENTS.palette)}
-              aria-label="Search tools (Ctrl K)"
+              aria-label={tr("Search tools (Ctrl K)")}
               className="inline-flex h-9 min-w-9 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-sm text-muted shadow-xs transition-colors hover:border-line-strong hover:text-ink sm:w-64 sm:px-3"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
                 <circle cx="11" cy="11" r="6.5" />
                 <path d="M16 16l4.5 4.5" />
               </svg>
-              <span className="hidden flex-1 text-left sm:block">Jump to a tool…</span>
+              <span className="hidden flex-1 text-left sm:block">{tr("Jump to a tool…")}</span>
               <kbd className="sk-kbd hidden sm:block">Ctrl K</kbd>
             </button>
-            <IconButton label="Keyboard shortcuts (?)" onClick={() => emitShell(SHELL_EVENTS.help)} className="max-sm:hidden">
+            <IconButton label={tr("Keyboard shortcuts (?)")} onClick={() => emitShell(SHELL_EVENTS.help)} className="max-sm:hidden">
               <span aria-hidden className="font-mono text-sm">?</span>
             </IconButton>
             <AccountLink />
+            <LanguageSwitcher />
             <ThemeToggle />
           </div>
         </header>

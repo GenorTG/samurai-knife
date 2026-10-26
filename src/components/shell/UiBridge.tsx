@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { liveNote, offeredLiveTools, runExternalCall, type ApproveFn } from "@/lib/agent-client/external-call";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Lets agents outside the app (MCP clients) see where this tab is, bring it to a page (`knife_ui_show`) and run one of
@@ -66,6 +67,7 @@ interface ApprovalRequest {
 const liveSignature = (): string => `${offeredLiveTools().join(",")}|${liveNote()}`;
 
 export function UiBridge() {
+  const { t } = useT();
   const pathname = usePathname();
   const search = useSearchParams();
   const router = useRouter();
@@ -243,7 +245,7 @@ export function UiBridge() {
           )}
         >
           <p className="text-xs text-muted">
-            {approval.from} wants to run <code className="font-mono">{approval.tool}</code> in this tab
+            {t("{from} wants to run", { from: approval.from })}{" "} <code className="font-mono">{approval.tool}</code> {" "}{t("in this tab")}
           </p>
           <p className={cx("text-sm font-medium", approval.destructive ? "text-danger" : "text-ink")}>
             {approval.destructive ? "⚠ " : ""}
@@ -255,10 +257,10 @@ export function UiBridge() {
           ) : null}
           <div className="flex justify-end gap-2">
             <Button size="sm" onClick={() => approval.answer(false)}>
-              Deny
+              {t("Deny")}
             </Button>
             <Button size="sm" variant={approval.destructive ? "danger" : "primary"} onClick={() => approval.answer(true)}>
-              Allow
+              {t("Allow")}
             </Button>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { msg } from "@/lib/i18n/msg";
 /**
  * Sidecar service definitions: optional docker compose services the app installs, starts and stops on demand.
  * Metadata only (no I/O), so the browser can import it for labels. Adding a sidecar = one entry here plus the tool that
@@ -172,60 +173,60 @@ const artcraft = (id: string, name: string, kind: string, version: string, sha25
 export const ARTCRAFT_APPS: readonly SidecarSite[] = [
   // The app's wasm ships gzipped in parts (app/*.part-*, served byte for byte); app/photocraft-web.js and app/parts.txt
   // keep their names and revalidate.
-  artcraft("photocraft", "PhotoCraft", "image editor", "0.11.1", "f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f", 11567210, {
+  artcraft("photocraft", "PhotoCraft", msg("image editor"), "0.11.1", "f954c8096eeb5ab7ab20cd73445420097a4afde46f3d79547b3c9fe4f03d735f", 11567210, {
     immutable: [String.raw`\.part-[a-z]+$`, String.raw`photocraft-web-boot-[0-9a-f]{16}(?:_bg\.wasm|\.js)$`],
   }),
-  artcraft("vectorcraft", "VectorCraft", "vector illustration", "0.17.0", "71ddc4e71538ec1ce8467c21cb6ca47754042b222605a7de1851fbb1f3d6b37c", 29276998, {
+  artcraft("vectorcraft", "VectorCraft", msg("vector illustration"), "0.17.0", "71ddc4e71538ec1ce8467c21cb6ca47754042b222605a7de1851fbb1f3d6b37c", 29276998, {
     immutable: [HASHED_GLUE, String.raw`^/fonts/[0-9a-f]{16}/`],
   }),
   // index.html loads the glue and wasm with `?v=<build hash>`, but the file names stay the same in every release: an
   // update must not meet a year-long immutable copy of the old file, so everything revalidates (ETag, 304).
-  artcraft("filmcraft", "FilmCraft", "video editor", "0.13.0", "c632afdcafc0cf185c01063471cf4a78eecb2d526787f3eb821047786c6482d5", 13517113, {
+  artcraft("filmcraft", "FilmCraft", msg("video editor"), "0.13.0", "c632afdcafc0cf185c01063471cf4a78eecb2d526787f3eb821047786c6482d5", 13517113, {
     immutable: [],
   }),
   // Same file names in every release: nothing is immutable. Library in OPFS (IndexedDB fallback), render workers.
-  artcraft("lightcraft", "LightCraft", "photo library and raw developer", "0.10.0", "6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794", 22381646, {
+  artcraft("lightcraft", "LightCraft", msg("photo library and raw developer"), "0.10.0", "6f787f9cd28c0092672e06077c7b7f5b1c9c72f709c570b317fef99a1c0cd794", 22381646, {
     immutable: [],
     sandbox: [...ARTCRAFT_SANDBOX, "allow-modals"],
     webgpu: false,
-    note: "Experimental: the library lives in this browser's storage for the Craft apps address; keep your originals elsewhere and use File > Back Up Library.",
+    note: msg("Experimental: the library lives in this browser's storage for the Craft apps address; keep your originals elsewhere and use File > Back Up Library."),
   }),
-  artcraft("effectcraft", "EffectCraft", "motion graphics and effects", "0.17.0", "95f93e7a8d7907616e219152272b7e0c1791030309be02eb9214ae4258fec783", 19453875, {
+  artcraft("effectcraft", "EffectCraft", msg("motion graphics and effects"), "0.17.0", "95f93e7a8d7907616e219152272b7e0c1791030309be02eb9214ae4258fec783", 19453875, {
     immutable: [],
-    note: "The largest app (about 63 MB of WebAssembly, 17 MB to download): the first start takes a while.",
+    note: msg("The largest app (about 63 MB of WebAssembly, 17 MB to download): the first start takes a while."),
   }),
-  artcraft("designcraft", "DesignCraft", "page layout", "0.10.0", "88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4", 19242619),
-  artcraft("pdfcraft", "PdfCraft", "PDF workbench", "0.10.1", "58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9", 14507703),
+  artcraft("designcraft", "DesignCraft", msg("page layout"), "0.10.0", "88358c3f4bc169001bb7b4f8022a4a148ecae7534c17f2d8867c1bfaeab618a4", 19242619),
+  artcraft("pdfcraft", "PdfCraft", msg("PDF workbench"), "0.10.1", "58a3e92a7bb61ed62d09376c96e71d65d0104495e629594fe52678d7579e68b9", 14507703),
   // The web build has no file system ("native file dialogs aren't wired up yet"), so its README asks for no
   // allow-downloads; live sessions (ws:// to a desktop host) are blocked by the craft CSP's connect-src.
-  artcraft("figcraft", "FigCraft", "interface design", "0.8.0", "75fd4821e0ef8793c82bc56d530764f8244a137e55745f49a745838028c9bb51", 9794330, {
+  artcraft("figcraft", "FigCraft", msg("interface design"), "0.8.0", "75fd4821e0ef8793c82bc56d530764f8244a137e55745f49a745838028c9bb51", 9794330, {
     sandbox: ["allow-scripts", "allow-same-origin", "allow-popups"],
-    note: "The web build starts with one new document and has no files: work you want to keep needs the desktop app.",
+    note: msg("The web build starts with one new document and has no files: work you want to keep needs the desktop app."),
   }),
-  artcraft("wordcraft", "WordCraft", "word processor", "0.9.0", "710d2f4dd95ac6234a043d15d8e82232d20330199dbdbc94159324eeb02631c1", 16450184),
+  artcraft("wordcraft", "WordCraft", msg("word processor"), "0.9.0", "710d2f4dd95ac6234a043d15d8e82232d20330199dbdbc94159324eeb02631c1", 16450184),
   // WebAudio only (no SharedArrayBuffer, no recording, so no microphone); `autoplay` lets the first click start sound.
-  artcraft("soundcraft", "SoundCraft", "audio workstation", "0.10.0", "834949ad6ef7df7c45fd28632b6eb94768c52134581b3778275a10a5451a6206", 5947630, {
+  artcraft("soundcraft", "SoundCraft", msg("audio workstation"), "0.10.0", "834949ad6ef7df7c45fd28632b6eb94768c52134581b3778275a10a5451a6206", 5947630, {
     sandbox: ["allow-scripts", "allow-same-origin"],
     allow: ["fullscreen", "autoplay", "clipboard-read", "clipboard-write"],
-    note: "The web build opens a synthesised demo session (no recording, no files); click once into the app before you expect sound.",
+    note: msg("The web build opens a synthesised demo session (no recording, no files); click once into the app before you expect sound."),
   }),
   // Not the newest: the 0.8.0 and 0.9.0 web builds panic at startup ("no pids on this platform", std::process on
   // wasm32; https://github.com/storytold/deckcraft/issues/959, open on 2026-10-21). 0.7.0 starts; same hosting notes.
-  artcraft("deckcraft", "DeckCraft", "presentations", "0.7.0", "4ab91994048c096fa356b7246c31098474d978ecd572e5b252dd825a287d1c40", 9385879, {
+  artcraft("deckcraft", "DeckCraft", msg("presentations"), "0.7.0", "4ab91994048c096fa356b7246c31098474d978ecd572e5b252dd825a287d1c40", 9385879, {
     knownBad: ["0.8.0", "0.9.0"],
-    note: "Starts with the sample deck every time and keeps no preferences: save your presentation before you close the tab.",
+    note: msg("Starts with the sample deck every time and keeps no preferences: save your presentation before you close the tab."),
   }),
-  artcraft("cadcraft", "CADCraft", "CAD", "0.10.0", "d86268e964ca91402439f4518d25057463db988d0145a48d3c65213957a1ced2", 8670115),
-  artcraft("gridcraft", "GridCraft", "spreadsheet", "0.9.0", "f2327c09f176258143f7a5a78e4b40ae439be52e7cceca50fca1176dddcd11d8", 7128155),
+  artcraft("cadcraft", "CADCraft", msg("CAD"), "0.10.0", "d86268e964ca91402439f4518d25057463db988d0145a48d3c65213957a1ced2", 8670115),
+  artcraft("gridcraft", "GridCraft", msg("spreadsheet"), "0.9.0", "f2327c09f176258143f7a5a78e4b40ae439be52e7cceca50fca1176dddcd11d8", 7128155),
 ];
 
 export const SIDECARS: readonly SidecarDefinition[] = [
   {
     id: "office",
     name: "Office editor (Euro-Office Document Server)",
-    shortName: "office editor",
+    shortName: msg("office editor"),
     description:
-      "Edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in the browser. Euro-Office is the AGPL fork of the ONLYOFFICE Document Server; it runs as one container on this machine and reads/writes documents only through this app.",
+      msg("Edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in the browser. Euro-Office is the AGPL fork of the ONLYOFFICE Document Server; it runs as one container on this machine and reads/writes documents only through this app."),
     // `latest` and `v9.3.5` share the same digest on 2026-10-13 (ghcr.io registry API). The docs show `:9.3.1` without the
     // `v`, but the published release tags carry it.
     image: "ghcr.io/euro-office/documentserver:v9.3.5",
@@ -278,9 +279,9 @@ export const SIDECARS: readonly SidecarDefinition[] = [
   {
     id: "learn-db",
     name: "Course database (PostgreSQL + PostGIS)",
-    shortName: "course database",
+    shortName: msg("course database"),
     description:
-      "A private PostgreSQL 16 server with PostGIS 3.4 for the Database course. The app fills it with a small generated practice dataset and runs your lesson queries as a low-privilege learner role inside a transaction that is always rolled back, so nothing you run is kept.",
+      msg("A private PostgreSQL 16 server with PostGIS 3.4 for the Database course. The app fills it with a small generated practice dataset and runs your lesson queries as a low-privilege learner role inside a transaction that is always rolled back, so nothing you run is kept."),
     // Official PostGIS image (Debian, PostgreSQL 16 + PostGIS 3.4), pinned by tag.
     image: "postgis/postgis:16-3.4",
     serviceName: "postgres",
@@ -316,9 +317,9 @@ export const SIDECARS: readonly SidecarDefinition[] = [
   {
     id: "craft",
     name: "Craft apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, PdfCraft, FigCraft, WordCraft, SoundCraft, DeckCraft, CADCraft, GridCraft)",
-    shortName: "Craft apps",
+    shortName: msg("Craft apps"),
     description:
-      "Thirteen open-source creative and office apps by the ArtCraft team and contributors (image, vector, video, photo library, motion graphics, page layout, PDF, interface design, word processor, audio workstation, presentations, CAD, spreadsheet) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads. This site serves their official, unmodified web builds and is not affiliated with or endorsed by the ArtCraft team.",
+      msg("Thirteen open-source creative and office apps by the ArtCraft team and contributors (image, vector, video, photo library, motion graphics, page layout, PDF, interface design, word processor, audio workstation, presentations, CAD, spreadsheet) that run entirely in your browser as WebAssembly. A small nginx container on this machine serves their files on an address of its own; files you open never leave your browser, Save and Export are downloads. This site serves their official, unmodified web builds and is not affiliated with or endorsed by the ArtCraft team."),
     // nginx's unprivileged image (uid 101, port 8080), pinned by digest (the multi-arch index of 1.31.7-alpine, 2026-10-19).
     image: "nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e",
     serviceName: "nginx",

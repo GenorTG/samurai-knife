@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, CopyButton, Field, Notice, Panel, Select, Stat, StatGrid, TextInput } from "@/components/ui";
 import { cx, downloadBlob } from "@/lib/format";
 import QRCode from "qrcode";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * QR code generator. SVG for the screen (scales, prints, pastes into docs),
@@ -22,11 +24,11 @@ function svgToDataUri(svg: string): string {
 
 async function dataUriToBlob(dataUri: string): Promise<Blob> {
   const comma = dataUri.indexOf(",");
-  if (comma === -1) throw new Error("Malformed data URI.");
+  if (comma === -1) throw new Error(msg("Malformed data URI."));
   const head = dataUri.slice(0, comma);
   const body = dataUri.slice(comma + 1);
   const match = /^data:([^;]*);base64$/i.exec(head);
-  if (!match) throw new Error("Only base64 data URIs can be downloaded.");
+  if (!match) throw new Error(msg("Only base64 data URIs can be downloaded."));
   const binary = atob(body);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -34,6 +36,7 @@ async function dataUriToBlob(dataUri: string): Promise<Blob> {
 }
 
 export default function QrTool() {
+  const { t } = useT();
   const [text, setText] = useState("https://github.com/GenorTG/samurai-knife");
   const [sizeText, setSizeText] = useState("512");
   const [marginText, setMarginText] = useState("2");
@@ -72,9 +75,9 @@ export default function QrTool() {
     } catch (exc) {
       setSvg("");
       setPngUri("");
-      setError(exc instanceof Error ? exc.message : "The QR library rejected this text.");
+      setError(exc instanceof Error ? exc.message : t("The QR library rejected this text."));
     }
-  }, [options, text]);
+  }, [t, options, text]);
 
   useEffect(() => {
     const timer = setTimeout(generate, 160);
@@ -85,20 +88,20 @@ export default function QrTool() {
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-      <Panel title="Content">
+      <Panel title={t("Content")}>
         <div className="space-y-3">
-          <Field label="Text or URL">
+          <Field label={t("Text or URL")}>
             <TextInput
               value={text}
               spellCheck={false}
               onChange={(e) => setText(e.target.value)}
-              placeholder="https://…"
+              placeholder={t("https://…")}
               className="font-mono"
             />
           </Field>
 
           <div className="flex flex-wrap gap-2">
-            <Field label="Size" className="w-20">
+            <Field label={t("Size")} className="w-20">
               <TextInput
                 inputMode="numeric"
                 value={sizeText}
@@ -106,7 +109,7 @@ export default function QrTool() {
                 onBlur={() => setSizeText(String(Math.min(MAX_SIZE, Math.max(MIN_SIZE, size))))}
               />
             </Field>
-            <Field label="Quiet zone" className="w-24">
+            <Field label={t("Quiet zone")} className="w-24">
               <TextInput
                 inputMode="numeric"
                 value={marginText}
@@ -114,11 +117,11 @@ export default function QrTool() {
                 onBlur={() => setMarginText(String(Math.min(16, Math.max(0, margin))))}
               />
             </Field>
-            <Field label="Error correction" className="max-w-64 min-w-48 flex-1">
+            <Field label={t("Error correction")} className="max-w-64 min-w-48 flex-1">
               <Select value={level} onChange={(e) => setLevel(e.target.value as typeof level)}>
                 {LEVELS.map((value) => (
                   <option key={value} value={value}>
-                    {value} — {value === "L" ? "7%" : value === "M" ? "15%" : value === "Q" ? "25%" : "30%"} recoverable
+                    {value} — {value === "L" ? "7%" : value === "M" ? "15%" : value === "Q" ? "25%" : "30%"} {" "}{t("recoverable")}
                   </option>
                 ))}
               </Select>
@@ -127,7 +130,7 @@ export default function QrTool() {
 
           {tooLong ? (
             <Notice tone="error">
-              {text.length} characters is past what a QR code can hold at this error level. Shorten it, or drop the level to L.
+              {t("{text} characters is past what a QR code can hold at this error level. Shorten it, or drop the level to L.", { text: text.length })}
             </Notice>
           ) : null}
           {error ? <Notice tone="error">{error}</Notice> : null}
@@ -135,10 +138,10 @@ export default function QrTool() {
       </Panel>
 
       <Panel
-        title="Preview"
+        title={t("Preview")}
         right={
           <span className="font-mono text-[11px] text-faint">
-            {svg ? `${options.width}px · ${level}` : "idle"}
+            {svg ? `${options.width}px · ${level}` : t("idle")}
           </span>
         }
       >
@@ -158,12 +161,12 @@ export default function QrTool() {
             </div>
           ) : (
             <div className="grid h-48 place-items-center text-sm text-faint">
-              Type something above — the code renders here.
+              {t("Type something above — the code renders here.")}
             </div>
           )}
 
           <div className="flex flex-wrap gap-1.5">
-            <CopyButton text={svgToDataUri(svg)} label="Copy SVG URI" />
+            <CopyButton text={svgToDataUri(svg)} label={t("Copy SVG URI")} />
             <Button
               size="sm"
               variant="subtle"
@@ -176,17 +179,17 @@ export default function QrTool() {
                 }
               }}
             >
-              Download PNG
+              {t("Download PNG")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => { setText(""); setSvg(""); setPngUri(""); }}>
-              Clear
+              {t("Clear")}
             </Button>
           </div>
 
           <StatGrid>
-            <Stat label="Characters" value={text.length} />
-            <Stat label="SVG bytes" value={svg.length} />
-            <Stat label="PNG size" value={`${Math.round(pngUri.length * 0.75)} B`} />
+            <Stat label={t("Characters")} value={text.length} />
+            <Stat label={t("SVG bytes")} value={svg.length} />
+            <Stat label={t("PNG size")} value={`${Math.round(pngUri.length * 0.75)} B`} />
           </StatGrid>
         </div>
       </Panel>

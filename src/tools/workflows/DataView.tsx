@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge, SegmentedControl } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
 import type { Item } from "@/lib/workflows/types";
+import { useT } from "@/lib/i18n/react";
 
 const MAX_ROWS = 100;
 
@@ -36,9 +37,10 @@ export function DataView({
   onPick?: (path: string) => void;
   label: string;
 }) {
+  const { t, tn } = useT();
   const [mode, setMode] = useState<"table" | "json">("table");
   const count = total ?? items.length;
-  if (!items.length) return <p className="px-1 py-6 text-center text-[13px] text-faint">{count ? `${count} items (data not kept for this run)` : empty}</p>;
+  if (!items.length) return <p className="px-1 py-6 text-center text-[13px] text-faint">{count ? tn("{n} item (data not kept for this run)", "{n} items (data not kept for this run)", count) : empty}</p>;
   const shown = items.slice(0, MAX_ROWS);
   const columns: string[] = [];
   for (const item of shown) for (const key of Object.keys(item.json)) if (!columns.includes(key) && columns.length < 40) columns.push(key);
@@ -47,16 +49,16 @@ export function DataView({
     <div className="space-y-2" aria-label={label}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted">
-          {count} item{count === 1 ? "" : "s"}
-          {count > shown.length ? ` (first ${shown.length} shown)` : ""}
+          {tn("{n} item", "{n} items", count)}
+          {count > shown.length ? t(" (first {n} shown)", { n: shown.length }) : ""}
         </span>
-        <SegmentedControl label={`${label} view`} value={mode} onChange={setMode} options={[{ value: "table", label: "Table" }, { value: "json", label: "JSON" }]} />
+        <SegmentedControl label={t("{label} view", { label })} value={mode} onChange={setMode} options={[{ value: "table", label: "Table" }, { value: "json", label: "JSON" }]} />
       </div>
       {files.length ? (
         <div className="flex flex-wrap gap-1.5">
           {files.slice(0, 12).map(([key, ref], index) => (
             <Badge key={`${key}-${index}`} tone="accent" title={ref.mimeType}>
-              {key}: {ref.fileName ?? "file"} · {formatBytes(ref.fileSize)}
+              {key}: {ref.fileName ?? t("file")} · {formatBytes(ref.fileSize)}
             </Badge>
           ))}
         </div>
@@ -72,7 +74,7 @@ export function DataView({
                 {columns.map((column) => (
                   <th key={column} className="border-b border-line px-2 py-1.5 font-semibold text-ink">
                     {onPick ? (
-                      <button type="button" className="cursor-pointer rounded px-1 font-mono hover:bg-accent/15" title={`Insert {{ ${fieldPath(column)} }} into the field you last edited`} onClick={() => onPick(fieldPath(column))}>
+                      <button type="button" className="cursor-pointer rounded px-1 font-mono hover:bg-accent/15" title={t("Insert {{ {column} }} into the field you last edited", { column: fieldPath(column) })} onClick={() => onPick(fieldPath(column))}>
                         {column}
                       </button>
                     ) : (
@@ -95,7 +97,7 @@ export function DataView({
               ))}
             </tbody>
           </table>
-          {!columns.length ? <p className="px-3 py-3 text-[12px] text-faint">Items without fields.</p> : null}
+          {!columns.length ? <p className="px-3 py-3 text-[12px] text-faint">{t("Items without fields.")}</p> : null}
         </div>
       )}
     </div>

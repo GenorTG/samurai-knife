@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { sidecarLog } from "@/lib/logs/server";
 import type { PullProgress } from "./pull-progress";
 import { ensureReaper, install, remove, SidecarError, start, stop, update, type InstallOptions, type OpKind, type OpReporter } from "./manager";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Server-side op store: long sidecar ops run in the background and the browser polls `GET /api/services/ops/<id>`
@@ -77,7 +78,7 @@ export function startOp(serviceId: string, request: OpRequest): OpView {
   const existing = runningOp(serviceId);
   if (existing) {
     if (existing.kind === request.kind) return existing;
-    throw new SidecarError(`${existing.kind} is still running on ${serviceId}`, 409);
+    throw new SidecarError(msgf("{kind} is still running on {serviceId}", { kind: existing.kind, serviceId }), 409);
   }
   const op: OpRecord = {
     opId: `op_${Date.now().toString(36)}${randomBytes(4).toString("hex")}`,

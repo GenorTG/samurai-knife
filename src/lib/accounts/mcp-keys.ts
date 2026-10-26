@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { accountUsable } from "@/lib/accounts/session";
 import { ensureDataDir, getAccount, writePrivateFile, type Account } from "@/lib/accounts/store";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Per-account MCP credentials (docs/MCP.md "Connecting"). An agent outside the browser sends its username and one of that
@@ -100,9 +101,9 @@ export function listMcpKeys(accountId: string): McpKeyView[] {
 /** Creates a key; the raw key is in the return value only (show it once). */
 export function createMcpKey(accountId: string, name: string): { key: string; view: McpKeyView } {
   const label = name.trim();
-  if (!label || label.length > 60) throw new McpKeyError("Give the key a name (1-60 characters).", 400);
+  if (!label || label.length > 60) throw new McpKeyError(msg("Give the key a name (1-60 characters)."), 400);
   if (listMcpKeys(accountId).length >= MAX_KEYS_PER_ACCOUNT) {
-    throw new McpKeyError(`At most ${MAX_KEYS_PER_ACCOUNT} MCP keys per account: revoke one first.`, 409);
+    throw new McpKeyError(msgf("At most {maxKeysPerAccount} MCP keys per account: revoke one first.", { maxKeysPerAccount: MAX_KEYS_PER_ACCOUNT }), 409);
   }
   const key = `${MCP_KEY_PREFIX}${randomBytes(32).toString("base64url")}`;
   const record: McpKeyRecord = {

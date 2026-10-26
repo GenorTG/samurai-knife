@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { controlElement } from "./dom-bridge";
 import { runtime, type PendingApproval, type PendingWait } from "./runtime-store";
+import { msg } from "@/lib/i18n/msg";
 
 export type { PendingApproval, PendingWait };
 
@@ -28,10 +29,10 @@ export type TrustMode = "strict" | "standard" | "destructive" | "free";
 export type ApprovalDecision = "allow" | "allow_run" | "deny";
 
 export const TRUST_MODES: { id: TrustMode; label: string; hint: string }[] = [
-  { id: "strict", label: "All", hint: "Asks before every action, even typing into a field." },
-  { id: "standard", label: "Most", hint: "Asks before running, opening a page or uploading; typing is free." },
-  { id: "destructive", label: "Risky", hint: "Asks before deleting, overwriting or leaving unsaved input." },
-  { id: "free", label: "None", hint: "Never asks: it acts on its own." },
+  { id: "strict", label: msg("All"), hint: msg("Asks before every action, even typing into a field.") },
+  { id: "standard", label: msg("Most"), hint: msg("Asks before running, opening a page or uploading; typing is free.") },
+  { id: "destructive", label: msg("Risky"), hint: msg("Asks before deleting, overwriting or leaving unsaved input.") },
+  { id: "free", label: msg("None"), hint: msg("Never asks: it acts on its own.") },
 ];
 
 export interface WaitResult {

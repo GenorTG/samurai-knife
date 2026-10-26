@@ -8,6 +8,7 @@ import { categoryLabel, searchTools, TOOLS, type ToolMeta } from "@/lib/registry
 import { useToolPreferences } from "@/lib/tool-preferences";
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { SHELL_EVENTS } from "./shell-store";
+import { useT } from "@/lib/i18n/react";
 
 interface Entry {
   tool: ToolMeta;
@@ -16,6 +17,7 @@ interface Entry {
 
 /** ⌘K / Ctrl+K / `/` palette: fuzzy-jump to any tool from anywhere. */
 export function CommandPalette() {
+  const { t: tr, tn } = useT();
   const router = useRouter();
   const pathname = usePathname();
   // The shell is never remounted, so plain `open` state would survive every client navigation (assistant open_tool,
@@ -111,7 +113,7 @@ export function CommandPalette() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Jump to a tool"
+        aria-label={tr("Jump to a tool")}
         className="sk-pop sk-glass w-full max-w-2xl overflow-hidden rounded-2xl border border-line-strong shadow-pop"
         style={{ transformOrigin: "top center" }}
       >
@@ -155,8 +157,8 @@ export function CommandPalette() {
             }}
             spellCheck={false}
             autoComplete="off"
-            placeholder="Jump to a tool — resize, pdf, json, regex…"
-            aria-label="Search tools"
+            placeholder={tr("Jump to a tool — resize, pdf, json, regex…")}
+            aria-label={tr("Search tools")}
             className="h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-faint"
           />
           <kbd className="sk-kbd">esc</kbd>
@@ -165,12 +167,12 @@ export function CommandPalette() {
           ref={listRef}
           id="sk-palette-list"
           role="listbox"
-          aria-label="Tools"
+          aria-label={tr("Tools")}
           className="max-h-[min(26rem,60vh)] overflow-y-auto p-2"
         >
           {entries.length === 0 ? (
             <li className="px-3 py-6 text-center text-sm text-muted">
-              No tool matches “{query}”.
+              {tr("No tool matches “{query}”.", { query })}
             </li>
           ) : (
             entries.map(({ tool, tag }, i) => (
@@ -191,16 +193,16 @@ export function CommandPalette() {
                   <CategoryIcon category={tool.category} size={18} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink">{tool.name}</span>
-                  <span className="block truncate text-xs text-muted">{tool.tagline}</span>
+                  <span className="block truncate text-sm font-medium text-ink">{tr(tool.name)}</span>
+                  <span className="block truncate text-xs text-muted">{tr(tool.tagline)}</span>
                 </span>
                 {tag ? (
                   <span className="shrink-0 font-mono text-[10px] tracking-wider text-faint uppercase">
-                    {tag === "recent" ? "recent" : "★"}
+                    {tag === "recent" ? tr("recent") : "★"}
                   </span>
                 ) : (
                   <span className="hidden shrink-0 font-mono text-[10px] tracking-wider text-faint uppercase sm:block">
-                    {categoryLabel(tool.category)}
+                    {tr(categoryLabel(tool.category))}
                   </span>
                 )}
               </li>
@@ -221,16 +223,16 @@ export function CommandPalette() {
             >
               <span aria-hidden className="size-2 shrink-0 rounded-full bg-ai" />
               <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                Ask the assistant: <span className="text-muted">“{q}”</span>
+                {tr("Ask the assistant:")}{" "} <span className="text-muted">“{q}”</span>
               </span>
               <kbd className="sk-kbd shrink-0">Ctrl ↵</kbd>
             </li>
           ) : null}
         </ul>
         <div className="flex items-center gap-4 border-t border-line px-4 py-2 text-[11px] text-faint">
-          <span><kbd className="sk-kbd">↑</kbd> <kbd className="sk-kbd">↓</kbd> move</span>
-          <span><kbd className="sk-kbd">↵</kbd> open</span>
-          <span className="ml-auto">{entries.length} {entries.length === 1 ? "tool" : "tools"}</span>
+          <span><kbd className="sk-kbd">↑</kbd> <kbd className="sk-kbd">↓</kbd> {" "}{tr("move")}</span>
+          <span><kbd className="sk-kbd">↵</kbd> {" "}{tr("open")}</span>
+          <span className="ml-auto">{tn("{n} tool", "{n} tools", entries.length)}</span>
         </div>
       </div>
     </div>

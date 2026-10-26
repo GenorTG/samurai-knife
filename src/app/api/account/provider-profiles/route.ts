@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { authMode } from "@/lib/accounts/mode";
 import { providerFromInput, providerInputSchema } from "@/lib/accounts/provider-input";
 import { activateProviderProfile, deleteProviderProfile, getAccount, PROFILE_ID, ProfileError, providerProfileConfig, saveProviderProfile, toPublicAccount } from "@/lib/accounts/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
     switch (body.action) {
       case "create": {
         const from = body.from ? (providerProfileConfig(account, body.from) ?? null) : null;
-        if (body.from && !from) return jsonError("Unknown profile.", 404);
+        if (body.from && !from) return jsonError(msg("Unknown profile."), 404);
         const result = await providerFromInput(auth.account, body.provider, from);
         if ("response" in result) return result.response;
         const saved = saveProviderProfile(account.id, { name: body.name, config: result.config, activate: body.activate });
@@ -54,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       case "update": {
         const current = providerProfileConfig(account, body.id);
-        if (!current) return jsonError("Unknown profile.", 404);
+        if (!current) return jsonError(msg("Unknown profile."), 404);
         const result = await providerFromInput(auth.account, body.provider, current);
         if ("response" in result) return result.response;
         const saved = saveProviderProfile(account.id, { profileId: body.id, name: body.name, config: result.config });
@@ -62,7 +63,7 @@ export async function POST(request: Request): Promise<Response> {
       }
       case "duplicate": {
         const current = providerProfileConfig(account, body.id);
-        if (!current) return jsonError("Unknown profile.", 404);
+        if (!current) return jsonError(msg("Unknown profile."), 404);
         const saved = saveProviderProfile(account.id, { name: body.name, config: current });
         return json({ account: toPublicAccount(saved.account, authMode()), profileId: saved.profileId }, 201);
       }

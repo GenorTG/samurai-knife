@@ -1,5 +1,6 @@
 import { stringify } from "yaml";
 import { composeProject, type SidecarDefinition } from "./definitions";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Pure compose rendering: definition + install choices -> compose.yaml text. No I/O, unit-tested
@@ -94,9 +95,9 @@ export function renderCompose(def: SidecarDefinition, choices: ComposeChoices): 
 export function securityOptions(def: SidecarDefinition): Record<string, unknown> {
   const capAdd = [...new Set(def.security.capAdd.map((cap) => cap.trim().toUpperCase().replace(/^CAP_/, "")))];
   const bad = capAdd.find((cap) => !CAPABILITY.test(cap) || cap === "ALL");
-  if (bad !== undefined) throw new ComposeError(`${def.id}: invalid capability "${bad}"`);
+  if (bad !== undefined) throw new ComposeError(msgf("{id}: invalid capability \"{bad}\"", { id: def.id, bad }));
   const pids = def.security.pidsLimit ?? DEFAULT_PIDS_LIMIT;
-  if (!Number.isInteger(pids) || pids < 16) throw new ComposeError(`${def.id}: pids limit must be an integer >= 16`);
+  if (!Number.isInteger(pids) || pids < 16) throw new ComposeError(msgf("{id}: pids limit must be an integer >= 16", { id: def.id }));
   return {
     cap_drop: ["ALL"],
     ...(capAdd.length ? { cap_add: capAdd.sort() } : {}),
@@ -107,7 +108,7 @@ export function securityOptions(def: SidecarDefinition): Record<string, unknown>
 
 /** read_only / tmpfs / entrypoint / healthcheck from the definition's `container`. */
 export function containerOptions(def: SidecarDefinition): Record<string, unknown> {
-  if (def.assets && def.sites) throw new ComposeError(`${def.id}: assets and sites both use the assets folder`);
+  if (def.assets && def.sites) throw new ComposeError(msgf("{id}: assets and sites both use the assets folder", { id: def.id }));
   const c = def.container;
   if (!c) return {};
   return {

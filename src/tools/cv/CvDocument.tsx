@@ -5,6 +5,7 @@ import { buildCvView, type CvView } from "@/lib/cv/render/view";
 import { CV_LAYOUT_INFO, type CvLayout, type PhotoShape } from "@/lib/cv/render/layout";
 import type { CvLang, Profile } from "@/lib/cv/schema";
 import "./cv-document.css";
+import { useT } from "@/lib/i18n/react";
 
 
 const EMPTY_NOTE: Record<CvLang, string> = {
@@ -263,8 +264,9 @@ function Consent({ cv }: { cv: CvView }) {
 }
 
 function Photo({ src, name }: { src: string; name: string }) {
+  const { t } = useT();
   // eslint-disable-next-line @next/next/no-img-element -- private, authenticated image that must print as is
-  return <img className="cv-photo" src={src} alt={name ? `Photo of ${name}` : "Photo"} />;
+  return <img className="cv-photo" src={src} alt={name ? t("Photo of {name}", { name }) : t("Photo")} />;
 }
 
 /** One flow: masthead, then every section in reading order (ATS, Modern, Elegant). */

@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { LegalDocument } from "@/components/legal/LegalDocument";
+import { getT } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Terms of Service" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Terms of Service") };
+}
 export const dynamic = "force-dynamic";
 
 /** Public in both modes (no requireSignIn): the text must be readable before an account exists. */

@@ -1,5 +1,6 @@
 import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { takePoll, validClientId } from "@/lib/ui-bridge/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,6 @@ export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
   const clientId = new URL(request.url).searchParams.get("client") ?? "";
-  if (!validClientId(clientId)) return jsonError("Pass ?client=<tab id>.", 422);
+  if (!validClientId(clientId)) return jsonError(msg("Pass ?client=<tab id>."), 422);
   return json(takePoll(auth.account.id, clientId));
 }

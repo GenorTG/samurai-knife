@@ -4,6 +4,7 @@ import { ToolShell } from "@/components/ToolShell";
 import { findTool, resolveAlias, toolHref } from "@/lib/registry";
 import { ToolView } from "@/tools/registry-client";
 import { queryString, requireSignIn } from "@/lib/accounts/viewer";
+import { getT } from "@/lib/i18n/server";
 
 export async function generateMetadata({
   params,
@@ -11,7 +12,8 @@ export async function generateMetadata({
   const { slug } = await params;
   const tool = findTool(slug);
   if (!tool) return {};
-  return { title: tool.name, description: tool.tagline };
+  const { t } = await getT();
+  return { title: t(tool.name), description: t(tool.tagline) };
 }
 
 // Public mode decides per request whether the visitor may see a tool at all; a prerendered page would skip the gate.

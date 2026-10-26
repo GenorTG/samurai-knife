@@ -28,6 +28,7 @@ import { formatTokens } from "@/lib/usage";
 import { starterPrompts } from "./starters";
 import { Transcript } from "./Transcript";
 import { useAgent } from "./useAgent";
+import { useT } from "@/lib/i18n/react";
 
 const noopSubscribe = () => () => {};
 
@@ -70,6 +71,7 @@ function IconButton({
 }
 
 function WidgetShell() {
+  const { t } = useT();
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs);
   const [settingsRequested, setSettingsRequested] = useState(false);
   const [draft, setDraft] = useState("");
@@ -133,8 +135,8 @@ function WidgetShell() {
   const suggestions = useMemo(() => {
     const match = /^\/tools\/([^/]+)/.exec(pathname);
     const tool = match ? findTool(canonicalSlug(match[1])) : undefined;
-    return starterPrompts(tool);
-  }, [pathname]);
+    return starterPrompts(tool, t);
+  }, [pathname, t]);
 
   useEffect(() => {
     savePrefs(prefs);
@@ -227,8 +229,8 @@ function WidgetShell() {
   const chatTokens = agent.messages.reduce((sum, m) => (m.role === "notice" && m.usage ? sum + m.usage.promptTokens + m.usage.completionTokens : sum), 0);
   const subtitle =
     account.kind === "ready"
-      ? `${account.account.displayName}${account.account.provider ? ` · ${account.account.provider.model}` : " · no model yet"}${chatTokens > 0 ? ` · ${formatTokens(chatTokens)} tokens` : ""}`
-      : "Assistant";
+      ? `${account.account.displayName}${account.account.provider ? ` · ${account.account.provider.model}` : ` · ${t("no model yet")}`}${chatTokens > 0 ? ` · ${t("{tokens} tokens", { tokens: formatTokens(chatTokens) })}` : ""}`
+      : t("Assistant");
   const providerReady = account.kind === "ready" && account.account.provider !== null;
   const queueing = agent.busy && !interaction.wait;
   const lines = Math.min(5, Math.max(1, draft.split("\n").length));
@@ -241,7 +243,7 @@ function WidgetShell() {
           ref={panelRef}
           role="dialog"
           aria-modal="false"
-          aria-label="Toolbox assistant"
+          aria-label={t("Toolbox assistant")}
           onKeyDown={onPanelKeyDown}
           onPointerDown={() => {
             wantFocus.current = true;
@@ -262,7 +264,7 @@ function WidgetShell() {
           <button
             autoComplete="off"
             type="button"
-            aria-label="Resize assistant panel (drag, or use arrow keys)"
+            aria-label={t("Resize assistant panel (drag, or use arrow keys)")}
             onPointerDown={onResizeDown}
             onPointerMove={onResizeMove}
             onPointerUp={onResizeUp}
@@ -279,7 +281,7 @@ function WidgetShell() {
             <div className="min-w-0 flex-1">
               <h2 className="flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-ai" />
-                Assistant
+                {t("Assistant")}
               </h2>
               <p className="truncate text-xs text-faint" title={subtitle}>
                 {subtitle}
@@ -288,32 +290,32 @@ function WidgetShell() {
             {account.kind === "ready" ? (
               <>
                 <IconButton
-                  label={docked ? "Float assistant over the page" : "Dock assistant beside the page"}
+                  label={docked ? t("Float assistant over the page") : t("Dock assistant beside the page")}
                   onClick={() => setPrefs((p) => ({ ...p, dock: !p.dock }))}
                   hideBelow="lg"
                 >
                   <DockIcon docked={docked} />
                 </IconButton>
-                <IconButton label="Clear conversation" onClick={agent.clear} disabled={agent.messages.length === 0}>
+                <IconButton label={t("Clear conversation")} onClick={agent.clear} disabled={agent.messages.length === 0}>
                   <TrashIcon />
                 </IconButton>
                 <IconButton
-                  label={view === "settings" ? "Back to chat" : "Settings"}
+                  label={view === "settings" ? t("Back to chat") : t("Settings")}
                   onClick={() => setSettingsRequested(view !== "settings")}
                 >
                   <GearIcon />
                 </IconButton>
               </>
             ) : null}
-            <IconButton label="Close assistant" onClick={close}>
+            <IconButton label={t("Close assistant")} onClick={close}>
               <CloseIcon />
             </IconButton>
           </header>
 
-          {view === "loading" ? <p className="p-4 text-sm text-muted">Loading…</p> : null}
+          {view === "loading" ? <p className="p-4 text-sm text-muted">{t("Loading…")}</p> : null}
           {view === "error" && account.kind === "error" ? (
             <div className="space-y-3 p-4">
-              <p className="text-sm text-danger">Could not load your account: {account.message}</p>
+              <p className="text-sm text-danger">{t("Could not load your account:")}{" "} {account.message}</p>
               <button
                 autoComplete="off"
                 type="button"
@@ -321,7 +323,7 @@ function WidgetShell() {
                 onClick={() => void agent.refreshAccount()}
                 className="cursor-pointer rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm text-ink hover:bg-raised"
               >
-                Retry
+                {t("Retry")}
               </button>
             </div>
           ) : null}
@@ -364,9 +366,9 @@ function WidgetShell() {
                   rows={lines}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={onComposerKeyDown}
-                  aria-label="Message the assistant"
+                  aria-label={t("Message the assistant")}
                   aria-describedby="sk-ai-notice"
-                  placeholder={queueing ? "Queue a message…" : "Ask for something…"}
+                  placeholder={queueing ? t("Queue a message…") : t("Ask for something…")}
                   className="sk-input max-h-32 min-h-10 min-w-0 flex-1 resize-none px-3 py-2.5 text-sm leading-snug"
                 />
                 {queueing ? (
@@ -374,18 +376,18 @@ function WidgetShell() {
                     autoComplete="off"
                     type="button"
                     onClick={agent.stop}
-                    aria-label="Stop"
+                    aria-label={t("Stop")}
                     className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-danger/40 bg-surface px-3 text-sm text-danger hover:bg-danger/10"
                   >
                     <StopIcon />
-                    Stop
+                    {t("Stop")}
                   </button>
                 ) : null}
                 <button
                   autoComplete="off"
                   type="submit"
-                  aria-label={queueing ? "Queue message" : "Send"}
-                  title={queueing ? "Queue this message; it is sent when the run ends" : undefined}
+                  aria-label={queueing ? t("Queue message") : t("Send")}
+                  title={queueing ? t("Queue this message; it is sent when the run ends") : undefined}
                   disabled={!draft.trim()}
                   className="grid size-10 cursor-pointer place-items-center rounded-lg bg-accent text-accent-fg shadow-xs transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -394,9 +396,9 @@ function WidgetShell() {
               </form>
               {/* AI Act art. 50(1)/(5): say it is an AI system, clearly, at the first interaction (legal/terms.*.md "AI assistant"). */}
               <p id="sk-ai-notice" className="bg-surface px-3 pb-2 text-[11px] leading-snug text-faint">
-                You are chatting with an AI system; replies can be wrong.{" "}
+                {t("You are chatting with an AI system; replies can be wrong.")}{" "}
                 <a href="/terms#ai" className="whitespace-nowrap underline underline-offset-2 hover:text-ink">
-                  How it works
+                  {t("How it works")}
                 </a>
               </p>
             </>
@@ -408,7 +410,7 @@ function WidgetShell() {
         autoComplete="off"
         ref={launcherRef}
         type="button"
-        aria-label={prefs.open ? "Close assistant" : "Open assistant"}
+        aria-label={prefs.open ? t("Close assistant") : t("Open assistant")}
         aria-expanded={prefs.open}
         onClick={() => {
           wantFocus.current = true;

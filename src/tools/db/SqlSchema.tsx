@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { Button, CopyButton, Field, Notice, Panel, TextArea } from "@/components/ui";
-import { cx, downloadText, plural } from "@/lib/format";
+import { cx, downloadText } from "@/lib/format";
 import { callSql } from "@/lib/sql/client";
 import { SAMPLE_SCHEMAS } from "@/lib/sql/samples";
 import { saveSchema, useStoredDialect } from "@/lib/sql/schema-store";
 import type { SqlActionMap, SqlDialect, SqlSchema, SqlSchemaTable } from "@/lib/sql/types";
 import { CurrentSchemaRegion, DialectSelect, IssueList } from "./sql-shared";
+import { useT } from "@/lib/i18n/react";
 
 type Parsed = SqlActionMap["schema"]["out"] & { dialect: SqlDialect };
 
@@ -27,12 +28,13 @@ function Badge({ children, tone }: { children: string; tone: "pk" | "fk" | "plai
 }
 
 function TableCard({ table }: { table: SqlSchemaTable }) {
+  const { t } = useT();
   const fkByColumn = new Map<string, string>();
   for (const fk of table.foreignKeys ?? []) {
     fk.columns.forEach((column, i) => fkByColumn.set(column, `${fk.refTable}.${fk.refColumns[i] ?? ""}`));
   }
   return (
-    <article aria-label={`Table ${table.name}`} className="min-w-0 rounded-lg border border-line bg-surface">
+    <article aria-label={t("Table {name}", { name: table.name })} className="min-w-0 rounded-lg border border-line bg-surface">
       <h3 className="border-b border-line bg-raised/50 px-3 py-2 font-mono text-[13px] font-semibold text-ink">{table.name}</h3>
       <ul className="divide-y divide-line">
         {table.columns.map((column) => {
@@ -63,6 +65,7 @@ function TableCard({ table }: { table: SqlSchemaTable }) {
 }
 
 export default function SqlSchemaTab() {
+  const { t, tn } = useT();
   const [dialect, setDialect] = useStoredDialect("postgres");
   const [ddl, setDdl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,7 +75,7 @@ export default function SqlSchemaTab() {
 
   const parse = async (text = ddl, forDialect: SqlDialect = dialect) => {
     if (!text.trim()) {
-      setError("Paste CREATE TABLE statements first.");
+      setError(t("Paste CREATE TABLE statements first."));
       return;
     }
     setBusy(true);
@@ -98,7 +101,7 @@ export default function SqlSchemaTab() {
 
   const saveAsCurrent = (schema: SqlSchema, source: string) => {
     saveSchema(schema, source);
-    setSaved(`Saved ${plural(schema.tables.length, "table")} as the current schema. Validate, Build and Run now use it.`);
+    setSaved(t("Saved {tables} as the current schema. Validate, Build and Run now use it.", { tables: tn("{n} table", "{n} tables", schema.tables.length) }));
   };
 
   const schemaJson = parsed ? JSON.stringify(parsed.schema, null, 2) : "";
@@ -109,21 +112,21 @@ export default function SqlSchemaTab() {
       <div className="min-w-0 space-y-4">
         <Panel title="DDL">
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Sample schemas">
-              <span className="text-xs text-faint">Samples:</span>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("Sample schemas")}>
+              <span className="text-xs text-faint">{t("Samples:")}</span>
               {SAMPLE_SCHEMAS.map((sample) => (
-                <Button key={sample.id} size="sm" onClick={() => loadSample(sample.id)} title={sample.label}>{`Sample: ${sample.id}`}</Button>
+                <Button key={sample.id} size="sm" onClick={() => loadSample(sample.id)} title={t(sample.label)}>{`Sample: ${sample.id}`}</Button>
               ))}
             </div>
-            <Field label="Dialect of the DDL">
-              <DialectSelect label="Dialect of the DDL" value={dialect} onChange={setDialect} className="max-w-64" />
+            <Field label={t("Dialect of the DDL")}>
+              <DialectSelect label={t("Dialect of the DDL")} value={dialect} onChange={setDialect} className="max-w-64" />
             </Field>
-            <Field label="CREATE TABLE statements" hint="Paste DDL from a dump, migration or pg_dump -s. Nothing is executed; it is only parsed.">
-              <TextArea rows={16} spellCheck={false} value={ddl} onChange={(e) => setDdl(e.target.value)} placeholder="CREATE TABLE users (id integer primary key, ...);" />
+            <Field label={t("CREATE TABLE statements")} hint={t("Paste DDL from a dump, migration or pg_dump -s. Nothing is executed; it is only parsed.")}>
+              <TextArea rows={16} spellCheck={false} value={ddl} onChange={(e) => setDdl(e.target.value)} placeholder={t("CREATE TABLE users (id integer primary key, ...);")} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => void parse()} disabled={busy}>{busy ? "Parsing…" : "Parse DDL"}</Button>
-              <Button variant="ghost" onClick={() => { setDdl(""); setParsed(null); setError(null); setSaved(null); }} disabled={!ddl && !parsed}>Clear DDL</Button>
+              <Button variant="primary" onClick={() => void parse()} disabled={busy}>{busy ? t("Parsing…") : t("Parse DDL")}</Button>
+              <Button variant="ghost" onClick={() => { setDdl(""); setParsed(null); setError(null); setSaved(null); }} disabled={!ddl && !parsed}>{t("Clear DDL")}</Button>
             </div>
             {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
           </div>
@@ -133,12 +136,12 @@ export default function SqlSchemaTab() {
 
       <div className="min-w-0 space-y-4">
         <Panel
-          title={parsed ? `Tables (${tableCount})` : "Tables"}
+          title={parsed ? `Tables (${tableCount})` : t("Tables")}
           right={
             parsed ? (
               <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" variant="primary" onClick={() => saveAsCurrent(parsed.schema, `pasted DDL, ${parsed.dialect}`)} disabled={tableCount === 0}>Use as current schema</Button>
-                <CopyButton text={schemaJson} label="Copy schema JSON" />
+                <Button size="sm" variant="primary" onClick={() => saveAsCurrent(parsed.schema, `pasted DDL, ${parsed.dialect}`)} disabled={tableCount === 0}>{t("Use as current schema")}</Button>
+                <CopyButton text={schemaJson} label={t("Copy schema JSON")} />
               </div>
             ) : null
           }
@@ -146,8 +149,8 @@ export default function SqlSchemaTab() {
           <div className="space-y-3" data-agent-region="schema-tables">
             {saved ? <div role="status"><Notice tone="good">{saved}</Notice></div> : null}
             {parsed ? <IssueList issues={parsed.issues} /> : null}
-            {!parsed ? <p className="text-sm text-faint">Parse some DDL to see tables, columns, keys and an ER diagram.</p> : null}
-            {parsed && tableCount === 0 ? <Notice tone="warn">No CREATE TABLE statements were found in that DDL.</Notice> : null}
+            {!parsed ? <p className="text-sm text-faint">{t("Parse some DDL to see tables, columns, keys and an ER diagram.")}</p> : null}
+            {parsed && tableCount === 0 ? <Notice tone="warn">{t("No CREATE TABLE statements were found in that DDL.")}</Notice> : null}
             <div className="grid gap-3 xl:grid-cols-2">
               {parsed?.schema.tables.map((table) => <TableCard key={table.name} table={table} />)}
             </div>
@@ -155,16 +158,16 @@ export default function SqlSchemaTab() {
         </Panel>
 
         <Panel
-          title="ER diagram (Mermaid source)"
+          title={t("ER diagram (Mermaid source)")}
           right={
             <div className="flex gap-1.5">
-              <CopyButton text={parsed?.mermaid ?? ""} label="Copy Mermaid" />
-              <Button size="sm" disabled={!parsed?.mermaid} onClick={() => downloadText(parsed?.mermaid ?? "", "schema.mmd")}>Download .mmd</Button>
+              <CopyButton text={parsed?.mermaid ?? ""} label={t("Copy Mermaid")} />
+              <Button size="sm" disabled={!parsed?.mermaid} onClick={() => downloadText(parsed?.mermaid ?? "", "schema.mmd")}>{t("Download .mmd")}</Button>
             </div>
           }
         >
-          <pre aria-label="Mermaid erDiagram source" data-agent-region="mermaid" className="sk-input max-h-[50vh] min-h-24 overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre">
-            {parsed?.mermaid || <span className="text-faint">The diagram source appears here. Paste it into any Mermaid renderer.</span>}
+          <pre aria-label={t("Mermaid erDiagram source")} data-agent-region="mermaid" className="sk-input max-h-[50vh] min-h-24 overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre">
+            {parsed?.mermaid || <span className="text-faint">{t("The diagram source appears here. Paste it into any Mermaid renderer.")}</span>}
           </pre>
         </Panel>
       </div>

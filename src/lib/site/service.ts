@@ -10,6 +10,7 @@ import { verifyProductionUrl } from "./ownership";
 import { SiteError } from "./net";
 import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Website studio operations (docs/WEBSITE-STUDIO.md), shared by the HTTP routes and the knife_site_* tools. Every change
@@ -158,7 +159,7 @@ export async function connect(accountId: string, input: ConnectInput) {
     if (!getAccount(accountId)?.github) throw new SiteError("link GitHub to this account first (Account settings, or Connect with GitHub)", 403);
     // Only repositories GitHub listed for THIS user's own token, with push (never the installation's whole list).
     const access = linkedRepo(site, installationId, repo);
-    if (!access) throw new SiteError(`${repo} is not one of your repositories in that installation (or the app is not installed on it): add it on GitHub, then Connect with GitHub again`, 403);
+    if (!access) throw new SiteError(msgf("{repo} is not one of your repositories in that installation (or the app is not installed on it): add it on GitHub, then Connect with GitHub again", { repo }), 403);
     if (!access.push) throw new SiteError(`your GitHub user has no write access to ${repo}: ask its owner for write access, then Connect with GitHub again`, 403);
     spend(a);
     await assertAppAccess(a, installationId, repo, true);
@@ -296,7 +297,7 @@ export async function writeFiles(accountId: string, message: string, changes: gi
   if (changes.length > MAX_CHANGED_FILES) throw new SiteError(`at most ${MAX_CHANGED_FILES} files per commit`);
   for (const ch of changes) {
     github.checkPath(ch.path, true);
-    if ("content" in ch && Buffer.byteLength(ch.content) > github.MAX_FILE_BYTES) throw new SiteError(`${ch.path} is larger than 1 MB`);
+    if ("content" in ch && Buffer.byteLength(ch.content) > github.MAX_FILE_BYTES) throw new SiteError(msgf("{path} is larger than 1 MB", { path: ch.path }));
   }
   const x = await ctx(accountId);
   const branch = await ensureWorkBranch(accountId, x);
@@ -309,7 +310,7 @@ export async function writeFiles(accountId: string, message: string, changes: gi
 export async function replaceText(accountId: string, path: string, find: string, replace: string, message: string, all = false) {
   if (!find) throw new SiteError("`find` must not be empty");
   const file = await readFile(accountId, path);
-  if (file.text === null) throw new SiteError(`${path} cannot be edited as text (${file.note})`);
+  if (file.text === null) throw new SiteError(msgf("{path} cannot be edited as text ({note})", { path, note: file.note }));
   const count = file.text.split(find).length - 1;
   if (count === 0) throw new SiteError(`the text to replace was not found in ${path} (read the file again: it may have changed)`, 409);
   if (count > 1 && !all) throw new SiteError(`the text occurs ${count} times in ${path}: give a longer, unique snippet or set all=true`, 409);
@@ -374,7 +375,7 @@ export async function publish(accountId: string, expectedHead: string) {
   if (head !== expectedHead) throw new SiteError("the changes moved on since you reviewed them: look at the diff again, then publish", 409);
   let pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
   if (!pull) pull = await openPull(accountId, "Website update from Smart Knife", "");
-  if (pull.mergeable === false) throw new SiteError("GitHub cannot merge this pull request (conflicts with the base branch): resolve them on GitHub", 409);
+  if (pull.mergeable === false) throw new SiteError(msg("GitHub cannot merge this pull request (conflicts with the base branch): resolve them on GitHub"), 409);
   const merged = await github.mergePull(x.token, x.c.repo, pull.number, head, `${pull.title} (#${pull.number})`);
   await github.deleteBranch(x.token, x.c.repo, work.branch);
   mutateSite(accountId, (s) => {

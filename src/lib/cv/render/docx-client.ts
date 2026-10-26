@@ -1,5 +1,6 @@
 import type { CvLang } from "../schema";
 import type { CvLayout, PhotoShape } from "./layout";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Ask the server for a DOCX of the master profile (variantId = null) or a variant and trigger a browser download.
@@ -14,7 +15,7 @@ export async function downloadCvDocx(options: { variantId: string | null; lang: 
       body: JSON.stringify({ ...options, format: "docx" }),
     });
   } catch {
-    throw new Error("Could not reach the server to build the DOCX. Check your connection and try again.");
+    throw new Error(msg("Could not reach the server to build the DOCX. Check your connection and try again."));
   }
   if (!response.ok) throw new Error(await errorMessage(response));
 

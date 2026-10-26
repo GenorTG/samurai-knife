@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { assertCanStore, canStore, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
 import { OFFICE_FORMATS, type OfficeFormat } from "./templates";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Per-account office library: `$KNIFE_DATA_DIR/docs/<account>/` (the path comes from `accountScope`) with
@@ -194,7 +195,7 @@ export function getDoc(accountId: string, docId: string): DocMeta {
 /** Same as getDoc, but a trashed document is refused (opening, editing, copying need it restored first). */
 export function getLiveDoc(accountId: string, docId: string): DocMeta {
   const meta = getDoc(accountId, docId);
-  if (meta.trashedAt) throw new DocError(`${meta.name} is in the trash: restore it first.`, 409);
+  if (meta.trashedAt) throw new DocError(msgf("{name} is in the trash: restore it first.", { name: meta.name }), 409);
   return meta;
 }
 

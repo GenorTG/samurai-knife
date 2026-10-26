@@ -2,6 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { deleteFolderForever, moveFolder, renameFolder, restoreFolder, trashFolder } from "@/lib/office/folders";
 import { officeError } from "@/lib/office/http";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const read = await readJsonBody(request, 4096);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {message}", { message: parsed.error.issues[0].message }), 422);
   const acc = auth.account.id;
   const body = parsed.data;
   try {

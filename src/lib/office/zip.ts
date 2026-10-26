@@ -1,4 +1,5 @@
 import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Minimal ZIP (PKWARE APPNOTE) writer and reader for office containers (OOXML and ODF are both ZIPs). Server-only, no
@@ -107,7 +108,7 @@ export function readZip(buffer: Buffer, maxInflatedBytes = 200 * 1024 * 1024, ma
     if (buffer.readUInt32LE(p) !== 0x04034b50) throw new ZipError(`corrupt local header for ${name}`);
     const start = p + 30 + buffer.readUInt16LE(p + 26) + buffer.readUInt16LE(p + 28);
     const body = buffer.subarray(start, start + entry.compressed);
-    if (entry.size > maxEntryBytes) throw new ZipError(`${name} is larger than ${Math.round(maxEntryBytes / 1024 / 1024)} MB`);
+    if (entry.size > maxEntryBytes) throw new ZipError(msgf("{name} is larger than {value} MB", { name, value: Math.round(maxEntryBytes / 1024 / 1024) }));
     inflated += entry.size;
     if (inflated > maxInflatedBytes) throw new ZipError("archive inflates beyond the limit");
     if (entry.method === 0) return Buffer.from(body);

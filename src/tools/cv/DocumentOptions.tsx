@@ -5,6 +5,7 @@ import { SegmentedControl } from "@/components/ui";
 import { CV_LAYOUT_INFO, CV_LAYOUTS, PHOTO_SHAPES, showsPhoto, type CvLayout, type PhotoShape } from "@/lib/cv/render/layout";
 import { usePref } from "./prefs";
 import { useCvPhoto } from "./usePhoto";
+import { useT } from "@/lib/i18n/react";
 
 /** How a CV document looks: layout, photo on/off, photo shape. Remembered per tab (localStorage), not per version. */
 export interface DocOptions {
@@ -41,15 +42,16 @@ export function useDocLook(tab: string): DocLook {
 }
 
 export function DocumentOptions({ look }: { look: DocLook }) {
+  const { t } = useT();
   const photo = useCvPhoto();
   const { layout, shape } = look.options;
   const info = CV_LAYOUT_INFO[layout];
   return (
     <div className="space-y-2.5">
       <div className="space-y-1.5">
-        <span className="sk-label block">Layout</span>
+        <span className="sk-label block">{t("Layout")}</span>
         <SegmentedControl<CvLayout>
-          label="Document layout"
+          label={t("Document layout")}
           value={layout}
           onChange={(next) => look.set({ layout: next })}
           options={CV_LAYOUTS.map((id) => ({ value: id, label: CV_LAYOUT_INFO[id].label, ariaLabel: `${CV_LAYOUT_INFO[id].label} layout` }))}
@@ -60,29 +62,29 @@ export function DocumentOptions({ look }: { look: DocLook }) {
         photo.meta ? (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <span className="sk-label block">Photo</span>
+              <span className="sk-label block">{t("Photo")}</span>
               <SegmentedControl<"on" | "off">
-                label="Print the photo"
+                label={t("Print the photo")}
                 value={look.options.photo ? "on" : "off"}
                 onChange={(next) => look.set({ photo: next === "on" })}
-                options={[{ value: "on", label: "Show", ariaLabel: "Show the photo" }, { value: "off", label: "Hide", ariaLabel: "Hide the photo" }]}
+                options={[{ value: "on", label: "Show", ariaLabel: t("Show the photo") }, { value: "off", label: "Hide", ariaLabel: t("Hide the photo") }]}
               />
             </div>
             {look.options.photo ? (
               <div className="space-y-1.5">
-                <span className="sk-label block">Shape</span>
+                <span className="sk-label block">{t("Shape")}</span>
                 <SegmentedControl<PhotoShape>
-                  label="Photo shape"
+                  label={t("Photo shape")}
                   value={shape}
                   onChange={(next) => look.set({ shape: next })}
-                  options={[{ value: "round", label: "Round", ariaLabel: "Round photo" }, { value: "square", label: "Square", ariaLabel: "Square photo" }]}
+                  options={[{ value: "round", label: "Round", ariaLabel: t("Round photo") }, { value: "square", label: "Square", ariaLabel: t("Square photo") }]}
                 />
               </div>
             ) : null}
           </div>
         ) : photo.phase === "ready" ? (
           <p className="text-xs text-muted">
-            No photo yet: <Link className="text-accent-soft underline" href="/tools/cv-studio?tab=profile">add one in the Profile tab</Link>.
+            {t("No photo yet:")}{" "} <Link className="text-accent-soft underline" href="/tools/cv-studio?tab=profile">{t("add one in the Profile tab")}</Link>.
           </p>
         ) : null
       ) : null}

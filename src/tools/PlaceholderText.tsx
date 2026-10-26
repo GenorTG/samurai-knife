@@ -3,14 +3,16 @@
 import { useMemo, useState } from "react";
 import { Button, CopyButton, Field, NumberField, Panel, Select, Stat, StatGrid, TextArea } from "@/components/ui";
 import { downloadText } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 type PlaceholderMode = "paragraphs" | "sentences" | "words" | "headings";
 
 const MODES: { value: PlaceholderMode; label: string; unit: string }[] = [
-  { value: "paragraphs", label: "Paragraphs", unit: "paragraphs" },
-  { value: "sentences", label: "Sentences", unit: "sentences" },
-  { value: "words", label: "Word list", unit: "words" },
-  { value: "headings", label: "Heading outline", unit: "headings" },
+  { value: "paragraphs", label: msg("Paragraphs"), unit: "paragraphs" },
+  { value: "sentences", label: msg("Sentences"), unit: "sentences" },
+  { value: "words", label: msg("Word list"), unit: "words" },
+  { value: "headings", label: msg("Heading outline"), unit: "headings" },
 ];
 
 const WORDS = `lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam quis nostrud exercitation ullamco laboris nisi aliquip ex ea commodo consequat duis aute irure reprehenderit voluptate velit esse cillum fugiat nulla pariatur excepteur sint occaecat cupidatat non proident sunt culpa officia deserunt mollit anim id est laborum`.split(" ");
@@ -41,6 +43,7 @@ function generate(mode: PlaceholderMode, amount: number, offset: number): string
 }
 
 export default function PlaceholderText() {
+  const { t } = useT();
   const [mode, setMode] = useState<PlaceholderMode>("paragraphs");
   const [amount, setAmount] = useState(3);
   const [offset, setOffset] = useState(0);
@@ -50,30 +53,30 @@ export default function PlaceholderText() {
 
   return (
     <div className="space-y-4">
-      <Panel title="Build placeholder text" right={<div className="flex gap-1.5"><CopyButton text={output} /><Button size="sm" variant="subtle" disabled={!output} onClick={() => downloadText(output, "placeholder.txt")}>Save .txt</Button></div>}>
+      <Panel title={t("Build placeholder text")} right={<div className="flex gap-1.5"><CopyButton text={output} /><Button size="sm" variant="subtle" disabled={!output} onClick={() => downloadText(output, "placeholder.txt")}>{t("Save .txt")}</Button></div>}>
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
-            <Field label="Shape">
+            <Field label={t("Shape")}>
               <Select value={mode} onChange={(event) => setMode(event.target.value as PlaceholderMode)}>
-                {MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                {MODES.map((item) => <option key={item.value} value={item.value}>{t(item.label)}</option>)}
               </Select>
             </Field>
             <Field label={selectedMode.unit}>
               <NumberField className="py-2" min={1} max={mode === "words" ? 200 : mode === "sentences" ? 40 : 12} integer value={amount} onValueChange={setAmount} />
             </Field>
-            <Button variant="primary" onClick={() => setOffset((current) => (current + 37) % WORDS.length)}>Regenerate</Button>
+            <Button variant="primary" onClick={() => setOffset((current) => (current + 37) % WORDS.length)}>{t("Regenerate")}</Button>
           </div>
           <StatGrid>
-            <Stat label="Words" value={wordCount} />
-            <Stat label="Characters" value={output.length} />
-            <Stat label="Lines" value={output ? output.split("\n").length : 0} />
-            <Stat label="Mode" value={selectedMode.label} />
+            <Stat label={t("Words")} value={wordCount} />
+            <Stat label={t("Characters")} value={output.length} />
+            <Stat label={t("Lines")} value={output ? output.split("\n").length : 0} />
+            <Stat label={t("Mode")} value={selectedMode.label} />
           </StatGrid>
-          <TextArea aria-label="Generated placeholder text" readOnly value={output} rows={16} className="font-mono text-[13px]" />
+          <TextArea aria-label={t("Generated placeholder text")} readOnly value={output} rows={16} className="font-mono text-[13px]" />
         </div>
       </Panel>
-      <Panel title="About this text">
-        <p className="text-sm leading-relaxed text-muted">Classic Lorem Ipsum-style filler, generated locally from a bundled word list. It is useful for layout and typography previews; it is not meaningful prose and makes no network requests.</p>
+      <Panel title={t("About this text")}>
+        <p className="text-sm leading-relaxed text-muted">{t("Classic Lorem Ipsum-style filler, generated locally from a bundled word list. It is useful for layout and typography previews; it is not meaningful prose and makes no network requests.")}</p>
       </Panel>
     </div>
   );

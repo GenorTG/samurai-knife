@@ -2,6 +2,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { testProvider } from "@/lib/accounts/provider";
 import { getAccount, PROFILE_ID, providerProfileConfig } from "@/lib/accounts/store";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
     wanted = (read.body as { profileId?: unknown } | null)?.profileId;
   }
   const account = getAccount(auth.account.id);
-  if (typeof wanted === "string" && !PROFILE_ID.test(wanted)) return jsonError("Unknown profile.", 404);
+  if (typeof wanted === "string" && !PROFILE_ID.test(wanted)) return jsonError(msg("Unknown profile."), 404);
   const provider = account ? (typeof wanted === "string" ? providerProfileConfig(account, wanted) : account.provider) : null;
   if (!provider) return jsonError(typeof wanted === "string" ? "Unknown profile." : "provider_not_configured", typeof wanted === "string" ? 404 : 409);
   const budget = admitProvider(auth.account, "provider-test", provider.baseUrl);

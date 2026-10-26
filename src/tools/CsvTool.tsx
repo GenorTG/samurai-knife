@@ -6,11 +6,13 @@ import { CSV_CONVERT_INLINE_LIMIT, convertCsv, JSON_PANE_LIMIT, type CsvConvertI
 import { convertCsvInWorker } from "@/lib/csv-convert-client";
 import { cx, downloadText, formatInt, readAsText } from "@/lib/format";
 import { useAdaptive } from "@/lib/workers/use-offloaded";
+import { useT } from "@/lib/i18n/react";
 
 /** The parser lives in `lib/delimited` (pure, shared with the workers); other tools still import it from here. */
 export { parseDelimited } from "@/lib/delimited";
 
 export default function CsvTool() {
+  const { t } = useT();
   const [text, setText] = useState("");
   const [delimiter, setDelimiter] = useState(",");
   const [hasHeader, setHasHeader] = useState(true);
@@ -27,21 +29,21 @@ export default function CsvTool() {
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
-          title="Input"
+          title={t("Input")}
           right={
             <div className="flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => setText("")}>Clear</Button>
+              <Button size="sm" variant="ghost" onClick={() => setText("")}>{t("Clear")}</Button>
             </div>
           }
         >
           <div className="space-y-3">
             <div className="flex flex-wrap items-end gap-2">
-              <Field label="Delimiter" className="w-32">
+              <Field label={t("Delimiter")} className="w-32">
                 <Select value={delimiter} onChange={(e) => setDelimiter(e.target.value)}>
-                  <option value=",">Comma ,</option>
-                  <option value=";">Semicolon ;</option>
-                  <option value="&#9;">Tab ⇥</option>
-                  <option value="|">Pipe |</option>
+                  <option value=",">{t("Comma ,")}</option>
+                  <option value=";">{t("Semicolon ;")}</option>
+                  <option value="&#9;">{t("Tab ⇥")}</option>
+                  <option value="|">{t("Pipe |")}</option>
                 </Select>
               </Field>
               <Button
@@ -50,7 +52,7 @@ export default function CsvTool() {
                 className="mb-1"
                 onClick={() => setHasHeader((v) => !v)}
               >
-                {hasHeader ? "Header row" : "No header"}
+                {hasHeader ? t("Header row") : t("No header")}
               </Button>
             </div>
             <TextArea
@@ -58,21 +60,21 @@ export default function CsvTool() {
               spellCheck={false}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={'name,role,city\nGenor,owner,Warsaw'}
+              placeholder={t("name,role,city\nGenor,owner,Warsaw")}
             />
             <Dropzone
               accept=".csv,.tsv,.txt,text/csv"
-              hint="CSV / TSV up to a few MB — parsed in the browser"
+              hint={t("CSV / TSV up to a few MB — parsed in the browser")}
               onFiles={(files) => {
                 const file = files[0];
                 setError(null);
                 if (file.size > 8 * 1024 * 1024) {
-                  setError("That file is over 8 MB — this tool is for quick looks, not pipelines.");
+                  setError(t("That file is over 8 MB — this tool is for quick looks, not pipelines."));
                   return;
                 }
                 void readAsText(file)
                   .then(setText)
-                  .catch((exc: unknown) => setError(exc instanceof Error ? exc.message : "Read failed."));
+                  .catch((exc: unknown) => setError(exc instanceof Error ? exc.message : t("Read failed.")));
               }}
             />
             {error ? <Notice tone="error">{error}</Notice> : null}
@@ -90,32 +92,32 @@ export default function CsvTool() {
                 disabled={!json || running}
                 onClick={() => downloadText(json, "rows.json", "application/json")}
               >
-                Save .json
+                {t("Save .json")}
               </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <WorkStatus running={running} elapsedMs={job.elapsedMs} label="Converting CSV" cancelLabel="Cancel conversion" onCancel={job.cancel} />
-            {job.status === "cancelled" ? <Notice>Conversion cancelled. Edit the CSV or options to convert again.</Notice> : null}
+            <WorkStatus running={running} elapsedMs={job.elapsedMs} label={t("Converting CSV")} cancelLabel={t("Cancel conversion")} onCancel={job.cancel} />
+            {job.status === "cancelled" ? <Notice>{t("Conversion cancelled. Edit the CSV or options to convert again.")}</Notice> : null}
             {job.status === "error" ? <Notice tone="error">{job.error}</Notice> : null}
             {result?.parsed ? (
               <StatGrid>
-                <Stat label="Rows" value={result.dataRows} />
-                <Stat label="Columns" value={result.columns} />
-                <Stat label="Cells" value={result.cells} />
+                <Stat label={t("Rows")} value={result.dataRows} />
+                <Stat label={t("Columns")} value={result.columns} />
+                <Stat label={t("Cells")} value={result.cells} />
               </StatGrid>
             ) : null}
             <pre className="sk-input max-h-[46vh] overflow-auto px-3 py-2.5 font-mono text-[12px] leading-relaxed break-words">
-              {jsonShown || <span className="text-faint">JSON appears here.</span>}
+              {jsonShown || <span className="text-faint">{t("JSON appears here.")}</span>}
             </pre>
-            {json.length > JSON_PANE_LIMIT ? <p className="text-xs text-faint">Showing the first {formatInt(JSON_PANE_LIMIT)} of {formatInt(json.length)} characters. Copy and Save .json use the whole JSON.</p> : null}
+            {json.length > JSON_PANE_LIMIT ? <p className="text-xs text-faint">{t("Showing the first {jsonPaneLimit} of {json} characters. Copy and Save .json use the whole JSON.", { jsonPaneLimit: formatInt(JSON_PANE_LIMIT), json: formatInt(json.length) })}</p> : null}
           </div>
         </Panel>
       </div>
 
       {result?.parsed ? (
-        <Panel title="Preview" bodyClassName="p-0">
+        <Panel title={t("Preview")} bodyClassName="p-0">
           <div className="max-h-[40vh] overflow-auto">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead className="sticky top-0 bg-raised">
@@ -151,7 +153,7 @@ export default function CsvTool() {
           </div>
           {result.dataRows > 200 ? (
             <p className="border-t border-line px-4 py-2 text-xs text-faint">
-              Showing first 200 of {result.dataRows} rows.
+              {t("Showing first 200 of {dataRows} rows.", { dataRows: result.dataRows })}
             </p>
           ) : null}
         </Panel>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n/react";
 
 type View = { kind: "hidden" } | { kind: "anonymous" } | { kind: "user"; id: string };
 
@@ -11,6 +12,7 @@ type View = { kind: "hidden" } | { kind: "anonymous" } | { kind: "user"; id: str
  * browser from GET /api/account, never from server env at build time; renders nothing until it knows (no hydration diff).
  */
 export function AccountLink() {
+  const { t } = useT();
   const pathname = usePathname();
   const [view, setView] = useState<View>({ kind: "hidden" });
 
@@ -37,12 +39,12 @@ export function AccountLink() {
   if (view.kind === "hidden") return null;
   const className = "inline-flex h-9 max-w-40 shrink-0 items-center rounded-lg border border-line bg-surface px-3 text-sm text-muted shadow-xs transition-colors hover:border-line-strong hover:text-ink";
   return view.kind === "user" ? (
-    <Link href="/account" className={className} title="Your account">
+    <Link href="/account" className={className} title={t("Your account")}>
       <span className="truncate">{view.id}</span>
     </Link>
   ) : (
     <Link href={`/login?next=${encodeURIComponent(pathname || "/")}`} className={className}>
-      Log in
+      {t("Log in")}
     </Link>
   );
 }

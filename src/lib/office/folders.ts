@@ -18,6 +18,7 @@ import {
   untrashDoc,
   type DocMeta,
 } from "./store";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * The folder tree of one account's office library: `docs/<account>/folders.json` (0600). Folders are metadata only (the
@@ -101,7 +102,7 @@ function find(folders: Folder[], id: string): Folder {
 export function assertFolder(accountId: string, folderId: string | null | undefined): string | null {
   if (folderId === null || folderId === undefined || folderId === "") return null;
   const folder = find(readFolders(accountId), folderId);
-  if (folder.trashedAt) throw new DocError(`${folder.name} is in the trash`, 409);
+  if (folder.trashedAt) throw new DocError(msgf("{name} is in the trash", { name: folder.name }), 409);
   return folder.id;
 }
 
@@ -158,7 +159,7 @@ export function renameFolder(accountId: string, folderId: string, name: string):
 export function moveFolder(accountId: string, folderId: string, parentId: string | null): Folder {
   const folders = readFolders(accountId);
   const folder = find(folders, folderId);
-  if (folder.trashedAt) throw new DocError(`${folder.name} is in the trash: restore it first`, 409);
+  if (folder.trashedAt) throw new DocError(msgf("{name} is in the trash: restore it first", { name: folder.name }), 409);
   const parent = assertFolder(accountId, parentId);
   if (parent && subtree(folders, folder.id).has(parent)) throw new DocError("a folder cannot move into itself or one of its subfolders", 422);
   const below = Math.max(...[...subtree(folders, folder.id)].map((id) => depth(folders, id) - depth(folders, folder.id)));
@@ -193,7 +194,7 @@ export function restoreFolder(accountId: string, folderId: string): Folder {
   const folders = readFolders(accountId);
   const folder = find(folders, folderId);
   if (!folder.trashedAt) return folder;
-  if (folder.trashedWith !== folder.id) throw new DocError(`${folder.name} went to the trash with its parent folder: restore that one`, 409);
+  if (folder.trashedWith !== folder.id) throw new DocError(msgf("{name} went to the trash with its parent folder: restore that one", { name: folder.name }), 409);
   const parentLive = folder.parentId ? folders.some((f) => f.id === folder.parentId && !f.trashedAt) : true;
   const parentId = parentLive ? folder.parentId : null;
   const restoredName = uniqueName(folders, parentId, folder.name, folder.id);
@@ -219,7 +220,7 @@ function uniqueName(folders: Folder[], parentId: string | null, name: string, ex
 export function restoreDoc(accountId: string, docId: string): DocMeta {
   const doc = getDoc(accountId, docId);
   if (!doc.trashedAt) return doc;
-  if (doc.trashedWith && doc.trashedWith !== doc.id) throw new DocError(`${doc.name} went to the trash with its folder: restore the folder`, 409);
+  if (doc.trashedWith && doc.trashedWith !== doc.id) throw new DocError(msgf("{name} went to the trash with its folder: restore the folder", { name: doc.name }), 409);
   const folders = readFolders(accountId);
   const live = doc.folderId && folders.some((f) => f.id === doc.folderId && !f.trashedAt) ? doc.folderId : null;
   return untrashDoc(accountId, doc.id, live);

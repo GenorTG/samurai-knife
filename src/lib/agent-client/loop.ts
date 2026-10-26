@@ -4,6 +4,7 @@ import { assessServerCall, carriesUntrusted, type TurnContext } from "./server-t
 import { installArtifactCapture } from "./artifacts";
 import { EMPTY_USAGE, addUsage, describeRunUsage, type RunUsage, type Usage } from "@/lib/usage";
 import { buildSystemPrompt } from "./system-prompt";
+import { clientLocale } from "@/lib/i18n/client-locale";
 import type {
   ApiResult,
   AssistantMessage,
@@ -343,7 +344,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       roundStarted();
       const result = await callModel(
         { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
-        buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions }),
+        buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale() }),
         {
           onText: appendDraft,
           onReasoning: addReasoning,
@@ -419,7 +420,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
     const wrapUp = await callModel(
       { temperature: 0.2 },
-      buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName }),
+      buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, locale: clientLocale() }),
       null,
       [{ role: "user", content: "[Toolbox note, not from the user] The tool budget for this turn is exhausted. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
     );

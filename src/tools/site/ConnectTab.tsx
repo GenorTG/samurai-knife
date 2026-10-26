@@ -7,6 +7,7 @@ import { Badge, Button, Field, KeyValues, Notice, Panel, SegmentedControl, Selec
 import { useIsAdmin } from "@/lib/use-is-admin";
 import { errorText, siteRequest, when } from "./client";
 import { useSite } from "./useSite";
+import { useT } from "@/lib/i18n/react";
 
 interface GithubView {
   app: { slug: string; name: string; installUrl: string } | null;
@@ -53,6 +54,7 @@ export default function ConnectTab() {
 type Message = { tone: "good" | "error" | "warn"; text: string } | null;
 
 function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { view: ReturnType<typeof useSite>["view"]; error: string; reload: () => Promise<void>; stamp: string; message: Message; setMessage: (m: Message) => void; gh: GithubView | null }) {
+  const { t } = useT();
   const admin = useIsAdmin();
   const c = view?.connection ?? null;
   const [repo, setRepo] = useState(c?.repo ?? "");
@@ -97,7 +99,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
       });
       setToken("");
       setPsiKey("");
-      setMessage(res.warning ? { tone: "warn", text: `Connected, but ${res.warning}.` } : { tone: "good", text: c ? "Settings saved." : "Connected. Next: run an audit in the Score tab." });
+      setMessage(res.warning ? { tone: "warn", text: `Connected, but ${res.warning}.` } : { tone: "good", text: c ? t("Settings saved.") : "Connected. Next: run an audit in the Score tab." });
       await reload();
     } catch (e) {
       setMessage({ tone: "error", text: errorText(e) });
@@ -111,7 +113,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
     try {
       await siteRequest("DELETE", "/api/site");
       setConfirmDisconnect(false);
-      setMessage({ tone: "good", text: "Disconnected: the token and settings are gone (audits stay)." });
+      setMessage({ tone: "good", text: t("Disconnected: the token and settings are gone (audits stay).") });
       await reload();
     } catch (e) {
       setMessage({ tone: "error", text: errorText(e) });
@@ -123,7 +125,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
   return (
     <div className="space-y-4">
       {error ? <Notice tone="error">{error}</Notice> : null}
-      <Panel title={c ? "Repository connection" : "Connect your website's repository"} right={c ? <Badge tone="good">connected</Badge> : null}>
+      <Panel title={c ? t("Repository connection") : t("Connect your website's repository")} right={c ? <Badge tone="good">{t("connected")}</Badge> : null}>
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -133,7 +135,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
         >
           <div className="grid gap-4 sm:grid-cols-2">
             {source === "app" ? (
-              <Field label="GitHub repository" hint={appRepos.length ? "The repositories you installed the app on." : "Connect with GitHub below first."}>
+              <Field label={t("GitHub repository")} hint={appRepos.length ? t("The repositories you installed the app on.") : t("Connect with GitHub below first.")}>
                 <Select
                   value={repo}
                   onChange={(e) => {
@@ -144,85 +146,85 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
                   disabled={!appRepos.length}
                   required
                 >
-                  <option value="">{appRepos.length ? "Choose a repository…" : "no repositories yet"}</option>
-                  {appRepos.map((r) => <option key={r.fullName} value={r.fullName}>{r.fullName}{r.private ? " (private)" : ""}</option>)}
+                  <option value="">{appRepos.length ? t("Choose a repository…") : t("no repositories yet")}</option>
+                  {appRepos.map((r) => <option key={r.fullName} value={r.fullName}>{r.fullName}{r.private ? t(" (private)") : ""}</option>)}
                 </Select>
               </Field>
             ) : (
-              <Field label="GitHub repository" hint="owner/name, e.g. GenorTG/my-website">
-                <TextInput value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/name" required autoComplete="off" spellCheck={false} />
+              <Field label={t("GitHub repository")} hint={t("owner/name, e.g. GenorTG/my-website")}>
+                <TextInput value={repo} onChange={(e) => setRepo(e.target.value)} placeholder={t("owner/name")} required autoComplete="off" spellCheck={false} />
               </Field>
             )}
-            <Field label="Production URL" hint="The live site that gets audited (default: the repo's homepage).">
-              <TextInput value={productionUrl} onChange={(e) => setProductionUrl(e.target.value)} placeholder="https://www.example.com" inputMode="url" autoComplete="off" />
+            <Field label={t("Production URL")} hint={t("The live site that gets audited (default: the repo's homepage).")}>
+              <TextInput value={productionUrl} onChange={(e) => setProductionUrl(e.target.value)} placeholder={t("https://www.example.com")} inputMode="url" autoComplete="off" />
             </Field>
           </div>
           {gh?.app || admin ? (
             <SegmentedControl
-              label="GitHub access"
+              label={t("GitHub access")}
               value={source}
               onChange={setSource}
               options={[
                 ...(gh?.app ? [{ value: "app" as const, label: "GitHub App (no token)" }] : []),
-                { value: "pat" as const, label: "Personal token" },
-                ...(admin ? [{ value: "host-gh" as const, label: "Server's gh login" }] : []),
+                { value: "pat" as const, label: t("Personal token") },
+                ...(admin ? [{ value: "host-gh" as const, label: t("Server's gh login") }] : []),
               ]}
             />
           ) : null}
           {source === "app" ? (
             <div className="space-y-2 rounded-lg border border-line bg-raised/40 p-3 text-sm">
               {!gh ? (
-                <p className="text-muted">Checking GitHub…</p>
+                <p className="text-muted">{t("Checking GitHub…")}</p>
               ) : !gh.login ? (
                 <>
-                  <p className="text-muted">Sign in with GitHub once: the server then lists the repositories you install <b>{gh.app?.name}</b> on. No token is created or stored; every change becomes a pull request you merge.</p>
-                  <a className="inline-flex h-9 items-center rounded-lg bg-accent px-3 font-semibold text-accent-fg" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">Connect with GitHub</a>
+                  <p className="text-muted">{t("Sign in with GitHub once: the server then lists the repositories you install")}{" "} <b>{gh.app?.name}</b> {" "}{t("on. No token is created or stored; every change becomes a pull request you merge.")}</p>
+                  <a className="inline-flex h-9 items-center rounded-lg bg-accent px-3 font-semibold text-accent-fg" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">{t("Connect with GitHub")}</a>
                 </>
               ) : (
                 <>
                   <p className="text-muted">
-                    Signed in as <b>@{gh.login}</b>. {appRepos.length ? `${appRepos.length} repository(ies) available.` : "The app is not installed on any repository you can write to yet."}
+                    {t("Signed in as")}{" "} <b>@{gh.login}</b>. {appRepos.length ? `${appRepos.length} repository(ies) available.` : t("The app is not installed on any repository you can write to yet.")}
                   </p>
                   {gh.installations.filter((i) => i.error).map((i) => <Notice key={i.id} tone="warn">{i.account}: {i.error}</Notice>)}
                   <div className="flex flex-wrap gap-2">
-                    <a className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-ink hover:bg-raised" href="/api/github/start?purpose=install">{appRepos.length ? "Add or remove repositories" : "Install on my repositories"}</a>
-                    <a className="inline-flex h-9 items-center rounded-lg px-3 text-muted hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">Refresh</a>
+                    <a className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-ink hover:bg-raised" href="/api/github/start?purpose=install">{appRepos.length ? t("Add or remove repositories") : t("Install on my repositories")}</a>
+                    <a className="inline-flex h-9 items-center rounded-lg px-3 text-muted hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">{t("Refresh")}</a>
                   </div>
                 </>
               )}
             </div>
           ) : source === "pat" ? (
             <Field
-              label="GitHub token"
-              hint={c?.token.source === "pat" ? `Stored (${c.token.hint}, ${c.token.login}). Leave empty to keep it.` : "Fine-grained token for this repository: Contents and Pull requests read & write (Commit statuses / Deployments read for previews)."}
+              label={t("GitHub token")}
+              hint={c?.token.source === "pat" ? t("Stored ({hint}, {login}). Leave empty to keep it.", { hint: c.token.hint, login: c.token.login }) : t("Fine-grained token for this repository: Contents and Pull requests read & write (Commit statuses / Deployments read for previews).")}
             >
-              <TextInput type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={c?.token.source === "pat" ? "unchanged" : "github_pat_…"} autoComplete="off" />
+              <TextInput type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={c?.token.source === "pat" ? t("unchanged") : t("github_pat_…")} autoComplete="off" />
             </Field>
           ) : (
-            <Notice tone="info">Uses this server&apos;s own <code>gh</code> login (administrators only). Nothing is stored.</Notice>
+            <Notice tone="info">{t("Uses this server's own")}{" "} <code>gh</code> {" "}{t("login (administrators only). Nothing is stored.")}</Notice>
           )}
           <details className="text-sm text-muted">
-            <summary className="cursor-pointer text-ink">More settings</summary>
+            <summary className="cursor-pointer text-ink">{t("More settings")}</summary>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <Field label="Base branch" hint="Where published changes go (default: the repository's default branch).">
-                <TextInput value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder="main" autoComplete="off" spellCheck={false} />
+              <Field label={t("Base branch")} hint={t("Where published changes go (default: the repository's default branch).")}>
+                <TextInput value={baseBranch} onChange={(e) => setBaseBranch(e.target.value)} placeholder={t("main")} autoComplete="off" spellCheck={false} />
               </Field>
-              <Field label="PageSpeed API key (optional)" hint={c?.hasPsiKey ? "Stored. Leave empty to keep it." : "Without one Google's small anonymous quota applies."}>
-                <TextInput type="password" value={psiKey} onChange={(e) => setPsiKey(e.target.value)} placeholder={c?.hasPsiKey ? "unchanged" : "AIza…"} autoComplete="off" />
+              <Field label={t("PageSpeed API key (optional)")} hint={c?.hasPsiKey ? t("Stored. Leave empty to keep it.") : t("Without one Google's small anonymous quota applies.")}>
+                <TextInput type="password" value={psiKey} onChange={(e) => setPsiKey(e.target.value)} placeholder={c?.hasPsiKey ? t("unchanged") : t("AIza…")} autoComplete="off" />
               </Field>
-              <Field label="More pages to audit" hint="One path per line (the home page is always audited), at most 9.">
-                <TextArea rows={3} value={pages} onChange={(e) => setPages(e.target.value)} placeholder={"/about\n/projects"} spellCheck={false} />
+              <Field label={t("More pages to audit")} hint={t("One path per line (the home page is always audited), at most 9.")}>
+                <TextArea rows={3} value={pages} onChange={(e) => setPages(e.target.value)} placeholder={t("/about\n/projects")} spellCheck={false} />
               </Field>
             </div>
           </details>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" variant="primary" disabled={busy || !repo.trim() || (source === "app" && !installationId)}>{c ? "Save settings" : "Connect"}</Button>
-            {c && !confirmDisconnect ? <Button variant="ghost" onClick={() => setConfirmDisconnect(true)} disabled={busy}>Disconnect…</Button> : null}
+            <Button type="submit" variant="primary" disabled={busy || !repo.trim() || (source === "app" && !installationId)}>{c ? t("Save settings") : t("Connect")}</Button>
+            {c && !confirmDisconnect ? <Button variant="ghost" onClick={() => setConfirmDisconnect(true)} disabled={busy}>{t("Disconnect…")}</Button> : null}
             {confirmDisconnect ? (
               <>
-                <span className="text-sm text-muted">Forget the token and settings?</span>
-                <Button variant="danger" onClick={() => void disconnect()} disabled={busy}>Disconnect</Button>
-                <Button variant="ghost" onClick={() => setConfirmDisconnect(false)}>Keep</Button>
+                <span className="text-sm text-muted">{t("Forget the token and settings?")}</span>
+                <Button variant="danger" onClick={() => void disconnect()} disabled={busy}>{t("Disconnect")}</Button>
+                <Button variant="ghost" onClick={() => setConfirmDisconnect(false)}>{t("Keep")}</Button>
               </>
             ) : null}
           </div>
@@ -231,30 +233,30 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
       </Panel>
 
       {!c ? (
-        <Panel title="How it works">
+        <Panel title={t("How it works")}>
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted">
-            <li>Create a fine-grained token on GitHub (Settings → Developer settings → Fine-grained tokens) for just this repository, with <b>Contents</b> and <b>Pull requests</b> set to read and write. It is stored encrypted and never shown again.</li>
-            <li>Score the site (Score tab): SEO, copywriting, fit with your CV, Lighthouse.</li>
-            <li>Ask the assistant (or your own agent over MCP) to improve it: changes land on a separate branch as a pull request, with a preview build when your host makes one (Vercel does).</li>
-            <li>Review the diff and the preview score, then publish from the Changes tab. Nothing reaches production without you.</li>
+            <li>{t("Create a fine-grained token on GitHub (Settings → Developer settings → Fine-grained tokens) for just this repository, with")}{" "} <b>{t("Contents")}</b> and <b>{t("Pull requests")}</b> {" "}{t("set to read and write. It is stored encrypted and never shown again.")}</li>
+            <li>{t("Score the site (Score tab): SEO, copywriting, fit with your CV, Lighthouse.")}</li>
+            <li>{t("Ask the assistant (or your own agent over MCP) to improve it: changes land on a separate branch as a pull request, with a preview build when your host makes one (Vercel does).")}</li>
+            <li>{t("Review the diff and the preview score, then publish from the Changes tab. Nothing reaches production without you.")}</li>
           </ol>
         </Panel>
       ) : null}
 
       {c && status?.repo ? (
-        <Panel title="Repository">
+        <Panel title={t("Repository")}>
           <KeyValues
             rows={[
               ["Repository", <a key="r" className="text-accent underline" href={status.repo.htmlUrl} target="_blank" rel="noreferrer">{status.repo.fullName}</a>],
-              ["Access", status.repo.canPush ? <Badge key="a" tone="good">read and write</Badge> : <Badge key="a" tone="warn">read only: changes will be refused</Badge>],
-              ["Base branch", c.baseBranch],
-              ["Work branch", view?.work ? `${view.work.branch}${view.work.pull ? ` (pull request #${view.work.pull})` : ""}` : "none yet (created on the first change)"],
-              ["Instructions for agents", status.instructions.length ? status.instructions.map((i) => i.path).join(", ") : "none (add an AGENTS.md to tell agents how the site is built)"],
-              ["Last push", when(status.repo.pushedAt)],
+              ["Access", status.repo.canPush ? <Badge key="a" tone="good">{t("read and write")}</Badge> : <Badge key="a" tone="warn">{t("read only: changes will be refused")}</Badge>],
+              [t("Base branch"), c.baseBranch],
+              [t("Work branch"), view?.work ? `${view.work.branch}${view.work.pull ? ` (pull request #${view.work.pull})` : ""}` : "none yet (created on the first change)"],
+              [t("Instructions for agents"), status.instructions.length ? status.instructions.map((i) => i.path).join(", ") : "none (add an AGENTS.md to tell agents how the site is built)"],
+              [t("Last push"), when(status.repo.pushedAt)],
             ]}
           />
           <p className="mt-3 text-sm text-muted">
-            Next: <Link className="text-accent underline" href="/tools/site-studio?tab=score">score the site</Link>, then ask the assistant, for example: “Make my website match my CV and add my newest projects”.
+            {t("Next:")}{" "} <Link className="text-accent underline" href="/tools/site-studio?tab=score">{t("score the site")}</Link>{t(", then ask the assistant, for example: “Make my website match my CV and add my newest projects”.")}
           </p>
         </Panel>
       ) : null}

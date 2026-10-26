@@ -5,6 +5,7 @@ import { CopyButton, Dropzone, Field, KeyValues, Notice, OutputBlock, Panel, Sta
 import { oklchToRgb, rgbToOklch, srgbToLinear, linearToSrgb, type Rgb } from "@/lib/color-oklch";
 import { cx, clamp } from "@/lib/format";
 import { readAsDataURL } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Colour workbench. Parses hex / rgb() / hsl() / oklch(), converts between
@@ -184,6 +185,7 @@ async function paletteFromDataUri(dataUri: string): Promise<string[]> {
 }
 
 export default function ColorTool() {
+  const { t: tr } = useT();
   const [input, setInput] = useState("#c9a227");
   const [palette, setPalette] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -197,12 +199,12 @@ export default function ColorTool() {
     try {
       setPalette(await paletteFromDataUri(await readAsDataURL(file)));
     } catch {
-      setError("Could not read that image.");
+      setError(tr("Could not read that image."));
       setPalette([]);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [tr]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -246,14 +248,14 @@ export default function ColorTool() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-      <Panel title="Colour">
+      <Panel title={tr("Colour")}>
         <div className="space-y-3">
-          <Field label="Any format the browser understands">
+          <Field label={tr("Any format the browser understands")}>
             <TextInput
               value={input}
               spellCheck={false}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="#c9a227 · rgb(201 162 39) · hsl(43 62% 51%) · oklch(0.72 0.11 85)"
+              placeholder={tr("#c9a227 · rgb(201 162 39) · hsl(43 62% 51%) · oklch(0.72 0.11 85)")}
               className="font-mono"
             />
           </Field>
@@ -280,35 +282,35 @@ export default function ColorTool() {
         </div>
       </Panel>
 
-      <Panel title="Contrast against this app">
+      <Panel title={tr("Contrast against this app")}>
         {contrast ? (
           <div className="space-y-3">
             <StatGrid>
-              <Stat label="On the dark bg" value={`${contrast.onBg.toFixed(2)} : 1 · ${contrast.bgGrade}`} />
-              <Stat label="On the ink colour" value={`${contrast.onInk.toFixed(2)} : 1 · ${contrast.inkGrade}`} />
+              <Stat label={tr("On the dark bg")} value={`${contrast.onBg.toFixed(2)} : 1 · ${contrast.bgGrade}`} />
+              <Stat label={tr("On the ink colour")} value={`${contrast.onInk.toFixed(2)} : 1 · ${contrast.inkGrade}`} />
             </StatGrid>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-tool border border-line bg-[#0a0a09] p-3 text-[13px]" style={{ color: swatch || undefined }}>
-                this text on the app background
+                {tr("this text on the app background")}
               </div>
               <div className="rounded-tool border border-line bg-[#ecebe7] p-3 text-[13px]" style={{ color: swatch || undefined }}>
-                this text on the app ink
+                {tr("this text on the app ink")}
               </div>
             </div>
             <p className="text-xs text-faint">
-              WCAG 2.1: AA needs 4.5:1, large text 3:1, AAA 7:1.
+              {tr("WCAG 2.1: AA needs 4.5:1, large text 3:1, AAA 7:1.")}
             </p>
           </div>
         ) : (
-          <p className="text-sm text-faint">Parse a colour above to check it.</p>
+          <p className="text-sm text-faint">{tr("Parse a colour above to check it.")}</p>
         )}
       </Panel>
 
       <Panel
-        title="Tint ramp"
+        title={tr("Tint ramp")}
         right={
           <div className="flex gap-1.5">
-            <CopyButton text={cssBlock} label="Copy CSS" />
+            <CopyButton text={cssBlock} label={tr("Copy CSS")} />
           </div>
         }
       >
@@ -323,25 +325,25 @@ export default function ColorTool() {
               />
             ))}
           </div>
-          <OutputBlock value={cssBlock} rows={10} empty="Parse a colour above." />
+          <OutputBlock value={cssBlock} rows={10} empty={tr("Parse a colour above.")} />
           <p className="text-xs text-faint">
-            Mixed in linear light, so the midtones stay clean.
+            {tr("Mixed in linear light, so the midtones stay clean.")}
           </p>
         </div>
       </Panel>
 
       <Panel
-        title="Palette from an image"
+        title={tr("Palette from an image")}
         right={
           <span className="font-mono text-[11px] text-faint">
-            {palette.length ? `${palette.length} swatches` : "idle"}
+            {palette.length ? `${palette.length} swatches` : tr("idle")}
           </span>
         }
       >
         <div className="space-y-3">
           <Dropzone
             accept="image/*"
-            hint="Read in the browser and sampled at ≤128 px — never uploaded"
+            hint={tr("Read in the browser and sampled at ≤128 px — never uploaded")}
             disabled={busy}
             onFiles={(files) => void loadFile(files[0])}
           />
@@ -359,7 +361,7 @@ export default function ColorTool() {
             </div>
           ) : (
             <p className="text-sm text-faint">
-              {busy ? "Sampling…" : "Drop an image — the dominant colours come out as copyable hex."}
+              {busy ? tr("Sampling…") : tr("Drop an image — the dominant colours come out as copyable hex.")}
             </p>
           )}
         </div>

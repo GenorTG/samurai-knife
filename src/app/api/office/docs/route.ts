@@ -5,6 +5,7 @@ import { officeError } from "@/lib/office/http";
 import { createDoc, MAX_DOC_BYTES, MAX_VERSIONS, splitName, TRASH_DAYS } from "@/lib/office/store";
 import { buildDocument, OFFICE_FORMATS } from "@/lib/office/templates";
 import { assertCanStore, storageUsage } from "@/lib/storage/quota";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, Math.ceil((MAX_DOC_BYTES * 4) / 3) + 4096);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   const body = parsed.data;
   try {
     const folder = assertFolder(auth.account.id, body.folderId);
@@ -61,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
       return json({ doc }, 201);
     }
     const split = splitName(body.name);
-    if (!split) return jsonError(`Unsupported file type: ${body.name}. Supported: ${OFFICE_FORMATS.join(", ")}.`, 415);
+    if (!split) return jsonError(msgf("Unsupported file type: {name}. Supported: {value}.", { name: body.name, value: OFFICE_FORMATS.join(", ") }), 415);
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) return jsonError("data: expected base64", 422);
     // Refuse before decoding when it cannot fit anyway.
     assertCanStore(auth.account.id, Math.floor((body.data.length * 3) / 4));

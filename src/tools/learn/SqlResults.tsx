@@ -4,35 +4,38 @@ import { Notice } from "@/components/ui";
 import { formatInt } from "@/lib/format";
 import type { Cell } from "@/lib/learn/sql/compare";
 import type { RunOutput, SqlErrorInfo, StatementResult } from "@/lib/learn/sql/db";
+import { useT } from "@/lib/i18n/react";
 
 /** Results of one run: an error with its position, notices, and each statement's rows (plans as text). */
 
 function CellView({ value }: { value: Cell }) {
+  const { t } = useT();
   if (value === null) return <span className="text-faint italic">NULL</span>;
-  if (typeof value === "boolean") return <>{value ? "true" : "false"}</>;
+  if (typeof value === "boolean") return <>{value ? t("true") : t("false")}</>;
   return <>{String(value)}</>;
 }
 
 function ErrorView({ error, sql }: { error: SqlErrorInfo; sql: string }) {
+  const { t } = useT();
   const position = error.position;
   const line = position ? (sql.split("\n")[position.line - 1] ?? "") : "";
   return (
     <div className="space-y-2" data-agent-region="learn-sql-error">
       <Notice tone="error">
-        {error.code === "knife_refused" ? "Not run: " : "Error: "}
+        {error.code === "knife_refused" ? t("Not run: ") : t("Error: ")}
         {error.message}
         {position ? ` (line ${position.line}, column ${position.column})` : ""}
         {error.code && error.code !== "knife_refused" ? ` [${error.code}]` : ""}
       </Notice>
       {position ? (
-        <pre aria-label="Error position" className="overflow-x-auto rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 font-mono text-xs text-ink">
+        <pre aria-label={t("Error position")} className="overflow-x-auto rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 font-mono text-xs text-ink">
           {line}
           {"\n"}
           <span className="text-danger">{" ".repeat(Math.max(0, position.column - 1))}^</span>
         </pre>
       ) : null}
-      {error.detail ? <p className="text-xs text-muted">Detail: {error.detail}</p> : null}
-      {error.hint ? <p className="text-xs text-muted">Hint: {error.hint}</p> : null}
+      {error.detail ? <p className="text-xs text-muted">{t("Detail:")}{" "} {error.detail}</p> : null}
+      {error.hint ? <p className="text-xs text-muted">{t("Hint:")}{" "} {error.hint}</p> : null}
     </div>
   );
 }
@@ -42,11 +45,12 @@ function isPlan(result: StatementResult): boolean {
 }
 
 function ResultBlock({ result, index, total }: { result: StatementResult; index: number; total: number }) {
-  const label = total > 1 ? `Statement ${index + 1}: ${result.command}` : result.command;
+  const { t, tn } = useT();
+  const label = total > 1 ? t("Statement {value}: {command}", { value: index + 1, command: result.command }) : result.command;
   if (result.columns.length === 0) {
     return (
       <p className="text-sm text-muted">
-        {label} — {formatInt(result.rowCount)} row{result.rowCount === 1 ? "" : "s"} affected.
+        {tn("{label} — {n} row affected.", "{label} — {n} rows affected.", result.rowCount, { label, n: formatInt(result.rowCount) })}
       </p>
     );
   }
@@ -54,7 +58,7 @@ function ResultBlock({ result, index, total }: { result: StatementResult; index:
     return (
       <div className="space-y-1">
         <p className="text-xs text-faint">{label}</p>
-        <pre aria-label="Query plan" className="max-h-96 overflow-auto rounded-lg border border-line bg-raised/40 p-3 font-mono text-xs leading-relaxed text-ink">
+        <pre aria-label={t("Query plan")} className="max-h-96 overflow-auto rounded-lg border border-line bg-raised/40 p-3 font-mono text-xs leading-relaxed text-ink">
           {result.rows.map((row) => String(row[0] ?? "")).join("\n")}
         </pre>
       </div>
@@ -63,11 +67,11 @@ function ResultBlock({ result, index, total }: { result: StatementResult; index:
   return (
     <div className="space-y-1">
       <p className="text-xs text-faint">
-        {label} — {formatInt(result.rows.length)} row{result.rows.length === 1 ? "" : "s"}
-        {result.truncated ? ` (only the first ${formatInt(result.rows.length)} are shown)` : ""}
+        {tn("{label} — {n} row", "{label} — {n} rows", result.rows.length, { label, n: formatInt(result.rows.length) })}
+        {result.truncated ? t(" (only the first {n} are shown)", { n: formatInt(result.rows.length) }) : ""}
       </p>
       <div className="max-h-[28rem] overflow-auto rounded-lg border border-line">
-        <table className="w-full border-collapse text-left font-mono text-xs" aria-label={`Result of ${label}`}>
+        <table className="w-full border-collapse text-left font-mono text-xs" aria-label={t("Result of {label}", { label })}>
           <thead className="sticky top-0 bg-raised">
             <tr>
               {result.columns.map((column, i) => (
@@ -95,12 +99,13 @@ function ResultBlock({ result, index, total }: { result: StatementResult; index:
 }
 
 export function SqlResults({ run, sql }: { run: RunOutput; sql: string }) {
+  const { t } = useT();
   const shown = run.results.filter((result, index) => result.columns.length > 0 || index === run.results.length - 1);
   return (
     <div className="space-y-3" data-agent-region="learn-sql-results">
       {run.error ? <ErrorView error={run.error} sql={sql} /> : null}
       {run.notices.length ? (
-        <ul className="space-y-0.5 text-xs text-muted" aria-label="Notices">
+        <ul className="space-y-0.5 text-xs text-muted" aria-label={t("Notices")}>
           {run.notices.map((notice, i) => (
             <li key={i}>{notice}</li>
           ))}

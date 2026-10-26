@@ -9,6 +9,7 @@ import { HASH_NAMES, type HashName } from "@/lib/hash-run";
 import { isAbortError } from "@/lib/workers/errors";
 import { copyText, formatBytes } from "@/lib/format";
 import { createUuidV4 } from "@/lib/random-uuid";
+import { useT } from "@/lib/i18n/react";
 
 const ALPHABETS = {
   base36: "0123456789abcdefghijklmnopqrstuvwxyz",
@@ -57,6 +58,7 @@ function toHex(bytes: Uint8Array): string {
 const HASH_FNS = { "SHA-1": sha1, "SHA-256": sha256, "SHA-384": sha384, "SHA-512": sha512 } as const;
 
 export default function IdsTool() {
+  const { t } = useT();
   const [count, setCount] = useState(5);
   const [length, setLength] = useState(21);
   const [alphabet, setAlphabet] = useState<AlphabetKey>("base62");
@@ -111,7 +113,7 @@ export default function IdsTool() {
     try {
       // Files stream through the worker (constant memory); the cap stays as the documented limit.
       if (file.size > 512 * 1024 * 1024) {
-        throw new Error("File hashing is capped at 512 MB in the browser.");
+        throw new Error(t("File hashing is capped at 512 MB in the browser."));
       }
       hasherRef.current ??= new FileHasher();
       setProgress({ bytes: 0, total: file.size, name: file.name });
@@ -125,12 +127,12 @@ export default function IdsTool() {
     } catch (exc) {
       if (isAbortError(exc)) {
         if (abortRef.current === controller) {
-          setError(`Hashing ${file.name} was cancelled.`);
+          setError(t("Hashing {name} was cancelled.", { name: file.name }));
           setDigest("");
         }
         return;
       }
-      setError(exc instanceof Error ? exc.message : "Hash failed.");
+      setError(exc instanceof Error ? exc.message : t("Hash failed."));
       setDigest("");
     } finally {
       if (abortRef.current === controller) {
@@ -139,17 +141,17 @@ export default function IdsTool() {
         setProgress(null);
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (payload) void hashText(payload, algorithm).catch((exc: unknown) => {
-        setError(exc instanceof Error ? exc.message : "Hash failed.");
+        setError(exc instanceof Error ? exc.message : t("Hash failed."));
         setDigest("");
       });
     }, 120);
     return () => clearTimeout(timer);
-  }, [algorithm, hashText, payload]);
+  }, [t, algorithm, hashText, payload]);
 
   useEffect(() => () => {
     abortRef.current?.abort();
@@ -159,36 +161,36 @@ export default function IdsTool() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel
-        title="Identifiers"
+        title={t("Identifiers")}
         right={
           <div className="flex gap-1.5">
             <CopyButton text={ids.join("\n")} />
-            <Button size="sm" variant="ghost" onClick={() => setIds([])}>Clear</Button>
+            <Button size="sm" variant="ghost" onClick={() => setIds([])}>{t("Clear")}</Button>
           </div>
         }
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="How many" className="w-24">
+            <Field label={t("How many")} className="w-24">
               <NumberField type="text" min={1} max={500} integer value={count} onValueChange={setCount} />
             </Field>
-            <Field label="Length" className="w-24">
+            <Field label={t("Length")} className="w-24">
               <NumberField type="text" min={4} max={64} integer value={length} onValueChange={setLength} />
             </Field>
-            <Field label="Alphabet" className="w-36">
+            <Field label={t("Alphabet")} className="w-36">
               <Select value={alphabet} onChange={(e) => setAlphabet(e.target.value as AlphabetKey)}>
-                <option value="base62">Base62</option>
-                <option value="base36">Base36</option>
-                <option value="crockford">Crockford</option>
-                <option value="hex">Hex</option>
+                <option value="base62">{t("Base62")}</option>
+                <option value="base36">{t("Base36")}</option>
+                <option value="crockford">{t("Crockford")}</option>
+                <option value="hex">{t("Hex")}</option>
               </Select>
             </Field>
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <Button variant="primary" onClick={() => generate("uuid4")}>UUID v4</Button>
-            <Button variant="subtle" onClick={() => generate("uuid7")}>UUID v7</Button>
-            <Button variant="subtle" onClick={() => generate("random")}>Random ID</Button>
+            <Button variant="primary" onClick={() => generate("uuid4")}>{t("UUID v4")}</Button>
+            <Button variant="subtle" onClick={() => generate("uuid7")}>{t("UUID v7")}</Button>
+            <Button variant="subtle" onClick={() => generate("random")}>{t("Random ID")}</Button>
             <Button
               size="sm"
               variant="ghost"
@@ -200,21 +202,21 @@ export default function IdsTool() {
                 }
               }}
             >
-              {copied ? "Copied" : "Copy all"}
+              {copied ? t("Copied") : t("Copy all")}
             </Button>
           </div>
 
           <p className="text-xs text-faint">
-            v4 = random, v7 = time-ordered (better for indexes). All from{" "}
-            <span className="font-mono">crypto.getRandomValues</span>.
+            {t("v4 = random, v7 = time-ordered (better for indexes). All from")}{" "}
+            <span className="font-mono">{t("crypto.getRandomValues")}</span>.
           </p>
 
           {ids.length > 0 ? (
             <>
               <StatGrid>
-                <Stat label="Generated" value={ids.length} />
-                <Stat label="Each" value={`${ids[0].length} chars`} />
-                <Stat label="Unique" value={new Set(ids).size} />
+                <Stat label={t("Generated")} value={ids.length} />
+                <Stat label={t("Each")} value={`${ids[0].length} chars`} />
+                <Stat label={t("Unique")} value={new Set(ids).size} />
               </StatGrid>
               <TextArea
                 readOnly
@@ -225,25 +227,25 @@ export default function IdsTool() {
             </>
           ) : (
             <div className="grid h-40 place-items-center text-sm text-faint">
-              Nothing generated yet.
+              {t("Nothing generated yet.")}
             </div>
           )}
         </div>
       </Panel>
 
       <Panel
-        title="Hashes"
+        title={t("Hashes")}
         right={
           <div className="flex gap-1.5">
             <CopyButton text={digest} />
             <Button size="sm" variant="ghost" onClick={() => { setDigest(""); setPayload(""); setFileName(""); }}>
-              Clear
+              {t("Clear")}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
-          <Field label="Algorithm">
+          <Field label={t("Algorithm")}>
             <Select value={algorithm} onChange={(e) => setAlgorithm(e.target.value as HashName)}>
               {HASH_NAMES.map((name) => (
                 <option key={name} value={name}>
@@ -253,7 +255,7 @@ export default function IdsTool() {
             </Select>
           </Field>
 
-          <Field label="Text">
+          <Field label={t("Text")}>
             <TextArea
               rows={5}
               spellCheck={false}
@@ -263,13 +265,13 @@ export default function IdsTool() {
                 // Emptying the box must not leave the digest of text that is gone (the effect only hashes non-empty text).
                 if (!e.target.value) { setDigest(""); setFileName(""); setFileBytes(0); }
               }}
-              placeholder="Type or paste text — digest updates as you type…"
+              placeholder={t("Type or paste text — digest updates as you type…")}
             />
           </Field>
 
           <Dropzone
             accept="*/*"
-            hint="Any file up to 512 MB — read in the browser, never uploaded"
+            hint={t("Any file up to 512 MB — read in the browser, never uploaded")}
             disabled={busy}
             onFiles={(files) => void hashFile(files[0], algorithm)}
           />
@@ -278,9 +280,9 @@ export default function IdsTool() {
             {progress ? (
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
                 <span>
-                  Hashing {progress.name}: {formatBytes(progress.bytes)} of {formatBytes(progress.total)} ({progress.total ? Math.floor((progress.bytes / progress.total) * 100) : 100}%)
+                  {t("Hashing {name}: {bytes} of {total} (", { name: progress.name, bytes: formatBytes(progress.bytes), total: formatBytes(progress.total) })}{progress.total ? Math.floor((progress.bytes / progress.total) * 100) : 100}%)
                 </span>
-                <Button size="sm" variant="danger" onClick={() => abortRef.current?.abort()}>Cancel hashing</Button>
+                <Button size="sm" variant="danger" onClick={() => abortRef.current?.abort()}>{t("Cancel hashing")}</Button>
               </div>
             ) : null}
           </div>
@@ -290,10 +292,10 @@ export default function IdsTool() {
           {digest ? (
             <div className="space-y-2">
               <StatGrid>
-                <Stat label="Algorithm" value={algorithm} />
-                <Stat label="Hex chars" value={digest.length} />
+                <Stat label={t("Algorithm")} value={algorithm} />
+                <Stat label={t("Hex chars")} value={digest.length} />
                 <Stat
-                  label="Source"
+                  label={t("Source")}
                   value={fileName ? `${fileName} · ${formatBytes(fileBytes)}` : `${payload.length} chars`}
                 />
               </StatGrid>
@@ -301,7 +303,7 @@ export default function IdsTool() {
             </div>
           ) : (
             <div className="grid h-20 place-items-center text-sm text-faint">
-              {busy ? "Hashing…" : "No digest yet."}
+              {busy ? t("Hashing…") : t("No digest yet.")}
             </div>
           )}
         </div>

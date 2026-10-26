@@ -1,3 +1,7 @@
+"use client";
+import { msg } from "@/lib/i18n/msg";
+import { useT } from "@/lib/i18n/react";
+
 const BUTTON_CLASS =
   "inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-4 text-sm font-semibold text-ink shadow-xs transition-colors";
 
@@ -5,20 +9,21 @@ const BUTTON_CLASS =
  * "Continue with GitHub" (public mode, when the server has a GitHub App). A plain link: the flow is server redirects.
  * `purpose="register"` carries the legal version the person accepted (`terms`); without it (`disabled`) it is inert.
  */
-export function GithubButton({ next, label = "Continue with GitHub", purpose = "login", terms, disabled = false }: { next?: string; label?: string; purpose?: "login" | "register"; terms?: string; disabled?: boolean }) {
+export function GithubButton({ next, label = msg("Continue with GitHub"), purpose = "login", terms, disabled = false }: { next?: string; label?: string; purpose?: "login" | "register"; terms?: string; disabled?: boolean }) {
+  const { t } = useT();
   const href = `/api/github/start?purpose=${purpose}${next ? `&returnTo=${encodeURIComponent(next)}` : ""}${terms ? `&terms=${encodeURIComponent(terms)}` : ""}`;
   if (disabled) {
     return (
       <span role="link" aria-disabled="true" className={`${BUTTON_CLASS} cursor-not-allowed opacity-50`}>
         <GithubMark />
-        {label}
+        {t(label)}
       </span>
     );
   }
   return (
     <a href={href} className={`${BUTTON_CLASS} hover:bg-raised`}>
       <GithubMark />
-      {label}
+      {t(label)}
     </a>
   );
 }
@@ -32,20 +37,20 @@ function GithubMark() {
 }
 
 const MESSAGES: Record<string, string> = {
-  expired: "The GitHub sign-in took too long or was opened in another browser: start it again.",
-  denied: "GitHub sign-in was cancelled.",
-  not_configured: "This server has no GitHub App yet.",
-  public_only: "Signing in with GitHub is available on the public server only.",
-  github_taken: "That GitHub user is already linked to another account.",
-  session_changed: "You were signed in as someone else when GitHub answered: start again.",
-  exchange_failed: "GitHub did not accept the sign-in: start again.",
-  rate_limited: "Too many GitHub sign-ins from here. Wait a few minutes and start again.",
-  terms_required: "To create an account with GitHub, accept the Terms of Service and the privacy notice first.",
-  terms_changed: "The Terms of Service or privacy notice changed meanwhile: read them and accept them again.",
+  expired: msg("The GitHub sign-in took too long or was opened in another browser: start it again."),
+  denied: msg("GitHub sign-in was cancelled."),
+  not_configured: msg("This server has no GitHub App yet."),
+  public_only: msg("Signing in with GitHub is available on the public server only."),
+  github_taken: msg("That GitHub user is already linked to another account."),
+  session_changed: msg("You were signed in as someone else when GitHub answered: start again."),
+  exchange_failed: msg("GitHub did not accept the sign-in: start again."),
+  rate_limited: msg("Too many GitHub sign-ins from here. Wait a few minutes and start again."),
+  terms_required: msg("To create an account with GitHub, accept the Terms of Service and the privacy notice first."),
+  terms_changed: msg("The Terms of Service or privacy notice changed meanwhile: read them and accept them again."),
 };
 
 /** The message for `?github_error=` (the server's own text in `github_message` wins). */
 export function githubErrorText(code: string | undefined, message: string | undefined): string | null {
   if (!code) return null;
-  return (message && message.length < 300 ? message : null) ?? MESSAGES[code] ?? "GitHub sign-in failed.";
+  return (message && message.length < 300 ? message : null) ?? MESSAGES[code] ?? msg("GitHub sign-in failed.");
 }

@@ -4,6 +4,7 @@ import { quotaErrorResponse } from "@/lib/storage/http";
 import { CvCollectionError } from "./collections";
 import { CvStoreError, mutateCv } from "./store";
 import type { CvData } from "./schema";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /** A damaged stored file is a server-side condition with a readable reason, not an opaque 500: the UI can show it. */
 export function cvStoreErrorResponse(error: unknown): Response | null {
@@ -17,7 +18,7 @@ export async function cvMutationRoute<T>(request: Request, bodySchema: ZodType<T
   const read = await readJsonBody(request, 1024 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   try {
     const { data, result } = mutateCv(auth.account.id, (current) => apply(current, parsed.data));
     return json({ revision: data.revision, ...(result as object) });
@@ -31,7 +32,7 @@ export async function cvMutationRoute<T>(request: Request, bodySchema: ZodType<T
 
 export async function cvDeleteRoute(request: Request, remove: (data: CvData, id: string) => CvData): Promise<Response> {
   const id = new URL(request.url).searchParams.get("id") ?? "";
-  if (!id) return jsonError("Pass ?id=<id>.", 422);
+  if (!id) return jsonError(msg("Pass ?id=<id>."), 422);
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
   try {

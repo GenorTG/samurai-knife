@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { cx } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 export interface SuiteTab {
   id: string;
@@ -47,6 +48,7 @@ function SuiteTabs({
   label: string;
   renderTab: (id: string) => ReactNode;
 }) {
+  const { t } = useT();
   const baseId = useId();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -153,7 +155,7 @@ function SuiteTabs({
               onClick={() => select(tab.id, "push")}
               className={tabClass(selected)}
             >
-              {tab.label}
+              {t(tab.label)}
             </button>
           );
         })}
@@ -177,6 +179,7 @@ function SuiteTabs({
 
 /** Static stand-in while `useSearchParams` resolves on a prerendered page. */
 function SuiteFallback({ tabs, label }: { tabs: SuiteTab[]; label: string }) {
+  const { t } = useT();
   return (
     <div aria-busy="true">
       <div
@@ -192,7 +195,7 @@ function SuiteFallback({ tabs, label }: { tabs: SuiteTab[]; label: string }) {
             aria-disabled="true"
             className={tabClass(index === 0)}
           >
-            {tab.label}
+            {t(tab.label)}
           </span>
         ))}
       </div>
@@ -205,8 +208,9 @@ export function SuiteShell(props: {
   label: string;
   renderTab: (id: string) => ReactNode;
 }) {
+  const { t } = useT();
   return (
-    <Suspense fallback={<SuiteFallback tabs={props.tabs} label={props.label} />}>
+    <Suspense fallback={<SuiteFallback tabs={props.tabs} label={t(props.label)} />}>
       <SuiteTabs {...props} />
     </Suspense>
   );

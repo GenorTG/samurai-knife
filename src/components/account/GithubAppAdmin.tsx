@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Field, KeyValues, Notice, Panel, TextInput } from "@/components/ui";
 import { githubErrorText } from "./GithubButton";
+import { useT } from "@/lib/i18n/react";
 
 interface AppStatusView {
   configured: boolean;
@@ -31,9 +32,10 @@ async function call<T>(method: string, body?: unknown): Promise<T> {
  * permissions and callback URLs; the admin confirms on github.com and comes back with the app created.
  */
 export function GithubAppAdmin({ created, errorCode, errorMessage }: { created?: boolean; errorCode?: string; errorMessage?: string }) {
+  const { t } = useT();
   const [status, setStatus] = useState<AppStatusView | null>(null);
   const [error, setError] = useState("");
-  const [name, setName] = useState("Smart Knife");
+  const [name, setName] = useState(t("Smart Knife"));
   const [org, setOrg] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -85,53 +87,53 @@ export function GithubAppAdmin({ created, errorCode, errorMessage }: { created?:
   }
 
   return (
-    <Panel title="GitHub App" right={status?.configured ? <Badge tone="good">ready</Badge> : status ? <Badge>not set up</Badge> : null}>
+    <Panel title={t("GitHub App")} right={status?.configured ? <Badge tone="good">{t("ready")}</Badge> : status ? <Badge>{t("not set up")}</Badge> : null}>
       <div id="github-app" className="space-y-3">
         {flash ? <Notice tone={flash.tone}>{flash.text}</Notice> : null}
         {error ? <Notice tone="error">{error}</Notice> : null}
         {!status ? (
-          <p className="text-sm text-muted">Loading…</p>
+          <p className="text-sm text-muted">{t("Loading…")}</p>
         ) : status.configured ? (
           <>
             <KeyValues
               rows={[
                 ["App", <a key="a" className="text-accent underline" href={status.htmlUrl} target="_blank" rel="noreferrer">{status.name} ({status.slug})</a>],
                 ["Owner", status.owner ?? ""],
-                ["Install on repositories", <a key="i" className="text-accent underline" href={status.installUrl} target="_blank" rel="noreferrer">{status.installUrl}</a>],
-                ["Callback URLs", status.callbackUrls.join("  ")],
+                [t("Install on repositories"), <a key="i" className="text-accent underline" href={status.installUrl} target="_blank" rel="noreferrer">{status.installUrl}</a>],
+                [t("Callback URLs"), status.callbackUrls.join("  ")],
               ]}
             />
             <p className="text-xs text-faint">
-              Users sign in with GitHub (public mode) and install the app on the repositories they choose; the server mints a one-hour token per repository when it needs one. If this server&apos;s address changes, update the callback and setup URLs in the{" "}
-              <a className="underline" href={status.settingsUrl} target="_blank" rel="noreferrer">app settings on GitHub</a>.
+              {t("Users sign in with GitHub (public mode) and install the app on the repositories they choose; the server mints a one-hour token per repository when it needs one. If this server's address changes, update the callback and setup URLs in the")}{" "}
+              <a className="underline" href={status.settingsUrl} target="_blank" rel="noreferrer">{t("app settings on GitHub")}</a>.
             </p>
             {confirmRemove ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted">Remove the app&apos;s credentials from this server? (Delete the app itself on GitHub.)</span>
-                <Button variant="danger" disabled={busy} onClick={() => void remove()}>Remove from this server</Button>
-                <Button variant="ghost" onClick={() => setConfirmRemove(false)}>Keep</Button>
+                <span className="text-sm text-muted">{t("Remove the app's credentials from this server? (Delete the app itself on GitHub.)")}</span>
+                <Button variant="danger" disabled={busy} onClick={() => void remove()}>{t("Remove from this server")}</Button>
+                <Button variant="ghost" onClick={() => setConfirmRemove(false)}>{t("Keep")}</Button>
               </div>
             ) : (
-              <Button variant="ghost" onClick={() => setConfirmRemove(true)}>Remove from this server…</Button>
+              <Button variant="ghost" onClick={() => setConfirmRemove(true)}>{t("Remove from this server…")}</Button>
             )}
           </>
         ) : (
           <>
             <p className="text-sm text-muted">
-              Creates a GitHub App under your GitHub account (or an organization) with exactly these permissions: repository contents and pull requests (read and write), metadata, commit statuses, deployments and checks (read), and the user&apos;s email address (read, for sign-in). No webhooks. You confirm the name on GitHub.
+              {t("Creates a GitHub App under your GitHub account (or an organization) with exactly these permissions: repository contents and pull requests (read and write), metadata, commit statuses, deployments and checks (read), and the user's email address (read, for sign-in). No webhooks. You confirm the name on GitHub.")}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="App name (unique on GitHub)"><TextInput value={name} maxLength={34} onChange={(e) => setName(e.target.value)} /></Field>
-              <Field label="Organization (optional)" hint="Empty = your personal account."><TextInput value={org} onChange={(e) => setOrg(e.target.value)} placeholder="my-company" /></Field>
+              <Field label={t("App name (unique on GitHub)")}><TextInput value={name} maxLength={34} onChange={(e) => setName(e.target.value)} /></Field>
+              <Field label={t("Organization (optional)")} hint={t("Empty = your personal account.")}><TextInput value={org} onChange={(e) => setOrg(e.target.value)} placeholder={t("my-company")} /></Field>
             </div>
             {!status.publicUrl ? (
-              <Notice tone="warn">Set <code>KNIFE_PUBLIC_URL</code> (the public https address of this server) first: GitHub sends users back only to that address.</Notice>
+              <Notice tone="warn">{t("Set")}{" "} <code>KNIFE_PUBLIC_URL</code> {" "}{t("(the public https address of this server) first: GitHub sends users back only to that address.")}</Notice>
             ) : typeof window !== "undefined" && window.location.origin !== status.publicUrl ? (
-              <Notice tone="info">Create it from the public address: <a className="underline" href={`${status.publicUrl}/account/admin`}>{status.publicUrl}/account/admin</a> (GitHub returns you there).</Notice>
+              <Notice tone="info">{t("Create it from the public address:")}{" "} <a className="underline" href={`${status.publicUrl}/account/admin`}>{status.publicUrl}{t("/account/admin")}</a> {" "}{t("(GitHub returns you there).")}</Notice>
             ) : (
               <>
-                <p className="text-xs text-faint">GitHub will send users back only to {status.publicUrl} (callback {status.callbackUrls.join(", ")}).</p>
-                <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? "Opening GitHub…" : "Create the GitHub App on GitHub"}</Button>
+                <p className="text-xs text-faint">{t("GitHub will send users back only to {publicUrl} (callback {value}).", { publicUrl: status.publicUrl, value: status.callbackUrls.join(", ") })}</p>
+                <Button variant="primary" disabled={busy} onClick={() => void create()}>{busy ? t("Opening GitHub…") : t("Create the GitHub App on GitHub")}</Button>
               </>
             )}
           </>

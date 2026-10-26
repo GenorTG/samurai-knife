@@ -12,6 +12,8 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, FullscreenButton, Notice } from "@/components/ui";
 import { cx } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false, loading: () => <div className="h-full animate-pulse rounded-lg bg-raised" /> });
 
@@ -33,7 +35,7 @@ const STORE_KEY = "knife:css-playground:v1";
 const PRESETS: { id: string; name: string; project: Project }[] = [
   {
     id: "glass",
-    name: "Glass card",
+    name: msg("Glass card"),
     project: {
       lang: "js",
       html: `<main class="scene">\n  <article class="card">\n    <h1>Glass card</h1>\n    <p>Frosted background, soft border and a gentle shadow.</p>\n    <button>Get started</button>\n  </article>\n</main>`,
@@ -43,7 +45,7 @@ const PRESETS: { id: string; name: string; project: Project }[] = [
   },
   {
     id: "gradient-button",
-    name: "Animated gradient button",
+    name: msg("Animated gradient button"),
     project: {
       lang: "js",
       html: `<button class="glow">Hover me</button>`,
@@ -53,7 +55,7 @@ const PRESETS: { id: string; name: string; project: Project }[] = [
   },
   {
     id: "neon",
-    name: "Neon text",
+    name: msg("Neon text"),
     project: {
       lang: "js",
       html: `<h1 class="neon">Samurai</h1>`,
@@ -63,7 +65,7 @@ const PRESETS: { id: string; name: string; project: Project }[] = [
   },
   {
     id: "loader",
-    name: "Loading spinner",
+    name: msg("Loading spinner"),
     project: {
       lang: "js",
       html: `<div class="spinner" role="status" aria-label="Loading"></div>`,
@@ -83,7 +85,7 @@ const PRESETS: { id: string; name: string; project: Project }[] = [
   },
   {
     id: "typewriter",
-    name: "Typewriter (TypeScript)",
+    name: msg("Typewriter (TypeScript)"),
     project: {
       lang: "ts",
       html: `<p class="type"><span id="out"></span><span class="caret">|</span></p>`,
@@ -163,6 +165,7 @@ function download(name: string, text: string, type: string): void {
 const BACKGROUNDS = { light: "#ffffff", dark: "#0b0b10", checker: "repeating-conic-gradient(#d4d4d8 0 25%, #f4f4f5 0 50%) 0 0 / 20px 20px" } as const;
 
 export default function CssPlayground() {
+  const { t } = useT();
   const [project, setProject] = useState<Project>(EMPTY);
   const [loaded, setLoaded] = useState(false);
   const [file, setFile] = useState<FileId>("css");
@@ -230,28 +233,28 @@ export default function CssPlayground() {
     <div ref={shell} className="flex h-[calc(100dvh-15rem)] min-h-[600px] flex-col gap-3" data-css-playground>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-xs text-muted">
-          Start from
+          {t("Start from")}
           <select
-            aria-label="Start from a preset"
+            aria-label={t("Start from a preset")}
             className="sk-input h-8 px-2 text-xs"
             value=""
             onChange={(event) => {
               const preset = PRESETS.find((p) => p.id === event.target.value);
-              if (preset && window.confirm(`Replace the three files with "${preset.name}"?`)) {
+              if (preset && window.confirm(t("Replace the three files with \"{name}\"?", { name: preset.name }))) {
                 setProject(preset.project);
                 setFile("css");
               }
             }}
           >
-            <option value="">Choose an effect…</option>
+            <option value="">{t("Choose an effect…")}</option>
             {PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
-                {preset.name}
+                {t(preset.name)}
               </option>
             ))}
           </select>
         </label>
-        <div role="radiogroup" aria-label="Script language" className="flex rounded-lg border border-line p-0.5 text-xs">
+        <div role="radiogroup" aria-label={t("Script language")} className="flex rounded-lg border border-line p-0.5 text-xs">
           {(["js", "ts"] as const).map((lang) => (
             <button
               autoComplete="off"
@@ -262,17 +265,17 @@ export default function CssPlayground() {
               onClick={() => set({ lang })}
               className={cx("rounded-md px-2.5 py-1", project.lang === lang ? "bg-accent/15 text-ink" : "text-muted hover:text-ink")}
             >
-              {lang === "js" ? "JavaScript" : "TypeScript"}
+              {lang === "js" ? t("JavaScript") : t("TypeScript")}
             </button>
           ))}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={auto} onChange={(event) => setAuto(event.target.checked)} />
-          Run as I type
+          {t("Run as I type")}
         </label>
         {!auto ? (
           <Button size="sm" variant="primary" onClick={() => void run()}>
-            Run
+            {t("Run")}
           </Button>
         ) : null}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
@@ -287,25 +290,25 @@ export default function CssPlayground() {
               const result = await compile(project);
               download("playground.html", documentOf(project, result.js, false), "text/html");
             }}
-            title="One self-contained HTML file with the CSS and the (compiled) script inside"
+            title={t("One self-contained HTML file with the CSS and the (compiled) script inside")}
           >
-            Export HTML
+            {t("Export HTML")}
           </Button>
           <details className="relative" data-playground-files>
-            <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-line px-2.5 text-xs text-muted select-none hover:text-ink [&::-webkit-details-marker]:hidden">Files ▾</summary>
-            <div role="menu" aria-label="Download or copy files" className="sk-pop absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-line-strong bg-surface p-1 shadow-pop">
+            <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-line px-2.5 text-xs text-muted select-none hover:text-ink [&::-webkit-details-marker]:hidden">{t("Files ▾")}</summary>
+            <div role="menu" aria-label={t("Download or copy files")} className="sk-pop absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-line-strong bg-surface p-1 shadow-pop">
               {[
-                { label: "Download index.html", run: () => download("index.html", project.html, "text/html") },
-                { label: "Download style.css", run: () => download("style.css", project.css, "text/css") },
-                ...(project.script.trim() ? [{ label: `Download ${scriptName}`, run: () => download(scriptName, project.script, "text/plain") }] : []),
+                { label: t("Download index.html"), run: () => download("index.html", project.html, "text/html") },
+                { label: t("Download style.css"), run: () => download("style.css", project.css, "text/css") },
+                ...(project.script.trim() ? [{ label: t("Download {scriptName}", { scriptName }), run: () => download(scriptName, project.script, "text/plain") }] : []),
                 {
-                  label: "Copy CSS",
+                  label: t("Copy CSS"),
                   run: async () => {
                     try {
                       await navigator.clipboard.writeText(project.css);
                       flash("CSS copied.");
                     } catch {
-                      flash("Copy needs https: download style.css instead.");
+                      flash(t("Copy needs https: download style.css instead."));
                     }
                   },
                 },
@@ -321,7 +324,7 @@ export default function CssPlayground() {
                   }}
                   className="block w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-xs text-ink hover:bg-raised"
                 >
-                  {item.label}
+                  {t(item.label)}
                 </button>
               ))}
             </div>
@@ -331,8 +334,8 @@ export default function CssPlayground() {
       </div>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-        <section aria-label="Files" className="flex min-h-[320px] flex-col gap-2 lg:min-h-0">
-          <div role="tablist" aria-label="Files" className="flex gap-1">
+        <section aria-label={t("Files")} className="flex min-h-[320px] flex-col gap-2 lg:min-h-0">
+          <div role="tablist" aria-label={t("Files")} className="flex gap-1">
             {files.map((entry) => (
               <button
                 autoComplete="off"
@@ -365,10 +368,10 @@ export default function CssPlayground() {
           ))}
         </section>
 
-        <section aria-label="Preview" className="flex min-h-[320px] flex-col gap-2 lg:min-h-0">
+        <section aria-label={t("Preview")} className="flex min-h-[320px] flex-col gap-2 lg:min-h-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Preview</h3>
-            <div role="radiogroup" aria-label="Preview background" className="ml-auto flex gap-1 text-[11px]">
+            <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{t("Preview")}</h3>
+            <div role="radiogroup" aria-label={t("Preview background")} className="ml-auto flex gap-1 text-[11px]">
               {(Object.keys(BACKGROUNDS) as (keyof typeof BACKGROUNDS)[]).map((key) => (
                 <button
                   autoComplete="off"
@@ -384,10 +387,10 @@ export default function CssPlayground() {
               ))}
             </div>
           </div>
-          {compileError ? <Notice tone="error">TypeScript: {compileError}</Notice> : null}
+          {compileError ? <Notice tone="error">{t("TypeScript:")}{" "} {compileError}</Notice> : null}
           <iframe
             ref={frame}
-            title="Preview"
+            title={t("Preview")}
             sandbox="allow-scripts"
             srcDoc={doc}
             data-page-fill
@@ -396,10 +399,10 @@ export default function CssPlayground() {
           />
           <details className="rounded-lg border border-line bg-surface text-xs" open={logs.some((line) => line.level === "error")}>
             <summary className="cursor-pointer px-3 py-1.5 text-muted select-none">
-              Console {logs.length ? `(${logs.length})` : ""}
-              {logs.some((line) => line.level === "error") ? <span className="ml-2 text-danger">errors</span> : null}
+              {t("Console")}{" "} {logs.length ? `(${logs.length})` : ""}
+              {logs.some((line) => line.level === "error") ? <span className="ml-2 text-danger">{t("errors")}</span> : null}
             </summary>
-            <ol aria-label="Console output" className="max-h-36 overflow-y-auto border-t border-line px-3 py-1.5 font-mono text-[11px]">
+            <ol aria-label={t("Console output")} className="max-h-36 overflow-y-auto border-t border-line px-3 py-1.5 font-mono text-[11px]">
               {logs.length ? (
                 logs.map((line, index) => (
                   <li key={index} className={cx("break-words whitespace-pre-wrap", line.level === "error" ? "text-danger" : line.level === "warn" ? "text-warn" : "text-muted")}>
@@ -407,7 +410,7 @@ export default function CssPlayground() {
                   </li>
                 ))
               ) : (
-                <li className="text-faint">console.log output and errors from the preview show here.</li>
+                <li className="text-faint">{t("console.log output and errors from the preview show here.")}</li>
               )}
             </ol>
           </details>

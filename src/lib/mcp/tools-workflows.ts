@@ -10,6 +10,7 @@ import { type Connection, type Item, type NodeMeta, type NodeParam, type Workflo
 import { activationProblems, structuralProblems } from "@/lib/workflows/validate";
 import { QuotaExceededError } from "@/lib/storage/quota";
 import { wrapUntrustedStrings } from "@/lib/security/untrusted";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Workflow tools (group `workflows`, docs/WORKFLOWS.md): read the node catalog, list / read / build / edit / activate /
@@ -22,7 +23,7 @@ const ID = z.string().regex(/^[a-z0-9]{8,24}$/, "expected a workflow id from kni
 const RUN_ID = z.string().regex(/^[0-9a-f]{16}$/, "expected a run id from knife_workflow_runs");
 
 function account(ctx: KnifeToolContext | undefined): string {
-  if (!ctx?.accountId) throw new Error("Workflow tools need an account context.");
+  if (!ctx?.accountId) throw new Error(msg("Workflow tools need an account context."));
   return ctx.accountId;
 }
 
@@ -86,7 +87,7 @@ function toNodes(list: AgentNode[], connections: Connection[], existing: Workflo
   const nodes: WorkflowNode[] = list.map((entry) => {
     const type = typeName(entry.type);
     const meta = nodeMeta(type);
-    if (!meta) throw new Error(`Unknown node type "${entry.type}". Call knife_workflow_nodes for the list.`);
+    if (!meta) throw new Error(msgf("Unknown node type \"{type}\". Call knife_workflow_nodes for the list.", { type: entry.type }));
     const known = new Set(meta.params.map((param) => param.name));
     for (const name of Object.keys(entry.parameters ?? {})) if (!known.has(name)) warnings.push(`${entry.name}: "${name}" is not a parameter of ${meta.label} (known: ${[...known].join(", ") || "none"}).`);
     for (const slot of Object.keys(entry.credentials ?? {})) if (!(meta.credentials ?? []).some((s) => s.name === slot)) warnings.push(`${entry.name}: "${slot}" is not a credential slot of ${meta.label}.`);
@@ -153,7 +154,7 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
     run({ type, query }) {
       if (type) {
         const meta = nodeMeta(typeName(type));
-        if (!meta) throw new Error(`Unknown node type "${type}".`);
+        if (!meta) throw new Error(msgf("Unknown node type \"{type}\".", { type }));
         return {
           ...nodeSummary(meta),
           ...(typeof meta.outputs === "function" ? { outputsNote: "Switch: one output per rule (+ Fallback when options.fallbackOutput = 'extra'), or numberOutputs in expression mode." } : {}),
@@ -239,13 +240,13 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
       return guarded(async () => {
         const accountId = account(ctx);
         const current = requireWorkflow(accountId, id);
-        if (version !== undefined && version !== current.version) throw new Error(`The workflow is at version ${current.version} now (the user or another agent saved it). Read it again with knife_workflow_get.`);
+        if (version !== undefined && version !== current.version) throw new Error(msgf("The workflow is at version {version} now (the user or another agent saved it). Read it again with knife_workflow_get.", { version: current.version }));
         let nodes = current.nodes.map((node) => ({ ...node, parameters: { ...node.parameters } }));
         let connections = [...current.connections];
         const warnings: string[] = [];
         const find = (nodeName: string) => {
           const found = nodes.find((node) => node.name === nodeName);
-          if (!found) throw new Error(`No node named "${nodeName}" (nodes: ${nodes.map((n) => n.name).join(", ")}).`);
+          if (!found) throw new Error(msgf("No node named \"{nodeName}\" (nodes: {value}).", { nodeName, value: nodes.map((n) => n.name).join(", ") }));
           return found;
         };
         for (const op of ops) {
@@ -300,7 +301,7 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
           }
         }
         const problems = structuralProblems({ nodes, connections });
-        if (problems.length) throw new Error(`Not saved: ${problems.map((p) => p.message).join(" ")}`);
+        if (problems.length) throw new Error(msgf("Not saved: {value}", { value: problems.map((p) => p.message).join(" ") }));
         const saved = saveWorkflow(accountId, id, current.version, { name, description, nodes, connections, ...(settings ? { settings: { ...current.settings, ...settings } } : {}) });
         return checkResult(saved, warnings);
       });
@@ -316,9 +317,9 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
       return guarded(() => {
         const accountId = account(ctx);
         const current = requireWorkflow(accountId, id);
-        if (version !== undefined && version !== current.version) throw new Error(`The workflow is at version ${current.version} now; read it again.`);
+        if (version !== undefined && version !== current.version) throw new Error(msgf("The workflow is at version {version} now; read it again.", { version: current.version }));
         const missing = names.filter((name) => !current.nodes.some((node) => node.name === name));
-        if (missing.length) throw new Error(`No node named ${missing.map((m) => `"${m}"`).join(", ")}.`);
+        if (missing.length) throw new Error(msgf("No node named {value}.", { value: missing.map((m) => `"${m}"`).join(", ") }));
         const drop = new Set(names);
         const saved = saveWorkflow(accountId, id, current.version, { nodes: current.nodes.filter((node) => !drop.has(node.name)), connections: current.connections.filter((c) => !drop.has(c.from.node) && !drop.has(c.to.node)) });
         return checkResult(saved, []);
@@ -395,7 +396,7 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
         const accountId = account(ctx);
         requireWorkflow(accountId, id);
         const run = getRun(accountId, id, runId);
-        if (!run) throw new Error("Unknown run.");
+        if (!run) throw new Error(msg("Unknown run."));
         const nodes = Object.entries(run.runData).map(([name, runs]) => {
           const last = runs[runs.length - 1];
           return { name, runs: runs.length, items: last?.outputCounts ?? last?.outputs.map((o) => o.length), ...(last?.error ? { error: wrapUntrustedStrings("workflow node error", last.error) } : {}), ...(last?.logs?.length ? { logs: wrapUntrustedStrings("workflow node log", last.logs.slice(0, 50)) } : {}) };
@@ -403,7 +404,7 @@ export const WORKFLOW_KNIFE_TOOLS: KnifeToolDefinition[] = [
         const detail = node
           ? (() => {
               const runs = run.runData[node];
-              if (!runs) throw new Error(`Node "${node}" did not run in this run.`);
+              if (!runs) throw new Error(msgf("Node \"{node}\" did not run in this run.", { node }));
               const last = runs[runs.length - 1];
               return { node, outputs: wrapUntrustedStrings("workflow node output", last.outputs.map((output) => itemsJson(output, maxItems ?? 20))) };
             })()

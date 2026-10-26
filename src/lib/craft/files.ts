@@ -4,6 +4,7 @@ import { ARTCRAFT_APPS } from "@/lib/services/definitions";
 import { readAccountFile, readAccountText } from "@/lib/storage/sealed";
 import { assertCanStore, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, safeJoin } from "@/lib/storage/scope";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Files the Craft apps save to the signed-in account (docs/SIDECARS.md "Craft files"): an app's Save/Export is caught on
@@ -83,7 +84,7 @@ function indexPath(accountId: string): string {
 }
 
 function blobPath(accountId: string, id: string): string {
-  if (!ID.test(id)) throw new CraftFileError("Unknown file.", 404);
+  if (!ID.test(id)) throw new CraftFileError(msg("Unknown file."), 404);
   return safeJoin(dir(accountId), `${id}.bin`);
 }
 
@@ -109,14 +110,14 @@ export function listCraftFiles(accountId: string): CraftFile[] {
 
 export function getCraftFile(accountId: string, id: string): CraftFile {
   const file = readIndex(accountId).find((candidate) => candidate.id === id);
-  if (!file) throw new CraftFileError("Unknown file.", 404);
+  if (!file) throw new CraftFileError(msg("Unknown file."), 404);
   return file;
 }
 
 export function readCraftFile(accountId: string, id: string): { file: CraftFile; bytes: Buffer } {
   const file = getCraftFile(accountId, id);
   const path = blobPath(accountId, id);
-  if (!existsSync(path)) throw new CraftFileError("The file's contents are missing.", 410);
+  if (!existsSync(path)) throw new CraftFileError(msg("The file's contents are missing."), 410);
   return { file, bytes: readAccountFile(accountId, path) };
 }
 
@@ -127,14 +128,14 @@ export function readCraftFile(accountId: string, id: string): { file: CraftFile;
  * CraftFileError for bad input.
  */
 export function saveCraftFile(accountId: string, input: { app: string; name: string; mime?: string; bytes: Uint8Array; replace?: boolean }, now = new Date()): CraftFile {
-  if (!ARTCRAFT_APPS.some((app) => app.id === input.app)) throw new CraftFileError("Unknown app.");
-  if (input.bytes.byteLength === 0) throw new CraftFileError("The app saved an empty file.");
-  if (input.bytes.byteLength > MAX_CRAFT_FILE_BYTES) throw new CraftFileError(`Files over ${MAX_CRAFT_FILE_BYTES / 1048576} MB cannot be saved to your files; download it instead.`, 413);
+  if (!ARTCRAFT_APPS.some((app) => app.id === input.app)) throw new CraftFileError(msg("Unknown app."));
+  if (input.bytes.byteLength === 0) throw new CraftFileError(msg("The app saved an empty file."));
+  if (input.bytes.byteLength > MAX_CRAFT_FILE_BYTES) throw new CraftFileError(msgf("Files over {value} MB cannot be saved to your files; download it instead.", { value: MAX_CRAFT_FILE_BYTES / 1048576 }), 413);
   const name = cleanFileName(input.name);
   const files = readIndex(accountId);
   const existing = files.find((file) => file.app === input.app && file.name === name);
   if (existing && input.replace === false) throw new CraftFileError(`A file named "${name}" from this app is already in your files (id ${existing.id}).`, 409, "file_exists");
-  if (!existing && files.length >= MAX_CRAFT_FILES) throw new CraftFileError(`You have ${MAX_CRAFT_FILES} Craft files; delete some first.`, 409);
+  if (!existing && files.length >= MAX_CRAFT_FILES) throw new CraftFileError(msgf("You have {maxCraftFiles} Craft files; delete some first.", { maxCraftFiles: MAX_CRAFT_FILES }), 409);
   const at = now.toISOString();
   const file: CraftFile = existing
     ? { ...existing, mime: mimeFor(name, input.mime ?? existing.mime), size: input.bytes.byteLength, updatedAt: at }
@@ -147,7 +148,7 @@ export function saveCraftFile(accountId: string, input: { app: string; name: str
 
 export function deleteCraftFile(accountId: string, id: string): void {
   const files = readIndex(accountId);
-  if (!files.some((file) => file.id === id)) throw new CraftFileError("Unknown file.", 404);
+  if (!files.some((file) => file.id === id)) throw new CraftFileError(msg("Unknown file."), 404);
   removeAccountPath(accountId, blobPath(accountId, id));
   writeIndex(accountId, files.filter((file) => file.id !== id));
 }

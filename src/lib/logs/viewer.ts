@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createGunzip } from "node:zlib";
 import { securityDir } from "@/lib/security/events-core.mjs";
 import { LOG_FILE, logRoot, retentionDays, SOURCE_ID } from "./core.mjs";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Read side of the log files for the admin viewer (`GET /api/admin/logs`, /account/admin/logs). Read-only, admins only
@@ -67,15 +68,15 @@ const logFileOf = (prefix: string) => (name: string) => LOG_FILE.exec(name)?.[1]
 function sourceDef(id: string): SourceDef | null {
   if (!SOURCE.test(id)) return null;
   if (id === "security") {
-    return { dir: securityDir(), accepts: (name) => SECURITY_FILE.test(name), label: "Security events", description: "Abuse-guard and policy events (JSON lines, kept 30 days in the data directory)." };
+    return { dir: securityDir(), accepts: (name) => SECURITY_FILE.test(name), label: msg("Security events"), description: msg("Abuse-guard and policy events (JSON lines, kept 30 days in the data directory).") };
   }
   const root = logRoot();
   if (!root) return null;
-  if (id === "app") return { dir: join(root, "app"), accepts: logFileOf("app"), label: "App server", description: "The server's output: startup checks, warnings, errors." };
-  if (id === "update") return { dir: join(root, "update"), accepts: logFileOf("update"), label: "Updates", description: "Release builds and switches by knife-update (production installs)." };
+  if (id === "app") return { dir: join(root, "app"), accepts: logFileOf("app"), label: msg("App server"), description: msg("The server's output: startup checks, warnings, errors.") };
+  if (id === "update") return { dir: join(root, "update"), accepts: logFileOf("update"), label: msg("Updates"), description: msg("Release builds and switches by knife-update (production installs).") };
   const sidecar = id.slice("sidecar:".length);
   if (!SOURCE_ID.test(sidecar)) return null;
-  return { dir: join(root, "sidecars", sidecar), accepts: logFileOf("ops"), label: `Sidecar ${sidecar}`, description: `Install, start, stop, update and remove runs of the ${sidecar} sidecar.` };
+  return { dir: join(root, "sidecars", sidecar), accepts: logFileOf("ops"), label: msgf("Sidecar {sidecar}", { sidecar }), description: msgf("Install, start, stop, update and remove runs of the {sidecar} sidecar.", { sidecar }) };
 }
 
 /** A real directory (not a symlink), else null. */
@@ -131,23 +132,23 @@ export async function listLogSources(): Promise<{ root: string | null; retention
 /** Opens one log file read-only after every check above; the caller closes the handle. */
 export async function openLogFile(source: string, file: string): Promise<{ handle: FileHandle; size: number; mtime: Date; gz: boolean; name: string; source: LogSourceId }> {
   const def = sourceDef(source);
-  if (!def) throw new LogAccessError("Unknown log source.", 400);
-  if (!def.accepts(file)) throw new LogAccessError("Not a log file of this source.", 400);
+  if (!def) throw new LogAccessError(msg("Unknown log source."), 400);
+  if (!def.accepts(file)) throw new LogAccessError(msg("Not a log file of this source."), 400);
   const dir = resolve(/*turbopackIgnore: true*/ def.dir);
   const path = resolve(dir, file);
-  if (dirname(path) !== dir || basename(path) !== file) throw new LogAccessError("Not a log file of this source.", 400);
-  if (!(await realDir(dir))) throw new LogAccessError("No such log file.", 404);
+  if (dirname(path) !== dir || basename(path) !== file) throw new LogAccessError(msg("Not a log file of this source."), 400);
+  if (!(await realDir(dir))) throw new LogAccessError(msg("No such log file."), 404);
   let handle: FileHandle;
   try {
     handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch {
     // ENOENT, or ELOOP for a symlink: the same answer, nothing to learn from the difference
-    throw new LogAccessError("No such log file.", 404);
+    throw new LogAccessError(msg("No such log file."), 404);
   }
   const info = await handle.stat();
   if (!info.isFile()) {
     await handle.close();
-    throw new LogAccessError("No such log file.", 404);
+    throw new LogAccessError(msg("No such log file."), 404);
   }
   return { handle, size: info.size, mtime: info.mtime, gz: file.endsWith(".gz"), name: file, source: source as LogSourceId };
 }

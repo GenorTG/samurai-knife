@@ -1,6 +1,7 @@
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
 import type { TrustMode } from "./interaction";
 import { containsUntrusted } from "@/lib/security/untrusted";
+import { ct } from "@/lib/i18n/client-locale";
 
 /**
  * Approval rules for the server-side knife_* tools, derived from the effect each tool declares (src/lib/mcp/define.ts),
@@ -153,11 +154,11 @@ function destructiveByArgs(info: KnifeToolEffectInfo, args: Args): boolean {
 export function assessServerCall(name: string, info: KnifeToolEffectInfo | undefined, args: Args, mode: TrustMode, turn: TurnContext): Assessment {
   if (mode === "free") return NO;
   // No effect known (the catalog could not be loaded): ask, like a write in the strictest reading.
-  if (!info) return { ask: true, destructive: false, title: `Run “${label(name)}”?`, detail: describeArgs(args) };
+  if (!info) return { ask: true, destructive: false, title: ct("Run “{name}”?", { name: label(name) }), detail: describeArgs(args) };
   const urlArgs = info.urlArgs ?? [];
   const detail = describeArgs(args, urlArgs);
   if (info.effect === "destructive" || destructiveByArgs(info, args)) {
-    return { ask: true, destructive: true, title: `Run “${label(name)}”?`, detail: `This deletes or replaces your data. ${detail}` };
+    return { ask: true, destructive: true, title: ct("Run “{name}”?", { name: label(name) }), detail: ct("This deletes or replaces your data. {detail}", { detail }) };
   }
   if (info.effect === "outbound") {
     const hosts = [...new Set(urlArgs.map((key) => destinationHost(args[key])).filter((h): h is string => h !== null))];
@@ -168,11 +169,11 @@ export function assessServerCall(name: string, info: KnifeToolEffectInfo | undef
         return {
           ask: true,
           destructive: true,
-          title: `Send a request to ${unnamed.join(", ")}?`,
-          detail: `Third-party text was read earlier in this conversation and you did not type this address yourself; a request there could carry your data out. ${detail}`,
+          title: ct("Send a request to {unnamed}?", { unnamed: unnamed.join(", ") }),
+          detail: ct("Third-party text was read earlier in this conversation and you did not type this address yourself; a request there could carry your data out. {detail}", { detail }),
         };
       }
-      return mode === "destructive" ? NO : { ask: true, destructive: false, title: `Fetch from ${hosts.join(", ")}?`, detail };
+      return mode === "destructive" ? NO : { ask: true, destructive: false, title: ct("Fetch from {hosts}?", { hosts: hosts.join(", ") }), detail };
     }
     // An outbound tool given pasted text instead of an address only saves it: a write.
   }
@@ -180,12 +181,12 @@ export function assessServerCall(name: string, info: KnifeToolEffectInfo | undef
     return {
       ask: true,
       destructive: true,
-      title: `Run “${label(name)}”?`,
-      detail: `Third-party text was read earlier in this conversation; this writes to your repository outside Smart Knife (check that the content is what you asked for). ${detail}`,
+      title: ct("Run “{name}”?", { name: label(name) }),
+      detail: ct("Third-party text was read earlier in this conversation; this writes to your repository outside Smart Knife (check that the content is what you asked for). {detail}", { detail }),
     };
   }
   if (info.effect === "outbound" || info.effect === "write") {
-    return mode === "destructive" ? NO : { ask: true, destructive: false, title: `Run “${label(name)}”?`, detail };
+    return mode === "destructive" ? NO : { ask: true, destructive: false, title: ct("Run “{name}”?", { name: label(name) }), detail };
   }
   return NO;
 }

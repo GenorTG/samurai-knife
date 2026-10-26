@@ -5,6 +5,7 @@ import { ApiError, errorText, saveCraftFile } from "@/tools/sidecars/client";
 import type { Assessment } from "./approval-policy";
 import type { TrustMode } from "./interaction";
 import type { FunctionToolDef, ToolRunResult } from "./types";
+import { ct } from "@/lib/i18n/client-locale";
 
 /**
  * craft_* : the assistant reads and drives the Craft app open on this page through the app's own agent API
@@ -177,14 +178,14 @@ export function assessCraftCall(name: string, args: Args, mode: TrustMode, detai
     const chain = ARTIFACT_ID.test(str(args, "file")) ? artifactInfo(str(args, "file")) : null;
     if (!chain) return NO;
     const label = str(args, "name") || chain.name;
-    if (risk === "destructive") return { ask: true, destructive: true, title: `Replace ${label.slice(0, 60)} in your files?`, detail: `${detail} (the file of the same name saved from ${app} is overwritten)` };
+    if (risk === "destructive") return { ask: true, destructive: true, title: ct("Replace {label} in your files?", { label: label.slice(0, 60) }), detail: ct("{detail} (the file of the same name saved from {app} is overwritten)", { detail, app }) };
     if (mode === "destructive") return NO;
-    return { ask: true, destructive: false, title: `Save ${label.slice(0, 60)} to your files?`, detail: `${detail} (${Math.max(1, Math.round(chain.bytes / 1024))} KB into your storage)` };
+    return { ask: true, destructive: false, title: ct("Save {label} to your files?", { label: label.slice(0, 60) }), detail: ct("{detail} ({kb} KB into your storage)", { detail, kb: Math.max(1, Math.round(chain.bytes / 1024)) }) };
   }
   const what = name === "craft_execute" ? str(args, "command") : name === "craft_request" ? str(args, "method") : "import files";
-  if (risk === "destructive") return { ask: true, destructive: true, title: `Run ${what.slice(0, 60)} in ${app}?`, detail: `${detail} (it may lose work; undo with Ctrl+Z in the app if it allows)` };
+  if (risk === "destructive") return { ask: true, destructive: true, title: ct("Run {what} in {app}?", { what: what.slice(0, 60), app }), detail: ct("{detail} (it may lose work; undo with Ctrl+Z in the app if it allows)", { detail }) };
   if (mode === "destructive") return NO;
-  return { ask: true, destructive: false, title: name === "craft_import" ? `Import files into ${app}?` : `Run ${what.slice(0, 60)} in ${app}?`, detail };
+  return { ask: true, destructive: false, title: name === "craft_import" ? ct("Import files into {app}?", { app }) : ct("Run {what} in {app}?", { what: what.slice(0, 60), app }), detail };
 }
 
 /* ------------------------------------------------------------------------------------------- run */
@@ -419,7 +420,7 @@ async function saveToFiles(app: ActiveCraft, args: Args): Promise<ToolRunResult>
     });
   } catch (error) {
     if (error instanceof ApiError && error.code === "file_exists") {
-      return out(false, { ok: false, error: error.message, hint: 'Pass another name, or replace:true to overwrite it (the user is asked).' });
+      return out(false, { ok: false, error: error.message, hint: "Pass another name, or replace:true to overwrite it (the user is asked)." });
     }
     return fail(`Could not save ${file.name} to your files: ${errorText(error)}`);
   }

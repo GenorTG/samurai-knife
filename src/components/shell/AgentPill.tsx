@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { getFeedback, getServerFeedback, subscribeFeedback } from "@/lib/agent-client/feedback";
 import { useInteraction } from "@/lib/agent-client/interaction";
 import { openAssistant, stopAssistant } from "@/lib/agent-client/bridge";
+import { useT } from "@/lib/i18n/react";
 
 type Kind = "" | "approval" | "wait";
 
@@ -19,19 +20,20 @@ interface PillState {
 function usePillState(): PillState | null {
   const fb = useSyncExternalStore(subscribeFeedback, getFeedback, getServerFeedback);
   const { approval, wait } = useInteraction();
+  const { t } = useT();
   if (!fb.active) return null;
   const running = [...fb.steps].reverse().find((s) => s.status === "running") ?? fb.steps[fb.steps.length - 1];
   const text = approval
-    ? `Needs your OK: ${approval.title}`
+    ? t("Needs your OK: {title}", { title: approval.title })
     : wait
-      ? `Waiting for you: ${wait.message}`
+      ? t("Waiting for you: {message}", { message: wait.message })
       : fb.phase === "stopping"
-        ? "Stopping…"
+        ? t("Stopping…")
         : running
           ? running.label
           : fb.phase === "writing"
-            ? "Writing a reply…"
-            : "Thinking…";
+            ? t("Writing a reply…")
+            : t("Thinking…");
   return {
     text,
     kind: approval ? "approval" : wait ? "wait" : "",
@@ -54,6 +56,7 @@ function dotClass(s: PillState): string {
  * count, Stop) and the step line moves to `AgentStrip` under the bar.
  */
 export function AgentPill() {
+  const { t } = useT();
   const s = usePillState();
   if (!s) return null;
   return (
@@ -67,7 +70,7 @@ export function AgentPill() {
           autoComplete="off"
           type="button"
           onClick={() => openAssistant()}
-          title="Open the assistant"
+          title={t("Open the assistant")}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
           <span aria-hidden className={dotClass(s)} />
@@ -77,10 +80,10 @@ export function AgentPill() {
           autoComplete="off"
           type="button"
           onClick={stopAssistant}
-          aria-label="Stop the assistant"
+          aria-label={t("Stop the assistant")}
           className="rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10"
         >
-          Stop
+          {t("Stop")}
         </button>
       </div>
       <div
@@ -91,7 +94,7 @@ export function AgentPill() {
           autoComplete="off"
           type="button"
           onClick={() => openAssistant()}
-          aria-label={`Open the assistant (${s.steps} steps so far)`}
+          aria-label={t("Open the assistant ({steps} steps so far)", { steps: s.steps })}
           className="flex h-full items-center gap-1.5 pr-1.5 pl-2.5"
         >
           <span aria-hidden className={dotClass(s)} />
@@ -101,8 +104,8 @@ export function AgentPill() {
           autoComplete="off"
           type="button"
           onClick={stopAssistant}
-          aria-label="Stop the assistant"
-          title="Stop the assistant"
+          aria-label={t("Stop the assistant")}
+          title={t("Stop the assistant")}
           className="flex h-full w-9 items-center justify-center rounded-r-lg border-l border-ai/30 text-danger hover:bg-danger/10"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
@@ -116,6 +119,7 @@ export function AgentPill() {
 
 /** Second row under the top bar below `sm`: the full step line (two lines max); tapping it opens the panel. */
 export function AgentStrip() {
+  const { t } = useT();
   const s = usePillState();
   if (!s) return null;
   return (
@@ -125,7 +129,7 @@ export function AgentStrip() {
       role="status"
       data-agent-strip={s.kind}
       onClick={() => openAssistant()}
-      title="Open the assistant"
+      title={t("Open the assistant")}
       className="sk-rise flex w-full items-start gap-2 border-b border-ai/30 bg-ai/10 px-3.5 py-2 text-left text-[13px] leading-snug text-ink sm:hidden"
     >
       <span aria-hidden className={`${dotClass(s)} mt-1.5`} />

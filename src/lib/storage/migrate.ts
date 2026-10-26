@@ -7,6 +7,7 @@ import { ACCOUNT_ID_PATTERN, mutateStore, readStore, writePrivateFile } from "@/
 import { invalidateUsage, cvPaths } from "./quota";
 import { isSealedBytes, openAccountBytes, sealAccountBytes } from "./sealed";
 import { accountScope } from "./scope";
+import { msgf } from "@/lib/i18n/msg";
 
 export interface SealReport {
   sealed: number;
@@ -105,7 +106,7 @@ export function renameAccount(fromId: string, toId: string): RenameReport {
   let files = 0;
   for (const [src, dst] of moves) {
     if (!existsSync(src)) continue;
-    if (existsSync(dst)) throw new Error(`${dst} already exists: refusing to overwrite`);
+    if (existsSync(dst)) throw new Error(msgf("{dst} already exists: refusing to overwrite", { dst }));
     for (const file of filesOf(src)) {
       const target = join(dst, file.slice(src.length));
       const { atime, mtime } = lstatSync(file);

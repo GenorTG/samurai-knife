@@ -35,6 +35,8 @@ import { NodePicker } from "./NodePicker";
 import { NODE_DRAG_TYPE, NodePalette } from "./NodePalette";
 import { CredentialsManager } from "./CredentialsTab";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const NODE_TYPES = { wf: NodeCard };
 
@@ -129,22 +131,22 @@ function parseClip(text: string): Snapshot | null {
 }
 
 const SHORTCUTS: [string, string][] = [
-  ["Right-click", "Menu for the canvas, a node, the selection or a connection"],
-  ["Double-click the canvas / Tab", "Add a node (Tab: after the selected node)"],
-  ["Double-click a node / Enter", "Open the node"],
-  ["Drag, middle-button drag, Space + drag", "Move around the canvas"],
-  ["Wheel / pinch", "Zoom"],
-  ["Shift + drag", "Select several nodes"],
-  ["Ctrl click", "Add to or remove from the selection"],
-  ["Ctrl A", "Select all"],
-  ["Ctrl C / Ctrl X / Ctrl V", "Copy, cut, paste nodes (paste also takes nodes copied in n8n)"],
-  ["Ctrl D", "Duplicate"],
-  ["D", "Deactivate / activate the selected nodes"],
-  ["Delete / Backspace", "Delete the selection"],
-  ["Ctrl Z / Ctrl Shift Z", "Undo / redo"],
-  ["1 / 0 / + / −", "Fit to view / 100% / zoom in / out"],
-  ["Ctrl S", "Save"],
-  ["Ctrl Enter", "Run the workflow"],
+  [msg("Right-click"), msg("Menu for the canvas, a node, the selection or a connection")],
+  [msg("Double-click the canvas / Tab"), msg("Add a node (Tab: after the selected node)")],
+  [msg("Double-click a node / Enter"), msg("Open the node")],
+  [msg("Drag, middle-button drag, Space + drag"), msg("Move around the canvas")],
+  [msg("Wheel / pinch"), msg("Zoom")],
+  [msg("Shift + drag"), msg("Select several nodes")],
+  [msg("Ctrl click"), msg("Add to or remove from the selection")],
+  [msg("Ctrl A"), msg("Select all")],
+  [msg("Ctrl C / Ctrl X / Ctrl V"), msg("Copy, cut, paste nodes (paste also takes nodes copied in n8n)")],
+  [msg("Ctrl D"), msg("Duplicate")],
+  ["D", msg("Deactivate / activate the selected nodes")],
+  [msg("Delete / Backspace"), msg("Delete the selection")],
+  [msg("Ctrl Z / Ctrl Shift Z"), msg("Undo / redo")],
+  ["1 / 0 / + / −", msg("Fit to view / 100% / zoom in / out")],
+  [msg("Ctrl S"), msg("Save")],
+  [msg("Ctrl Enter"), msg("Run the workflow")],
 ];
 
 function ToolButton({ label, onClick, disabled, children, pressed }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode; pressed?: boolean }) {
@@ -189,6 +191,7 @@ const ICONS = {
 } as const;
 
 function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
+  const { t, tn } = useT();
   const flow = useReactFlow();
   const shell = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
@@ -476,7 +479,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     clip.current = text;
     if (event?.clipboardData) event.clipboardData.setData("text/plain", text);
     else void navigator.clipboard?.writeText(text).catch(() => undefined);
-    setNotice({ tone: "info", text: `${cut ? "Cut" : "Copied"} ${chosen.length} node${chosen.length === 1 ? "" : "s"}.` });
+    setNotice({ tone: "info", text: cut ? tn("Cut {n} node.", "Cut {n} nodes.", chosen.length) : tn("Copied {n} node.", "Copied {n} nodes.", chosen.length) });
     if (cut) removeSelected();
     return true;
   };
@@ -485,7 +488,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
   const pasteNodes = (text: string | null, at?: [number, number]) => {
     const data = text ? parseClip(text) : null;
     if (!data?.nodes.length) {
-      setNotice({ tone: "warn", text: "Nothing to paste: copy nodes here or in n8n first." });
+      setNotice({ tone: "warn", text: t("Nothing to paste: copy nodes here or in n8n first.") });
       return;
     }
     const left = Math.min(...data.nodes.map((node) => node.position[0]));
@@ -557,8 +560,8 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     if (!menu) return { label: "", entries: [] };
     const target = menu.target;
     const undoRedo: MenuEntry[] = [
-      { label: "Undo", hint: "Ctrl Z", disabled: !undoStack.current.past.length, run: () => restore("undo") },
-      { label: "Redo", hint: "Ctrl Shift Z", disabled: !undoStack.current.future.length, run: () => restore("redo") },
+      { label: "Undo", hint: t("Ctrl Z"), disabled: !undoStack.current.past.length, run: () => restore("undo") },
+      { label: "Redo", hint: t("Ctrl Shift Z"), disabled: !undoStack.current.future.length, run: () => restore("redo") },
     ];
     if (target.kind === "edge") {
       const edge = flowEdges.find((entry) => entry.id === target.id);
@@ -568,9 +571,9 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
         label: "Connection",
         entries: [
           { kind: "heading", label: `${connection.from.node} → ${connection.to.node}` },
-          { label: "Add a node in between…", run: () => setPicker({ position: menu.at, between: connection }) },
+          { label: t("Add a node in between…"), run: () => setPicker({ position: menu.at, between: connection }) },
           { kind: "separator" },
-          { label: "Delete connection", hint: "Del", danger: true, run: () => change({ connections: connections.filter((entry) => entry !== connection) }) },
+          { label: t("Delete connection"), hint: "Del", danger: true, run: () => change({ connections: connections.filter((entry) => entry !== connection) }) },
         ],
       };
     }
@@ -581,13 +584,13 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
         label: "Selection",
         entries: [
           { kind: "heading", label: `${chosen.length} nodes` },
-          { label: "Duplicate", hint: "Ctrl D", run: duplicateSelected },
-          { label: "Copy", hint: "Ctrl C", run: () => copySelection() },
-          { label: "Cut", hint: "Ctrl X", run: () => copySelection(true) },
+          { label: "Duplicate", hint: t("Ctrl D"), run: duplicateSelected },
+          { label: "Copy", hint: t("Ctrl C"), run: () => copySelection() },
+          { label: "Cut", hint: t("Ctrl X"), run: () => copySelection(true) },
           { label: allOff ? "Activate" : "Deactivate", hint: "D", run: () => toggleDisabled(chosen) },
-          { label: "Tidy up", run: tidyUp },
+          { label: t("Tidy up"), run: tidyUp },
           { kind: "separator" },
-          { label: `Delete ${chosen.length} nodes`, hint: "Del", danger: true, run: removeSelected },
+          { label: t("Delete {chosen} nodes", { chosen: chosen.length }), hint: "Del", danger: true, run: removeSelected },
         ],
       };
     }
@@ -596,16 +599,16 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
       const meta = nodeMeta(node.type);
       const passes = Boolean(meta && outputLabels(meta, node.parameters).length > 0);
       return {
-        label: `Node ${node.name}`,
+        label: t("Node {name}", { name: node.name }),
         entries: [
           { kind: "heading", label: node.name },
           { label: "Open", hint: "Enter", run: () => setOpenNode(node.name) },
-          { label: meta?.inputs === 0 ? "Run from this trigger" : "Run up to this node", disabled: running || node.disabled, run: () => runUpTo(node.name) },
-          { label: "Add a node after…", hint: "Tab", disabled: !passes, run: () => pickAfter(node) },
+          { label: meta?.inputs === 0 ? t("Run from this trigger") : t("Run up to this node"), disabled: running || node.disabled, run: () => runUpTo(node.name) },
+          { label: t("Add a node after…"), hint: "Tab", disabled: !passes, run: () => pickAfter(node) },
           { kind: "separator" },
-          { label: "Duplicate", hint: "Ctrl D", run: duplicateSelected },
-          { label: "Copy", hint: "Ctrl C", run: () => copySelection() },
-          { label: "Cut", hint: "Ctrl X", run: () => copySelection(true) },
+          { label: "Duplicate", hint: t("Ctrl D"), run: duplicateSelected },
+          { label: "Copy", hint: t("Ctrl C"), run: () => copySelection() },
+          { label: "Cut", hint: t("Ctrl X"), run: () => copySelection(true) },
           { label: node.disabled ? "Activate" : "Deactivate", hint: "D", run: () => toggleDisabled([node]) },
           { kind: "separator" },
           { label: "Delete", hint: "Del", danger: true, run: removeSelected },
@@ -615,18 +618,18 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     return {
       label: "Canvas",
       entries: [
-        { label: "Add a node here…", hint: "Tab", run: () => setPicker({ position: menu.at }) },
-        { label: "Paste here", hint: "Ctrl V", run: () => void pasteFromMenu([menu.at[0] + 96, menu.at[1] + 30]) },
+        { label: t("Add a node here…"), hint: "Tab", run: () => setPicker({ position: menu.at }) },
+        { label: t("Paste here"), hint: t("Ctrl V"), run: () => void pasteFromMenu([menu.at[0] + 96, menu.at[1] + 30]) },
         { kind: "separator" },
-        { label: "Select all", hint: "Ctrl A", disabled: !nodes.length, run: selectAll },
-        { label: "Fit to view", hint: "1", disabled: !nodes.length, run: () => void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 }) },
-        { label: "Zoom to 100%", hint: "0", run: () => void flow.zoomTo(1, { duration: 150 }) },
-        { label: "Tidy up", disabled: nodes.length < 2, run: tidyUp },
+        { label: t("Select all"), hint: t("Ctrl A"), disabled: !nodes.length, run: selectAll },
+        { label: t("Fit to view"), hint: "1", disabled: !nodes.length, run: () => void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 }) },
+        { label: t("Zoom to 100%"), hint: "0", run: () => void flow.zoomTo(1, { duration: 150 }) },
+        { label: t("Tidy up"), disabled: nodes.length < 2, run: tidyUp },
         { kind: "separator" },
         ...undoRedo,
         { kind: "separator" },
-        { label: palette ? "Hide the node list" : "Show the node list", run: () => setPalette((value) => !value) },
-        { label: "Keyboard and mouse…", run: () => setKeysOpen(true) },
+        { label: palette ? t("Hide the node list") : t("Show the node list"), run: () => setPalette((value) => !value) },
+        { label: t("Keyboard and mouse…"), run: () => setKeysOpen(true) },
       ],
     };
   };
@@ -697,7 +700,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
         setWorkflow(saved);
         setHooks(urls);
         setDirty(false);
-        setNotice({ tone: "good", text: extra.active === undefined ? "Saved." : saved.active ? "Saved and activated: schedules and production webhooks now run by themselves." : "Deactivated." });
+        setNotice({ tone: "good", text: extra.active === undefined ? "Saved." : saved.active ? t("Saved and activated: schedules and production webhooks now run by themselves.") : "Deactivated." });
         return saved;
       } catch (error) {
         setNotice({ tone: "error", text: message(error), reload: error instanceof WorkflowApiError && error.status === 409 });
@@ -706,7 +709,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
         setSaving(false);
       }
     },
-    [workflow, settings, id, name, nodes, connections],
+    [t, workflow, settings, id, name, nodes, connections],
   );
 
   // Changes made elsewhere (the assistant, MCP, another tab) show up here: a clean editor reloads them, an editor with
@@ -725,7 +728,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           if (live.current.dirty) {
             if (warned === stored.version) return;
             warned = stored.version;
-            setNotice({ tone: "warn", text: "This workflow was changed elsewhere (the assistant or another tab) while you have unsaved changes here.", reload: true });
+            setNotice({ tone: "warn", text: t("This workflow was changed elsewhere (the assistant or another tab) while you have unsaved changes here."), reload: true });
             return;
           }
           setWorkflow(stored);
@@ -734,13 +737,13 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           setNodes(stored.nodes);
           setConnections(stored.connections);
           setSettings(stored.settings);
-          setNotice({ tone: "info", text: "Updated: this workflow was changed elsewhere (the assistant or another tab)." });
+          setNotice({ tone: "info", text: t("Updated: this workflow was changed elsewhere (the assistant or another tab).") });
         },
         () => undefined,
       );
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [id]);
+  }, [t, id]);
 
   const keys = useRef({ save, restore, duplicateSelected, copySelection, pasteNodes, selectAll, toggleDisabled, selectedList, pickAfter, open: (name: string) => setOpenNode(name), run: () => {}, flow });
   useEffect(() => {
@@ -890,12 +893,12 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     const controller = new AbortController();
     listenAbort.current = controller;
     setListening(true);
-    setNotice({ tone: "info", text: "Listening: call the test URL now (up to 2 minutes)." });
+    setNotice({ tone: "info", text: t("Listening: call the test URL now (up to 2 minutes).") });
     try {
       const { runId } = await workflowsApi.listen(id, body, controller.signal);
       setListening(false);
-      if (!runId) return setNotice({ tone: "warn", text: "No call arrived. Press Listen again when you are ready." });
-      setNotice({ tone: "good", text: "Test call received." });
+      if (!runId) return setNotice({ tone: "warn", text: t("No call arrived. Press Listen again when you are ready.") });
+      setNotice({ tone: "good", text: t("Test call received.") });
       runAbort.current?.abort();
       const runController = new AbortController();
       runAbort.current = runController;
@@ -935,10 +938,10 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     return notice ? (
       <div className="space-y-3 p-1">
         <Notice tone="error">{notice.text}</Notice>
-        <Button onClick={onBack}>Back to workflows</Button>
+        <Button onClick={onBack}>{t("Back to workflows")}</Button>
       </div>
     ) : (
-      <p role="status" className="text-sm text-muted">Loading workflow…</p>
+      <p role="status" className="text-sm text-muted">{t("Loading workflow…")}</p>
     );
   }
 
@@ -954,11 +957,11 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
     // Desktop: the workspace page gives it the window below the top bar (h-full); small screens keep a fixed height.
     <div ref={shell} className="relative flex h-[calc(100dvh-11rem)] min-h-[520px] flex-col overflow-hidden rounded-tool border border-line bg-surface md:h-full md:min-h-0" data-workflow-editor={workflow.id}>
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-        <Button size="sm" variant="ghost" onClick={() => (!dirty || window.confirm("Leave without saving your changes?")) && onBack()}>
-          ← Workflows
+        <Button size="sm" variant="ghost" onClick={() => (!dirty || window.confirm(t("Leave without saving your changes?"))) && onBack()}>
+          {t("← Workflows")}
         </Button>
         <input
-          aria-label="Workflow name"
+          aria-label={t("Workflow name")}
           value={name}
           onChange={(event) => {
             setName(event.target.value);
@@ -966,40 +969,40 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           }}
           className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[15px] font-semibold text-ink hover:border-line focus:border-line-strong focus:outline-none sm:max-w-sm"
         />
-        {dirty ? <Badge tone="warn">Unsaved</Badge> : null}
-        <label className="flex items-center gap-1.5 text-xs text-muted" title={workflow.active ? "Runs by itself (schedules, production webhooks)" : activation[0]?.message ?? "Activate to run by itself"}>
+        {dirty ? <Badge tone="warn">{t("Unsaved")}</Badge> : null}
+        <label className="flex items-center gap-1.5 text-xs text-muted" title={workflow.active ? t("Runs by itself (schedules, production webhooks)") : activation[0]?.message ?? t("Activate to run by itself")}>
           <input
             type="checkbox"
             role="switch"
-            aria-label="Active"
+            aria-label={t("Active")}
             checked={workflow.active}
             disabled={saving || (!workflow.active && activation.length > 0)}
             onChange={(event) => void save({ active: event.target.checked })}
           />
-          Active
+          {t("Active")}
         </label>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {triggers.length > 1 ? (
-            <Select aria-label="Start from" value={startTrigger} onChange={(event) => setStartTrigger(event.target.value)} className="h-7 w-auto text-xs">
-              <option value="">Start: default trigger</option>
+            <Select aria-label={t("Start from")} value={startTrigger} onChange={(event) => setStartTrigger(event.target.value)} className="h-7 w-auto text-xs">
+              <option value="">{t("Start: default trigger")}</option>
               {triggers.map((node) => (
                 <option key={node.id} value={node.name}>
-                  Start: {node.name}
+                  {t("Start: {name}", { name: node.name })}
                 </option>
               ))}
             </Select>
           ) : null}
           {running ? (
             <Button size="sm" variant="danger" onClick={() => void stopRun()}>
-              Stop
+              {t("Stop")}
             </Button>
           ) : (
-            <Button size="sm" variant="primary" disabled={!triggers.length} onClick={() => void startRun()} title={triggers.length ? "Run the workflow as it is now (saved or not)" : "Add a trigger first"}>
-              Run workflow
+            <Button size="sm" variant="primary" disabled={!triggers.length} onClick={() => void startRun()} title={triggers.length ? t("Run the workflow as it is now (saved or not)") : t("Add a trigger first")}>
+              {t("Run workflow")}
             </Button>
           )}
           <Button size="sm" onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("Saving…") : t("Save")}
           </Button>
           <Button
             size="sm"
@@ -1009,16 +1012,16 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
               refreshRuns();
             }}
           >
-            Runs{runs.length ? ` (${runs.length})` : ""}
+            {t("Runs")}{runs.length ? ` (${runs.length})` : ""}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setPanel("credentials")}>
-            Credentials
+            {t("Credentials")}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setPanel("settings")}>
-            Settings
+            {t("Settings")}
           </Button>
           <Button size="sm" variant="ghost" onClick={exportJson}>
-            Export
+            {t("Export")}
           </Button>
           <FullscreenButton target={shell} />
         </div>
@@ -1030,10 +1033,10 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
               <div className="min-w-0 flex-1">
                 <Notice tone={notice.tone}>{notice.text}</Notice>
               </div>
-              {notice.reload ? <Button size="sm" onClick={() => void load()}>Reload</Button> : null}
+              {notice.reload ? <Button size="sm" onClick={() => void load()}>{t("Reload")}</Button> : null}
             </div>
           ) : null}
-          {run?.error && run.status !== "running" ? <Notice tone="error">Run failed: {run.error}</Notice> : null}
+          {run?.error && run.status !== "running" ? <Notice tone="error">{t("Run failed:")}{" "} {run.error}</Notice> : null}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
@@ -1089,7 +1092,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
             minZoom={0.2}
             maxZoom={2}
             fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }}
-            aria-label="Workflow canvas"
+            aria-label={t("Workflow canvas")}
           >
             <Background gap={20} size={1.2} />
             <MiniMap pannable zoomable className="!hidden sm:!block" />
@@ -1097,69 +1100,69 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           {!nodes.length ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="pointer-events-auto max-w-sm rounded-tool border border-dashed border-line-strong bg-surface/90 p-6 text-center">
-                <p className="text-sm font-semibold text-ink">Start with a trigger</p>
-                <p className="mt-1 text-[13px] text-muted">A manual trigger to run by hand, a schedule, or a webhook another service calls.</p>
+                <p className="text-sm font-semibold text-ink">{t("Start with a trigger")}</p>
+                <p className="mt-1 text-[13px] text-muted">{t("A manual trigger to run by hand, a schedule, or a webhook another service calls.")}</p>
                 <Button className="mt-3" variant="primary" onClick={() => setPicker({ position: [0, 0] })}>
-                  Add the first node
+                  {t("Add the first node")}
                 </Button>
               </div>
             </div>
           ) : null}
           <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="primary" onClick={() => setPicker({ position: canvasCenter() })} aria-label="Add a node">
-              + Add node
+            <Button size="sm" variant="primary" onClick={() => setPicker({ position: canvasCenter() })} aria-label={t("Add a node")}>
+              {t("+ Add node")}
             </Button>
-            <div role="toolbar" aria-label="Canvas tools" className="flex items-center gap-0.5 rounded-lg border border-line bg-surface/95 p-0.5 shadow-card">
-              <ToolButton label={palette ? "Hide the node list" : "Show the node list"} pressed={palette} onClick={() => setPalette((value) => !value)}>
+            <div role="toolbar" aria-label={t("Canvas tools")} className="flex items-center gap-0.5 rounded-lg border border-line bg-surface/95 p-0.5 shadow-card">
+              <ToolButton label={palette ? t("Hide the node list") : t("Show the node list")} pressed={palette} onClick={() => setPalette((value) => !value)}>
                 <Icon d={ICONS.nodes} />
               </ToolButton>
               <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
-              <ToolButton label="Undo (Ctrl Z)" disabled={!canUndo} onClick={() => restore("undo")}>
+              <ToolButton label={t("Undo (Ctrl Z)")} disabled={!canUndo} onClick={() => restore("undo")}>
                 <Icon d={ICONS.undo} />
               </ToolButton>
-              <ToolButton label="Redo (Ctrl Shift Z)" disabled={!canRedo} onClick={() => restore("redo")}>
+              <ToolButton label={t("Redo (Ctrl Shift Z)")} disabled={!canRedo} onClick={() => restore("redo")}>
                 <Icon d={ICONS.redo} />
               </ToolButton>
               <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
-              <ToolButton label="Zoom out" onClick={() => void flow.zoomOut({ duration: 150 })}>
+              <ToolButton label={t("Zoom out")} onClick={() => void flow.zoomOut({ duration: 150 })}>
                 <Icon d={ICONS.zoomOut} />
               </ToolButton>
-              <ToolButton label="Zoom in" onClick={() => void flow.zoomIn({ duration: 150 })}>
+              <ToolButton label={t("Zoom in")} onClick={() => void flow.zoomIn({ duration: 150 })}>
                 <Icon d={ICONS.zoomIn} />
               </ToolButton>
-              <ToolButton label="Fit to view" disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 })}>
+              <ToolButton label={t("Fit to view")} disabled={!nodes.length} onClick={() => void flow.fitView({ padding: 0.25, maxZoom: 1.1, duration: 200 })}>
                 <Icon d={ICONS.fit} />
               </ToolButton>
-              <ToolButton label="Tidy up (arrange the nodes)" disabled={nodes.length < 2} onClick={tidyUp}>
+              <ToolButton label={t("Tidy up (arrange the nodes)")} disabled={nodes.length < 2} onClick={tidyUp}>
                 <Icon d={ICONS.tidy} />
               </ToolButton>
               <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
-              <ToolButton label="Duplicate the selected nodes (Ctrl D)" disabled={!selectedNodes.size} onClick={duplicateSelected}>
+              <ToolButton label={t("Duplicate the selected nodes (Ctrl D)")} disabled={!selectedNodes.size} onClick={duplicateSelected}>
                 <Icon d={ICONS.duplicate} />
               </ToolButton>
-              <ToolButton label="Delete the selection (Delete)" disabled={!hasSelection} onClick={removeSelected}>
+              <ToolButton label={t("Delete the selection (Delete)")} disabled={!hasSelection} onClick={removeSelected}>
                 <Icon d={ICONS.remove} />
               </ToolButton>
               <span aria-hidden className="mx-0.5 h-5 w-px bg-line" />
-              <ToolButton label="Keyboard and mouse" onClick={() => setKeysOpen(true)}>
+              <ToolButton label={t("Keyboard and mouse")} onClick={() => setKeysOpen(true)}>
                 <Icon d={ICONS.keys} />
               </ToolButton>
             </div>
             {run ? (
               <Badge tone={run.status === "success" ? "good" : run.status === "error" ? "danger" : run.status === "running" ? "accent" : "warn"}>
-                {run.status === "running" ? "Running…" : `Last run: ${run.status}`}
+                {run.status === "running" ? t("Running…") : t("Last run: {status}", { status: run.status })}
               </Badge>
             ) : null}
           </div>
         </div>
       </div>
       {menu ? <ContextMenu x={menu.x} y={menu.y} {...menuEntries()} onClose={() => setMenu(null)} /> : null}
-      <Drawer open={keysOpen} title="Keyboard and mouse" onClose={() => setKeysOpen(false)}>
-        <dl className="divide-y divide-line rounded-lg border border-line text-[13px]" aria-label="Editor shortcuts">
+      <Drawer open={keysOpen} title={t("Keyboard and mouse")} onClose={() => setKeysOpen(false)}>
+        <dl className="divide-y divide-line rounded-lg border border-line text-[13px]" aria-label={t("Editor shortcuts")}>
           {SHORTCUTS.map(([keysLabel, does]) => (
             <div key={keysLabel} className="flex gap-3 px-3 py-2">
               <dt className="w-44 shrink-0 font-mono text-[12px] text-ink">{keysLabel}</dt>
-              <dd className="text-muted">{does}</dd>
+              <dd className="text-muted">{t(does)}</dd>
             </div>
           ))}
         </dl>
@@ -1178,8 +1181,8 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           listening={listening}
           onChange={(next) => change({ nodes: nodes.map((node) => (node.id === next.id ? next : node)) }, `node:${next.id}`)}
           onRename={(from, to) => {
-            if (nodes.some((node) => node.name === to)) return `A node is already named "${to}".`;
-            if (to.length > 80) return "Names have at most 80 characters.";
+            if (nodes.some((node) => node.name === to)) return t("A node is already named \"{name}\".", { name: to });
+            if (to.length > 80) return t("Names have at most 80 characters.");
             const renamed = renameNode(nodes, connections, from, to);
             change(renamed);
             setOpenNode(to);
@@ -1194,9 +1197,9 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
           onCredentialCreated={() => workflowsApi.credentials().then((result) => setCredentials(result.credentials), () => undefined)}
         />
       ) : null}
-      <Drawer open={panel === "runs"} title="Runs" onClose={() => setPanel(null)} footer={<Button size="sm" onClick={refreshRuns}>Refresh</Button>}>
+      <Drawer open={panel === "runs"} title={t("Runs")} onClose={() => setPanel(null)} footer={<Button size="sm" onClick={refreshRuns}>{t("Refresh")}</Button>}>
         {runs.length ? (
-          <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Run history">
+          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t("Run history")}>
             {runs.map((entry) => (
               <li key={entry.id} className={cx("flex items-center gap-2 px-3 py-2", run?.runId === entry.id && "bg-accent/8")}>
                 <button autoComplete="off" type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => void showRun(entry.id)}>
@@ -1213,7 +1216,7 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
                 <Button
                   size="sm"
                   variant="ghost"
-                  aria-label="Delete run"
+                  aria-label={t("Delete run")}
                   onClick={async () => {
                     await workflowsApi.deleteRun(id, entry.id).catch(() => undefined);
                     setRuns((current) => current.filter((item) => item.id !== entry.id));
@@ -1225,28 +1228,28 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted">No runs yet. Press Run workflow, or activate the workflow.</p>
+          <p className="text-sm text-muted">{t("No runs yet. Press Run workflow, or activate the workflow.")}</p>
         )}
       </Drawer>
-      <Drawer open={panel === "credentials"} title="Credentials" onClose={() => setPanel(null)}>
+      <Drawer open={panel === "credentials"} title={t("Credentials")} onClose={() => setPanel(null)}>
         <CredentialsManager onChange={() => workflowsApi.credentials().then((result) => setCredentials(result.credentials), () => undefined)} />
       </Drawer>
       <Drawer
         open={panel === "settings"}
-        title="Workflow settings"
+        title={t("Workflow settings")}
         onClose={() => setPanel(null)}
         footer={
           <Button variant="primary" onClick={() => void save().then((saved) => saved && setPanel(null))}>
-            Save settings
+            {t("Save settings")}
           </Button>
         }
       >
-        <Field label="Time zone" hint="For schedules and dates in this workflow. Empty = the server's.">
-          <TextInput value={settings.timezone ?? ""} placeholder="Europe/Warsaw" onChange={(event) => { setSettings({ ...settings, timezone: event.target.value.trim() || null }); setDirty(true); }} />
+        <Field label={t("Time zone")} hint={t("For schedules and dates in this workflow. Empty = the server's.")}>
+          <TextInput value={settings.timezone ?? ""} placeholder={t("Europe/Warsaw")} onChange={(event) => { setSettings({ ...settings, timezone: event.target.value.trim() || null }); setDirty(true); }} />
         </Field>
-        <Field label="Error workflow" hint="Runs when a run of this workflow fails (it needs an Error Trigger).">
+        <Field label={t("Error workflow")} hint={t("Runs when a run of this workflow fails (it needs an Error Trigger).")}>
           <Select value={settings.errorWorkflow ?? ""} onChange={(event) => { setSettings({ ...settings, errorWorkflow: event.target.value || null }); setDirty(true); }}>
-            <option value="">None</option>
+            <option value="">{t("None")}</option>
             {workflows.filter((entry) => entry.id !== workflow.id && entry.triggers.includes("error")).map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.name}
@@ -1254,44 +1257,44 @@ function EditorInner({ id, onBack }: { id: string; onBack: () => void }) {
             ))}
           </Select>
         </Field>
-        <Field label="Time limit (seconds)" hint="The run stops after this; the instance limit applies too.">
-          <TextInput type="number" min={1} max={3600} value={settings.timeoutSeconds ?? ""} placeholder="instance default" onChange={(event) => { setSettings({ ...settings, timeoutSeconds: event.target.value ? Math.max(1, Math.min(3600, Number(event.target.value))) : null }); setDirty(true); }} />
+        <Field label={t("Time limit (seconds)")} hint={t("The run stops after this; the instance limit applies too.")}>
+          <TextInput type="number" min={1} max={3600} value={settings.timeoutSeconds ?? ""} placeholder={t("instance default")} onChange={(event) => { setSettings({ ...settings, timeoutSeconds: event.target.value ? Math.max(1, Math.min(3600, Number(event.target.value))) : null }); setDirty(true); }} />
         </Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={settings.saveSuccessfulRuns} onChange={(event) => { setSettings({ ...settings, saveSuccessfulRuns: event.target.checked }); setDirty(true); }} />
-          Keep successful automatic runs in the history
+          {t("Keep successful automatic runs in the history")}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={settings.saveManualRuns} onChange={(event) => { setSettings({ ...settings, saveManualRuns: event.target.checked }); setDirty(true); }} />
-          Keep manual and test runs in the history
+          {t("Keep manual and test runs in the history")}
         </label>
-        <Field label="Other workflows may call this one">
+        <Field label={t("Other workflows may call this one")}>
           <Select value={settings.callableBy} onChange={(event) => { setSettings({ ...settings, callableBy: event.target.value as WorkflowSettings["callableBy"] }); setDirty(true); }}>
-            <option value="any">Yes (Execute Sub-workflow)</option>
-            <option value="none">No</option>
+            <option value="any">{t("Yes (Execute Sub-workflow)")}</option>
+            <option value="none">{t("No")}</option>
           </Select>
         </Field>
-        <Field label="Workflow id" hint="For the Execute Sub-workflow node.">
+        <Field label={t("Workflow id")} hint={t("For the Execute Sub-workflow node.")}>
           <TextArea readOnly rows={1} value={workflow.id} className="font-mono" />
         </Field>
         <div className="space-y-2 rounded-lg border border-line p-3">
-          <p className="text-[13px] text-muted">Webhook URLs hold a secret token. Anyone with a URL can call it (add auth in the Webhook node to require more).</p>
+          <p className="text-[13px] text-muted">{t("Webhook URLs hold a secret token. Anyone with a URL can call it (add auth in the Webhook node to require more).")}</p>
           <Button
             size="sm"
             variant="danger"
             onClick={async () => {
-              if (!window.confirm("Make new webhook URLs? The current ones stop working at once.")) return;
+              if (!window.confirm(t("Make new webhook URLs? The current ones stop working at once."))) return;
               try {
                 const result = await workflowsApi.rotateToken(id);
                 setWorkflow(result.workflow);
                 setHooks(result.hooks);
-                setNotice({ tone: "good", text: "New webhook URLs made." });
+                setNotice({ tone: "good", text: t("New webhook URLs made.") });
               } catch (error) {
                 setNotice({ tone: "error", text: message(error) });
               }
             }}
           >
-            New webhook URLs
+            {t("New webhook URLs")}
           </Button>
         </div>
       </Drawer>

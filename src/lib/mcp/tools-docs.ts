@@ -6,6 +6,7 @@ import { extractOfficeText } from "@/lib/office/extract";
 import { buildDocument, OFFICE_FORMATS } from "@/lib/office/templates";
 import { QuotaExceededError } from "@/lib/storage/quota";
 import { wrapUntrustedOptional } from "@/lib/security/untrusted";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Office document tools (group `docs`). The editor itself is a cross-origin iframe the UI tools cannot see into, so the
@@ -18,7 +19,7 @@ import { wrapUntrustedOptional } from "@/lib/security/untrusted";
 const ID = z.string().regex(/^[a-f0-9]{16}$/, "expected a 16-character id from knife_doc_list");
 
 function account(ctx: KnifeToolContext | undefined): string {
-  if (!ctx?.accountId) throw new Error("Document tools need an account context.");
+  if (!ctx?.accountId) throw new Error(msg("Document tools need an account context."));
   return ctx.accountId;
 }
 
@@ -101,7 +102,7 @@ export const DOC_KNIFE_TOOLS: KnifeToolDefinition[] = [
     run({ format, name, folderId, paragraphs, rows, slides }, ctx) {
       const kind = format === "docx" || format === "odt" ? "text" : format === "xlsx" || format === "ods" ? "sheet" : "slides";
       if ((paragraphs && kind !== "text") || (rows && kind !== "sheet") || (slides && kind !== "slides")) {
-        throw new Error(`${format}: use ${kind === "text" ? "paragraphs" : kind === "sheet" ? "rows" : "slides"} for this format.`);
+        throw new Error(msgf("{format}: use {value} for this format.", { format, value: kind === "text" ? "paragraphs" : kind === "sheet" ? "rows" : "slides" }));
       }
       return guarded(() => {
         const acc = account(ctx);

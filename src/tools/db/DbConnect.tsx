@@ -14,12 +14,14 @@ import {
   type DsnKind,
 } from "@/lib/sql/dsn";
 import { buildSnippets, shellQuote } from "./dsn-snippets";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Connection-string builder/parser. Purely string manipulation: no connection is ever opened, and the password
  * lives only in this component's state (never localStorage, never the page URL).
  */
 export default function DbConnect() {
+  const { t } = useT();
   const [fields, setFields] = useState<DsnFields>(() => ({
     ...emptyFields("postgres"),
     host: "db.internal",
@@ -78,37 +80,37 @@ export default function DbConnect() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="min-w-0 space-y-4">
-        <Panel title="Connection fields" right={<span className="text-xs text-faint">Nothing connects; strings only</span>}>
+        <Panel title={t("Connection fields")} right={<span className="text-xs text-faint">{t("Nothing connects; strings only")}</span>}>
           <div className="space-y-3">
-            <Field label="Database type">
+            <Field label={t("Database type")}>
               <Select value={fields.kind} onChange={(e) => changeKind(e.target.value as DsnKind)}>
                 {DSN_KINDS.map((k) => (
-                  <option key={k.id} value={k.id}>{k.label}</option>
+                  <option key={k.id} value={k.id}>{t(k.label)}</option>
                 ))}
               </Select>
             </Field>
             {info.file ? (
-              <Field label={info.databaseLabel} hint="Relative (./data/app.db), absolute (/var/db/app.db) or :memory:">
-                <TextInput value={fields.database} onChange={(e) => set("database", e.target.value)} placeholder="./data/app.db" spellCheck={false} />
+              <Field label={info.databaseLabel} hint={t("Relative (./data/app.db), absolute (/var/db/app.db) or :memory:")}>
+                <TextInput value={fields.database} onChange={(e) => set("database", e.target.value)} placeholder={t("./data/app.db")} spellCheck={false} />
               </Field>
             ) : (
               <>
                 <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
-                  <Field label={info.multiHost ? "Host (or comma-separated host:port list)" : "Host"} hint={field("host")?.message}>
-                    <TextInput value={fields.host} onChange={(e) => set("host", e.target.value)} placeholder="db.internal" spellCheck={false} autoComplete="off" />
+                  <Field label={info.multiHost ? t("Host (or comma-separated host:port list)") : t("Host")} hint={field("host")?.message}>
+                    <TextInput value={fields.host} onChange={(e) => set("host", e.target.value)} placeholder={t("db.internal")} spellCheck={false} autoComplete="off" />
                   </Field>
                   {info.noPort || info.multiHost ? null : (
-                    <Field label="Port" hint={field("port")?.message}>
+                    <Field label={t("Port")} hint={field("port")?.message}>
                       <TextInput value={fields.port} onChange={(e) => set("port", e.target.value)} inputMode="numeric" placeholder={info.defaultPort} />
                     </Field>
                   )}
                 </div>
                 {info.hasAuth ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="User">
+                    <Field label={t("User")}>
                       <TextInput value={fields.user} onChange={(e) => set("user", e.target.value)} autoComplete="off" spellCheck={false} />
                     </Field>
-                    <Field label="Password" hint="Kept in this tab only. Never saved or put in the page URL.">
+                    <Field label={t("Password")} hint={t("Kept in this tab only. Never saved or put in the page URL.")}>
                       <TextInput
                         type={reveal ? "text" : "password"}
                         value={fields.password}
@@ -124,26 +126,26 @@ export default function DbConnect() {
                 </Field>
               </>
             )}
-            <Field label="Query parameters" hint="Written exactly as typed, e.g. sslmode=require&connect_timeout=10">
-              <TextInput value={fields.params} onChange={(e) => set("params", e.target.value)} spellCheck={false} placeholder="key=value&key2=value2" />
+            <Field label={t("Query parameters")} hint={t("Written exactly as typed, e.g. sslmode=require&connect_timeout=10")}>
+              <TextInput value={fields.params} onChange={(e) => set("params", e.target.value)} spellCheck={false} placeholder={t("key=value&key2=value2")} />
             </Field>
             {info.hasAuth ? (
               <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
                 <input type="checkbox" checked={reveal} onChange={(e) => setReveal(e.target.checked)} className="size-4 accent-[var(--c-accent)]" />
-                Reveal password in the input and the outputs
+                {t("Reveal password in the input and the outputs")}
               </label>
             ) : null}
           </div>
         </Panel>
 
-        <Panel title="Parse a connection URL into fields">
+        <Panel title={t("Parse a connection URL into fields")}>
           <div className="space-y-3">
-            <Field label="Connection URL to parse" hint={`Example: ${info.example}`}>
-              <TextInput value={pasted} onChange={(e) => setPasted(e.target.value)} spellCheck={false} autoComplete="off" placeholder="postgresql://user:pass@host:5432/db" />
+            <Field label={t("Connection URL to parse")} hint={t("Example: {example}", { example: info.example })}>
+              <TextInput value={pasted} onChange={(e) => setPasted(e.target.value)} spellCheck={false} autoComplete="off" placeholder={t("postgresql://user:pass@host:5432/db")} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={parse} disabled={!pasted.trim()}>Parse URL into fields</Button>
-              <Button variant="ghost" onClick={() => { setPasted(""); setParseError(null); setParseNotes([]); }} disabled={!pasted}>Clear parse input</Button>
+              <Button variant="primary" onClick={parse} disabled={!pasted.trim()}>{t("Parse URL into fields")}</Button>
+              <Button variant="ghost" onClick={() => { setPasted(""); setParseError(null); setParseNotes([]); }} disabled={!pasted}>{t("Clear parse input")}</Button>
             </div>
             {parseError ? <div role="alert"><Notice tone="error">{parseError}</Notice></div> : null}
             {parseNotes.length ? <div role="status"><Notice tone="info">{parseNotes.join(" ")}</Notice></div> : null}
@@ -153,11 +155,11 @@ export default function DbConnect() {
 
       <div className="min-w-0 space-y-4">
         <Panel
-          title="Connection URL"
+          title={t("Connection URL")}
           right={
             <div className="flex flex-wrap gap-1.5">
-              <CopyButton text={shownUrl} label={hasSecret && !reveal ? "Copy URL (password hidden)" : "Copy URL"} />
-              {hasSecret && !reveal ? <CopyButton text={realUrl} label="Copy URL with password" /> : null}
+              <CopyButton text={shownUrl} label={hasSecret && !reveal ? t("Copy URL (password hidden)") : t("Copy URL")} />
+              {hasSecret && !reveal ? <CopyButton text={realUrl} label={t("Copy URL with password")} /> : null}
             </div>
           }
         >
@@ -167,10 +169,10 @@ export default function DbConnect() {
             ) : null}
             <pre
               data-agent-region="connection-url"
-              aria-label="Connection URL"
+              aria-label={t("Connection URL")}
               className="sk-input overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed break-all whitespace-pre-wrap"
             >{shownUrl}</pre>
-            {hasSecret && !reveal ? <p className="text-xs text-faint">Password is masked as {PASSWORD_MASK}. Tick “Reveal password” to show it.</p> : null}
+            {hasSecret && !reveal ? <p className="text-xs text-faint">{t("Password is masked as {passwordMask}. Tick “Reveal password” to show it.", { passwordMask: PASSWORD_MASK })}</p> : null}
             <KeyValues
               rows={[
                 ["Scheme", info.scheme],
@@ -184,24 +186,24 @@ export default function DbConnect() {
           </div>
         </Panel>
 
-        <Panel title="Environment variable" right={<CopyButton text={envLine} label="Copy env line" />}>
+        <Panel title={t("Environment variable")} right={<CopyButton text={envLine} label={t("Copy env line")} />}>
           <div className="space-y-3">
-            <Field label="Variable name">
+            <Field label={t("Variable name")}>
               <TextInput value={envVar} onChange={(e) => setEnvName(e.target.value.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase())} spellCheck={false} />
             </Field>
-            <pre data-agent-region="env-line" aria-label="Environment variable line" className="sk-input overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed break-all whitespace-pre-wrap">{envLine}</pre>
+            <pre data-agent-region="env-line" aria-label={t("Environment variable line")} className="sk-input overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed break-all whitespace-pre-wrap">{envLine}</pre>
           </div>
         </Panel>
 
-        <Panel title="Client snippets">
+        <Panel title={t("Client snippets")}>
           <div className="space-y-4" data-agent-region="client-snippets">
             {snippets.map((snippet) => (
               <div key={snippet.label} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-semibold text-muted">{snippet.label}</h3>
-                  <CopyButton text={snippet.code} label={`Copy ${snippet.label}`} />
+                  <h3 className="text-xs font-semibold text-muted">{t(snippet.label)}</h3>
+                  <CopyButton text={snippet.code} label={t("Copy {label}", { label: snippet.label })} />
                 </div>
-                <pre aria-label={`${snippet.label} snippet`} className="sk-input overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-all">{snippet.code}</pre>
+                <pre aria-label={t("{label} snippet", { label: snippet.label })} className="sk-input overflow-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap break-all">{snippet.code}</pre>
               </div>
             ))}
           </div>

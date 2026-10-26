@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, CopyButton, Field, KeyValues, Notice, OutputBlock, Panel, Select, Stat, StatGrid, TextArea, TextInput } from "@/components/ui";
-import { clamp, plural } from "@/lib/format";
+import { clamp } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Password workbench. Everything is generated from `crypto.getRandomValues` in
@@ -128,6 +129,7 @@ function poolFor(text: string): number {
 }
 
 export default function PasswordTool() {
+  const { t, tn } = useT();
   const [wordCount, setWordCount] = useState("4");
   const [separator, setSeparator] = useState("-");
   const [extraDigits, setExtraDigits] = useState("1");
@@ -163,11 +165,11 @@ export default function PasswordTool() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!candidate) setError(null);
-      else if (candidate.length < 12) setError("Short — the meter below will say why.");
+      else if (candidate.length < 12) setError(t("Short — the meter below will say why."));
       else setError(null);
     }, 140);
     return () => clearTimeout(timer);
-  }, [candidate]);
+  }, [t, candidate]);
 
   const passphraseBits = useMemo(() => {
     const perWord = Math.log2(WORDS.length);
@@ -209,19 +211,19 @@ export default function PasswordTool() {
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
-          title="Passphrase"
+          title={t("Passphrase")}
           right={
             <div className="flex flex-wrap gap-1.5">
               <Button size="sm" onClick={generate}>
-                Generate
+                {t("Generate")}
               </Button>
-              <CopyButton text={candidate} label="Copy" />
+              <CopyButton text={candidate} label={t("Copy")} />
             </div>
           }
         >
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Words">
+              <Field label={t("Words")}>
                 <Select
                   value={wordCount}
                   onChange={(e) => setWordCount(e.target.value)}
@@ -234,74 +236,74 @@ export default function PasswordTool() {
                   <option value="8">8</option>
                 </Select>
               </Field>
-              <Field label="Separator">
+              <Field label={t("Separator")}>
                 <TextInput
                   value={separator}
                   onChange={(e) => setSeparator(e.target.value)}
-                  placeholder="- or space"
+                  placeholder={t("- or space")}
                   className="font-mono w-16"
                 />
               </Field>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <Field label="Digits">
+              <Field label={t("Digits")}>
                 <TextInput
                   value={extraDigits}
                   onChange={(e) => setExtraDigits(e.target.value)}
                   className="font-mono w-12"
                 />
               </Field>
-              <Field label="Symbol">
+              <Field label={t("Symbol")}>
                 <TextInput
                   value={extraSymbol}
                   onChange={(e) => setExtraSymbol(e.target.value)}
                   className="font-mono w-12"
                 />
               </Field>
-              <Field label="Case">
+              <Field label={t("Case")}>
                 <Select
                   value={capitalize}
                   onChange={(e) => setCapitalize(e.target.value)}
                   className="w-20"
                 >
-                  <option value="on">Capitalise</option>
+                  <option value="on">{t("Capitalise")}</option>
                   <option value="upper">UPPER</option>
-                  <option value="off">lower</option>
+                  <option value="off">{t("lower")}</option>
                 </Select>
               </Field>
             </div>
 
             {error ? <Notice tone="error">{error}</Notice> : null}
 
-            <OutputBlock value={candidate} rows={3} empty="Press Generate — nothing is stored, nothing is sent." />
+            <OutputBlock value={candidate} rows={3} empty={t("Press Generate — nothing is stored, nothing is sent.")} />
 
             <StatGrid>
-              <Stat label="Entropy" value={`${passphraseBits.toFixed(0)} bits`} />
-              <Stat label="Words in list" value={WORDS.length} />
-              <Stat label="Bits per word" value={Math.log2(WORDS.length).toFixed(2)} />
+              <Stat label={t("Entropy")} value={`${passphraseBits.toFixed(0)} bits`} />
+              <Stat label={t("Words in list")} value={WORDS.length} />
+              <Stat label={t("Bits per word")} value={Math.log2(WORDS.length).toFixed(2)} />
             </StatGrid>
             <p className="text-xs text-faint">
-              The wordlist ships with the app; the picker uses rejection sampling over
-              <code>crypto.getRandomValues</code>, so no modulo bias.
+              {t("The wordlist ships with the app; the picker uses rejection sampling over")}
+              <code>crypto.getRandomValues</code>{t(", so no modulo bias.")}
             </p>
           </div>
         </Panel>
 
         <Panel
-          title="Measure what you typed"
+          title={t("Measure what you typed")}
           right={
             <div className="flex flex-wrap gap-1.5">
-              <CopyButton text={candidate} label="Copy" />
+              <CopyButton text={candidate} label={t("Copy")} />
             </div>
           }
         >
           <div className="space-y-3">
-            <Field label="Any candidate" hint="Read locally — this box never posts anywhere.">
+            <Field label={t("Any candidate")} hint={t("Read locally — this box never posts anywhere.")}>
               <TextArea
                 value={candidate}
                 onChange={(e) => setCandidate(e.target.value)}
-                placeholder="type or paste a candidate…"
+                placeholder={t("type or paste a candidate…")}
                 className="font-mono text-[13px]"
               />
             </Field>
@@ -309,71 +311,70 @@ export default function PasswordTool() {
             {inspected ? (
               <div className="space-y-3">
                 <StatGrid>
-                  <Stat label="Naive bits" value={inspected.naive.toFixed(0)} />
-                  <Stat label="Unique-char bits" value={inspected.honest.toFixed(0)} />
-                  <Stat label="Reported" value={inspected.bits.toFixed(0)} />
+                  <Stat label={t("Naive bits")} value={inspected.naive.toFixed(0)} />
+                  <Stat label={t("Unique-char bits")} value={inspected.honest.toFixed(0)} />
+                  <Stat label={t("Reported")} value={inspected.bits.toFixed(0)} />
                 </StatGrid>
                 <KeyValues
                   rows={[
                     ["Length", String(inspected.chars)],
-                    ["Character pool", String(inspected.pool)],
-                    ["Distinct chars", String(inspected.unique)],
-                    ["Crack time @ 10¹⁰/s", humanTime(inspected.seconds)],
+                    [t("Character pool"), String(inspected.pool)],
+                    [t("Distinct chars"), String(inspected.unique)],
+                    [t("Crack time @ 10¹⁰/s"), humanTime(inspected.seconds)],
                   ]}
                 />
                 <div className="rounded-tool border border-line p-3 text-[13px]">
                   {inspected.bits >= 60
-                    ? "Above 60 bits: a brute-force search is out of reach on current hardware."
+                    ? t("Above 60 bits: a brute-force search is out of reach on current hardware.")
                     : inspected.bits >= 40
-                      ? "Usable, but a targeted attack (known format, leaked fragments) still fits."
-                      : "Too small. Length or pool needs to grow before this is a password."}
+                      ? t("Usable, but a targeted attack (known format, leaked fragments) still fits.")
+                      : t("Too small. Length or pool needs to grow before this is a password.")}
                 </div>
                 <p className="text-xs text-faint">
-                  Reported takes the lower of the two estimates — repeats in a candidate
-                  shrink the real pool, and the naive formula ignores that.
+                  {t("Reported takes the lower of the two estimates — repeats in a candidate shrink the real pool, and the naive formula ignores that.")}
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-faint">Type a candidate above to measure it.</p>
+              <p className="text-sm text-faint">{t("Type a candidate above to measure it.")}</p>
             )}
           </div>
         </Panel>
       </div>
 
       <Panel
-        title="Random string"
+        title={t("Random string")}
         right={
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" onClick={() => setAlphabet(LOWER + UPPER + DIGITS + SYMBOLS)}>
-              Full charset
+              {t("Full charset")}
             </Button>
             <Button size="sm" onClick={() => setAlphabet(LOWER + DIGITS)}>
-              Lower + digits
+              {t("Lower + digits")}
             </Button>
             <Button size="sm" onClick={() => setAlphabet(HEX)}>
-              Hex only
+              {t("Hex only")}
             </Button>
-            <CopyButton text={batch.join("\n")} label="Copy all" />
+            <CopyButton text={batch.join("\n")} label={t("Copy all")} />
           </div>
         }
       >
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
-            <Field label="Alphabet" className="col-span-2 sm:col-span-1">
+            <Field label={t("Alphabet")} className="col-span-2 sm:col-span-1">
               <TextInput
                 value={alphabet}
                 onChange={(e) => setAlphabet(e.target.value)}
                 className="font-mono"
               />
             </Field>
-            <Field label="Length">
+            <Field label={t("Length")}>
               <TextInput
                 value={stringLength}
                 onChange={(e) => setStringLength(e.target.value)}
                 className="font-mono w-16"
               />
             </Field>
-            <Field label="How many">
+            <Field label={t("How many")}>
               <TextInput
                 value={batchCount}
                 onChange={(e) => setBatchCount(e.target.value)}
@@ -382,15 +383,14 @@ export default function PasswordTool() {
             </Field>
           </div>
 
-          <OutputBlock value={batch.join("\n")} rows={20} empty="Nothing generated." />
+          <OutputBlock value={batch.join("\n")} rows={20} empty={t("Nothing generated.")} />
 
           <StatGrid>
-            <Stat label="Alphabet size" value={new Set(Array.from(alphabet)).size} />
-            <Stat label="Bits per string" value={batchBits.toFixed(0)} />
+            <Stat label={t("Alphabet size")} value={new Set(Array.from(alphabet)).size} />
+            <Stat label={t("Bits per string")} value={batchBits.toFixed(0)} />
           </StatGrid>
           <p className="text-xs text-faint">
-            {plural(new Set(Array.from(alphabet)).size, "symbol")} in the alphabet — ambiguous glyphs
-            are your call, the meter counts what you asked for.
+            {t("{size} in the alphabet — ambiguous glyphs are your call, the meter counts what you asked for.", { size: tn("{n} symbol", "{n} symbols", new Set(Array.from(alphabet)).size) })}
           </p>
         </div>
       </Panel>

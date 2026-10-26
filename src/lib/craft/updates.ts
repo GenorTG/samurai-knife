@@ -5,6 +5,7 @@ import { pushSiteContent, requireBackend, SidecarError, withLock } from "@/lib/s
 import { compareVersions, patchChannel, readChannel, UPDATE_MODES, type AppChannel, type SiteRelease, type SitesChannel, type UpdateMode } from "@/lib/services/site-channel";
 import { activateSites, activeRelease, checkRelease, installRelease, pinRelease, pruneSites, releaseInstalled, releaseRoot, servedRelease } from "@/lib/services/sites";
 import { readState } from "@/lib/services/state";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Automatic updates of the Craft apps from their upstream GitHub releases (docs/SIDECARS.md "Updates").
@@ -51,7 +52,7 @@ interface GithubRelease {
 
 function repoPath(app: SidecarSite): string {
   const match = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/.exec(app.repo);
-  if (!match) throw new Error(`${app.name}: unexpected repository URL`);
+  if (!match) throw new Error(msgf("{name}: unexpected repository URL", { name: app.name }));
   return match[1];
 }
 
@@ -95,13 +96,13 @@ function log(line: string): void {
 
 function def(): SidecarDefinition {
   const found = findSidecar(ID);
-  if (!found?.sites) throw new SidecarError("No Craft apps sidecar in this release.", 500);
+  if (!found?.sites) throw new SidecarError(msg("No Craft apps sidecar in this release."), 500);
   return found;
 }
 
 function appById(id: string): SidecarSite {
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === id);
-  if (!app) throw new SidecarError("Unknown app.", 404);
+  if (!app) throw new SidecarError(msg("Unknown app."), 404);
   return app;
 }
 
@@ -162,7 +163,7 @@ export async function checkCraftUpdates(options: { apply: boolean; fetcher?: typ
   return withLock(ID, "site-update", async () => {
     const before = readChannel(ID);
     if (before.retryAfter && Date.parse(before.retryAfter) > now.getTime()) {
-      throw new SidecarError(`GitHub asked to wait until ${before.retryAfter} before the next check.`, 429);
+      throw new SidecarError(msgf("GitHub asked to wait until {retryAfter} before the next check.", { retryAfter: before.retryAfter }), 429);
     }
     const applied: string[] = [];
     const errors: string[] = [];
@@ -253,7 +254,7 @@ export function applyCraftUpdate(appId: string, fetcher: typeof fetch = fetch): 
   const app = appById(appId);
   return withLock(ID, "site-update", async () => {
     const available = readChannel(ID).apps[app.id]?.available;
-    if (!available) throw new SidecarError(`No newer ${app.name} release is known; check first.`, 409);
+    if (!available) throw new SidecarError(msgf("No newer {name} release is known; check first.", { name: app.name }), 409);
     await switchTo(definition, app, available, "manual", fetcher);
     pruneSites(definition);
     return readChannel(ID);
@@ -266,8 +267,8 @@ export function rollbackCraft(appId: string): Promise<SitesChannel> {
   const app = appById(appId);
   return withLock(ID, "site-update", async () => {
     const previous = readChannel(ID).apps[app.id]?.previous;
-    if (!previous || !releaseInstalled(definition, app, previous)) throw new SidecarError(`${app.name} has no previous release to go back to.`, 409);
-    if (compareVersions(previous.version, app.version) < 0) throw new SidecarError(`${app.name} ${previous.version} is older than this release's minimum ${app.version}.`, 409);
+    if (!previous || !releaseInstalled(definition, app, previous)) throw new SidecarError(msgf("{name} has no previous release to go back to.", { name: app.name }), 409);
+    if (compareVersions(previous.version, app.version) < 0) throw new SidecarError(msgf("{name} {version} is older than this release's minimum {version2}.", { name: app.name, version: previous.version, version2: app.version }), 409);
     await switchTo(definition, app, previous, "rollback", fetch);
     // A rolled-back app is held, or the next automatic check would install the same release again.
     patchChannel(ID, (channel) => {
@@ -289,7 +290,7 @@ export function holdCraft(appId: string, hold: boolean): SitesChannel {
 }
 
 export function setCraftUpdateMode(mode: UpdateMode): SitesChannel {
-  if (!UPDATE_MODES.includes(mode)) throw new SidecarError("Unknown mode.", 422);
+  if (!UPDATE_MODES.includes(mode)) throw new SidecarError(msg("Unknown mode."), 422);
   log(`mode ${mode}`);
   return patchChannel(ID, (channel) => {
     channel.mode = mode;

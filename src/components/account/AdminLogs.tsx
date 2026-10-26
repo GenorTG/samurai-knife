@@ -5,6 +5,7 @@ import { Badge, Button, Field, Notice, Panel, SegmentedControl, Select, TextInpu
 import { cx, formatBytes, formatInt } from "@/lib/format";
 import type { LogSourceView, LogTail } from "@/lib/logs/viewer";
 import { call } from "./api";
+import { useT } from "@/lib/i18n/react";
 
 interface SourcesReply {
   root: string | null;
@@ -35,6 +36,7 @@ const LEVEL_CLASS: Record<Level, string> = { error: "text-danger", warn: "text-w
 
 /** /account/admin/logs: sources -> files -> the tail of one file, with level/text filters, live refresh and download. */
 export function AdminLogs() {
+  const { t } = useT();
   const [sources, setSources] = useState<SourcesReply | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceId, setSourceId] = useState<string>("");
@@ -107,53 +109,53 @@ export function AdminLogs() {
     if (node && stickToBottom.current) node.scrollTop = node.scrollHeight;
   }, [shown]);
 
-  if (error) return <Panel title="Server logs"><Notice tone="error">{error}</Notice></Panel>;
-  if (!sources) return <p role="status" className="text-sm text-muted">Loading log sources…</p>;
+  if (error) return <Panel title={t("Server logs")}><Notice tone="error">{error}</Notice></Panel>;
+  if (!sources) return <p role="status" className="text-sm text-muted">{t("Loading log sources…")}</p>;
 
   const downloadHref = sourceId && file ? `/api/admin/logs?${new URLSearchParams({ source: sourceId, file, download: "1" })}` : null;
 
   return (
-    <section aria-label="Server logs" className="space-y-4">
+    <section aria-label={t("Server logs")} className="space-y-4">
       <Panel
-        title="Sources"
-        right={<Button size="sm" onClick={loadSources}>Refresh list</Button>}
+        title={t("Sources")}
+        right={<Button size="sm" onClick={loadSources}>{t("Refresh list")}</Button>}
       >
         <div className="space-y-3">
           <p className="text-sm text-muted">
-            {sources.root ? <>Files under <code className="font-mono text-xs">{sources.root}</code>, kept {formatInt(sources.retentionDays)} days (<code>logRetentionDays</code>).</> : <>File logging is off on this server (<code>KNIFE_LOG_DIR=off</code>); only security events are listed.</>}
+            {sources.root ? <>{t("Files under")}{" "} <code className="font-mono text-xs">{sources.root}</code>{t(", kept {retentionDays} days (", { retentionDays: formatInt(sources.retentionDays) })}<code>logRetentionDays</code>).</> : <>{t("File logging is off on this server (")}<code>KNIFE_LOG_DIR=off</code>{t("); only security events are listed.")}</>}
           </p>
-          <Field label="Source">
+          <Field label={t("Source")}>
             <Select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
               {sources.sources.map((s) => (
                 <option key={s.id} value={s.id}>{`${s.label} (${s.files.length})`}</option>
               ))}
             </Select>
           </Field>
-          {source ? <p className="text-xs text-faint">{source.description}</p> : null}
+          {source ? <p className="text-xs text-faint">{t(source.description)}</p> : null}
         </div>
       </Panel>
 
-      <Panel title={source ? `${source.label}: files (${source.files.length})` : "Files"} bodyClassName="p-0 sm:p-0">
+      <Panel title={source ? `${source.label}: files (${source.files.length})` : t("Files")} bodyClassName="p-0 sm:p-0">
         {!source || source.files.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted">No files yet.</p>
+          <p className="px-4 py-3 text-sm text-muted">{t("No files yet.")}</p>
         ) : (
           <div className="max-h-[18rem] overflow-auto">
-            <table className="w-full min-w-[36rem] text-left text-sm" aria-label="Log files">
+            <table className="w-full min-w-[36rem] text-left text-sm" aria-label={t("Log files")}>
               <thead className="sticky top-0 border-b border-line bg-surface text-xs text-faint">
                 <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">File</th>
-                  <th scope="col" className="px-4 py-2 text-right font-medium">Size</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Modified</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Action</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("File")}</th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">{t("Size")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Modified")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody>
                 {source.files.map((f) => (
                   <tr key={f.name} data-log-file={f.name} className={cx("border-b border-line last:border-0", f.name === file && "bg-raised/60")}>
-                    <td className="px-4 py-2 font-mono text-xs text-ink wrap-anywhere">{f.name}{f.name === file ? <Badge className="ml-2" tone="good">shown</Badge> : null}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-ink wrap-anywhere">{f.name}{f.name === file ? <Badge className="ml-2" tone="good">{t("shown")}</Badge> : null}</td>
                     <td className="px-4 py-2 text-right font-mono text-xs text-muted">{formatBytes(f.size)}</td>
                     <td className="px-4 py-2 font-mono text-xs text-muted">{utc(f.mtime)}</td>
-                    <td className="px-4 py-2"><Button size="sm" variant="ghost" onClick={() => setPicked(f.name)} aria-label={`Show ${f.name}`}>Show</Button></td>
+                    <td className="px-4 py-2"><Button size="sm" variant="ghost" onClick={() => setPicked(f.name)} aria-label={t("Show {name}", { name: f.name })}>{t("Show")}</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -169,25 +171,25 @@ export function AdminLogs() {
             <span className="flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1.5 text-sm text-muted">
                 <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
-                Live refresh
+                {t("Live refresh")}
               </label>
-              <Button size="sm" onClick={loadTail}>Refresh</Button>
-              {downloadHref ? <a className="text-sm text-accent-soft underline underline-offset-2" href={downloadHref} download={file}>Download</a> : null}
+              <Button size="sm" onClick={loadTail}>{t("Refresh")}</Button>
+              {downloadHref ? <a className="text-sm text-accent-soft underline underline-offset-2" href={downloadHref} download={file}>{t("Download")}</a> : null}
             </span>
           }
         >
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end">
               <SegmentedControl<LevelFilter>
-                label="Level"
+                label={t("Level")}
                 value={level}
                 onChange={setLevel}
                 options={[{ value: "all", label: "All" }, { value: "warn", label: "Warnings + errors" }, { value: "error", label: "Errors" }]}
               />
-              <Field label="Filter">
-                <TextInput type="search" value={query} placeholder="text in the line" onChange={(e) => setQuery(e.target.value)} />
+              <Field label={t("Filter")}>
+                <TextInput type="search" value={query} placeholder={t("text in the line")} onChange={(e) => setQuery(e.target.value)} />
               </Field>
-              <Field label="Lines">
+              <Field label={t("Lines")}>
                 <Select value={String(lineCount)} onChange={(e) => setLineCount(Number(e.target.value))}>
                   {LINE_COUNTS.map((n) => <option key={n} value={n}>{formatInt(n)}</option>)}
                 </Select>
@@ -195,7 +197,7 @@ export function AdminLogs() {
             </div>
             <p role="status" className="text-xs text-faint">
               {loading
-                ? "Loading…"
+                ? t("Loading…")
                 : tail
                   ? `${formatInt(shown.length)} of ${formatInt(tail.lines.length)} lines shown${tail.truncated ? " (the end of a longer file)" : ""}, ${formatBytes(tail.size)}, modified ${utc(tail.mtime)}${live ? ", refreshing every 3 s" : ""}.`
                   : ""}
@@ -203,7 +205,7 @@ export function AdminLogs() {
             {tailError ? <Notice tone="error">{tailError}</Notice> : null}
             <pre
               ref={pre}
-              aria-label="Log lines"
+              aria-label={t("Log lines")}
               onScroll={(e) => {
                 const node = e.currentTarget;
                 stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24;
@@ -211,7 +213,7 @@ export function AdminLogs() {
               className="sk-input max-h-[60vh] min-h-[12rem] overflow-auto px-3 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words"
             >
               {shown.length === 0 ? (
-                <span className="text-faint">{tail && tail.lines.length ? "No line matches the filter." : "The file is empty."}</span>
+                <span className="text-faint">{tail && tail.lines.length ? t("No line matches the filter.") : t("The file is empty.")}</span>
               ) : (
                 shown.map((line, index) => (
                   <span key={index} data-level={line.level} className={LEVEL_CLASS[line.level]}>{`${line.text}\n`}</span>

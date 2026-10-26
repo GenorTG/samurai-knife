@@ -6,6 +6,9 @@ import { learnError, readyConnection } from "@/lib/learn/sql/api";
 import { withLearnerSlot } from "@/lib/learn/sql/slots";
 import { checkLesson } from "@/lib/learn/sql/check";
 import { DEFAULT_ROW_CAP } from "@/lib/learn/sql/db";
+import { msgf } from "@/lib/i18n/msg";
+import { translator } from "@/lib/i18n/core";
+import { requestLocale } from "@/lib/i18n/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,14 +26,14 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 64 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   const { sql, lessonId } = parsed.data;
   const course = findCourse("sql");
   const lesson = course ? findLesson(course, lessonId) : undefined;
   if (!lesson) return jsonError("unknown_lesson", 404);
   try {
     const info = await readyConnection();
-    const outcome = await withLearnerSlot(auth.account.id, () => checkLesson(info, lesson, sql));
+    const outcome = await withLearnerSlot(auth.account.id, () => checkLesson(info, lesson, sql, translator(requestLocale(request))));
     const progress = updateLesson(auth.account.id, "sql", lessonId, (entry) => ({
       ...entry,
       attempts: entry.attempts + 1,

@@ -88,9 +88,10 @@ export function adminAct(actorId: string, targetId: string, body: AdminAction): 
     case "delete": {
       const refused = selfOrLast("delete");
       if (refused) return refused;
+      const language = readStore().accounts.find((a) => a.id === targetId)?.language ?? "en";
       const result = purgeAccount(targetId);
       if (!result) return { ok: false, status: 404, error: "unknown_user" };
-      if (result.email) sendMail(result.email, accountDeletedMail(targetId));
+      if (result.email) sendMail(result.email, accountDeletedMail(targetId, language));
       return { ok: true, removed: result.removed };
     }
     case "quota":

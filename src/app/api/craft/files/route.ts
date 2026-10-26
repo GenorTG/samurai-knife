@@ -6,6 +6,7 @@ import { CraftFileError, listCraftFiles, MAX_CRAFT_FILE_BYTES, saveCraftFile, ta
 import { quotaErrorResponse } from "@/lib/storage/http";
 import { storageUsage } from "@/lib/storage/quota";
 import { isUploadBudgetError, reserveUpload, type UploadReservation } from "@/lib/upload-budget";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,10 +74,10 @@ async function save(accountId: string, request: Request, maxBytes: number): Prom
   const read = await readJsonBody(request, maxBytes);
   if ("response" in read) return read.response;
   const parsed = saveSchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   const body = parsed.data;
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(body.data)) return jsonError("data: expected base64", 422);
-  if (!takeSaveSlot(accountId)) return jsonError("Too many saves in a minute; wait a moment.", 429, { retryAfterSec: 60 });
+  if (!takeSaveSlot(accountId)) return jsonError(msg("Too many saves in a minute; wait a moment."), 429, { retryAfterSec: 60 });
   try {
     assertCraftRoom(accountId, Math.floor((body.data.length * 3) / 4));
     const before = listCraftFiles(accountId).length;

@@ -14,7 +14,7 @@ Subcommands:
       with --montage, writes before | after | diff strips for them.
   compare <url_a> <url_b> <out_dir> [shoot options] [diff options]
       shoot both servers (A = baseline, B = candidate) in parallel, then diff.
-  audit <url> [--docked] [--widths 1440,390] [--only substr] [--top 30] [--theme light] [--contrast 3]
+  audit <url> [--docked] [--widths 1440,390] [--only substr] [--top 30] [--theme light] [--contrast 3] [--lang pl]
       No screenshots: loads every page and lists layout offenders inside <main>: elements
       sticking out past its right edge (outside scroll containers), Stat cards whose value
       overflows, overlapping controls and horizontal page overflow. --contrast N also lists
@@ -261,7 +261,7 @@ CONTRAST_JS = """
 }
 """
 
-def audit(base: str, only: str, widths: list[tuple[int, int]], docked: bool, top: int, theme: str = "dark", contrast: float = 0, browser_name: str = "chromium") -> int:
+def audit(base: str, only: str, widths: list[tuple[int, int]], docked: bool, top: int, theme: str = "dark", contrast: float = 0, browser_name: str = "chromium", lang: str = "") -> int:
     from playwright.sync_api import sync_playwright
 
     todo = [p for p in pages() if only in p[0]]
@@ -271,6 +271,8 @@ def audit(base: str, only: str, widths: list[tuple[int, int]], docked: bool, top
         for width, height in widths:
             ctx = browser.new_context(viewport={"width": width, "height": height}, reduced_motion="reduce")
             ctx.add_init_script(f"localStorage.setItem('sk-theme', '{theme}')")
+            if lang:
+                ctx.add_cookies([{"name": "knife_lang", "value": lang, "url": base}])
             if docked:
                 ctx.add_init_script(
                     "localStorage.setItem('sk.agent.ui.v1', JSON.stringify({open:true,width:400,height:560,dock:true}))"
@@ -283,7 +285,7 @@ def audit(base: str, only: str, widths: list[tuple[int, int]], docked: bool, top
                         continue
                     page.add_style_tag(content=STYLE)
                     try:
-                        page.wait_for_function("() => !document.body.innerText.includes('Loading tool')", timeout=15000)
+                        page.wait_for_function("() => !/Loading tool|Wczytywanie narzędzia/.test(document.body.innerText)", timeout=15000)
                     except Exception:
                         pass
                     page.wait_for_timeout(300)
@@ -378,6 +380,7 @@ def main() -> int:
     a.add_argument("--theme", default="dark")
     a.add_argument("--contrast", type=float, default=0)
     a.add_argument("--browser", choices=("chromium", "firefox"), default="chromium")
+    a.add_argument("--lang", default="", help="interface language (knife_lang cookie): en or pl")
     c = sub.add_parser("compare")
     c.add_argument("url_a")
     c.add_argument("url_b")
@@ -394,7 +397,7 @@ def main() -> int:
         diff_dirs(args.a, args.b, args.threshold, args.top, args.montage)
         return 0
     if args.cmd == "audit":
-        audit(args.url.rstrip("/"), args.only, viewports(args.widths), args.docked, args.top, args.theme, args.contrast, args.browser)
+        audit(args.url.rstrip("/"), args.only, viewports(args.widths), args.docked, args.top, args.theme, args.contrast, args.browser, args.lang)
         return 0
     themes, widths = args.themes.split(","), viewports(args.widths)
     with ProcessPoolExecutor(2) as ex:

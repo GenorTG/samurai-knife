@@ -7,6 +7,7 @@
  * Values are normalised: numbers and numeric strings (Postgres sends numeric/bigint as text) compare rounded to
  * `decimals` places, everything else as its JSON text.
  */
+import { translator, type Translator } from "@/lib/i18n/core";
 
 export type Cell = string | number | boolean | null;
 
@@ -22,6 +23,8 @@ export interface CompareOptions {
   columnNames?: "ignore" | "match";
   /** Decimal places numbers are rounded to before comparing (default 2). */
   decimals?: number;
+  /** Language of the feedback (default English). */
+  tr?: Pick<Translator, "t" | "tn">;
 }
 
 export interface CompareResult {
@@ -83,14 +86,15 @@ function columnOrder(expected: string[], actual: string[]): number[] | null {
 
 export function compareResults(expected: ResultSet, actual: ResultSet, options: CompareOptions): CompareResult {
   const decimals = options.decimals ?? 2;
+  const { t, tn } = options.tr ?? translator("en");
   const base = { expectedRows: expected.rows.length, actualRows: actual.rows.length, missing: 0, extra: 0, examples: { missing: [] as string[], extra: [] as string[] } };
   if (expected.columns.length !== actual.columns.length) {
-    const columnProblem = `Expected ${expected.columns.length} column${expected.columns.length === 1 ? "" : "s"} (${expected.columns.join(", ")}), your query returned ${actual.columns.length} (${actual.columns.join(", ") || "none"}).`;
+    const columnProblem = tn("Expected {n} column ({names}), your query returned {got} ({gotNames}).", "Expected {n} columns ({names}), your query returned {got} ({gotNames}).", expected.columns.length, { names: expected.columns.join(", "), got: actual.columns.length, gotNames: actual.columns.join(", ") || t("none") });
     return { ...base, pass: false, columnProblem, message: columnProblem };
   }
   const order = columnOrder(expected.columns, actual.columns);
   if (options.columnNames === "match" && !order) {
-    const columnProblem = `Name the columns ${expected.columns.join(", ")} (use AS); yours are ${actual.columns.join(", ")}.`;
+    const columnProblem = t("Name the columns {names} (use AS); yours are {got}.", { names: expected.columns.join(", "), got: actual.columns.join(", ") });
     return { ...base, pass: false, columnProblem, message: columnProblem };
   }
   const rows = order ? actual.rows.map((row) => order.map((index) => row[index])) : actual.rows;
@@ -123,10 +127,10 @@ export function compareResults(expected: ResultSet, actual: ResultSet, options: 
   const result: CompareResult = { ...base, missing, extra, examples, pass: missing === 0 && extra === 0, message: "" };
 
   if (!result.pass) {
-    const parts = [`Your query returned ${actual.rows.length} row${actual.rows.length === 1 ? "" : "s"}, the expected result has ${expected.rows.length}.`];
-    if (missing) parts.push(`${missing} expected row${missing === 1 ? " is" : "s are"} missing.`);
-    if (extra) parts.push(`${extra} row${extra === 1 ? " is" : "s are"} not in the expected result.`);
-    if (!order && expected.columns.length > 1) parts.push("Columns are compared by position: check their order.");
+    const parts = [tn("Your query returned {n} row, the expected result has {expected}.", "Your query returned {n} rows, the expected result has {expected}.", actual.rows.length, { expected: expected.rows.length })];
+    if (missing) parts.push(tn("{n} expected row is missing.", "{n} expected rows are missing.", missing));
+    if (extra) parts.push(tn("{n} row is not in the expected result.", "{n} rows are not in the expected result.", extra));
+    if (!order && expected.columns.length > 1) parts.push(t("Columns are compared by position: check their order."));
     result.message = parts.join(" ");
     return result;
   }
@@ -137,10 +141,12 @@ export function compareResults(expected: ResultSet, actual: ResultSet, options: 
         ...result,
         pass: false,
         firstOrderMismatch: mismatch,
-        message: `The rows are right but the order is not: row ${mismatch + 1} should be ${readable(expected.rows[mismatch])}, yours is ${readable(rows[mismatch])}. Check ORDER BY.`,
+        message: t("The rows are right but the order is not: row {row} should be {want}, yours is {got}. Check ORDER BY.", { row: mismatch + 1, want: readable(expected.rows[mismatch]), got: readable(rows[mismatch]) }),
       };
     }
   }
-  result.message = `Correct: ${expected.rows.length} row${expected.rows.length === 1 ? "" : "s"} match${expected.rows.length === 1 ? "es" : ""} the expected result${options.ordered ? " in the right order" : ""}.`;
+  result.message = options.ordered
+    ? tn("Correct: {n} row matches the expected result in the right order.", "Correct: {n} rows match the expected result in the right order.", expected.rows.length)
+    : tn("Correct: {n} row matches the expected result.", "Correct: {n} rows match the expected result.", expected.rows.length);
   return result;
 }

@@ -4,6 +4,7 @@ import * as chroma from "@/lib/nosql/chroma";
 import { parseJsonLossless, type CompileResult, type NosqlIssue } from "@/lib/nosql/common";
 import * as mongo from "@/lib/nosql/mongo";
 import * as redis from "@/lib/nosql/redis";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Deterministic NoSQL/vector helpers for the assistant and MCP (`knife_mongo_*`, `knife_chroma_*`, `knife_redis_*`).
@@ -24,7 +25,7 @@ type Input = { spec?: Record<string, unknown>; specText?: string };
 function resolve(input: Input, parse: (text: string) => { spec?: unknown; issues: NosqlIssue[] }): { spec?: unknown; issues: NosqlIssue[] } {
   if (input.specText !== undefined) return parse(input.specText);
   if (input.spec !== undefined) return { spec: input.spec, issues: [] };
-  throw new Error("Give either spec (a JSON object) or specText (the spec as text).");
+  throw new Error(msg("Give either spec (a JSON object) or specText (the spec as text)."));
 }
 
 const parseJson = (text: string): { spec?: unknown; issues: NosqlIssue[] } => {

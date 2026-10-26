@@ -5,6 +5,7 @@ import { Badge, Button, Notice, Panel, Stat, StatGrid } from "@/components/ui";
 import { formatInt } from "@/lib/format";
 import type { SecurityEvent } from "@/lib/security/events";
 import { call } from "./api";
+import { useT } from "@/lib/i18n/react";
 
 interface GuardBlock {
   key: string;
@@ -42,6 +43,7 @@ function kindTone(kind: string): "danger" | "warn" | "neutral" {
 
 /** /account/admin: the abuse guard's current blocks (with Unblock) and the recent security events. */
 export function AdminSecurity() {
+  const { t } = useT();
   const [data, setData] = useState<SecurityReply | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<{ tone: "good" | "error"; text: string } | null>(null);
@@ -66,8 +68,8 @@ export function AdminSecurity() {
     load();
   }
 
-  if (error) return <Panel title="Security"><Notice tone="error">{error}</Notice></Panel>;
-  if (!data) return <p className="text-sm text-muted">Loading security events…</p>;
+  if (error) return <Panel title={t("Security")}><Notice tone="error">{error}</Notice></Panel>;
+  if (!data) return <p className="text-sm text-muted">{t("Loading security events…")}</p>;
 
   const events = [...data.events].reverse();
   const shown = showAll ? events : events.slice(0, 50);
@@ -75,38 +77,38 @@ export function AdminSecurity() {
   const blocks = guard?.blocks ?? [];
 
   return (
-    <section aria-label="Security" className="space-y-4">
+    <section aria-label={t("Security")} className="space-y-4">
       <div aria-live="polite">{note ? <Notice tone={note.tone}>{note.text}</Notice> : null}</div>
       <Panel
-        title={<span className="flex items-center gap-2">Security {blocks.length ? <Badge tone="danger">{blocks.length} blocked</Badge> : <Badge tone="good">no blocks</Badge>}</span>}
-        right={<Button size="sm" onClick={load}>Refresh</Button>}
+        title={<span className="flex items-center gap-2">{t("Security")}{" "} {blocks.length ? <Badge tone="danger">{blocks.length} {" "}{t("blocked")}</Badge> : <Badge tone="good">{t("no blocks")}</Badge>}</span>}
+        right={<Button size="sm" onClick={load}>{t("Refresh")}</Button>}
       >
         {guard ? (
-          <StatGrid aria-label="Abuse guard">
-            <Stat label="Guard" value={`${guard.mode}${guard.blocking ? ", blocking" : ", budgets only"}`} />
-            <Stat label="Clients tracked" value={`${formatInt(guard.tables.clients)} / ${formatInt(guard.tables.maxClients)}`} />
-            <Stat label="Requests refused" value={formatInt(guard.counters.refused)} />
-            <Stat label="Blocked requests" value={formatInt(guard.counters.blocked)} />
-            <Stat label="Idle clients evicted" value={formatInt(guard.counters.evicted)} />
-            <Stat label="Alert mails sent" value={formatInt(data.alerts.mailsSent)} />
+          <StatGrid aria-label={t("Abuse guard")}>
+            <Stat label={t("Guard")} value={`${guard.mode}${guard.blocking ? ", blocking" : ", budgets only"}`} />
+            <Stat label={t("Clients tracked")} value={`${formatInt(guard.tables.clients)} / ${formatInt(guard.tables.maxClients)}`} />
+            <Stat label={t("Requests refused")} value={formatInt(guard.counters.refused)} />
+            <Stat label={t("Blocked requests")} value={formatInt(guard.counters.blocked)} />
+            <Stat label={t("Idle clients evicted")} value={formatInt(guard.counters.evicted)} />
+            <Stat label={t("Alert mails sent")} value={formatInt(data.alerts.mailsSent)} />
           </StatGrid>
         ) : (
-          <Notice tone="warn">The abuse guard is not running in this server process (it is loaded by <code>npm run start</code> / <code>npm run dev</code>).</Notice>
+          <Notice tone="warn">{t("The abuse guard is not running in this server process (it is loaded by")}{" "} <code>npm run start</code> / <code>npm run dev</code>).</Notice>
         )}
       </Panel>
 
-      <Panel title={`Blocked clients (${blocks.length})`} bodyClassName="p-0 sm:p-0">
+      <Panel title={t("Blocked clients ({blocks})", { blocks: blocks.length })} bodyClassName="p-0 sm:p-0">
         {blocks.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted">Nobody is blocked.</p>
+          <p className="px-4 py-3 text-sm text-muted">{t("Nobody is blocked.")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] text-left text-sm">
               <thead className="border-b border-line text-xs text-faint">
                 <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">Client prefix</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Why</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Until</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Action</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Client prefix")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Why")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Until")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,10 +117,10 @@ export function AdminSecurity() {
                     <td className="px-4 py-3 font-mono text-xs text-ink wrap-anywhere">{block.key}</td>
                     <td className="px-4 py-3 text-muted">
                       <div>{block.reason}</div>
-                      <div className="text-xs text-faint">level {block.level}, strike {block.strikes}</div>
+                      <div className="text-xs text-faint">{t("level {level}, strike", { level: block.level })}{" "} {block.strikes}</div>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-muted">{utc(block.until)}</td>
-                    <td className="px-4 py-3"><Button size="sm" onClick={() => void unblock(block.key)}>Unblock {block.key}</Button></td>
+                    <td className="px-4 py-3"><Button size="sm" onClick={() => void unblock(block.key)}>{t("Unblock")}{" "} {block.key}</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -128,22 +130,22 @@ export function AdminSecurity() {
       </Panel>
 
       <Panel
-        title={`Security events (${events.length})`}
-        right={events.length > 50 ? <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>{showAll ? "Show 50" : `Show all ${events.length}`}</Button> : null}
+        title={t("Security events ({events})", { events: events.length })}
+        right={events.length > 50 ? <Button size="sm" variant="ghost" onClick={() => setShowAll(!showAll)}>{showAll ? t("Show 50") : t("Show all {events}", { events: events.length })}</Button> : null}
         bodyClassName="p-0 sm:p-0"
       >
         {events.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted">No security events recorded.</p>
+          <p className="px-4 py-3 text-sm text-muted">{t("No security events recorded.")}</p>
         ) : (
           <div className="max-h-[32rem] overflow-auto">
             <table className="w-full min-w-[48rem] text-left text-sm">
               <thead className="sticky top-0 border-b border-line bg-surface text-xs text-faint">
                 <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">Time</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Kind</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Client / account</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Detail</th>
-                  <th scope="col" className="px-4 py-2 text-right font-medium">Count</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Time")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Kind")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Client / account")}</th>
+                  <th scope="col" className="px-4 py-2 font-medium">{t("Detail")}</th>
+                  <th scope="col" className="px-4 py-2 text-right font-medium">{t("Count")}</th>
                 </tr>
               </thead>
               <tbody>

@@ -12,6 +12,7 @@ import type { SidecarDefinition, SidecarSite } from "./definitions";
 import { compareVersions, readChannel, type SiteRelease } from "./site-channel";
 import { serviceDir } from "./state";
 import { appOrigins, craftProxyUrl } from "./urls";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * A definition's `sites` (the Craft apps): release zips -> `<serviceDir>/releases/<app>-<version>-<sha12>/<app>/`
@@ -139,7 +140,7 @@ function quoteRegex(pattern: string): string {
  * container through a port mapping or the app's proxy).
  */
 export function renderNginxConf(def: SidecarDefinition, ancestors: readonly string[], options: { https?: boolean } = {}): string {
-  if (!def.sites) throw new SiteError(`${def.id} has no sites`);
+  if (!def.sites) throw new SiteError(msgf("{id} has no sites", { id: def.id }));
   const contentTarget = def.sites.contentTarget;
   const headers = (cache: string) =>
     [
@@ -352,7 +353,7 @@ async function downloadVerified(app: SidecarSite, release: SiteRelease, file: st
   const meter = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       seen += chunk.length;
-      if (seen > release.bytes) return callback(new SiteError(`${release.url} is larger than the expected ${release.bytes} bytes`));
+      if (seen > release.bytes) return callback(new SiteError(msgf("{url} is larger than the expected {bytes} bytes", { url: release.url, bytes: release.bytes })));
       hash.update(chunk);
       progress(seen);
       callback(null, chunk);
@@ -362,19 +363,19 @@ async function downloadVerified(app: SidecarSite, release: SiteRelease, file: st
   const digest = hash.digest("hex");
   if (seen !== release.bytes || digest !== release.sha256) {
     rmSync(file, { force: true });
-    throw new SiteError(`${app.name} ${release.version}: the download does not match the release (${seen} bytes, sha256 ${digest}; expected ${release.bytes}, ${release.sha256})`);
+    throw new SiteError(msgf("{name} {version}: the download does not match the release ({seen} bytes, sha256 {digest}; expected {bytes}, {sha256})", { name: app.name, version: release.version, seen, digest, bytes: release.bytes, sha256: release.sha256 }));
   }
 }
 
 /** The path of a zip entry below the release's top folder, or null for the folder itself; throws on anything unexpected. */
 export function siteEntryPath(app: SidecarSite, name: string, version: string = app.version): string | null {
   const top = `${app.id}-web-${version}/`;
-  if (!name.startsWith(top)) throw new SiteError(`${app.name}: unexpected entry ${JSON.stringify(name.slice(0, 120))}`);
+  if (!name.startsWith(top)) throw new SiteError(msgf("{name}: unexpected entry {value}", { name: app.name, value: JSON.stringify(name.slice(0, 120)) }));
   const rel = name.slice(top.length);
   if (!rel || rel.endsWith("/")) return null;
   const parts = rel.split("/");
   if (parts.length > 8 || parts.some((part) => !SEGMENT.test(part) || part === "." || part === "..")) {
-    throw new SiteError(`${app.name}: entry name not allowed ${JSON.stringify(name.slice(0, 120))}`);
+    throw new SiteError(msgf("{name}: entry name not allowed {value}", { name: app.name, value: JSON.stringify(name.slice(0, 120)) }));
   }
   return rel;
 }
@@ -384,7 +385,7 @@ const gzipAsync = promisify(gzip);
 async function unpackSite(def: SidecarDefinition, app: SidecarSite, release: SiteRelease, buffer: Buffer): Promise<number> {
   const zip = readZip(buffer, MAX_APP_BYTES, MAX_ENTRY_BYTES);
   const names = zip.names();
-  if (names.length > MAX_ENTRIES) throw new SiteError(`${app.name}: too many entries`);
+  if (names.length > MAX_ENTRIES) throw new SiteError(msgf("{name}: too many entries", { name: app.name }));
   const dir = releasesDir(def);
   const folder = releaseFolder(app, release);
   const temp = join(dir, `.tmp-${folder}-${process.pid}`);
@@ -403,7 +404,7 @@ async function unpackSite(def: SidecarDefinition, app: SidecarSite, release: Sit
       writeFileSync(out, data, { mode: 0o644 });
       files.add(rel);
     }
-    if (!files.has("index.html")) throw new SiteError(`${app.name}: the release has no index.html`);
+    if (!files.has("index.html")) throw new SiteError(msgf("{name}: the release has no index.html", { name: app.name }));
     for (const rel of files) {
       if (!COMPRESSIBLE.test(rel) || files.has(`${rel}.gz`)) continue;
       const path = join(root, ...rel.split("/"));

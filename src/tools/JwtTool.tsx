@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256, sha384, sha512 } from "@noble/hashes/sha2.js";
 import { Button, CopyButton, Field, KeyValues, Notice, OutputBlock, Panel, Select, Stat, StatGrid, TextArea, TextInput } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * JWT decode / verify / sign. HMAC runs locally, so the secret and token stay
@@ -99,6 +100,7 @@ function relTime(seconds: number, now: number): string {
 }
 
 export default function JwtTool() {
+  const { t } = useT();
   const [token, setToken] = useState("");
   const [secret, setSecret] = useState("samurai-knife");
   const [headerText, setHeaderText] = useState(JSON.stringify(SAMPLE_HEADER, null, 2));
@@ -139,7 +141,7 @@ export default function JwtTool() {
     if (!trimmed) return { ok: false as const, error: "" };
     const parts = trimmed.split(".");
     if (parts.length !== 3) {
-      return { ok: false as const, error: `Expected 3 dot-separated segments, found ${parts.length}.` };
+      return { ok: false as const, error: t("Expected 3 dot-separated segments, found {parts}.", { parts: parts.length }) };
     }
     const [headRaw, bodyRaw, signature] = parts;
     const headJson = b64uDecodeText(headRaw);
@@ -153,7 +155,7 @@ export default function JwtTool() {
       header = JSON.parse(headJson);
       payload = JSON.parse(bodyJson);
     } catch {
-      return { ok: false as const, error: "Header or payload is not valid JSON." };
+      return { ok: false as const, error: t("Header or payload is not valid JSON.") };
     }
     return {
       ok: true as const,
@@ -165,7 +167,7 @@ export default function JwtTool() {
       headerJson: headJson,
       payloadJson: bodyJson,
     };
-  }, [token]);
+  }, [t, token]);
 
   const headerAlg =
     decoded.ok && typeof decoded.header === "object" && decoded.header !== null
@@ -216,9 +218,9 @@ export default function JwtTool() {
       setSignError(null);
     } catch (exc) {
       setSigned("");
-      setSignError(exc instanceof Error ? exc.message : "Could not sign.");
+      setSignError(exc instanceof Error ? exc.message : t("Could not sign."));
     }
-  }, [headerText, payloadText, secret, signAlg]);
+  }, [t, headerText, payloadText, secret, signAlg]);
 
   useEffect(() => {
     const timer = setTimeout(() => void sign(), 150);
@@ -251,33 +253,33 @@ export default function JwtTool() {
   const liveBadge = !Number.isFinite(expSeconds) || now === null
     ? null
     : expSeconds < now
-      ? { tone: "error" as const, text: `Expired ${relTime(expSeconds, now)}.` }
+      ? { tone: "error" as const, text: t("Expired {expSeconds}.", { expSeconds: relTime(expSeconds, now) }) }
       : { tone: "good" as const, text: `Valid — expires ${relTime(expSeconds, now)}.` };
 
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel
-          title="Token"
+          title={t("Token")}
           right={
             <div className="flex gap-1.5">
               <Button size="sm" variant="subtle" onClick={async () => await loadSample()}>
-                Load sample
+                {t("Load sample")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setToken("")}>
-                Clear
+                {t("Clear")}
               </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <Field label="Paste a JWT">
+            <Field label={t("Paste a JWT")}>
               <TextArea
                 rows={4}
                 spellCheck={false}
                 value={token}
                 onChange={(e) => setToken(e.target.value.trim())}
-                placeholder="eyJhbGciOi…"
+                placeholder={t("eyJhbGciOi…")}
                 className="font-mono text-[12px]"
               />
             </Field>
@@ -298,29 +300,29 @@ export default function JwtTool() {
             {decoded.ok ? (
               <div className="space-y-2">
                 <OutputBlock value={JSON.stringify(decoded.payload, null, 2)} rows={10} />
-                <CopyButton text={JSON.stringify(decoded.payload, null, 2)} label="Copy payload" />
+                <CopyButton text={JSON.stringify(decoded.payload, null, 2)} label={t("Copy payload")} />
               </div>
             ) : null}
           </div>
         </Panel>
 
-        <Panel title="Claims">
+        <Panel title={t("Claims")}>
           <div className="space-y-3">
             {claims.length > 0 ? <KeyValues rows={claims} /> : null}
 
             {decoded.ok && !verifiable ? (
               <Notice tone="info">
-                {headerAlg || "No"} alg — only HS256/HS384/HS512 can be verified in the browser.
+                {headerAlg || t("No")} {" "}{t("alg — only HS256/HS384/HS512 can be verified in the browser.")}
               </Notice>
             ) : null}
 
             <div className="flex flex-wrap gap-1.5">
-              <Field label="Secret" className="flex-1 min-w-[200px]">
+              <Field label={t("Secret")} className="flex-1 min-w-[200px]">
                 <TextInput
                   value={secret}
                   spellCheck={false}
                   onChange={(e) => setSecret(e.target.value)}
-                  placeholder="signing key"
+                  placeholder={t("signing key")}
                   className="font-mono"
                 />
               </Field>
@@ -328,7 +330,7 @@ export default function JwtTool() {
 
             <StatGrid>
               <Stat
-                label="Signature"
+                label={t("Signature")}
                 value={
                   verdict === "valid"
                     ? "matches ✓"
@@ -337,8 +339,8 @@ export default function JwtTool() {
                       : "—"
                 }
               />
-              <Stat label="Header chars" value={decoded.ok ? decoded.headRaw.length : 0} />
-              <Stat label="Token chars" value={token.trim().length} />
+              <Stat label={t("Header chars")} value={decoded.ok ? decoded.headRaw.length : 0} />
+              <Stat label={t("Token chars")} value={token.trim().length} />
             </StatGrid>
 
             {liveBadge ? <Notice tone={liveBadge.tone}>{liveBadge.text}</Notice> : null}
@@ -347,18 +349,18 @@ export default function JwtTool() {
       </div>
 
       <Panel
-        title="Sign"
+        title={t("Sign")}
         right={
           <div className="flex gap-1.5">
             <CopyButton text={signed} />
             <Button size="sm" variant="ghost" onClick={() => setSigned("")}>
-              Clear
+              {t("Clear")}
             </Button>
           </div>
         }
       >
         <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="Header JSON">
+          <Field label={t("Header JSON")}>
             <TextArea
               rows={5}
               spellCheck={false}
@@ -366,7 +368,7 @@ export default function JwtTool() {
               onChange={(e) => setHeaderText(e.target.value)}
             />
           </Field>
-          <Field label="Payload JSON">
+          <Field label={t("Payload JSON")}>
             <TextArea
               rows={10}
               spellCheck={false}
@@ -377,7 +379,7 @@ export default function JwtTool() {
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
-          <Field label="Algorithm" className="w-32">
+          <Field label={t("Algorithm")} className="w-32">
             <Select value={signAlg} onChange={(e) => setSignAlg(e.target.value)}>
               {ALGS.map((alg) => (
                 <option key={alg.id} value={alg.id}>

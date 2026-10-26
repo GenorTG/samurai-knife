@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { CopyButton, Field, Notice, Panel, TextArea } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 
 const DIRECTIVES = ["default-src", "script-src", "style-src", "img-src", "font-src", "connect-src", "media-src", "object-src", "frame-src", "frame-ancestors", "base-uri", "form-action"];
 const VALUELESS = ["sandbox", "upgrade-insecure-requests", "block-all-mixed-content"];
 const STARTER = `default-src 'self'\nscript-src 'self'\nstyle-src 'self'\nimg-src 'self' data:\nobject-src 'none'\nbase-uri 'self'\nframe-ancestors 'none'`;
 export default function CspBuilder() {
+  const { t } = useT();
   const [text, setText] = useState(STARTER);
   const [reportOnly, setReportOnly] = useState(false);
   const result = useMemo(() => {
@@ -31,12 +33,12 @@ export default function CspBuilder() {
   }, [text]);
   // Copy is disabled while there are errors: copying only the valid directives would silently ship a weaker policy than the one typed, and copying everything ships a broken one.
   const headerName = reportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy";
-  return <Panel title="Content Security Policy builder" right={<CopyButton text={`${headerName}: ${result.policy}`} label="Copy header" disabled={result.errors.length > 0} />}>
-    <div className="space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={reportOnly} onChange={(e) => setReportOnly(e.target.checked)} /> Generate report-only header</label>
-      <Field label="One directive per line" hint="Example: img-src 'self' data: https://images.example"><TextArea rows={13} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} /></Field>
-      {result.errors.length ? <Notice tone="error"><span className="block whitespace-pre-wrap">{result.errors.join("\n")}</span><span className="mt-1 block">Copy header is disabled until these are fixed.</span></Notice> : <Notice tone="good">Policy syntax is assembled. Source policy still needs review against your application.</Notice>}
+  return <Panel title={t("Content Security Policy builder")} right={<CopyButton text={`${headerName}: ${result.policy}`} label={t("Copy header")} disabled={result.errors.length > 0} />}>
+    <div className="space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={reportOnly} onChange={(e) => setReportOnly(e.target.checked)} /> {" "}{t("Generate report-only header")}</label>
+      <Field label={t("One directive per line")} hint={t("Example: img-src 'self' data: https://images.example")}><TextArea rows={13} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} /></Field>
+      {result.errors.length ? <Notice tone="error"><span className="block whitespace-pre-wrap">{result.errors.join("\n")}</span><span className="mt-1 block">{t("Copy header is disabled until these are fixed.")}</span></Notice> : <Notice tone="good">{t("Policy syntax is assembled. Source policy still needs review against your application.")}</Notice>}
       <Field label={headerName}><TextArea rows={3} readOnly value={`${headerName}: ${result.policy}`} /></Field>
-      <p className="text-xs text-faint">This builds a header string; it does not assess whether a policy is safe or complete. Test report-only first and avoid adding broad sources such as * or unsafe-inline without understanding their effect.</p>
+      <p className="text-xs text-faint">{t("This builds a header string; it does not assess whether a policy is safe or complete. Test report-only first and avoid adding broad sources such as * or unsafe-inline without understanding their effect.")}</p>
     </div>
   </Panel>;
 }

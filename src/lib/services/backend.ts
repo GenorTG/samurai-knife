@@ -2,6 +2,7 @@ import { composeProject, type SidecarDefinition } from "./definitions";
 import { detectRuntime, run, type RunOptions, type RunResult, type RuntimeInfo } from "./runtime";
 import { composeFile, serviceDir } from "./state";
 import { helperBackend } from "./helper-backend";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * How the sidecar manager reaches the container runtime. One interface, two backends, chosen by KNIFE_SIDECAR_BACKEND:
@@ -72,7 +73,7 @@ export function dockerArgv(def: SidecarDefinition, action: BackendAction): strin
     case "logs":
       return [...base, "logs", "--tail", "30", def.serviceName];
     case "prepare":
-      if (!def.prepare) throw new Error(`${def.id} has no prepare step`);
+      if (!def.prepare) throw new Error(msgf("{id} has no prepare step", { id: def.id }));
       return [...base, "exec", "-T", def.serviceName, ...def.prepare.command];
     case "image-id":
       return ["image", "inspect", "--format", "{{.Id}}", action.image];

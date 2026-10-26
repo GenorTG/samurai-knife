@@ -18,10 +18,12 @@ import {
   type ToolFamily,
   type ToolMeta,
 } from "@/lib/registry";
+import { useT } from "@/lib/i18n/react";
 
 type LauncherFilter = ToolCategory | "all" | "favorites" | "recent";
 
 export function Launcher({ tools }: { tools: ToolMeta[] }) {
+  const { t } = useT();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LauncherFilter>("all");
@@ -89,10 +91,10 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
 
   const emptyMessage =
     filter === "favorites" && favorites.length === 0
-      ? "Pin tools with the star button and they will show up here."
+      ? t("Pin tools with the star button and they will show up here.")
       : filter === "recent" && recent.length === 0
-        ? "Open any tool once and it will appear here automatically."
-        : "Try a file type, a verb, or clear one of the filters.";
+        ? t("Open any tool once and it will appear here automatically.")
+        : t("Try a file type, a verb, or clear one of the filters.");
 
   return (
     <div className="space-y-8">
@@ -137,22 +139,22 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
             }}
             spellCheck={false}
             autoComplete="off"
-            placeholder="Search tools — resize, pdf, json, regex…"
-            aria-label="Search tools"
+            placeholder={t("Search tools — resize, pdf, json, regex…")}
+            aria-label={t("Search tools")}
             className="sk-input h-12 w-full rounded-xl pr-24 pl-11 text-base shadow-card"
           />
           {query ? (
             <button
               autoComplete="off"
               type="button"
-              aria-label="Clear search"
+              aria-label={t("Clear search")}
               onClick={() => {
                 setQuery("");
                 inputRef.current?.focus();
               }}
               className="absolute top-1/2 right-3 inline-flex h-7 -translate-y-1/2 items-center rounded-md px-2 text-xs text-muted hover:bg-raised hover:text-ink"
             >
-              Clear
+              {t("Clear")}
             </button>
           ) : (
             <kbd className="sk-kbd pointer-events-none absolute top-1/2 right-4 hidden -translate-y-1/2 sm:block">
@@ -163,13 +165,13 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
 
         <div className="flex flex-wrap items-center gap-1.5">
           <Chip active={filter === "all"} onClick={() => selectFilter("all")}>
-            All <FilterCount value={tools.length} />
+            {t("All")}{" "} <FilterCount value={tools.length} />
           </Chip>
           <Chip active={filter === "favorites"} onClick={() => selectFilter("favorites")}>
-            Favorites <FilterCount value={favorites.length} />
+            {t("Favorites")}{" "} <FilterCount value={favorites.length} />
           </Chip>
           <Chip active={filter === "recent"} onClick={() => selectFilter("recent")}>
-            Recent <FilterCount value={recent.length} />
+            {t("Recent")}{" "} <FilterCount value={recent.length} />
           </Chip>
           {CATEGORIES.map((cat) => (
             <Chip
@@ -177,14 +179,14 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
               active={filter === cat.id}
               onClick={() => selectFilter(cat.id)}
             >
-              {cat.label}
+              {t(cat.label)}
             </Chip>
           ))}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-faint sm:flex-none">
-            <span>Family</span>
+            <span>{t("Family")}</span>
             {/* Phones: 16px field text (no iOS zoom) would push the count onto its own line; fill the row instead. */}
             <Select
               value={activeFamily}
@@ -192,10 +194,10 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
               disabled={familyOptions.length === 0}
               className="h-8 min-w-0 flex-1 text-xs sm:w-auto sm:min-w-40 sm:flex-none"
             >
-              <option value="all">All families</option>
+              <option value="all">{t("All families")}</option>
               {familyOptions.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.label} · {categoryPool.filter((tool) => tool.family === item.id).length}
+                  {t(item.label)} · {categoryPool.filter((tool) => tool.family === item.id).length}
                 </option>
               ))}
             </Select>
@@ -208,7 +210,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
                 onClick={clearRecent}
                 className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
               >
-                Clear recent
+                {t("Clear recent")}
               </button>
             ) : null}
             <span
@@ -216,7 +218,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
               aria-live="polite"
               className="font-mono text-xs text-faint tabular-nums"
             >
-              {results.length} of {tools.length} tools
+              {t("{results} of {tools} tools", { results: results.length, tools: tools.length })}
             </span>
           </div>
         </div>
@@ -226,11 +228,11 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
         <div className="rounded-tool border border-dashed border-line-strong bg-surface px-4 py-14 text-center">
           <p className="text-base font-medium text-muted">
             {filter === "favorites" && favorites.length === 0 ? (
-              "No favorites yet."
+              t("No favorites yet.")
             ) : filter === "recent" && recent.length === 0 ? (
-              "No recent tools yet."
+              t("No recent tools yet.")
             ) : (
-              <>Nothing matches <span className="text-ink">“{query}”</span>.</>
+              <>{t("Nothing matches")}{" "} <span className="text-ink">“{query}”</span>.</>
             )}
           </p>
           <p className="mt-1 text-xs text-faint">{emptyMessage}</p>
@@ -244,7 +246,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
               }}
               className="mt-4 rounded-lg border border-line-strong bg-raised px-3 py-1.5 text-xs font-medium text-ink hover:border-faint focus-visible:outline-2 focus-visible:outline-accent"
             >
-              Clear filters
+              {t("Clear filters")}
             </button>
           ) : null}
         </div>
@@ -255,7 +257,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
             <section key={group.id} className="space-y-3">
               <h2 className="flex items-center gap-2.5 text-sm font-semibold text-ink">
                 <CategoryTile category={group.id} size="sm" />
-                {group.label}
+                {t(group.label)}
                 <span className="font-mono text-xs font-normal text-faint">
                   {group.items.length}
                 </span>
@@ -346,6 +348,7 @@ function ToolCard({
   onOpen: () => void;
   onToggleFavorite: () => void;
 }) {
+  const { t } = useT();
   return (
     <article
       className={cx(
@@ -363,21 +366,21 @@ function ToolCard({
       >
         <CategoryTile category={tool.category} />
         <span className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-semibold text-ink">{tool.name}</h3>
+          <h3 className="truncate text-[15px] font-semibold text-ink">{t(tool.name)}</h3>
           <span className="mt-1 line-clamp-2 block text-[13px] leading-relaxed text-muted">
-            {tool.tagline}
+            {t(tool.tagline)}
           </span>
           <span className="mt-2 flex items-center gap-2">
             <KindBadge kind={tool.kind} />
             {tool.beta ? <BetaBadge compact /> : null}
             <span className="truncate font-mono text-[10px] tracking-wider text-faint uppercase">
-              {categoryLabel(tool.category)} · {familyLabel(tool.family)}
+              {t(categoryLabel(tool.category))} · {t(familyLabel(tool.family))}
             </span>
           </span>
         </span>
       </button>
       <FavoriteButton
-        toolName={tool.name}
+        toolName={t(tool.name)}
         favorite={favorite}
         onToggle={onToggleFavorite}
         disabled={disabled}

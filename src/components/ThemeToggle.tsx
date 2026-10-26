@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cx } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 type Mode = "light" | "dark";
 const KEY = "sk-theme";
@@ -38,6 +39,7 @@ const LABELS: Record<Mode, string> = {
 };
 
 export function ThemeToggle({ className }: { className?: string }) {
+  const { t } = useT();
   const [mode, setMode] = useState<Mode>("dark");
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       autoComplete="off"
       type="button"
       onClick={next}
-      aria-label={`${LABELS[mode]} (click to change)`}
+      aria-label={t("{value} (click to change)", { value: LABELS[mode] })}
       title={LABELS[mode]}
       className={cx(
         "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface text-muted shadow-xs transition-colors hover:border-line-strong hover:text-ink",

@@ -6,6 +6,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 export type MenuEntry =
   | { kind?: "item"; label: string; hint?: string; danger?: boolean; disabled?: boolean; run: () => void }
@@ -13,6 +14,7 @@ export type MenuEntry =
   | { kind: "heading"; label: string };
 
 export function ContextMenu({ x, y, label, entries, onClose }: { x: number; y: number; label: string; entries: MenuEntry[]; onClose: () => void }) {
+  const { t } = useT();
   const menu = useRef<HTMLDivElement>(null);
   const [spot, setSpot] = useState({ left: x, top: y });
   const items = entries.flatMap((entry, index) => (entry.kind === "separator" || entry.kind === "heading" || entry.disabled ? [] : [index]));
@@ -78,7 +80,7 @@ export function ContextMenu({ x, y, label, entries, onClose }: { x: number; y: n
           <div key={index} role="separator" className="my-1 h-px bg-line" />
         ) : entry.kind === "heading" ? (
           <p key={index} className="truncate px-2.5 pt-1.5 pb-1 font-mono text-[10px] font-semibold tracking-[0.12em] text-faint uppercase">
-            {entry.label}
+            {t(entry.label)}
           </p>
         ) : (
           <button
@@ -96,8 +98,8 @@ export function ContextMenu({ x, y, label, entries, onClose }: { x: number; y: n
               index === active && !entry.disabled && (entry.danger ? "bg-danger/12" : "bg-accent/12"),
             )}
           >
-            <span className="flex-1">{entry.label}</span>
-            {entry.hint ? <kbd className="font-mono text-[11px] text-faint">{entry.hint}</kbd> : null}
+            <span className="flex-1">{t(entry.label)}</span>
+            {entry.hint ? <kbd className="font-mono text-[11px] text-faint">{t(entry.hint)}</kbd> : null}
           </button>
         ),
       )}

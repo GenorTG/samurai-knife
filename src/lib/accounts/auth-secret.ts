@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEq
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureDataDir, writePrivateFile } from "@/lib/accounts/store";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * One server secret for everything the sign-in pages sign or seal: proof-of-work challenges, the "known device" cookie,
@@ -31,7 +32,7 @@ function masterKey(): Buffer {
   let key: Buffer;
   if (existsSync(/*turbopackIgnore: true*/ path)) {
     const text = readFileSync(/*turbopackIgnore: true*/ path, "utf8").trim();
-    if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(`${KEY_NAME} is malformed (expected 64 hex characters)`);
+    if (!/^[0-9a-f]{64}$/.test(text)) throw new Error(msgf("{keyName} is malformed (expected 64 hex characters)", { keyName: KEY_NAME }));
     key = Buffer.from(text, "hex");
   } else {
     key = randomBytes(32);

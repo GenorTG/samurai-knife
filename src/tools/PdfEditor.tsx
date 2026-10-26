@@ -9,6 +9,8 @@ import { Button, Dropzone, Field, Notice, NumberField, Panel, Select, Stat, Text
 import { downloadBlob, formatBytes, readAsDataURL } from "@/lib/format";
 import { createUuidV4 } from "@/lib/random-uuid";
 import { startPdfJob, type PdfJob, type PdfJobPhase } from "@/lib/pdf-client";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 type Tool = "select" | "text" | "highlight" | "rectangle" | "draw" | "image";
 type MarkType = Exclude<Tool, "select">;
@@ -48,20 +50,20 @@ interface EditorPage {
 type DraftMark = Omit<Mark, "id">;
 
 const TOOL_OPTIONS: { value: Tool; label: string }[] = [
-  { value: "select", label: "Select" },
-  { value: "text", label: "Text" },
-  { value: "highlight", label: "Highlight" },
-  { value: "rectangle", label: "Rectangle" },
-  { value: "draw", label: "Draw / sign" },
-  { value: "image", label: "Place image" },
+  { value: "select", label: msg("Select") },
+  { value: "text", label: msg("Text") },
+  { value: "highlight", label: msg("Highlight") },
+  { value: "rectangle", label: msg("Rectangle") },
+  { value: "draw", label: msg("Draw / sign") },
+  { value: "image", label: msg("Place image") },
 ];
 
 const COLOR_OPTIONS = [
-  { value: "#ef4444", label: "Red" },
-  { value: "#2563eb", label: "Blue" },
-  { value: "#16a34a", label: "Green" },
-  { value: "#eab308", label: "Yellow" },
-  { value: "#111827", label: "Black" },
+  { value: "#ef4444", label: msg("Red") },
+  { value: "#2563eb", label: msg("Blue") },
+  { value: "#16a34a", label: msg("Green") },
+  { value: "#eab308", label: msg("Yellow") },
+  { value: "#111827", label: msg("Black") },
 ];
 
 function pointInPdf(viewport: PageViewport, event: React.PointerEvent<SVGElement>): Point {
@@ -116,6 +118,7 @@ function PageThumbnail({
   onDragStart: () => void;
   onDrop: () => void;
 }) {
+  const { t, tn } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -162,9 +165,9 @@ function PageThumbnail({
         <canvas ref={canvasRef} className="max-h-24 max-w-full object-contain" />
       </span>
       <span className="min-w-0">
-        <span className="block text-sm font-medium text-ink">Page {page.originalIndex + 1}</span>
-        {page.rotation ? <span className="text-xs text-muted">Rotated {page.rotation}°</span> : null}
-        {page.marks.length ? <span className="block text-xs text-accent">{page.marks.length} mark{page.marks.length === 1 ? "" : "s"}</span> : null}
+        <span className="block text-sm font-medium text-ink">{t("Page")}{" "} {page.originalIndex + 1}</span>
+        {page.rotation ? <span className="text-xs text-muted">{t("Rotated {rotation}°", { rotation: page.rotation })}</span> : null}
+        {page.marks.length ? <span className="block text-xs text-accent">{tn("{n} mark", "{n} marks", page.marks.length)}</span> : null}
       </span>
     </button>
   );
@@ -197,6 +200,7 @@ function PdfPageCanvas({
   onSelectMark: (id: string) => void;
   onMoveMark: (id: string, dx: number, dy: number) => void;
 }) {
+  const { t } = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pageProxy, setPageProxy] = useState<PDFPageProxy | null>(null);
   const [viewport, setViewport] = useState<PageViewport | null>(null);
@@ -311,7 +315,7 @@ function PdfPageCanvas({
       {viewport ? (
         <svg
           tabIndex={0}
-          aria-label={`PDF page ${page.originalIndex + 1}; focus here to use editor shortcuts`}
+          aria-label={t("PDF page {value}; focus here to use editor shortcuts", { value: page.originalIndex + 1 })}
           className={`absolute inset-0 h-full w-full touch-none ${tool === "select" ? "cursor-move" : "cursor-crosshair"}`}
           viewBox={`0 0 ${viewport.width} ${viewport.height}`}
           preserveAspectRatio="none"
@@ -359,13 +363,14 @@ function PdfPageCanvas({
         </svg>
       ) : null}
       <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 font-mono text-[10px] text-white">
-        {pageProxy ? `Page ${page.originalIndex + 1}` : "Rendering…"}
+        {pageProxy ? t("Page {value}", { value: page.originalIndex + 1 }) : t("Rendering…")}
       </span>
     </div>
   );
 }
 
 export default function PdfEditor() {
+  const { t, tn } = useT();
   const [file, setFile] = useState<File | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pages, setPages] = useState<EditorPage[]>([]);
@@ -441,12 +446,12 @@ export default function PdfEditor() {
     const isPdf = (f: File) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
     const images = incoming.filter(isImageFile);
     if (!isPdf(first) && images.length !== incoming.length) {
-      setError("Choose a PDF, or one or more images (PNG, JPEG, WebP).");
+      setError(t("Choose a PDF, or one or more images (PNG, JPEG, WebP)."));
       return;
     }
     const total = isPdf(first) ? first.size : images.reduce((n, f) => n + f.size, 0);
     if (total > 200 * 1024 * 1024) {
-      setError("This editor is capped at 200 MB per document to keep browser memory bounded.");
+      setError(t("This editor is capped at 200 MB per document to keep browser memory bounded."));
       return;
     }
     setBusy(true);
@@ -459,7 +464,7 @@ export default function PdfEditor() {
       let picked = first;
       let widths: number[] = [];
       if (!isPdf(first)) {
-        setNotice(`Converting ${images.length} image${images.length === 1 ? "" : "s"} to PDF pages in this browser…`);
+        setNotice(tn("Converting {n} image to a PDF page in this browser…", "Converting {n} images to PDF pages in this browser…", images.length));
         const built = await imagesToPdf(images);
         widths = built.nativeWidths;
         picked = new File([new Uint8Array(built.bytes)], `${safeStem(first.name)}.pdf`, { type: "application/pdf" });
@@ -468,7 +473,7 @@ export default function PdfEditor() {
       pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
       const data = new Uint8Array(await picked.arrayBuffer());
       const loaded = await pdfjs.getDocument({ data }).promise;
-      if (loaded.numPages < 1) throw new Error("This PDF has no pages.");
+      if (loaded.numPages < 1) throw new Error(t("This PDF has no pages."));
       nativeWidths.current = widths;
       setPdf(loaded);
       setFile(picked);
@@ -485,17 +490,17 @@ export default function PdfEditor() {
       setZoom(1);
       setFitToWidth(true);
       setSelectedMark(null);
-      const pagesLoaded = `${loaded.numPages} page${loaded.numPages === 1 ? "" : "s"} loaded in this browser.`;
-      setNotice(widths.length ? `${pagesLoaded} Built from ${widths.length} image${widths.length === 1 ? "" : "s"}: run OCR below, or Export edited PDF to keep it as a PDF.` : isPdf(first) && incoming.length > 1 ? `${pagesLoaded} Only the first PDF is opened.` : pagesLoaded);
+      const pagesLoaded = tn("{n} page loaded in this browser.", "{n} pages loaded in this browser.", loaded.numPages);
+      setNotice(widths.length ? `${pagesLoaded} ${tn("Built from {n} image: run OCR below, or Export edited PDF to keep it as a PDF.", "Built from {n} images: run OCR below, or Export edited PDF to keep it as a PDF.", widths.length)}` : isPdf(first) && incoming.length > 1 ? `${pagesLoaded} ${t("Only the first PDF is opened.")}` : pagesLoaded);
     } catch (reason) {
       setPdf(null);
       setFile(null);
       setPages([]);
-      setError(reason instanceof Error ? reason.message : "Could not open this PDF.");
+      setError(reason instanceof Error ? reason.message : t("Could not open this PDF."));
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [t, busy]);
 
   const updatePages = useCallback((update: (current: EditorPage[]) => EditorPage[]) => {
     if (serverRun.current) return;
@@ -531,8 +536,8 @@ export default function PdfEditor() {
     const mark: Mark = { ...draft, id: createUuidV4() };
     updatePages((current) => current.map((page) => page.id === activePage.id ? { ...page, marks: [...page.marks, mark] } : page));
     setSelectedMark(mark.id);
-    setNotice("Mark added. Export to bake edits into a new PDF.");
-  }, [activePage, updatePages]);
+    setNotice(t("Mark added. Export to bake edits into a new PDF."));
+  }, [t, activePage, updatePages]);
 
   const selectMark = useCallback((id: string) => {
     setSelectedMark(id);
@@ -550,16 +555,16 @@ export default function PdfEditor() {
         ? { ...mark, text: text.trim() || "Text", size: textSize }
         : mark) }
       : page));
-    setNotice("Selected text updated.");
-  }, [activePage, selectedMarkData, text, textSize, updatePages]);
+    setNotice(t("Selected text updated."));
+  }, [t, activePage, selectedMarkData, text, textSize, updatePages]);
 
   const moveSelectedMark = useCallback((id: string, dx: number, dy: number) => {
     if (!activePage) return;
     updatePages((current) => current.map((page) => page.id === activePage.id
       ? { ...page, marks: page.marks.map((mark) => mark.id === id ? moveMark(mark, dx, dy) : mark) }
       : page));
-    setNotice("Mark moved.");
-  }, [activePage, updatePages]);
+    setNotice(t("Mark moved."));
+  }, [t, activePage, updatePages]);
 
   const deleteSelectedMark = useCallback(() => {
     if (!activePage || !selectedMark) return;
@@ -571,8 +576,8 @@ export default function PdfEditor() {
 
   const copySelectedMark = useCallback(() => {
     setCopiedMark(selectedMarkData);
-    if (selectedMarkData) setNotice("Mark copied. Paste inside the editor to duplicate it.");
-  }, [selectedMarkData]);
+    if (selectedMarkData) setNotice(t("Mark copied. Paste inside the editor to duplicate it."));
+  }, [t, selectedMarkData]);
 
   const pasteMark = useCallback(() => {
     if (!activePage || !copiedMark) return;
@@ -588,8 +593,8 @@ export default function PdfEditor() {
     };
     updatePages((current) => current.map((page) => page.id === activePage.id ? { ...page, marks: [...page.marks, pasted] } : page));
     setSelectedMark(pasted.id);
-    setNotice("Mark pasted.");
-  }, [activePage, copiedMark, updatePages]);
+    setNotice(t("Mark pasted."));
+  }, [t, activePage, copiedMark, updatePages]);
 
   const handleEditorKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (busy || serverRun.current) return;
@@ -645,14 +650,14 @@ export default function PdfEditor() {
   const deletePage = useCallback(() => {
     if (!activePage) return;
     if (availablePages.length <= 1) {
-      setError("Keep at least one page in the exported document.");
+      setError(t("Keep at least one page in the exported document."));
       return;
     }
     const next = availablePages.filter((page) => page.id !== activePage.id);
     updatePages((current) => current.filter((page) => page.id !== activePage.id));
     setActivePageId(next[Math.min(activeIndex, next.length - 1)]?.id ?? null);
     setSelectedMark(null);
-  }, [activeIndex, activePage, availablePages, updatePages]);
+  }, [t, activeIndex, activePage, availablePages, updatePages]);
 
   const reorderPages = useCallback((fromId: number, toId: number) => {
     if (fromId === toId) return;
@@ -675,13 +680,13 @@ export default function PdfEditor() {
     try {
       const blob = await serializeEditedPdf(file, pages);
       downloadBlob(blob, `${safeStem(file.name)}-edited.pdf`);
-      setNotice(`Exported ${pages.length} page${pages.length === 1 ? "" : "s"}. The original file is unchanged.`);
+      setNotice(tn("Exported {n} page. The original file is unchanged.", "Exported {n} pages. The original file is unchanged.", pages.length));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not export this PDF.");
+      setError(reason instanceof Error ? reason.message : t("Could not export this PDF."));
     } finally {
       setBusy(false);
     }
-  }, [busy, file, pages]);
+  }, [t, busy, file, pages]);
 
   const exportSearchablePdf = useCallback(async () => {
     if (!file || !pages.length || busy || serverRun.current) return;
@@ -691,11 +696,11 @@ export default function PdfEditor() {
     setError(null);
     setNotice(null);
     setServerResult(null);
-    setServerProgress("Preparing current edited PDF…");
+    setServerProgress(t("Preparing current edited PDF…"));
     try {
-      if (pages.length > 20) throw new Error("Searchable PDF supports up to 20 pages. Remove pages here, or use Extract / Split first.");
+      if (pages.length > 20) throw new Error(t("Searchable PDF supports up to 20 pages. Remove pages here, or use Extract / Split first."));
       const blob = await serializeSearchablePdf(file, pages, () => run.cancelled || serverRun.current !== run);
-      if (blob.size > 50 * 1024 * 1024) throw new Error("Searchable PDF supports up to 50 MB. Split or reduce the scan first.");
+      if (blob.size > 50 * 1024 * 1024) throw new Error(t("Searchable PDF supports up to 50 MB. Split or reduce the scan first."));
       if (run.cancelled || serverRun.current !== run) return;
       const form = new FormData();
       form.set("action", "ocr");
@@ -703,9 +708,9 @@ export default function PdfEditor() {
       form.append("file", blob, `${safeStem(file.name)}-edited.pdf`);
       const onPhase = (phase: PdfJobPhase) => {
         if (run.cancelled || serverRun.current !== run) return;
-        setServerProgress(phase.kind === "uploading" ? "Sending edited PDF to this app's server…"
-          : phase.kind === "queued" ? `Searchable PDF queued (${phase.ahead ? `${phase.ahead} ahead` : "next up"})…`
-          : "Creating searchable PDF on this app's server…");
+        setServerProgress(phase.kind === "uploading" ? t("Sending edited PDF to this app's server…")
+          : phase.kind === "queued" ? t("Searchable PDF queued ({value})…", { value: phase.ahead ? `${phase.ahead} ahead` : "next up" })
+          : t("Creating searchable PDF on this app's server…"));
       };
       run.job = startPdfJob(form, onPhase);
       const outcome = await run.job.result;
@@ -714,32 +719,32 @@ export default function PdfEditor() {
         run.cancelled = true;
         return;
       }
-      if (outcome.kind !== "file") throw new Error("The OCR server did not return a PDF.");
+      if (outcome.kind !== "file") throw new Error(t("The OCR server did not return a PDF."));
       // A blob-anchor download is also captured by the assistant for file chaining.
       const filename = `${safeStem(file.name)}-searchable.pdf`;
       downloadBlob(outcome.blob, filename);
-      setServerResult(`Searchable PDF downloaded: ${filename} · ${formatBytes(outcome.blob.size)}. The original is unchanged.`);
+      setServerResult(t("Searchable PDF downloaded: {filename} · {blob}. The original is unchanged.", { filename, blob: formatBytes(outcome.blob.size) }));
     } catch (reason) {
       if (!run.cancelled && serverRun.current === run) {
-        setError(reason instanceof Error ? reason.message : "Could not create a searchable PDF.");
+        setError(reason instanceof Error ? reason.message : t("Could not create a searchable PDF."));
       }
     } finally {
       if (serverRun.current === run) {
         serverRun.current = null;
         setServerProgress(null);
         setBusy(false);
-        if (run.cancelled) setServerResult("Searchable PDF cancelled. Your edits are kept; you can retry.");
+        if (run.cancelled) setServerResult(t("Searchable PDF cancelled. Your edits are kept; you can retry."));
       }
     }
-  }, [busy, deskew, file, language, pages, rotatePages]);
+  }, [t, busy, deskew, file, language, pages, rotatePages]);
 
   const cancelSearchablePdf = useCallback(() => {
     const run = serverRun.current;
     if (!run || run.cancelled) return;
     run.cancelled = true;
-    setServerProgress("Cancelling searchable PDF…");
+    setServerProgress(t("Cancelling searchable PDF…"));
     void run.job?.cancel();
-  }, []);
+  }, [t]);
 
   const runOcr = useCallback(async (allPages: boolean) => {
     if (!pdf || busy || serverRun.current) return;
@@ -749,7 +754,7 @@ export default function PdfEditor() {
     setOcrDone(null);
     setError(null);
     ocrPos.current = { index: 0, total: 0 };
-    setOcrProgress({ label: "Starting local OCR…", value: 0 });
+    setOcrProgress({ label: t("Starting local OCR…"), value: 0 });
     try {
       const worker = await createWorker(language, 1, {
         workerPath: "/ocr/worker.min.js",
@@ -761,7 +766,7 @@ export default function PdfEditor() {
           const { index, total } = ocrPos.current;
           const recognizing = message.status === "recognizing text";
           setOcrProgress({
-            label: total ? `Page ${index + 1} of ${total}: ${message.status}` : message.status,
+            label: total ? t("Page {value} of {total}: {status}", { value: index + 1, total, status: message.status }) : message.status,
             value: total ? (index + (recognizing ? message.progress : 0)) / total : message.progress,
           });
         },
@@ -781,10 +786,10 @@ export default function PdfEditor() {
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
           const context = canvas.getContext("2d");
-          if (!context) throw new Error("Canvas 2D is unavailable for OCR.");
+          if (!context) throw new Error(t("Canvas 2D is unavailable for OCR."));
           await source.render({ canvas, canvasContext: context, viewport }).promise;
           ocrPos.current = { index, total: targets.length };
-          setOcrProgress({ label: `Recognizing page ${index + 1} of ${targets.length}…`, value: index / Math.max(1, targets.length) });
+          setOcrProgress({ label: t("Recognizing page {value} of {targets}…", { value: index + 1, targets: targets.length }), value: index / Math.max(1, targets.length) });
           const result = await worker.recognize(canvas);
           chunks.push(`--- Page ${target.originalIndex + 1} ---\n${result.data.text.trim()}`);
           setOcrText(chunks.join("\n\n"));
@@ -793,8 +798,8 @@ export default function PdfEditor() {
         }
         setOcrProgress(null);
         const wordCount = chunks.join(" ").split(/\s+/).filter(Boolean).length;
-        setOcrDone(`${cancelOcr.current ? "OCR stopped after" : "OCR finished:"} ${chunks.length} page${chunks.length === 1 ? "" : "s"}, ${wordCount} words.`);
-        setNotice(cancelOcr.current ? "OCR stopped. Completed pages are kept below." : `OCR finished for ${chunks.length} page${chunks.length === 1 ? "" : "s"}.`);
+        setOcrDone(`${cancelOcr.current ? t("OCR stopped after") : t("OCR finished:")} ${tn("{n} page", "{n} pages", chunks.length)}, ${tn("{n} word", "{n} words", wordCount)}.`);
+        setNotice(cancelOcr.current ? t("OCR stopped. Completed pages are kept below.") : tn("OCR finished for {n} page.", "OCR finished for {n} pages.", chunks.length));
       } finally {
         await worker.terminate();
       }
@@ -804,23 +809,23 @@ export default function PdfEditor() {
     } finally {
       setBusy(false);
     }
-  }, [activePage, availablePages, busy, language, pdf]);
+  }, [t, activePage, availablePages, busy, language, pdf]);
 
   const chooseImage = useCallback(async (picked: File | undefined) => {
     if (!picked) return;
     if (picked.type !== "image/png" && picked.type !== "image/jpeg") {
-      setError("Place images as PNG or JPEG.");
+      setError(t("Place images as PNG or JPEG."));
       return;
     }
     try {
       setImageData(await readAsDataURL(picked));
       setTool("image");
       setError(null);
-      setNotice("Click on the page to place the image.");
+      setNotice(t("Click on the page to place the image."));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not read this image.");
+      setError(reason instanceof Error ? reason.message : t("Could not read this image."));
     }
-  }, []);
+  }, [t]);
 
   const currentOcrName = file ? `${safeStem(file.name)}-ocr.txt` : "ocr.txt";
 
@@ -828,7 +833,7 @@ export default function PdfEditor() {
     <div
       className="space-y-4 outline-none"
       tabIndex={-1}
-      aria-label="PDF editor; keyboard shortcuts are active only while interacting here"
+      aria-label={t("PDF editor; keyboard shortcuts are active only while interacting here")}
       onKeyDown={handleEditorKeyDown}
       onPointerDown={(event) => {
         if (event.target instanceof Element && event.target.closest("button, input, textarea, select, [contenteditable='true']")) return;
@@ -836,12 +841,12 @@ export default function PdfEditor() {
       }}
     >
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <Dropzone accept={`application/pdf,.pdf,${IMAGE_ACCEPT}`} multiple disabled={busy} hint="A PDF up to 200 MB, or scans/photos (PNG, JPEG, WebP: one page each) — editing and text OCR stay in this browser; searchable PDF export uses this app’s server" onFiles={(files) => void loadFile(files)} />
+        <Dropzone accept={`application/pdf,.pdf,${IMAGE_ACCEPT}`} multiple disabled={busy} hint={t("A PDF up to 200 MB, or scans/photos (PNG, JPEG, WebP: one page each) — editing and text OCR stay in this browser; searchable PDF export uses this app’s server")} onFiles={(files) => void loadFile(files)} />
         {file ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Stat label="Document" value={file.name} />
-            <Stat label="Size" value={formatBytes(file.size)} />
-            <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportPdf()}>{busy ? "Working…" : "Export edited PDF"}</Button>
+            <Stat label={t("Document")} value={file.name} />
+            <Stat label={t("Size")} value={formatBytes(file.size)} />
+            <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportPdf()}>{busy ? t("Working…") : t("Export edited PDF")}</Button>
           </div>
         ) : null}
       </div>
@@ -850,32 +855,32 @@ export default function PdfEditor() {
       {notice ? <Notice tone="good">{notice}</Notice> : null}
 
       {file ? (
-        <Panel title="Searchable PDF · server">
+        <Panel title={t("Searchable PDF · server")}>
           <div className="space-y-3">
-            <Notice>Uploads the current edited document to this app’s local server for OCRmyPDF processing, not a cloud OCR service. Includes the current page order, rotations and marks. The original stays untouched.</Notice>
+            <Notice>{t("Uploads the current edited document to this app’s local server for OCRmyPDF processing, not a cloud OCR service. Includes the current page order, rotations and marks. The original stays untouched.")}</Notice>
             <div className="flex flex-wrap items-end gap-4">
-              <Field label="Searchable PDF language">
+              <Field label={t("Searchable PDF language")}>
                 <Select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as OcrLanguage)}>
-                  <option value="eng">English</option>
-                  <option value="pol">Polish</option>
-                  <option value="eng+pol">English + Polish</option>
+                  <option value="eng">{t("English")}</option>
+                  <option value="pol">{t("Polish")}</option>
+                  <option value="eng+pol">{t("English + Polish")}</option>
                 </Select>
               </Field>
               <label className="flex items-center gap-2 py-2 text-sm text-muted">
                 <input type="checkbox" checked={deskew} disabled={busy} onChange={(event) => setDeskew(event.target.checked)} className="accent-accent" />
-                Deskew scanned pages
+                {t("Deskew scanned pages")}
               </label>
               <label className="flex items-center gap-2 py-2 text-sm text-muted">
                 <input type="checkbox" checked={rotatePages} disabled={busy} onChange={(event) => setRotatePages(event.target.checked)} className="accent-accent" />
-                Auto-rotate pages
+                {t("Auto-rotate pages")}
               </label>
-              <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportSearchablePdf()}>Searchable PDF (server)</Button>
+              <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportSearchablePdf()}>{t("Searchable PDF (server)")}</Button>
             </div>
-            <p className="text-xs text-faint">Up to 20 pages / 50 MB. Pages with editor marks are flattened to images and re-recognized so added text cannot hide a scan from OCR. Untouched pages that already contain text are kept as-is. Deskew straightens tilted scans; auto-rotate can override manual rotation. Turn it off to keep your chosen orientation, and review the result.</p>
+            <p className="text-xs text-faint">{t("Up to 20 pages / 50 MB. Pages with editor marks are flattened to images and re-recognized so added text cannot hide a scan from OCR. Untouched pages that already contain text are kept as-is. Deskew straightens tilted scans; auto-rotate can override manual rotation. Turn it off to keep your chosen orientation, and review the result.")}</p>
             {serverProgress ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p role="status" className="text-sm text-muted">{serverProgress}</p>
-                <Button onClick={cancelSearchablePdf} disabled={serverProgress.startsWith("Cancelling")}>Cancel searchable PDF</Button>
+                <Button onClick={cancelSearchablePdf} disabled={serverProgress.startsWith("Cancelling")}>{t("Cancel searchable PDF")}</Button>
               </div>
             ) : null}
             {serverResult ? <p role="status" className="text-sm text-muted">{serverResult}</p> : null}
@@ -884,16 +889,16 @@ export default function PdfEditor() {
       ) : null}
 
       {!file ? (
-        <Panel title="PDF editor">
+        <Panel title={t("PDF editor")}>
           <div className="py-10 text-center">
-            <p className="text-lg font-medium text-ink">Open a PDF to start editing</p>
-            <p className="mt-2 text-sm text-muted">Reorder, rotate, or remove pages; add text, highlights, shapes, freehand marks, signatures, and images; run OCR in English or Polish.</p>
-            <p className="mt-1 text-sm text-muted">Scans or photos (PNG, JPEG, WebP) open as pages too: OCR them, or export them as one PDF.</p>
+            <p className="text-lg font-medium text-ink">{t("Open a PDF to start editing")}</p>
+            <p className="mt-2 text-sm text-muted">{t("Reorder, rotate, or remove pages; add text, highlights, shapes, freehand marks, signatures, and images; run OCR in English or Polish.")}</p>
+            <p className="mt-1 text-sm text-muted">{t("Scans or photos (PNG, JPEG, WebP) open as pages too: OCR them, or export them as one PDF.")}</p>
           </div>
         </Panel>
       ) : (
         <div inert={Boolean(serverProgress)} aria-busy={Boolean(serverProgress)} className={`grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)] ${serverProgress ? "opacity-60" : ""}`}>
-          <Panel title={`Pages · ${availablePages.length}`} bodyClassName="p-2">
+          <Panel title={t("Pages · {availablePages}", { availablePages: availablePages.length })} bodyClassName="p-2">
             <div className="max-h-[72vh] space-y-2 overflow-y-auto pr-1">
               {availablePages.map((page) => (
                 <PageThumbnail
@@ -910,27 +915,27 @@ export default function PdfEditor() {
                 />
               ))}
             </div>
-            <p className="mt-2 px-1 text-[11px] text-faint">Drag page cards to reorder.</p>
+            <p className="mt-2 px-1 text-[11px] text-faint">{t("Drag page cards to reorder.")}</p>
           </Panel>
 
           <div className="min-w-0 space-y-3">
-            <Panel title="Edit page" right={activePage ? <span className="font-mono text-xs text-faint">{activeIndex + 1} / {availablePages.length}</span> : null} bodyClassName="p-2 sm:p-3">
+            <Panel title={t("Edit page")} right={activePage ? <span className="font-mono text-xs text-faint">{activeIndex + 1} / {availablePages.length}</span> : null} bodyClassName="p-2 sm:p-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" disabled={busy || history.length === 0} onClick={undo}>Undo</Button>
-                  <Button size="sm" disabled={busy || redoHistory.length === 0} onClick={redo}>Redo</Button>
-                  <Button size="sm" disabled={!activePage || busy} onClick={() => rotatePage(270)}>↶ Rotate</Button>
-                  <Button size="sm" disabled={!activePage || busy} onClick={() => rotatePage(90)}>↻ Rotate</Button>
-                  <Button size="sm" disabled={!activePage || busy || availablePages.length <= 1} onClick={deletePage}>Delete page</Button>
-                  <Button size="sm" disabled={!selectedMark || busy} onClick={deleteSelectedMark}>Delete mark</Button>
-                  <Button size="sm" disabled={!selectedMarkData || busy} onClick={copySelectedMark}>Copy mark</Button>
-                  <Button size="sm" disabled={!copiedMark || !activePage || busy} onClick={pasteMark}>Paste mark</Button>
+                  <Button size="sm" disabled={busy || history.length === 0} onClick={undo}>{t("Undo")}</Button>
+                  <Button size="sm" disabled={busy || redoHistory.length === 0} onClick={redo}>{t("Redo")}</Button>
+                  <Button size="sm" disabled={!activePage || busy} onClick={() => rotatePage(270)}>{t("↶ Rotate")}</Button>
+                  <Button size="sm" disabled={!activePage || busy} onClick={() => rotatePage(90)}>{t("↻ Rotate")}</Button>
+                  <Button size="sm" disabled={!activePage || busy || availablePages.length <= 1} onClick={deletePage}>{t("Delete page")}</Button>
+                  <Button size="sm" disabled={!selectedMark || busy} onClick={deleteSelectedMark}>{t("Delete mark")}</Button>
+                  <Button size="sm" disabled={!selectedMarkData || busy} onClick={copySelectedMark}>{t("Copy mark")}</Button>
+                  <Button size="sm" disabled={!copiedMark || !activePage || busy} onClick={pasteMark}>{t("Paste mark")}</Button>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button size="sm" disabled={zoom <= 0.45} aria-label="Zoom out" onClick={() => { setFitToWidth(false); setZoom((value) => Math.max(0.45, Number((value - 0.1).toFixed(2)))); }}>−</Button>
+                  <Button size="sm" disabled={zoom <= 0.45} aria-label={t("Zoom out")} onClick={() => { setFitToWidth(false); setZoom((value) => Math.max(0.45, Number((value - 0.1).toFixed(2)))); }}>−</Button>
                   <span className="w-12 text-center font-mono text-xs text-muted">{Math.round(zoom * 100)}%</span>
-                  <Button size="sm" disabled={zoom >= 3} aria-label="Zoom in" onClick={() => { setFitToWidth(false); setZoom((value) => Math.min(3, Number((value + 0.1).toFixed(2)))); }}>+</Button>
-                  <Button size="sm" aria-pressed={fitToWidth} onClick={() => setFitToWidth(true)}>Fit width</Button>
+                  <Button size="sm" disabled={zoom >= 3} aria-label={t("Zoom in")} onClick={() => { setFitToWidth(false); setZoom((value) => Math.min(3, Number((value + 0.1).toFixed(2)))); }}>+</Button>
+                  <Button size="sm" aria-pressed={fitToWidth} onClick={() => setFitToWidth(true)}>{t("Fit width")}</Button>
                 </div>
               </div>
               {activePage && pdf ? (
@@ -950,14 +955,14 @@ export default function PdfEditor() {
                     onMoveMark={moveSelectedMark}
                   />
                 </div>
-              ) : <p className="p-8 text-center text-sm text-muted">Choose a page.</p>}
+              ) : <p className="p-8 text-center text-sm text-muted">{t("Choose a page.")}</p>}
             </Panel>
-            <Notice>Text is added as an overlay; it does not rewrite existing PDF text. White overlays are not secure redaction. The source stays untouched until you export.</Notice>
-            <Notice>Shortcuts work only while focus is inside this editor: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Y redo, Ctrl/Cmd+C/V copy/paste the selected mark inside the editor, Delete removes it, Esc returns to Select, and Page Up/Down changes pages. Text fields keep their native shortcuts. Existing PDF text cannot be rewritten by this editor.</Notice>
+            <Notice>{t("Text is added as an overlay; it does not rewrite existing PDF text. White overlays are not secure redaction. The source stays untouched until you export.")}</Notice>
+            <Notice>{t("Shortcuts work only while focus is inside this editor: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Y redo, Ctrl/Cmd+C/V copy/paste the selected mark inside the editor, Delete removes it, Esc returns to Select, and Page Up/Down changes pages. Text fields keep their native shortcuts. Existing PDF text cannot be rewritten by this editor.")}</Notice>
           </div>
 
           <div className="grid gap-3 lg:col-span-2 lg:grid-cols-2">
-            <Panel title="Markup tools">
+            <Panel title={t("Markup tools")}>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-1.5">
                   {TOOL_OPTIONS.map((option) => (
@@ -968,71 +973,71 @@ export default function PdfEditor() {
                       onClick={() => setTool(option.value)}
                       className={`rounded-lg border px-2.5 py-2 text-left text-xs ${tool === option.value ? "border-accent bg-accent/10 text-accent-soft" : "border-line bg-surface text-muted hover:text-ink"}`}
                     >
-                      {option.label}
+                      {t(option.label)}
                     </button>
                   ))}
                 </div>
-                <Field label="Mark color">
+                <Field label={t("Mark color")}>
                   <Select value={color} onChange={(event) => setColor(event.target.value)}>
-                    {COLOR_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {COLOR_OPTIONS.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
                   </Select>
                 </Field>
                 {tool === "text" ? (
                   <>
-                    <Field label="Text">
+                    <Field label={t("Text")}>
                       <TextInput value={text} onChange={(event) => setText(event.target.value)} maxLength={500} />
                     </Field>
-                    <Field label="Font size">
+                    <Field label={t("Font size")}>
                       <NumberField min={8} max={96} fallback={18} value={textSize} onValueChange={setTextSize} />
                     </Field>
-                    <Notice>Standard PDF font supports common Western characters; unusual glyphs may not export.</Notice>
+                    <Notice>{t("Standard PDF font supports common Western characters; unusual glyphs may not export.")}</Notice>
                     {selectedMarkData?.type === "text" ? (
-                      <Button variant="primary" disabled={busy} onClick={updateSelectedText}>Update selected text</Button>
+                      <Button variant="primary" disabled={busy} onClick={updateSelectedText}>{t("Update selected text")}</Button>
                     ) : null}
                   </>
                 ) : null}
                 {tool === "image" ? (
                   <>
                     <input ref={imageInput} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(event) => void chooseImage(event.target.files?.[0])} />
-                    <Button onClick={() => imageInput.current?.click()}>{imageData ? "Choose another image" : "Choose PNG / JPEG"}</Button>
-                    <Notice>Choose an image, then click the page to place it.</Notice>
+                    <Button onClick={() => imageInput.current?.click()}>{imageData ? t("Choose another image") : t("Choose PNG / JPEG")}</Button>
+                    <Notice>{t("Choose an image, then click the page to place it.")}</Notice>
                   </>
                 ) : null}
-                {tool === "draw" ? <Notice>Drag on the page to draw or sign. Touch input is supported.</Notice> : null}
-                {tool === "select" ? <Notice>Click a mark to select it. Drag to move; choose Text to edit its content and size, then update it.</Notice> : null}
+                {tool === "draw" ? <Notice>{t("Drag on the page to draw or sign. Touch input is supported.")}</Notice> : null}
+                {tool === "select" ? <Notice>{t("Click a mark to select it. Drag to move; choose Text to edit its content and size, then update it.")}</Notice> : null}
               </div>
             </Panel>
 
-            <Panel title="OCR text · browser">
+            <Panel title={t("OCR text · browser")}>
               <div className="space-y-3">
-                <Notice>Extracts text in this browser with bundled Tesseract WASM and English/Polish language data. No upload; this does not add a searchable layer to the PDF. Use Searchable PDF (server) above for that.</Notice>
-                <Field label="Language">
+                <Notice>{t("Extracts text in this browser with bundled Tesseract WASM and English/Polish language data. No upload; this does not add a searchable layer to the PDF. Use Searchable PDF (server) above for that.")}</Notice>
+                <Field label={t("Language")}>
                   <Select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as OcrLanguage)}>
-                    <option value="eng">English</option>
-                    <option value="pol">Polish</option>
-                    <option value="eng+pol">English + Polish</option>
+                    <option value="eng">{t("English")}</option>
+                    <option value="pol">{t("Polish")}</option>
+                    <option value="eng+pol">{t("English + Polish")}</option>
                   </Select>
                 </Field>
                 {ocrProgress ? (
                   <div className="space-y-2">
-                    <progress className="w-full accent-accent" value={ocrProgress.value} max={1} aria-label="OCR progress" />
+                    <progress className="w-full accent-accent" value={ocrProgress.value} max={1} aria-label={t("OCR progress")} />
                     <p role="status" className="text-xs text-muted">{ocrProgress.label} · {Math.round(ocrProgress.value * 100)}%</p>
-                    <Button onClick={() => { cancelOcr.current = true; }}>Stop after this page</Button>
+                    <Button onClick={() => { cancelOcr.current = true; }}>{t("Stop after this page")}</Button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
-                    <Button disabled={!activePage || busy} onClick={() => void runOcr(false)}>Current page</Button>
-                    <Button disabled={!availablePages.length || busy} onClick={() => void runOcr(true)}>All pages</Button>
+                    <Button disabled={!activePage || busy} onClick={() => void runOcr(false)}>{t("Current page")}</Button>
+                    <Button disabled={!availablePages.length || busy} onClick={() => void runOcr(true)}>{t("All pages")}</Button>
                   </div>
                 )}
                 {ocrDone && !ocrProgress ? <p role="status" className="text-xs text-good">{ocrDone}</p> : null}
                 {ocrText ? (
                   <>
                     <TextArea readOnly rows={10} value={ocrText} />
-                    <Button onClick={() => downloadBlob(new Blob([ocrText], { type: "text/plain;charset=utf-8" }), currentOcrName)}>Download OCR text</Button>
+                    <Button onClick={() => downloadBlob(new Blob([ocrText], { type: "text/plain;charset=utf-8" }), currentOcrName)}>{t("Download OCR text")}</Button>
                   </>
                 ) : null}
-                <p className="text-[11px] leading-relaxed text-faint">First use loads the local worker and selected language data from this app. Large scans can take time; higher-resolution originals usually improve recognition.</p>
+                <p className="text-[11px] leading-relaxed text-faint">{t("First use loads the local worker and selected language data from this app. Large scans can take time; higher-resolution originals usually improve recognition.")}</p>
               </div>
             </Panel>
           </div>
@@ -1126,7 +1131,7 @@ async function serializeSearchablePdf(file: File, pages: readonly EditorPage[], 
   const edited = await serializeEditedPdf(file, pages);
   if (!pages.some((page) => page.marks.length)) return edited;
   const checkCancelled = () => {
-    if (cancelled()) throw new DOMException("Searchable PDF cancelled.", "AbortError");
+    if (cancelled()) throw new DOMException(msg("Searchable PDF cancelled."), "AbortError");
   };
   checkCancelled();
   const bytes = new Uint8Array(await edited.arrayBuffer());
@@ -1154,11 +1159,11 @@ async function serializeSearchablePdf(file: File, pages: readonly EditorPage[], 
       canvas.height = Math.ceil(viewport.height);
       try {
         const context = canvas.getContext("2d");
-        if (!context) throw new Error("Canvas 2D is unavailable for searchable PDF export.");
+        if (!context) throw new Error(msg("Canvas 2D is unavailable for searchable PDF export."));
         await page.render({ canvas, canvasContext: context, viewport }).promise;
         checkCancelled();
         const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
-          (blob) => blob ? resolve(blob) : reject(new Error("Could not prepare a marked PDF page.")), "image/png",
+          (blob) => blob ? resolve(blob) : reject(new Error(msg("Could not prepare a marked PDF page."))), "image/png",
         ));
         const image = await output.embedPng(await png.arrayBuffer());
         const flattened = output.addPage([size.width, size.height]);

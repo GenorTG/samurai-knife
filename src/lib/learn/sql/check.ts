@@ -1,3 +1,4 @@
+import { translator, type Translator } from "@/lib/i18n/core";
 import type { Lesson, MustUse } from "../types";
 import { compareResults, type CompareResult } from "./compare";
 import { runLearnerSql, type ConnectionInfo, type RunOutput, type StatementResult } from "./db";
@@ -39,39 +40,40 @@ export function planText(result: StatementResult): string {
 }
 
 /** Pure part of the check, given both runs. */
-export function evaluate(lesson: Lesson, sql: string, mine: RunOutput, reference: RunOutput | null): CheckOutcome {
-  if (mine.error) return { pass: false, message: `Your query failed: ${mine.error.message}`, run: mine };
+export function evaluate(lesson: Lesson, sql: string, mine: RunOutput, reference: RunOutput | null, tr: Translator = translator("en")): CheckOutcome {
+  const { t } = tr;
+  if (mine.error) return { pass: false, message: t("Your query failed: {message}", { message: mine.error.message }), run: mine };
   const mineLast = lastResult(mine);
-  if (!mineLast) return { pass: false, message: "Your query returned no result set. End with a SELECT (or RETURNING / EXPLAIN) so there is something to check.", run: mine };
+  if (!mineLast) return { pass: false, message: t("Your query returned no result set. End with a SELECT (or RETURNING / EXPLAIN) so there is something to check."), run: mine };
   const missing = missingConstructs(sql, lesson.check.mustUse);
   const check = lesson.check;
   if (check.kind === "plan") {
     const text = planText(mineLast);
     if (!new RegExp(check.mustMatch).test(text)) {
-      return { pass: false, message: `The plan should show ${check.describe}, and this one does not.${missing.length ? ` ${missing[0].message}` : ""}`, run: mine };
+      return { pass: false, message: t("The plan should show {describe}, and this one does not.", { describe: t(check.describe) }) + (missing.length ? ` ${t(missing[0].message)}` : ""), run: mine };
     }
     if (check.mustNotMatch && new RegExp(check.mustNotMatch).test(text)) {
-      return { pass: false, message: `The plan still contains "${new RegExp(check.mustNotMatch).exec(text)?.[0]}"; it should show ${check.describe}.`, run: mine };
+      return { pass: false, message: t("The plan still contains \"{found}\"; it should show {describe}.", { found: new RegExp(check.mustNotMatch).exec(text)?.[0], describe: t(check.describe) }), run: mine };
     }
-    if (missing.length) return { pass: false, message: missing[0].message, run: mine };
-    return { pass: true, message: `Correct: the plan shows ${check.describe}.`, run: mine };
+    if (missing.length) return { pass: false, message: t(missing[0].message), run: mine };
+    return { pass: true, message: t("Correct: the plan shows {describe}.", { describe: t(check.describe) }), run: mine };
   }
   if (!reference || reference.error) {
-    return { pass: false, message: `The reference solution failed to run (${reference?.error?.message ?? "no result"}); this is a course bug, not yours.`, run: mine };
+    return { pass: false, message: t("The reference solution failed to run ({message}); this is a course bug, not yours.", { message: reference?.error?.message ?? t("no result") }), run: mine };
   }
   const refLast = lastResult(reference);
-  if (!refLast) return { pass: false, message: "The reference solution returned no result set (course bug).", run: mine };
+  if (!refLast) return { pass: false, message: t("The reference solution returned no result set (course bug)."), run: mine };
   if (mineLast.truncated || refLast.truncated) {
-    return { pass: false, message: `The result has more than ${CHECK_ROW_CAP} rows, too many to check. The expected answer is much smaller: add the missing filter or GROUP BY.`, run: mine };
+    return { pass: false, message: t("The result has more than {cap} rows, too many to check. The expected answer is much smaller: add the missing filter or GROUP BY.", { cap: CHECK_ROW_CAP }), run: mine };
   }
-  const compare = compareResults(refLast, mineLast, { ordered: check.ordered, columnNames: check.columnNames, decimals: check.decimals });
-  if (compare.pass && missing.length) return { pass: false, message: `The rows are right, but this lesson practises a specific construct: ${missing[0].message}`, compare, run: mine };
+  const compare = compareResults(refLast, mineLast, { ordered: check.ordered, columnNames: check.columnNames, decimals: check.decimals, tr });
+  if (compare.pass && missing.length) return { pass: false, message: t("The rows are right, but this lesson practises a specific construct: {construct}", { construct: t(missing[0].message) }), compare, run: mine };
   return { pass: compare.pass, message: compare.message, compare, run: mine };
 }
 
-export async function checkLesson(info: ConnectionInfo, lesson: Lesson, sql: string): Promise<CheckOutcome> {
+export async function checkLesson(info: ConnectionInfo, lesson: Lesson, sql: string, tr: Translator = translator("en")): Promise<CheckOutcome> {
   const mine = await runLearnerSql(info, sql, { rowCap: CHECK_ROW_CAP });
-  if (mine.error || lesson.check.kind === "plan") return evaluate(lesson, sql, mine, null);
+  if (mine.error || lesson.check.kind === "plan") return evaluate(lesson, sql, mine, null, tr);
   const reference = await runLearnerSql(info, lesson.solution, { rowCap: CHECK_ROW_CAP });
-  return evaluate(lesson, sql, mine, reference);
+  return evaluate(lesson, sql, mine, reference, tr);
 }

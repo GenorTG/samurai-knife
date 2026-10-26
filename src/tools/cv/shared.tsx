@@ -7,6 +7,8 @@ import { describeChanges } from "@/lib/cv/diff";
 import type { CvData, CvLang } from "@/lib/cv/schema";
 import { useCvLang } from "./prefs";
 import type { CvLive } from "./useCvData";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const TOAST_MS = 9000;
 const FLASH_MS = 1800;
@@ -59,6 +61,7 @@ interface Toast {
  * with an Undo button (POST /api/cv/undo). Rendered inline (not a portal) so the assistant's UI tools can click Undo.
  */
 export function LiveLayer({ live }: { live: CvLive }) {
+  const { t: tr } = useT();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [undoError, setUndoError] = useState("");
   const lastSeq = useRef(0);
@@ -97,10 +100,10 @@ export function LiveLayer({ live }: { live: CvLive }) {
                 setToasts((current) => current.filter((t) => t.id !== toast.id));
               }}
             >
-              Undo
+              {tr("Undo")}
             </Button>
-            <Button size="sm" variant="ghost" aria-label="Dismiss notification" onClick={() => setToasts((current) => current.filter((t) => t.id !== toast.id))}>
-              Dismiss
+            <Button size="sm" variant="ghost" aria-label={tr("Dismiss notification")} onClick={() => setToasts((current) => current.filter((t) => t.id !== toast.id))}>
+              {tr("Dismiss")}
             </Button>
           </div>
         ))}
@@ -113,21 +116,22 @@ export function LiveLayer({ live }: { live: CvLive }) {
 
 /** Loading / error / ready wrapper that every CV tab renders through; mounts the live layer once per tab. */
 export function CvFrame({ live, children }: { live: CvLive; children: (data: CvData) => ReactNode }) {
+  const { t: tr } = useT();
   return (
     <div className="space-y-4">
       {live.data ? children(live.data) : live.status === "error" ? (
-        <Notice tone="error">Could not load the CV workspace: {live.error}</Notice>
+        <Notice tone="error">{tr("Could not load the CV workspace:")}{" "} {live.error}</Notice>
       ) : (
-        <p role="status" className="py-10 text-center text-sm text-muted">Loading CV workspace…</p>
+        <p role="status" className="py-10 text-center text-sm text-muted">{tr("Loading CV workspace…")}</p>
       )}
-      {live.data && live.error ? <Notice tone="warn">Connection problem, showing the last known data: {live.error}</Notice> : null}
+      {live.data && live.error ? <Notice tone="warn">{tr("Connection problem, showing the last known data:")}{" "} {live.error}</Notice> : null}
       <LiveLayer live={live} />
     </div>
   );
 }
 
 /** PL | EN switch, remembered per tab. */
-export function LangToggle({ tab, label = "Document language" }: { tab: string; label?: string }) {
+export function LangToggle({ tab, label = msg("Document language") }: { tab: string; label?: string }) {
   const [lang, setLang] = useCvLang(tab);
   return (
     <SegmentedControl<CvLang>
@@ -145,12 +149,13 @@ export function useLang(tab: string): CvLang {
 
 /** Shown on every tab when no profile exists yet. */
 export function NoProfileNotice() {
+  const { t: tr } = useT();
   return (
     <EmptyState
-      title="No profile yet"
-      action={<Link href="/tools/cv-studio?tab=profile" className="sk-btn-primary inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg">Open the Profile tab</Link>}
+      title={tr("No profile yet")}
+      action={<Link href="/tools/cv-studio?tab=profile" className="sk-btn-primary inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg">{tr("Open the Profile tab")}</Link>}
     >
-      Import your master CV first (paste a JSON profile or ask the assistant to structure your CV). Versions, offers and matching all build on it.
+      {tr("Import your master CV first (paste a JSON profile or ask the assistant to structure your CV). Versions, offers and matching all build on it.")}
     </EmptyState>
   );
 }

@@ -9,6 +9,7 @@ import { TEMPLATES } from "@/lib/workflows/editor-model";
 import { fromN8n } from "@/lib/workflows/import";
 import { CredentialsManager } from "./CredentialsTab";
 import { Editor } from "./Editor";
+import { useT } from "@/lib/i18n/react";
 
 const TRIGGER_LABELS: Record<string, string> = { manual: "Manual", schedule: "Schedule", webhook: "Webhook", subworkflow: "Sub-workflow", error: "Error", chat: "Chat" };
 
@@ -27,6 +28,8 @@ export default function WorkflowsTab() {
 }
 
 function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t } = useT();
+  const { t: tr, tn } = useT();
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "good" | "info"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,28 +69,28 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
         return;
       }
       const converted = fromN8n(parsed);
-      if (!converted) throw new Error("Not a Smart Knife or n8n workflow file.");
+      if (!converted) throw new Error(tr("Not a Smart Knife or n8n workflow file."));
       await create(() => ({ name: converted.name, nodes: converted.nodes, connections: converted.connections }));
-      if (converted.skipped.length) setNotice({ tone: "info", text: `Imported. Not available yet, replaced by No Operation nodes: ${converted.skipped.join(", ")}.` });
+      if (converted.skipped.length) setNotice({ tone: "info", text: tr("Imported. Not available yet, replaced by No Operation nodes: {nodes}.", { nodes: converted.skipped.join(", ") }) });
     } catch (error) {
-      setNotice({ tone: "error", text: `Import failed: ${error instanceof Error ? error.message : String(error)}` });
+      setNotice({ tone: "error", text: tr("Import failed: {value}", { value: error instanceof Error ? error.message : String(error) }) });
     }
   };
 
   return (
     <div className="space-y-4">
       <Panel
-        title="Workflows"
+        title={tr("Workflows")}
         right={
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setCredentialsOpen(true)}>
-              Credentials
+              {tr("Credentials")}
             </Button>
             <Button size="sm" onClick={() => fileInput.current?.click()}>
-              Import JSON
+              {tr("Import JSON")}
             </Button>
-            <Button size="sm" variant="primary" disabled={busy} onClick={() => void create(() => ({ name: "My workflow", ...TEMPLATES[0].build() }))}>
-              New workflow
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => void create(() => ({ name: tr("My workflow"), ...TEMPLATES[0].build() }))}>
+              {tr("New workflow")}
             </Button>
           </div>
         }
@@ -97,7 +100,7 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
           type="file"
           accept="application/json,.json"
           className="hidden"
-          aria-label="Workflow file to import"
+          aria-label={tr("Workflow file to import")}
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -105,7 +108,7 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
           }}
         />
         <p className="mb-4 text-[13px] text-muted">
-          Connect nodes on a canvas: triggers (manual, schedule, webhook), HTTP requests, code, conditions, merges, loops, files. Runs happen in an isolated worker that only has workflow nodes; your code runs sandboxed. n8n exports can be imported (supported nodes).
+          {tr("Connect nodes on a canvas: triggers (manual, schedule, webhook), HTTP requests, code, conditions, merges, loops, files. Runs happen in an isolated worker that only has workflow nodes; your code runs sandboxed. n8n exports can be imported (supported nodes).")}
         </p>
         {notice ? (
           <div className="mb-3">
@@ -113,28 +116,28 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
           </div>
         ) : null}
         {workflows === null ? (
-          <p role="status" className="text-sm text-muted">Loading workflows…</p>
+          <p role="status" className="text-sm text-muted">{tr("Loading workflows…")}</p>
         ) : workflows.length === 0 ? (
-          <EmptyState title="No workflows yet">Start from a template below, or import a JSON file.</EmptyState>
+          <EmptyState title={tr("No workflows yet")}>{tr("Start from a template below, or import a JSON file.")}</EmptyState>
         ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Your workflows">
+          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={tr("Your workflows")}>
             {workflows.map((workflow) => (
               <li key={workflow.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                 <button type="button" className="min-w-0 flex-1 cursor-pointer text-left" onClick={() => onOpen(workflow.id)}>
                   <span className="block truncate text-sm font-semibold text-ink">{workflow.name}</span>
                   <span className="block text-xs text-muted">
-                    {workflow.nodeCount} node{workflow.nodeCount === 1 ? "" : "s"} · {workflow.triggers.map((t) => TRIGGER_LABELS[t] ?? t).join(", ") || "no trigger"} · updated {new Date(workflow.updatedAt).toLocaleString("en-GB")}
+                    {tn("{n} node", "{n} nodes", workflow.nodeCount)} · {workflow.triggers.map((t) => TRIGGER_LABELS[t] ?? t).join(", ") || tr("no trigger")} {" "}{tr("· updated {value}", { value: new Date(workflow.updatedAt).toLocaleString("en-GB") })}
                   </span>
                 </button>
-                {workflow.active ? <Badge tone="good">Active</Badge> : <Badge>Inactive</Badge>}
+                {workflow.active ? <Badge tone="good">{tr("Active")}</Badge> : <Badge>{tr("Inactive")}</Badge>}
                 <Button size="sm" onClick={() => onOpen(workflow.id)}>
-                  Open
+                  {tr("Open")}
                 </Button>
                 <Button
                   size="sm"
                   variant="danger"
                   onClick={async () => {
-                    if (!window.confirm(`Delete "${workflow.name}" with its run history?`)) return;
+                    if (!window.confirm(tr("Delete \"{name}\" with its run history?", { name: workflow.name }))) return;
                     try {
                       await workflowsApi.remove(workflow.id);
                       reload();
@@ -143,31 +146,31 @@ function WorkflowList({ onOpen }: { onOpen: (id: string) => void }) {
                     }
                   }}
                 >
-                  Delete
+                  {tr("Delete")}
                 </Button>
               </li>
             ))}
           </ul>
         )}
       </Panel>
-      <Panel title="Start from a template">
-        <ul className="grid gap-2 sm:grid-cols-2" aria-label="Templates">
+      <Panel title={tr("Start from a template")}>
+        <ul className="grid gap-2 sm:grid-cols-2" aria-label={tr("Templates")}>
           {TEMPLATES.map((template) => (
             <li key={template.id}>
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void create(() => ({ name: template.name, ...template.build() }))}
+                onClick={() => void create(() => ({ name: tr(template.name), ...template.build() }))}
                 className="h-full w-full cursor-pointer rounded-lg border border-line bg-raised/40 px-3 py-2.5 text-left hover:border-accent/60 hover:bg-accent/5 disabled:opacity-50"
               >
-                <span className="block text-sm font-semibold text-ink">{template.name}</span>
-                <span className="block text-[13px] text-muted">{template.description}</span>
+                <span className="block text-sm font-semibold text-ink">{tr(template.name)}</span>
+                <span className="block text-[13px] text-muted">{t(template.description)}</span>
               </button>
             </li>
           ))}
         </ul>
       </Panel>
-      <Drawer open={credentialsOpen} title="Credentials" onClose={() => setCredentialsOpen(false)}>
+      <Drawer open={credentialsOpen} title={tr("Credentials")} onClose={() => setCredentialsOpen(false)}>
         <CredentialsManager />
       </Drawer>
     </div>

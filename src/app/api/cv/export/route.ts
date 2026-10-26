@@ -12,6 +12,7 @@ import { readPhoto } from "@/lib/cv/photo-store";
 import { loadCv } from "@/lib/cv/store";
 import { disposeDir, makeScratchDir, runPythonScript } from "@/lib/python";
 import { queueFullOrNull } from "@/lib/queue-http";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(read.body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return jsonError(`Bad request: ${issue.path.join("/") || "body"}: ${issue.message}`, 422);
+    return jsonError(msgf("Bad request: {value}: {message}", { value: issue.path.join("/") || "body", message: issue.message }), 422);
   }
   const { variantId, lang, theme, photoShape } = parsed.data;
 
@@ -59,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!resolved.ok) return jsonError(resolved.error, resolved.status);
   const view = buildCvView(resolved.profile, lang, { nbsp: false });
   if (view.isEmpty) {
-    return jsonError(`Nothing to export: the ${resolved.label} CV has no text in ${lang === "pl" ? "Polish" : "English"} yet.`, 422, { warnings: view.warnings });
+    return jsonError(msgf("Nothing to export: the {label} CV has no text in {value} yet.", { label: resolved.label, value: lang === "pl" ? "Polish" : "English" }), 422, { warnings: view.warnings });
   }
 
   const filename = cvFileName(view.name, lang, "docx");

@@ -6,6 +6,7 @@ import { readyConnection } from "@/lib/learn/sql/api";
 import { LearnDbError, runLearnerSql } from "@/lib/learn/sql/db";
 import { withLearnerSlot } from "@/lib/learn/sql/slots";
 import { SQL_COURSE } from "@/lib/learn/sql/lessons";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Tutor tools for the Database course (group `learn`): an agent reads where the learner is (current lesson, their last
@@ -15,7 +16,7 @@ import { SQL_COURSE } from "@/lib/learn/sql/lessons";
  */
 
 function account(ctx: KnifeToolContext | undefined): string {
-  if (!ctx?.accountId) throw new Error("Course tools need an account context.");
+  if (!ctx?.accountId) throw new Error(msg("Course tools need an account context."));
   return ctx.accountId;
 }
 
@@ -55,7 +56,7 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
       const course = findCourse("sql") ?? SQL_COURSE;
       const id = lessonId ?? progress.current ?? course.lessons[0].id;
       const lesson = findLesson(course, id);
-      if (!lesson) throw new Error(`Unknown lesson ${id}; knife_learn_lessons lists them.`);
+      if (!lesson) throw new Error(msgf("Unknown lesson {id}; knife_learn_lessons lists them.", { id }));
       const entry = progress.lessons[lesson.id];
       return {
         id: lesson.id,
@@ -92,7 +93,7 @@ export const LEARN_KNIFE_TOOLS: KnifeToolDefinition[] = [
         const run = await withLearnerSlot(ctx?.accountId ?? "", () => runLearnerSql(info, sql, { rowCap: 50 }));
         return { error: run.error, notices: run.notices, durationMs: run.durationMs, results: run.results };
       } catch (error) {
-        if (error instanceof LearnDbError && error.status === 409) throw new Error(`${error.message} (open /tools/db-course to start it)`);
+        if (error instanceof LearnDbError && error.status === 409) throw new Error(msgf("{message} (open /tools/db-course to start it)", { message: error.message }));
         if (error instanceof LearnDbError) throw new Error(error.message);
         throw error;
       }

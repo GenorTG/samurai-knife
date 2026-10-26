@@ -16,6 +16,7 @@ import {
   type Transport,
   type TransportResponse,
 } from "@/lib/net/safe-fetch";
+import { msgf } from "@/lib/i18n/msg";
 
 export class SiteError extends Error {
   readonly status: number;
@@ -149,7 +150,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
           signal,
         });
       } catch (error) {
-        if (signal.aborted) throw new SiteError(`${current.host} did not answer within ${timeoutMs / 1000} s`, 504);
+        if (signal.aborted) throw new SiteError(msgf("{host} did not answer within {value} s", { host: current.host, value: timeoutMs / 1000 }), 504);
         throw new SiteError(`could not connect to ${current.host}: ${error instanceof Error ? error.message : String(error)}`, 502);
       }
       const ttfbMs = Date.now() - sent;
@@ -160,7 +161,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
         try {
           current = new URL(location, current);
         } catch {
-          throw new SiteError(`${current.host} redirected to an invalid URL`, 502);
+          throw new SiteError(msgf("{host} redirected to an invalid URL", { host: current.host }), 502);
         }
         continue;
       }
@@ -186,7 +187,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
     if (error instanceof OutboundRefused) throw new SiteError(error.message, 429);
     throw error;
   }
-  throw new SiteError(`${input} redirects more than ${MAX_REDIRECTS} times`, 502);
+  throw new SiteError(msgf("{input} redirects more than {maxRedirects} times", { input, maxRedirects: MAX_REDIRECTS }), 502);
 }
 
 /** JSON request to a fixed API (GitHub, PageSpeed). Non-2xx answers are returned (status + parsed body), not thrown. */
@@ -210,11 +211,11 @@ export async function apiJson(
     }
   } catch (error) {
     if (error instanceof OutboundError) throw new SiteError(error.message, 502);
-    if (signal.aborted) throw new SiteError(`${new URL(url).host} did not answer within ${timeoutMs / 1000} s`, 504);
+    if (signal.aborted) throw new SiteError(msgf("{host} did not answer within {value} s", { host: new URL(url).host, value: timeoutMs / 1000 }), 504);
     throw error;
   }
   const text = await readTextCapped(response, init.maxBytes ?? 8_000_000);
-  if (text === null) throw new SiteError(`${new URL(url).host} answered more than ${(init.maxBytes ?? 8_000_000) / 1_000_000} MB`, 502);
+  if (text === null) throw new SiteError(msgf("{host} answered more than {value} MB", { host: new URL(url).host, value: (init.maxBytes ?? 8_000_000) / 1_000_000 }), 502);
   let parsed: unknown = text;
   try {
     parsed = text ? JSON.parse(text) : null;

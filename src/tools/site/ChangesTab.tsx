@@ -6,6 +6,7 @@ import { Badge, Button, EmptyState, Field, Notice, Panel, TextArea, TextInput } 
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { errorText, siteRequest, when, type ChangesView } from "./client";
 import { useSite } from "./useSite";
+import { useT } from "@/lib/i18n/react";
 
 const POLL_MS = 15_000;
 const CHECK_TONE: Record<string, "good" | "warn" | "danger" | "neutral"> = { success: "good", pending: "warn", failure: "danger", error: "danger", none: "neutral" };
@@ -15,6 +16,7 @@ const CHECK_TONE: Record<string, "good" | "warn" | "danger" | "neutral"> = { suc
  * two buttons no agent can press: Publish (merge into the production branch at exactly the reviewed head) and Discard.
  */
 export default function ChangesTab() {
+  const { t } = useT();
   const { view } = useSite();
   const [data, setData] = useState<ChangesView | null>(null);
   const [error, setError] = useState("");
@@ -70,65 +72,65 @@ export default function ChangesTab() {
   async function auditPreview(url: string) {
     try {
       await siteRequest("POST", "/api/site/audit", { target: "preview", url });
-      setNotice({ tone: "good", text: "Preview audit started: see the Score tab." });
+      setNotice({ tone: "good", text: t("Preview audit started: see the Score tab.") });
     } catch (e) {
       setNotice({ tone: "error", text: errorText(e) });
     }
   }
 
   if (view && !view.connected) {
-    return <EmptyState title="No repository connected" action={<Link className="text-accent underline" href="/tools/site-studio?tab=connect">Open Connect</Link>}>Changes are prepared on a branch of your website&apos;s repository.</EmptyState>;
+    return <EmptyState title={t("No repository connected")} action={<Link className="text-accent underline" href="/tools/site-studio?tab=connect">{t("Open Connect")}</Link>}>{t("Changes are prepared on a branch of your website's repository.")}</EmptyState>;
   }
   const base = view?.connection?.baseBranch ?? "main";
   return (
     <div className="space-y-4">
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice ? <Notice tone={notice.tone}>{notice.text}</Notice> : null}
-      {data?.lastAction ? <p className="text-xs text-faint">Last: {data.lastAction.kind} · {data.lastAction.detail} · {when(data.lastAction.at)}</p> : null}
+      {data?.lastAction ? <p className="text-xs text-faint">{t("Last: {kind} · {detail} ·", { kind: data.lastAction.kind, detail: data.lastAction.detail })}{" "} {when(data.lastAction.at)}</p> : null}
 
       {!data ? (
-        <p className="text-sm text-muted">Loading the changes…</p>
+        <p className="text-sm text-muted">{t("Loading the changes…")}</p>
       ) : !data.work || !data.compare ? (
         <EmptyState
-          title="No changes prepared"
-          action={<Button onClick={() => openAssistant("Look at my latest website audit and my CV, then prepare the most valuable improvements to my website as a pull request.")}>Ask the assistant to prepare changes</Button>}
+          title={t("No changes prepared")}
+          action={<Button onClick={() => openAssistant(t("Look at my latest website audit and my CV, then prepare the most valuable improvements to my website as a pull request."))}>{t("Ask the assistant to prepare changes")}</Button>}
         >
-          The assistant (or an agent over MCP) commits to a separate work branch; you review and publish here.
+          {t("The assistant (or an agent over MCP) commits to a separate work branch; you review and publish here.")}
         </EmptyState>
       ) : (
         <>
           <Panel
-            title={`Work branch ${data.work.branch} · ${data.compare.aheadBy} commit(s) ahead of ${base}${data.compare.behindBy ? `, ${data.compare.behindBy} behind` : ""}`}
-            right={data.checks ? <Badge tone={CHECK_TONE[data.checks.state] ?? "neutral"}>checks: {data.checks.state}</Badge> : null}
+            title={t("Work branch {branch} · {aheadBy} commit(s) ahead of {base}{value}", { branch: data.work.branch, aheadBy: data.compare.aheadBy, base, value: data.compare.behindBy ? `, ${data.compare.behindBy} behind` : "" })}
+            right={data.checks ? <Badge tone={CHECK_TONE[data.checks.state] ?? "neutral"}>{t("checks:")}{" "} {data.checks.state}</Badge> : null}
           >
             <div className="space-y-3 text-sm">
               {data.pull ? (
                 <p>
-                  Pull request <a className="text-accent underline" href={data.pull.url} target="_blank" rel="noreferrer">#{data.pull.number} {data.pull.title}</a>
-                  {data.pull.mergeable === false ? <Badge tone="danger" className="ml-2">conflicts</Badge> : null}
+                  {t("Pull request")}{" "} <a className="text-accent underline" href={data.pull.url} target="_blank" rel="noreferrer">#{data.pull.number} {data.pull.title}</a>
+                  {data.pull.mergeable === false ? <Badge tone="danger" className="ml-2">{t("conflicts")}</Badge> : null}
                 </p>
               ) : (
                 <form
                   className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void act({ action: "pr", title: title.trim() || "Website update", body }, "Pull request opened.");
+                    void act({ action: "pr", title: title.trim() || t("Website update"), body }, t("Pull request opened."));
                   }}
                 >
                   <div className="space-y-2">
-                    <Field label="Pull request title"><TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Website update" /></Field>
-                    <Field label="Description"><TextArea rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder="What changes and why" /></Field>
+                    <Field label={t("Pull request title")}><TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Website update")} /></Field>
+                    <Field label={t("Description")}><TextArea rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder={t("What changes and why")} /></Field>
                   </div>
-                  <Button type="submit" disabled={busy}>Open pull request</Button>
+                  <Button type="submit" disabled={busy}>{t("Open pull request")}</Button>
                 </form>
               )}
               {data.checks?.previewUrl ? (
                 <p className="flex flex-wrap items-center gap-2">
-                  Preview: <a className="text-accent underline wrap-anywhere" href={data.checks.previewUrl} target="_blank" rel="noreferrer">{data.checks.previewUrl}</a>
-                  <Button size="sm" onClick={() => void auditPreview(data.checks!.previewUrl)}>Score the preview</Button>
+                  {t("Preview:")}{" "} <a className="text-accent underline wrap-anywhere" href={data.checks.previewUrl} target="_blank" rel="noreferrer">{data.checks.previewUrl}</a>
+                  <Button size="sm" onClick={() => void auditPreview(data.checks!.previewUrl)}>{t("Score the preview")}</Button>
                 </p>
               ) : (
-                <p className="text-muted">No preview deployment yet{data.checks?.state === "pending" ? " (building…)" : ""}.</p>
+                <p className="text-muted">{t("No preview deployment yet")}{data.checks?.state === "pending" ? t(" (building…)") : ""}.</p>
               )}
               {data.checks?.items.length ? (
                 <ul className="flex flex-wrap gap-1.5">
@@ -140,7 +142,7 @@ export default function ChangesTab() {
             </div>
           </Panel>
 
-          <Panel title="Commits">
+          <Panel title={t("Commits")}>
             <ul className="space-y-1 text-sm">
               {data.compare.commits.map((c) => (
                 <li key={c.sha} className="flex gap-2">
@@ -152,7 +154,7 @@ export default function ChangesTab() {
             </ul>
           </Panel>
 
-          <Panel title={`Files (${data.compare.files.length})`}>
+          <Panel title={t("Files ({files})", { files: data.compare.files.length })}>
             <div className="space-y-3">
               {data.compare.files.map((f) => (
                 <details key={f.path} open={data.compare!.files.length <= 3}>
@@ -164,37 +166,37 @@ export default function ChangesTab() {
                       ? f.patch.split("\n").map((line, n) => (
                           <div key={n} className={line.startsWith("+") ? "text-good" : line.startsWith("-") ? "text-danger" : line.startsWith("@@") ? "text-faint" : ""}>{line || " "}</div>
                         ))
-                      : "(binary or too large to show)"}
+                      : t("(binary or too large to show)")}
                   </pre>
                 </details>
               ))}
             </div>
           </Panel>
 
-          <Panel title="Publish">
+          <Panel title={t("Publish")}>
             {confirm === "publish" ? (
               <div className="space-y-3">
                 <Notice tone="warn">
-                  This merges {data.pull ? `pull request #${data.pull.number}` : "the work branch"} into <b>{base}</b>. Your host then deploys it to production.
+                  {t("This merges")}{" "} {data.pull ? `pull request #${data.pull.number}` : t("the work branch")} {" "}{t("into")}{" "} <b>{base}</b>{t(". Your host then deploys it to production.")}
                 </Notice>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> I reviewed the files above (and the preview)
+                  <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> {" "}{t("I reviewed the files above (and the preview)")}
                 </label>
                 <div className="flex gap-2">
-                  <Button variant="primary" disabled={!reviewed || busy} onClick={() => void act({ action: "publish", head: data.work!.head }, `Published to ${base}.`)}>Publish to production</Button>
-                  <Button variant="ghost" onClick={() => setConfirm(null)}>Not yet</Button>
+                  <Button variant="primary" disabled={!reviewed || busy} onClick={() => void act({ action: "publish", head: data.work!.head }, t("Published to {base}.", { base }))}>{t("Publish to production")}</Button>
+                  <Button variant="ghost" onClick={() => setConfirm(null)}>{t("Not yet")}</Button>
                 </div>
               </div>
             ) : confirm === "discard" ? (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted">Close the pull request and delete the work branch? The prepared changes are gone.</span>
-                <Button variant="danger" disabled={busy} onClick={() => void act({ action: "discard" }, "Changes discarded.")}>Discard changes</Button>
-                <Button variant="ghost" onClick={() => setConfirm(null)}>Keep them</Button>
+                <span className="text-sm text-muted">{t("Close the pull request and delete the work branch? The prepared changes are gone.")}</span>
+                <Button variant="danger" disabled={busy} onClick={() => void act({ action: "discard" }, t("Changes discarded."))}>{t("Discard changes")}</Button>
+                <Button variant="ghost" onClick={() => setConfirm(null)}>{t("Keep them")}</Button>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <Button variant="primary" disabled={busy || data.pull?.mergeable === false} onClick={() => setConfirm("publish")}>Publish to production…</Button>
-                <Button variant="ghost" disabled={busy} onClick={() => setConfirm("discard")}>Discard…</Button>
+                <Button variant="primary" disabled={busy || data.pull?.mergeable === false} onClick={() => setConfirm("publish")}>{t("Publish to production…")}</Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setConfirm("discard")}>{t("Discard…")}</Button>
               </div>
             )}
           </Panel>

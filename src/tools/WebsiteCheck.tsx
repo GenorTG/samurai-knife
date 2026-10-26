@@ -10,6 +10,8 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Badge, Button, Field, Notice, Panel, Stat, StatGrid, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { auditFormLabels, auditHeadings, auditLandmarks, auditLinks } from "@/lib/html-audit";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 interface Issue {
   id: string;
@@ -72,13 +74,13 @@ function securityChecks(result: CheckResult): HeaderCheck[] {
       name: "Strict-Transport-Security",
       verdict: !https ? "info" : !hsts ? "bad" : maxAge >= 15_552_000 ? "good" : "warn",
       value: hsts || "not set",
-      advice: !https ? "Only sent over https; serve the site over https first." : !hsts ? "Add `max-age=31536000` so browsers always use https." : maxAge < 15_552_000 ? "Raise max-age to at least six months (15552000)." : "",
+      advice: !https ? msg("Only sent over https; serve the site over https first.") : !hsts ? msg("Add `max-age=31536000` so browsers always use https.") : maxAge < 15_552_000 ? msg("Raise max-age to at least six months (15552000).") : "",
     },
     {
       name: "Content-Security-Policy",
       verdict: !csp ? "bad" : /script-src[^;]*'unsafe-inline'/i.test(csp) || (!/script-src/i.test(csp) && /default-src[^;]*'unsafe-inline'/i.test(csp)) ? "warn" : "good",
       value: csp || "not set",
-      advice: !csp ? "Start with `default-src 'self'` and allow what the page loads (the CSP tab builds one)." : /'unsafe-inline'/i.test(csp) ? "'unsafe-inline' scripts weaken the policy; prefer nonces or hashes." : "",
+      advice: !csp ? msg("Start with `default-src 'self'` and allow what the page loads (the CSP tab builds one).") : /'unsafe-inline'/i.test(csp) ? "'unsafe-inline' scripts weaken the policy; prefer nonces or hashes." : "",
     },
     {
       name: "X-Content-Type-Options",
@@ -87,22 +89,22 @@ function securityChecks(result: CheckResult): HeaderCheck[] {
       advice: (h["x-content-type-options"] ?? "").toLowerCase() === "nosniff" ? "" : "Set `nosniff`.",
     },
     {
-      name: "Frame protection",
+      name: msg("Frame protection"),
       verdict: framing ? "good" : "warn",
       value: h["x-frame-options"] || (/frame-ancestors[^;]*/i.exec(csp)?.[0] ?? "not set"),
-      advice: framing ? "" : "Add `frame-ancestors 'self'` to the CSP (or X-Frame-Options: SAMEORIGIN) against clickjacking.",
+      advice: framing ? "" : msg("Add `frame-ancestors 'self'` to the CSP (or X-Frame-Options: SAMEORIGIN) against clickjacking."),
     },
     {
       name: "Referrer-Policy",
       verdict: h["referrer-policy"] ? "good" : "warn",
       value: h["referrer-policy"] || "not set",
-      advice: h["referrer-policy"] ? "" : "Set `strict-origin-when-cross-origin` (or stricter).",
+      advice: h["referrer-policy"] ? "" : msg("Set `strict-origin-when-cross-origin` (or stricter)."),
     },
     {
       name: "Permissions-Policy",
       verdict: h["permissions-policy"] ? "good" : "info",
       value: h["permissions-policy"] || "not set",
-      advice: h["permissions-policy"] ? "" : "Optional: turn off features the site never uses, e.g. `camera=(), microphone=(), geolocation=()`.",
+      advice: h["permissions-policy"] ? "" : msg("Optional: turn off features the site never uses, e.g. `camera=(), microphone=(), geolocation=()`."),
     },
   ];
   const disclosed = ["server", "x-powered-by", "x-aspnet-version"].filter((name) => h[name] && /\d/.test(h[name]));
@@ -146,19 +148,20 @@ function seoChecks(result: CheckResult): { label: string; verdict: Verdict; deta
   const descLen = f.metaDescription.length;
   return [
     { label: "Title", verdict: !titleLen ? "bad" : titleLen < 10 || titleLen > 65 ? "warn" : "good", detail: titleLen ? `${f.title} (${titleLen} characters; 10–65 reads well in results)` : "No <title>." },
-    { label: "Meta description", verdict: !descLen ? "bad" : descLen < 50 || descLen > 165 ? "warn" : "good", detail: descLen ? `${f.metaDescription} (${descLen} characters; 50–165)` : "No meta description: search engines pick a snippet themselves." },
-    { label: "One H1", verdict: h1 === 1 ? "good" : h1 === 0 ? "bad" : "warn", detail: h1 === 1 ? f.headings.find((heading) => heading.level === 1)?.text ?? "" : `${h1} H1 headings.` },
-    { label: "Language", verdict: f.lang ? "good" : "warn", detail: f.lang ? `lang="${f.lang}"` : "No lang on <html>: screen readers and translators guess." },
-    { label: "Mobile viewport", verdict: f.viewport ? "good" : "bad", detail: f.viewport ? "meta viewport set" : "No meta viewport: phones show a zoomed-out desktop page." },
-    { label: "Canonical URL", verdict: f.canonical ? "good" : "info", detail: f.canonical || "No canonical link (fine for a single URL; set it when the page has several addresses)." },
-    { label: "Indexing", verdict: /noindex/i.test(f.robotsMeta) ? "warn" : "good", detail: f.robotsMeta ? `robots meta: ${f.robotsMeta}` : "No robots meta (indexable)." },
-    { label: "Social preview", verdict: f.og["og:title"] && f.og["og:image"] ? "good" : "info", detail: f.og["og:title"] ? `og:title ${f.og["og:image"] ? "and og:image" : "without og:image"}` : "No Open Graph tags: shared links show a plain preview." },
-    { label: "Image alt text", verdict: f.images.missingAlt ? "warn" : "good", detail: `${f.images.count} images, ${f.images.missingAlt} without alt.` },
-    { label: "Favicon", verdict: f.favicon ? "good" : "info", detail: f.favicon ? "linked" : "No icon link." },
+    { label: msg("Meta description"), verdict: !descLen ? "bad" : descLen < 50 || descLen > 165 ? "warn" : "good", detail: descLen ? `${f.metaDescription} (${descLen} characters; 50–165)` : msg("No meta description: search engines pick a snippet themselves.") },
+    { label: msg("One H1"), verdict: h1 === 1 ? "good" : h1 === 0 ? "bad" : "warn", detail: h1 === 1 ? f.headings.find((heading) => heading.level === 1)?.text ?? "" : `${h1} H1 headings.` },
+    { label: "Language", verdict: f.lang ? "good" : "warn", detail: f.lang ? `lang="${f.lang}"` : msg("No lang on <html>: screen readers and translators guess.") },
+    { label: msg("Mobile viewport"), verdict: f.viewport ? "good" : "bad", detail: f.viewport ? "meta viewport set" : msg("No meta viewport: phones show a zoomed-out desktop page.") },
+    { label: msg("Canonical URL"), verdict: f.canonical ? "good" : "info", detail: f.canonical || msg("No canonical link (fine for a single URL; set it when the page has several addresses).") },
+    { label: "Indexing", verdict: /noindex/i.test(f.robotsMeta) ? "warn" : "good", detail: f.robotsMeta ? `robots meta: ${f.robotsMeta}` : msg("No robots meta (indexable).") },
+    { label: msg("Social preview"), verdict: f.og["og:title"] && f.og["og:image"] ? "good" : "info", detail: f.og["og:title"] ? `og:title ${f.og["og:image"] ? "and og:image" : "without og:image"}` : msg("No Open Graph tags: shared links show a plain preview.") },
+    { label: msg("Image alt text"), verdict: f.images.missingAlt ? "warn" : "good", detail: `${f.images.count} images, ${f.images.missingAlt} without alt.` },
+    { label: "Favicon", verdict: f.favicon ? "good" : "info", detail: f.favicon ? "linked" : msg("No icon link.") },
   ];
 }
 
 export default function WebsiteCheck() {
+  const { t } = useT();
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,10 +186,10 @@ export default function WebsiteCheck() {
       const body = (await response.json().catch(() => ({}))) as CheckResult & { error?: string };
       if (!response.ok) {
         setResult(null);
-        setError(body.error ?? `The check failed (HTTP ${response.status}).`);
+        setError(body.error ?? t("The check failed (HTTP {status}).", { status: response.status }));
       } else setResult(body);
     } catch {
-      setError("The check did not reach the server.");
+      setError(t("The check did not reach the server."));
     } finally {
       setBusy(false);
     }
@@ -205,21 +208,21 @@ export default function WebsiteCheck() {
 
   return (
     <div className="space-y-4" data-website-check>
-      <Panel title="Website check">
+      <Panel title={t("Website check")}>
         <form onSubmit={check} className="flex flex-wrap items-end gap-2">
-          <Field label="Address" className="min-w-64 flex-1">
-            <TextInput value={address} onChange={(e) => setAddress(e.target.value)} placeholder="example.com or https://example.com/page" inputMode="url" autoComplete="off" spellCheck={false} />
+          <Field label={t("Address")} className="min-w-64 flex-1">
+            <TextInput value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("example.com or https://example.com/page")} inputMode="url" autoComplete="off" spellCheck={false} />
           </Field>
           <Button type="submit" variant="primary" disabled={busy || !address.trim()}>
-            {busy ? "Checking…" : "Check"}
+            {busy ? t("Checking…") : t("Check")}
           </Button>
         </form>
         <p className="mt-2 text-xs text-faint">
-          The server fetches the page, its robots.txt and sitemap, like a visitor would (no JavaScript runs). Third-party content: nothing from it is trusted.
+          {t("The server fetches the page, its robots.txt and sitemap, like a visitor would (no JavaScript runs). Third-party content: nothing from it is trusted.")}
         </p>
         {busy ? (
           <p role="status" className="mt-3 text-sm text-muted">
-            Checking {address.trim()}…
+            {t("Checking {value}…", { value: address.trim() })}
           </p>
         ) : null}
         {error ? (
@@ -231,14 +234,14 @@ export default function WebsiteCheck() {
 
       {result ? (
         <>
-          <StatGrid aria-label="Response">
-            <Stat label="Status" value={result.status} />
-            <Stat label="Redirects" value={Math.max(0, result.hops.length - 1)} />
-            <Stat label="First byte" value={`${result.ttfbMs} ms`} />
-            <Stat label="Page size" value={result.bytes < 1024 ? `${result.bytes} B` : `${Math.round(result.bytes / 1024)} KB`} />
+          <StatGrid aria-label={t("Response")}>
+            <Stat label={t("Status")} value={result.status} />
+            <Stat label={t("Redirects")} value={Math.max(0, result.hops.length - 1)} />
+            <Stat label={t("First byte")} value={`${result.ttfbMs} ms`} />
+            <Stat label={t("Page size")} value={result.bytes < 1024 ? `${result.bytes} B` : `${Math.round(result.bytes / 1024)} KB`} />
           </StatGrid>
           {result.hops.length > 1 ? (
-            <Panel title="Redirect chain">
+            <Panel title={t("Redirect chain")}>
               <ol className="space-y-1 font-mono text-xs break-all">
                 {result.hops.map((hop, index) => (
                   <li key={index} className="flex gap-2">
@@ -250,8 +253,8 @@ export default function WebsiteCheck() {
             </Panel>
           ) : null}
 
-          <Panel title="Security headers">
-            <ul aria-label="Security headers" className="divide-y divide-line rounded-lg border border-line">
+          <Panel title={t("Security headers")}>
+            <ul aria-label={t("Security headers")} className="divide-y divide-line rounded-lg border border-line">
               {securityChecks(result).map((item) => (
                 <Row key={item.name} label={item.name} verdict={item.verdict}>
                   <code className="font-mono text-xs">{item.value.slice(0, 300)}</code>
@@ -259,30 +262,30 @@ export default function WebsiteCheck() {
                 </Row>
               ))}
               {cookieChecks(result.cookies, https).map((item) => (
-                <Row key={item.cookie} label="Cookie" verdict={item.missing.length ? "warn" : "good"}>
+                <Row key={item.cookie} label={t("Cookie")} verdict={item.missing.length ? "warn" : "good"}>
                   <code className="font-mono text-xs">{item.cookie}</code>
-                  {item.missing.length ? <span className="block text-xs text-faint">Add: {item.missing.join(", ")}</span> : null}
+                  {item.missing.length ? <span className="block text-xs text-faint">{t("Add:")}{" "} {item.missing.join(", ")}</span> : null}
                 </Row>
               ))}
             </ul>
           </Panel>
 
           <Panel title="SEO">
-            <ul aria-label="SEO checks" className="divide-y divide-line rounded-lg border border-line">
+            <ul aria-label={t("SEO checks")} className="divide-y divide-line rounded-lg border border-line">
               {seoChecks(result).map((item) => (
-                <Row key={item.label} label={item.label} verdict={item.verdict}>
-                  {item.detail}
+                <Row key={item.label} label={t(item.label)} verdict={item.verdict}>
+                  {t(item.detail)}
                 </Row>
               ))}
             </ul>
             {result.issues.length ? (
               <details className="mt-3 rounded-lg border border-line px-3 py-2">
-                <summary className="cursor-pointer text-xs text-muted select-none">All findings of the site audit ({result.issues.length})</summary>
+                <summary className="cursor-pointer text-xs text-muted select-none">{t("All findings of the site audit ({issues})", { issues: result.issues.length })}</summary>
                 <ul className="mt-2 space-y-1.5 text-[13px]">
                   {result.issues.map((issue) => (
                     <li key={issue.id + issue.title}>
-                      <span className={cx("font-medium", issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-warn" : "text-ink")}>{issue.title}</span>
-                      <span className="block text-xs text-muted">{issue.detail}</span>
+                      <span className={cx("font-medium", issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-warn" : "text-ink")}>{t(issue.title)}</span>
+                      <span className="block text-xs text-muted">{t(issue.detail)}</span>
                     </li>
                   ))}
                 </ul>
@@ -291,34 +294,34 @@ export default function WebsiteCheck() {
           </Panel>
 
           {a11y ? (
-            <Panel title="Accessibility (from the HTML)">
-              <ul aria-label="Accessibility checks" className="divide-y divide-line rounded-lg border border-line">
-                <Row label="Heading order" verdict={a11y.headings.issues.length ? "warn" : "good"}>
+            <Panel title={t("Accessibility (from the HTML)")}>
+              <ul aria-label={t("Accessibility checks")} className="divide-y divide-line rounded-lg border border-line">
+                <Row label={t("Heading order")} verdict={a11y.headings.issues.length ? "warn" : "good"}>
                   {a11y.headings.issues.length ? a11y.headings.issues.slice(0, 5).join(" ") : `${a11y.headings.headings.length} headings, in order.`}
                 </Row>
-                <Row label="Link text" verdict={a11y.links.length ? "warn" : "good"}>
-                  {a11y.links.length ? `${a11y.links.length} links without a clear name: ${a11y.links.slice(0, 5).map((link) => `${link.name} (${link.issue.toLowerCase()})`).join("; ")}` : "Every link has a meaningful name."}
+                <Row label={t("Link text")} verdict={a11y.links.length ? "warn" : "good"}>
+                  {a11y.links.length ? `${a11y.links.length} links without a clear name: ${a11y.links.slice(0, 5).map((link) => `${link.name} (${link.issue.toLowerCase()})`).join("; ")}` : t("Every link has a meaningful name.")}
                 </Row>
-                <Row label="Form labels" verdict={a11y.forms.length ? "bad" : "good"}>
-                  {a11y.forms.length ? `${a11y.forms.length} fields without a label: ${a11y.forms.slice(0, 5).map((control) => `${control.control}${control.type ? `[type=${control.type}]` : ""}${control.id ? `#${control.id}` : ""}`).join(", ")}` : "Every field has a label (or none on this page)."}
+                <Row label={t("Form labels")} verdict={a11y.forms.length ? "bad" : "good"}>
+                  {a11y.forms.length ? `${a11y.forms.length} fields without a label: ${a11y.forms.slice(0, 5).map((control) => `${control.control}${control.type ? `[type=${control.type}]` : ""}${control.id ? `#${control.id}` : ""}`).join(", ")}` : t("Every field has a label (or none on this page).")}
                 </Row>
-                <Row label="Landmarks" verdict={a11y.landmarks.issues.length ? "warn" : "good"}>
+                <Row label={t("Landmarks")} verdict={a11y.landmarks.issues.length ? "warn" : "good"}>
                   {a11y.landmarks.issues.length ? a11y.landmarks.issues.join(" ") : a11y.landmarks.counts.filter((item) => item.count).map((item) => `${item.role} ${item.count}`).join(" · ")}
                 </Row>
               </ul>
               <p className="mt-2 text-xs text-faint">
-                Checked on the HTML the server received{result.htmlTruncated ? " (first 512 KB)" : ""}; content added by scripts is not seen. For a full audit with contrast and scores, use the Website studio (Lighthouse).
+                {t("Checked on the HTML the server received")}{result.htmlTruncated ? t(" (first 512 KB)") : ""}{t("; content added by scripts is not seen. For a full audit with contrast and scores, use the Website studio (Lighthouse).")}
               </p>
             </Panel>
           ) : null}
 
-          <Panel title="robots.txt and sitemap">
+          <Panel title={t("robots.txt and sitemap")}>
             <ul className="divide-y divide-line rounded-lg border border-line">
-              <Row label="robots.txt" verdict={result.robots.status === 200 ? "good" : result.robots.status === 404 ? "info" : "warn"}>
+              <Row label={t("robots.txt")} verdict={result.robots.status === 200 ? "good" : result.robots.status === 404 ? "info" : "warn"}>
                 {result.robots.status === 200 ? `found at ${result.robots.url}` : result.robots.error ?? `HTTP ${result.robots.status}`}
-                {result.robots.status === 200 && /disallow:\s*\/\s*$/im.test(result.robots.text) ? <span className="block text-xs text-warn">Contains &ldquo;Disallow: /&rdquo;: check that this is meant for every crawler.</span> : null}
+                {result.robots.status === 200 && /disallow:\s*\/\s*$/im.test(result.robots.text) ? <span className="block text-xs text-warn">{t("Contains “Disallow: /”: check that this is meant for every crawler.")}</span> : null}
               </Row>
-              <Row label="Sitemap" verdict={result.sitemap.status === 200 ? "good" : "info"}>
+              <Row label={t("Sitemap")} verdict={result.sitemap.status === 200 ? "good" : "info"}>
                 {result.sitemap.status === 200
                   ? `${result.sitemap.index ? "sitemap index" : `${result.sitemap.urls} URLs`} at ${result.sitemap.url}${result.sitemap.named ? " (named in robots.txt)" : ""}`
                   : result.sitemap.error ?? `none at ${result.sitemap.url} (HTTP ${result.sitemap.status}); the Sitemap tab writes one.`}
@@ -326,14 +329,14 @@ export default function WebsiteCheck() {
             </ul>
             {result.robots.status === 200 && result.robots.text ? (
               <details className="mt-3 rounded-lg border border-line px-3 py-2">
-                <summary className="cursor-pointer text-xs text-muted select-none">robots.txt</summary>
+                <summary className="cursor-pointer text-xs text-muted select-none">{t("robots.txt")}</summary>
                 <pre className="mt-2 max-h-64 overflow-auto font-mono text-xs whitespace-pre-wrap text-muted">{result.robots.text}</pre>
               </details>
             ) : null}
           </Panel>
 
           <details className="rounded-lg border border-line bg-surface px-3 py-2">
-            <summary className="cursor-pointer text-xs text-muted select-none">All response headers ({Object.keys(result.headers).length})</summary>
+            <summary className="cursor-pointer text-xs text-muted select-none">{t("All response headers ({length})", { length: Object.keys(result.headers).length })}</summary>
             <table className="mt-2 w-full text-left text-xs">
               <tbody>
                 {Object.entries(result.headers).map(([name, value]) => (

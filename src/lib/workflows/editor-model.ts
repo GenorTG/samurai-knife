@@ -1,4 +1,5 @@
 /** Pure helpers of the workflow editor (src/tools/workflows/): node creation, names, connections, visibility. */
+import { msg } from "../i18n/msg";
 import { nodeMeta } from "./catalog/index";
 import type { Connection, NodeMeta, NodeParam, WorkflowNode } from "./types";
 
@@ -98,11 +99,11 @@ function chain(specs: { type: string; name?: string; parameters?: Record<string,
 }
 
 export const TEMPLATES: Template[] = [
-  { id: "blank", name: "Blank", description: "Just a manual trigger.", build: () => chain([{ type: "core.manual-trigger" }]) },
+  { id: "blank", name: msg("Blank"), description: msg("Just a manual trigger."), build: () => chain([{ type: "core.manual-trigger" }]) },
   {
     id: "webhook-reply",
-    name: "Webhook that answers",
-    description: "Receive JSON, reshape it, answer the caller.",
+    name: msg("Webhook that answers"),
+    description: msg("Receive JSON, reshape it, answer the caller."),
     build: () =>
       chain([
         { type: "core.webhook", parameters: { httpMethod: "POST", path: "hello", responseMode: "responseNode" } },
@@ -112,8 +113,8 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "schedule-fetch",
-    name: "Fetch an API every hour",
-    description: "Schedule, HTTP request, keep only what matters.",
+    name: msg("Fetch an API every hour"),
+    description: msg("Schedule, HTTP request, keep only what matters."),
     build: () =>
       chain([
         { type: "core.schedule-trigger", parameters: { rules: [{ every: "hours", amount: 1, atMinute: 0 }] } },
@@ -123,8 +124,8 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "ask-ai",
-    name: "Ask AI about each item",
-    description: "Sample items, one model call per item with your saved provider profile.",
+    name: msg("Ask AI about each item"),
+    description: msg("Sample items, one model call per item with your saved provider profile."),
     build: () =>
       chain([
         { type: "core.manual-trigger" },
@@ -134,8 +135,8 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: "code-transform",
-    name: "Transform data with code",
-    description: "Manual trigger, sample data, a JavaScript Code node.",
+    name: msg("Transform data with code"),
+    description: msg("Manual trigger, sample data, a JavaScript Code node."),
     build: () =>
       chain([
         { type: "core.manual-trigger" },

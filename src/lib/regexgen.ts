@@ -13,6 +13,7 @@
  * including the cases it could not satisfy. Pure module: used by the Regex lab
  * UI and by the MCP tool surface.
  */
+import { msgf } from "@/lib/i18n/msg";
 
 export const CLASS_ATOM: Record<string, string> = {
   d: "\\d",
@@ -161,9 +162,9 @@ export function buildGeneration(
   let pattern = `${head}${core}${tail}`;
 
   const notes: string[] = [];
-  if (prefix) notes.push(`shared literal prefix: ${JSON.stringify(prefix)}`);
-  if (suffix) notes.push(`shared literal suffix: ${JSON.stringify(suffix)}`);
-  if (middles.length > 1) notes.push(`${middles.length} alternatives in the middle`);
+  if (prefix) notes.push(msgf("shared literal prefix: {value}", { value: JSON.stringify(prefix) }));
+  if (suffix) notes.push(msgf("shared literal suffix: {value}", { value: JSON.stringify(suffix) }));
+  if (middles.length > 1) notes.push(msgf("{count} alternatives in the middle", { count: middles.length }));
 
   // Grow guards until no negative matches, or we run out of distinguishing text.
   const guards: string[] = [];
@@ -174,14 +175,14 @@ export function buildGeneration(
     const guard = shortestGuard(negatives[offender], positives);
     if (!guard) {
       notes.push(
-        `no guard found for ${JSON.stringify(negatives[offender])} — it shares every substring with a positive`,
+        msgf("no guard found for {value} — it shares every substring with a positive", { value: JSON.stringify(negatives[offender]) }),
       );
       break;
     }
     guards.push(guard);
     const guardAlt = guards.map((g) => escapeLiteral(g)).join("|");
     pattern = `${head}(?!.*(?:${guardAlt}))${core}${tail}`;
-    notes.push(`guard added: ${JSON.stringify(guard)}`);
+    notes.push(msgf("guard added: {value}", { value: JSON.stringify(guard) }));
   }
 
   const positiveHits = testAll(pattern, flags, positives);

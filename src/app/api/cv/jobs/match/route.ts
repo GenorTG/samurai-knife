@@ -2,6 +2,7 @@ import { authenticate, json, jsonError } from "@/lib/accounts/http";
 import { CvJobError, matchJob } from "@/lib/cv/jobs/service";
 import { CV_LANGS, type CvLang } from "@/lib/cv/schema";
 import { CvStoreError } from "@/lib/cv/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,8 +14,8 @@ export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const id = params.get("id") ?? "";
   const lang = params.get("lang") ?? "";
-  if (!id) return jsonError("Pass ?id=<jobId>.", 422);
-  if (!(CV_LANGS as readonly string[]).includes(lang)) return jsonError("Pass lang=pl or lang=en.", 422);
+  if (!id) return jsonError(msg("Pass ?id=<jobId>."), 422);
+  if (!(CV_LANGS as readonly string[]).includes(lang)) return jsonError(msg("Pass lang=pl or lang=en."), 422);
   try {
     return json(matchJob(auth.account.id, id, lang as CvLang));
   } catch (error) {

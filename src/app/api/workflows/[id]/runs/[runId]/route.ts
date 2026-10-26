@@ -4,6 +4,7 @@ import { workflowError, zodMessage } from "@/lib/workflows/server/http";
 import { cancelRun } from "@/lib/workflows/server/runner";
 import { removeWait } from "@/lib/workflows/server/trigger-index";
 import { deleteRun, getRun, requireWorkflow } from "@/lib/workflows/server/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function GET(request: Request, ctx: Ctx): Promise<Response> {
   try {
     requireWorkflow(auth.account.id, id);
     const run = getRun(auth.account.id, id, runId);
-    if (!run) return jsonError("Unknown run.", 404);
+    if (!run) return jsonError(msg("Unknown run."), 404);
     const { waiting: _waiting, waitingBlobs: _blobs, resumeHash: _hash, ...visible } = run;
     void _waiting;
     void _blobs;

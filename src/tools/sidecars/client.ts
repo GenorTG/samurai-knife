@@ -8,6 +8,7 @@ import type { CraftFile } from "@/lib/craft/files";
 import type { CraftLaunch } from "@/lib/craft/launch";
 import type { AppNotices } from "@/lib/craft/notices";
 import type { CraftUpdatesView } from "@/lib/craft/updates";
+import { cmsg } from "@/lib/i18n/client-locale";
 
 /**
  * Typed browser helpers for /api/services and /api/office. Same-origin relative URLs and JSON bodies, so every mutating
@@ -43,8 +44,9 @@ export class ApiError extends Error {
   }
 }
 
+/** The error's message, in the interface language when the catalogue knows it (browser only). */
 export function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return cmsg(error instanceof Error ? error.message : String(error));
 }
 
 export async function request<T>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {

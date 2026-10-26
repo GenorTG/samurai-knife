@@ -8,6 +8,7 @@ import { loginChoices, type Account } from "@/lib/accounts/store";
 import { authMode, isPublicMode } from "@/lib/accounts/mode";
 import { knifeHosts } from "@/lib/hosts";
 import { noteAuthenticated } from "@/lib/security/guard-bridge";
+import { msgf } from "@/lib/i18n/msg";
 
 /** Host allow-list; KNIFE_MCP_ALLOWED_HOSTS (comma-separated) replaces it entirely. */
 export function allowedHosts(): string[] {
@@ -66,7 +67,7 @@ export async function parseBody<T>(request: Request, schema: { safeParse: (value
   const read = await readJsonBody(request, maxBytes);
   if ("response" in read) return read;
   const parsed = schema.safeParse(read.body);
-  return parsed.success ? { data: parsed.data } : { response: jsonError(`Expected ${usage}.`, 400) };
+  return parsed.success ? { data: parsed.data } : { response: jsonError(msgf("Expected {usage}.", { usage }), 400) };
 }
 
 export type Authenticated = { account: Account } | { response: NextResponse };
@@ -90,7 +91,7 @@ function megabytes(bytes: number): string {
 
 /** 413 with a readable message (the `error` code stays `payload_too_large` for callers that match on it). */
 export function payloadTooLarge(maxBytes: number): NextResponse {
-  return jsonError("payload_too_large", 413, { message: `The request body is larger than ${megabytes(maxBytes)}.`, maxBytes });
+  return jsonError("payload_too_large", 413, { message: msgf("The request body is larger than {size}.", { size: megabytes(maxBytes) }), maxBytes });
 }
 
 export type CappedBody = { bytes: Uint8Array } | { tooLarge: true } | { failed: true };

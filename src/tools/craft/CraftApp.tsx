@@ -11,6 +11,7 @@ import { CraftUpdates } from "./CraftUpdates";
 import { CraftFilesDrawer, CraftOpenChooser } from "./CraftFiles";
 import { useCraftBridge, type OpenRequest, type PickedFile, type SaveRequest } from "./useCraftBridge";
 import { clearCraftPresence, setCraftPresence } from "@/lib/craft/live";
+import { useT } from "@/lib/i18n/react";
 
 const SERVICE = "craft";
 
@@ -40,6 +41,7 @@ function withFlag(url: string, flag: string): string {
  * then a lazy start (`ensure`) and the launch URL (`GET /api/craft`). docs/SIDECARS.md "ArtCraft".
  */
 export default function CraftApp({ app: appId }: { app: string }) {
+  const { t } = useT();
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === appId) as SidecarSite;
   const sidecar = useSidecar(SERVICE);
   const { follow, op } = sidecar;
@@ -91,7 +93,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   }, [ready]);
 
   const service = sidecar.service;
-  if (!service && !sidecar.error) return <CraftPlaceholder app={app} status="Checking the Craft apps server…" op={null} />;
+  if (!service && !sidecar.error) return <CraftPlaceholder app={app} status={t("Checking the Craft apps server…")} op={null} />;
   if (!service || !service.installed || !service.runtime.ok) {
     return (
       <SidecarCard
@@ -99,9 +101,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         compact
         intro={
           <Notice tone="info">
-            {app.name} ({app.kind}) is one of {ARTCRAFT_APPS.length} open-source apps by the ArtCraft team that run entirely in your browser. A small web server on this machine serves
-            them on an address of their own: install it once (about {Math.round(ARTCRAFT_APPS.reduce((sum, a) => sum + a.bytes, 0) / 1048576)} MB of
-            downloads, checked against pinned hashes); it starts by itself when you open an app and stops when idle.
+            {t("{name} ({kind}) is one of {artcraftApps} open-source apps by the ArtCraft team that run entirely in your browser. A small web server on this machine serves them on an address of their own: install it once (about {value} MB of downloads, checked against pinned hashes); it starts by itself when you open an app and stops when idle.", { name: app.name, kind: t(app.kind), artcraftApps: ARTCRAFT_APPS.length, value: Math.round(ARTCRAFT_APPS.reduce((sum, a) => sum + a.bytes, 0) / 1048576) })}
           </Notice>
         }
       />
@@ -112,7 +112,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
     return (
       <div className="space-y-4">
         <Notice tone={stage.needsAdmin ? "info" : "error"}>
-          {stage.needsAdmin ? `An administrator has to start the Craft apps before you can use ${app.name}.` : `${app.name} could not start: ${stage.message}`}
+          {stage.needsAdmin ? t("An administrator has to start the Craft apps before you can use {name}.", { name: app.name }) : `${app.name} could not start: ${stage.message}`}
         </Notice>
         <OpProgress op={op} />
       </div>
@@ -120,7 +120,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
   }
 
   if (stage.kind !== "ready") {
-    return <CraftPlaceholder app={app} status="Starting the Craft apps server…" op={op} />;
+    return <CraftPlaceholder app={app} status={t("Starting the Craft apps server…")} op={op} />;
   }
 
   return <CraftFrame app={app} stage={stage} canManage={Boolean(service.canManage)} />;
@@ -153,6 +153,7 @@ const PROBE_FOR_MS = 60_000;
 const PROBE_STARTING_MS = 5 * 60_000;
 
 function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extract<Stage, { kind: "ready" }>; canManage: boolean }) {
+  const { t } = useT();
   const [webgl, setWebgl] = useState(false);
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -222,7 +223,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
   const src = app.webgpu && webgl ? withFlag(stage.url, "webgl") : stage.url;
   const secure = secureOrigin(stage.origin);
   const status =
-    bridgeState.kind === "connecting" ? `Preparing ${app.name}…` : bridgeState.kind === "failed" ? `${app.name} is not loaded.` : loadedSrc === src ? `${app.name} loaded from ${stage.origin}.` : `Loading ${app.name}…`;
+    bridgeState.kind === "connecting" ? t("Preparing {name}…", { name: app.name }) : bridgeState.kind === "failed" ? `${app.name} is not loaded.` : loadedSrc === src ? `${app.name} loaded from ${stage.origin}.` : t("Loading {name}…", { name: app.name });
 
   // The workspace: toolbar + app, sized to the window. Full screen covers the page with it (in the page, so the file
   // chooser and My files keep working); `?full=1` (Open in new tab) starts that way.
@@ -250,24 +251,24 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
   if (bridgeState.kind === "failed") {
     notes.push(
       <Notice key="bridge" tone="error">
-        {bridgeState.message} {app.name} only loads once its files can go to your account (and a browser shared with someone else is cleared first).{" "}
+        {t("{message} {name} only loads once its files can go to your account (and a browser shared with someone else is cleared first).", { message: bridgeState.message, name: app.name })}{" "}
         <Button size="sm" onClick={retry}>
-          Try again
+          {t("Try again")}
         </Button>
       </Notice>,
     );
   }
-  if (bridgeState.kind === "ready" && bridgeState.wiped) notes.push(<p key="wiped">Another account used the Craft apps in this browser before you: their local data was cleared.</p>);
+  if (bridgeState.kind === "ready" && bridgeState.wiped) notes.push(<p key="wiped">{t("Another account used the Craft apps in this browser before you: their local data was cleared.")}</p>);
   if (!secure) {
     notes.push(
       <p key="secure">
         {app.webgpu
-          ? `This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so ${app.name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve the Craft apps over https for WebGPU.`
-          : `This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve the Craft apps over https for the full storage.`}
+          ? t("This address is plain http, which is not a secure context: WebGPU and the clipboard are off, so {name} draws with WebGL2 (tick Force WebGL2 if it misbehaves). Serve the Craft apps over https for WebGPU.", { name: app.name })
+          : t("This address is plain http, which is not a secure context: the clipboard is off and the browser may keep the library in IndexedDB instead of OPFS. Serve the Craft apps over https for the full storage.")}
       </p>,
     );
   }
-  if (app.note) notes.push(<p key="note">{app.note}</p>);
+  if (app.note) notes.push(<p key="note">{t(app.note)}</p>);
 
   return (
     <>
@@ -275,7 +276,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
         key={`bridge-${bridgeAttempt}`}
         ref={bridgeFrame}
         src={stage.bridgeUrl}
-        title="Craft files bridge"
+        title={t("Craft files bridge")}
         sandbox="allow-scripts allow-same-origin"
         referrerPolicy="no-referrer"
         onLoad={onBridgeLoad}
@@ -293,41 +294,41 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
           </p>
           {note ? (
             <p role="status" aria-live="polite" data-craft-saved className={`flex min-w-0 items-center gap-2 text-xs ${note.kind === "error" ? "text-danger" : "text-good"}`}>
-              <span className="truncate">{note.kind === "saving" ? `Saving ${note.name} to your files…` : note.kind === "error" ? note.message : `Saved ${note.file.name} to your files.`}</span>
+              <span className="truncate">{note.kind === "saving" ? t("Saving {name} to your files…", { name: note.name }) : note.kind === "error" ? note.message : t("Saved {name} to your files.", { name: note.file.name })}</span>
               {note.kind === "saved" ? (
                 <a className="shrink-0 underline underline-offset-2 hover:text-ink" href={craftFileDownloadUrl(note.file.id)} download={note.file.name}>
-                  Download
+                  {t("Download")}
                 </a>
               ) : null}
             </p>
           ) : null}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {agent === "connected" ? (
-              <span data-craft-agent="connected" className="text-xs text-good" title={`The assistant can read and drive ${app.name} (craft_* tools); it asks before acting, as your trust setting says.`}>
-                Assistant ready
+              <span data-craft-agent="connected" className="text-xs text-good" title={t("The assistant can read and drive {name} (craft_* tools); it asks before acting, as your trust setting says.", { name: app.name })}>
+                {t("Assistant ready")}
               </span>
             ) : null}
             {app.webgpu ? (
               <label className="flex items-center gap-2 text-xs text-muted">
                 <input type="checkbox" checked={webgl} onChange={(event) => setWebgl(event.target.checked)} />
-                Force WebGL2
+                {t("Force WebGL2")}
               </label>
             ) : null}
-            <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)} title="Save and Export in the app keep the file here; Open offers these and this computer">
-              My files
+            <Button size="sm" variant="ghost" onClick={() => setFilesOpen(true)} title={t("Save and Export in the app keep the file here; Open offers these and this computer")}>
+              {t("My files")}
             </Button>
             {canManage ? (
               <Button size="sm" variant="ghost" onClick={() => setUpdatesOpen(true)}>
-                Updates
+                {t("Updates")}
               </Button>
             ) : null}
-            <Button size="sm" aria-pressed={fullscreen.active} title={fullscreen.active ? "Back to the page (Esc)" : "Fill the page with the app; your files keep working"} onClick={fullscreen.active ? fullscreen.exit : fullscreen.enter}>
-              {fullscreen.active ? "Exit full screen" : "Full screen"}
+            <Button size="sm" aria-pressed={fullscreen.active} title={fullscreen.active ? t("Back to the page (Esc)") : t("Fill the page with the app; your files keep working")} onClick={fullscreen.active ? fullscreen.exit : fullscreen.enter}>
+              {fullscreen.active ? t("Exit full screen") : t("Full screen")}
             </Button>
-            <ButtonLink href="/credits" external size="sm">Credits</ButtonLink>
+            <ButtonLink href="/credits" external size="sm">{t("Credits")}</ButtonLink>
             {/* A new tab of this page (full screen), never the bare app: only here do Save and Open reach the account. */}
             <ButtonLink href={`/tools/artcraft?tab=${encodeURIComponent(app.id)}&full=1`} external size="sm">
-              Open in new tab
+              {t("Open in new tab")}
             </ButtonLink>
           </div>
         </div>

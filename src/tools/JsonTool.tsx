@@ -6,8 +6,10 @@ import { downloadText, formatInt } from "@/lib/format";
 import { JSON_DISPLAY_LIMIT, JSON_INLINE_LIMIT, runJsonTool, type JsonToolInput, type SortMode } from "@/lib/json-tool";
 import { runJsonToolInWorker } from "@/lib/json-tool-client";
 import { useAdaptive } from "@/lib/workers/use-offloaded";
+import { useT } from "@/lib/i18n/react";
 
 export default function JsonTool() {
+  const { t } = useT();
   const [input, setInput] = useState("");
   const [indent, setIndent] = useState(2);
   const [sort, setSort] = useState<SortMode>("none");
@@ -25,10 +27,10 @@ export default function JsonTool() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel
-        title="Input"
+        title={t("Input")}
         right={
           <div className="flex gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setInput("")}>Clear</Button>
+            <Button size="sm" variant="ghost" onClick={() => setInput("")}>{t("Clear")}</Button>
             <Button
               size="sm"
               variant="subtle"
@@ -37,7 +39,7 @@ export default function JsonTool() {
                 setInput(sample);
               }}
             >
-              Sample
+              {t("Sample")}
             </Button>
           </div>
         }
@@ -47,24 +49,24 @@ export default function JsonTool() {
           spellCheck={false}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Paste JSON here…"
+          placeholder={t("Paste JSON here…")}
         />
         <div className="mt-3">
-          <WorkStatus running={job.status === "running"} elapsedMs={job.elapsedMs} label="Formatting JSON" cancelLabel="Cancel formatting" onCancel={job.cancel} />
-          {job.status === "cancelled" ? <Notice>Formatting cancelled. Edit the input or options to format again.</Notice> : null}
+          <WorkStatus running={job.status === "running"} elapsedMs={job.elapsedMs} label={t("Formatting JSON")} cancelLabel={t("Cancel formatting")} onCancel={job.cancel} />
+          {job.status === "cancelled" ? <Notice>{t("Formatting cancelled. Edit the input or options to format again.")}</Notice> : null}
           {job.status === "error" ? <Notice tone="error">{job.error}</Notice> : null}
           {pending ? (
-            <Notice>Checking the document…</Notice>
+            <Notice>{t("Checking the document…")}</Notice>
           ) : result?.state === "empty" ? (
-            <Notice>Empty input.</Notice>
+            <Notice>{t("Empty input.")}</Notice>
           ) : result?.state === "valid" ? (
-            <Notice tone="good">Valid JSON.</Notice>
+            <Notice tone="good">{t("Valid JSON.")}</Notice>
           ) : result?.state === "failed" ? (
             <Notice tone="error">{result.message}</Notice>
           ) : result?.state === "invalid" ? (
             <div className="space-y-2">
               <Notice tone="error">
-                {result.issue.message} — line {result.issue.line}, column {result.issue.column}
+                {t("{message} — line {line}, column {column}", { message: result.issue.message, line: result.issue.line, column: result.issue.column })}
               </Notice>
               <p className="font-mono text-[11px] text-faint">
                 …{result.issue.before}
@@ -78,7 +80,7 @@ export default function JsonTool() {
       </Panel>
 
       <Panel
-        title="Output"
+        title={t("Output")}
         right={
           <div className="flex gap-1.5">
             <CopyButton text={output} />
@@ -88,25 +90,25 @@ export default function JsonTool() {
               disabled={!output}
               onClick={() => downloadText(output, "parsed.json", "application/json")}
             >
-              Save .json
+              {t("Save .json")}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Indent" className="w-28">
+            <Field label={t("Indent")} className="w-28">
               <Select value={indent} onChange={(e) => setIndent(Number(e.target.value))}>
-                <option value={2}>2 spaces</option>
-                <option value={4}>4 spaces</option>
-                <option value={1}>1 space</option>
+                <option value={2}>{t("2 spaces")}</option>
+                <option value={4}>{t("4 spaces")}</option>
+                <option value={1}>{t("1 space")}</option>
               </Select>
             </Field>
-            <Field label="Sort" className="w-36">
+            <Field label={t("Sort")} className="w-36">
               <Select value={sort} onChange={(e) => setSort(e.target.value as SortMode)}>
-                <option value="none">Keep order</option>
-                <option value="keys">Sort keys A→Z</option>
-                <option value="natural">Sort keys + arrays</option>
+                <option value="none">{t("Keep order")}</option>
+                <option value="keys">{t("Sort keys A→Z")}</option>
+                <option value="natural">{t("Sort keys + arrays")}</option>
               </Select>
             </Field>
             <Button
@@ -115,7 +117,7 @@ export default function JsonTool() {
               className="mb-1"
               onClick={() => setFlattened((v) => !v)}
             >
-              {flattened ? "Flattened" : "Flatten"}
+              {flattened ? t("Flattened") : t("Flatten")}
             </Button>
             <Button
               size="sm"
@@ -124,22 +126,22 @@ export default function JsonTool() {
               disabled={!output}
               onClick={() => setInput(result?.state === "valid" ? result.minified : "null")}
             >
-              Minify
+              {t("Minify")}
             </Button>
           </div>
 
           {stats ? (
             <StatGrid>
-              <Stat label="Objects" value={stats.objects} />
-              <Stat label="Arrays" value={stats.arrays} />
-              <Stat label="Leaves" value={stats.leaves} />
-              <Stat label="Depth" value={stats.depth} />
+              <Stat label={t("Objects")} value={stats.objects} />
+              <Stat label={t("Arrays")} value={stats.arrays} />
+              <Stat label={t("Leaves")} value={stats.leaves} />
+              <Stat label={t("Depth")} value={stats.depth} />
             </StatGrid>
           ) : null}
 
-          <OutputBlock value={truncated ? output.slice(0, JSON_DISPLAY_LIMIT) : output} rows={18} empty="Output appears here." />
+          <OutputBlock value={truncated ? output.slice(0, JSON_DISPLAY_LIMIT) : output} rows={18} empty={t("Output appears here.")} />
           {truncated ? (
-            <p className="text-xs text-faint">Showing the first {formatInt(JSON_DISPLAY_LIMIT)} of {formatInt(output.length)} characters. Copy and Save .json use the full output.</p>
+            <p className="text-xs text-faint">{t("Showing the first {jsonDisplayLimit} of {output} characters. Copy and Save .json use the full output.", { jsonDisplayLimit: formatInt(JSON_DISPLAY_LIMIT), output: formatInt(output.length) })}</p>
           ) : null}
         </div>
       </Panel>

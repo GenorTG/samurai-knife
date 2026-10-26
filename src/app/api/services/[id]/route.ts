@@ -7,6 +7,7 @@ import { syncAssets } from "@/lib/services/assets";
 import { configure, ensureReaper, needsRecreate, probeHealth, SidecarError, status, touch } from "@/lib/services/manager";
 import { runningOp, startOp } from "@/lib/services/ops";
 import { readState } from "@/lib/services/state";
+import { msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   const read = await readJsonBody(request, 4096);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   const body = parsed.data;
   ensureReaper();
   // Public mode: everything but using a running service (ensure while healthy, touch) is an administrator's job.

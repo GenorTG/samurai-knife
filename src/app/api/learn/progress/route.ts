@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { findCourse, findLesson } from "@/lib/learn/courses";
 import { readProgress, resetCourse, setCurrent, updateLesson } from "@/lib/learn/progress";
 import { learnError } from "@/lib/learn/sql/api";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 64 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   const body = parsed.data;
   const course = findCourse(body.course);
   if (!course) return jsonError("unknown_course", 404);
@@ -58,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
       case "solution": {
         const current = readProgress(account, course.id).lessons[lesson.id];
         if (!current || (current.failedChecks === 0 && current.hintsShown < lesson.hints.length)) {
-          return jsonError("Check a query first (or open every hint): the solution unlocks after a failed check.", 409, { code: "solution_locked" });
+          return jsonError(msg("Check a query first (or open every hint): the solution unlocks after a failed check."), 409, { code: "solution_locked" });
         }
         return json({ progress: updateLesson(account, course.id, lesson.id, (p) => ({ ...p, solutionShown: true })) });
       }

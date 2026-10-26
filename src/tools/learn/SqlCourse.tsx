@@ -24,9 +24,15 @@ import {
 } from "./client";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { SqlResults } from "./SqlResults";
+import { useLocale, useT } from "@/lib/i18n/react";
+import { localizeCourse } from "@/lib/learn/localize";
 
-const COURSE = SQL_COURSE;
-const SERVICE = COURSE.sidecar;
+const SERVICE = SQL_COURSE.sidecar;
+
+/** The course in the reader's language (same ids, starters and checks; src/lib/learn/localize.ts). */
+function useCourse() {
+  return localizeCourse(SQL_COURSE, useLocale());
+}
 
 const MD_CLASS = cx(
   "space-y-2 text-sm leading-relaxed text-ink",
@@ -57,6 +63,7 @@ interface CheckView {
 }
 
 function firstLesson(progress: CourseProgress): string {
+  const COURSE = SQL_COURSE;
   const fromUrl = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("lesson");
   if (fromUrl && COURSE.lessons.some((l) => l.id === fromUrl)) return fromUrl;
   if (progress.current && COURSE.lessons.some((l) => l.id === progress.current)) return progress.current;
@@ -64,14 +71,16 @@ function firstLesson(progress: CourseProgress): string {
 }
 
 function LessonList({ progress, current, onSelect }: { progress: CourseProgress; current: string; onSelect: (id: string) => void }) {
+  const COURSE = useCourse();
+  const { t } = useT();
   const done = COURSE.lessons.filter((l) => progress.lessons[l.id]?.completedAt).length;
   return (
-    <nav aria-label="Lessons" className="space-y-4" data-agent-region="learn-lessons">
+    <nav aria-label={t("Lessons")} className="space-y-4" data-agent-region="learn-lessons">
       <div className="space-y-1.5">
         <p className="text-sm text-ink">
-          {formatInt(done)} of {formatInt(COURSE.lessons.length)} lessons done
+          {t("{done} of {lessons} lessons done", { done: formatInt(done), lessons: formatInt(COURSE.lessons.length) })}
         </p>
-        <Meter value={(100 * done) / COURSE.lessons.length} label="Course progress" tone="good" />
+        <Meter value={(100 * done) / COURSE.lessons.length} label={t("Course progress")} tone="good" />
       </div>
       {COURSE.modules.map((group) => {
         const lessons = COURSE.lessons.filter((l) => l.module === group.id);
@@ -104,7 +113,7 @@ function LessonList({ progress, current, onSelect }: { progress: CourseProgress;
                         {entry?.completedAt ? "✓" : entry?.attempts ? "•" : ""}
                       </span>
                       <span className="min-w-0 flex-1">{lesson.title}</span>
-                      {entry?.completedAt ? <span className="sr-only">(done)</span> : null}
+                      {entry?.completedAt ? <span className="sr-only">{t("(done)")}</span> : null}
                     </button>
                   </li>
                 );
@@ -118,24 +127,25 @@ function LessonList({ progress, current, onSelect }: { progress: CourseProgress;
 }
 
 function CheckFeedback({ check, onNext }: { check: CheckView; onNext: (() => void) | null }) {
+  const { t } = useT();
   const compare = check.compare;
   return (
     <div className="space-y-2" data-agent-region="learn-check">
       <Notice tone={check.pass ? "good" : "warn"}>
-        {check.pass ? "Correct! " : "Not yet. "}
-        {check.message.replace(/^Correct: /, "")}
+        {check.pass ? t("Correct! ") : t("Not yet. ")}
+        {check.message.replace(/^(Correct|Dobrze): /, "")}
       </Notice>
       {!check.pass && compare && (compare.examples.missing.length > 0 || compare.examples.extra.length > 0) ? (
         <div className="grid gap-2 text-xs sm:grid-cols-2">
           {compare.examples.missing.length ? (
             <div>
-              <p className="font-semibold text-muted">Expected but missing (examples)</p>
+              <p className="font-semibold text-muted">{t("Expected but missing (examples)")}</p>
               <ul className="font-mono text-ink">{compare.examples.missing.map((row, i) => <li key={i}>{row}</li>)}</ul>
             </div>
           ) : null}
           {compare.examples.extra.length ? (
             <div>
-              <p className="font-semibold text-muted">In your result but not expected (examples)</p>
+              <p className="font-semibold text-muted">{t("In your result but not expected (examples)")}</p>
               <ul className="font-mono text-ink">{compare.examples.extra.map((row, i) => <li key={i}>{row}</li>)}</ul>
             </div>
           ) : null}
@@ -143,7 +153,7 @@ function CheckFeedback({ check, onNext }: { check: CheckView; onNext: (() => voi
       ) : null}
       {check.pass && onNext ? (
         <Button variant="primary" onClick={onNext}>
-          Next lesson →
+          {t("Next lesson →")}
         </Button>
       ) : null}
     </div>
@@ -165,6 +175,8 @@ function LessonPane({
   onNext: (() => void) | null;
   insertRef: React.RefObject<((text: string) => void) | null>;
 }) {
+  const COURSE = useCourse();
+  const { t } = useT();
   const entry = progress.lessons[lesson.id];
   const [sql, setSql] = useState(entry?.lastQuery ?? lesson.starter);
   const [busy, setBusy] = useState<Busy>(null);
@@ -216,13 +228,13 @@ function LessonPane({
     setBusy("run");
     setError(null);
     setCheck(null);
-    setStatus("Running the query…");
+    setStatus(t("Running the query…"));
     try {
       const answer = await runSql(sql, lesson.id);
       saved.current = sql;
       setRun({ output: answer.run, sql });
       if (answer.progress) onProgress(answer.progress);
-      setStatus(answer.run.error ? `Query failed after ${formatInt(answer.run.durationMs)} ms.` : `Ran in ${formatInt(answer.run.durationMs)} ms (rolled back).`);
+      setStatus(answer.run.error ? t("Query failed after {durationMs} ms.", { durationMs: formatInt(answer.run.durationMs) }) : t("Ran in {durationMs} ms (rolled back).", { durationMs: formatInt(answer.run.durationMs) }));
     } catch (err) {
       fail(err);
     } finally {
@@ -234,14 +246,14 @@ function LessonPane({
     if (busy) return;
     setBusy("check");
     setError(null);
-    setStatus("Checking your answer…");
+    setStatus(t("Checking your answer…"));
     try {
       const answer = await checkSql(sql, lesson.id);
       saved.current = sql;
       setRun({ output: answer.run, sql });
       setCheck({ pass: answer.pass, message: answer.message, compare: answer.compare });
       onProgress(answer.progress);
-      setStatus(answer.pass ? "Check passed." : "Check failed.");
+      setStatus(answer.pass ? t("Check passed.") : t("Check failed."));
     } catch (err) {
       fail(err);
     } finally {
@@ -260,7 +272,7 @@ function LessonPane({
         setRun(null);
         setCheck(null);
         onProgress(await progressAction(COURSE.id, { action: "reset-query", lessonId: lesson.id }));
-        setStatus("Query reset to the starter.");
+        setStatus(t("Query reset to the starter."));
       } else {
         onProgress(await progressAction(COURSE.id, { action: kind, lessonId: lesson.id }));
       }
@@ -290,24 +302,24 @@ function LessonPane({
         right={
           <span className="flex items-center gap-2">
             <span className="text-xs text-faint">{lessonModule?.title}</span>
-            {entry?.completedAt ? <Badge tone="good">Done</Badge> : null}
+            {entry?.completedAt ? <Badge tone="good">{t("Done")}</Badge> : null}
           </span>
         }
       >
         <div className="space-y-4" data-agent-region="learn-lesson">
           <Markdown text={lesson.explanation} />
           <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2.5">
-            <p className="mb-1 text-xs font-semibold tracking-wide text-accent-soft uppercase">Your task</p>
+            <p className="mb-1 text-xs font-semibold tracking-wide text-accent-soft uppercase">{t("Your task")}</p>
             <Markdown text={lesson.task} />
           </div>
         </div>
       </Panel>
 
-      <Panel title="SQL" right={<span className="text-xs text-faint">Ctrl+Enter runs, Ctrl+Shift+Enter checks</span>}>
+      <Panel title="SQL" right={<span className="text-xs text-faint">{t("Ctrl+Enter runs, Ctrl+Shift+Enter checks")}</span>}>
         <div className="space-y-3">
           <TextArea
             ref={editor}
-            aria-label="SQL editor"
+            aria-label={t("SQL editor")}
             value={sql}
             onChange={(e) => setSql(e.target.value)}
             onKeyDown={onKeyDown}
@@ -319,24 +331,24 @@ function LessonPane({
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" disabled={busy !== null} onClick={() => void doRun()}>
-              Run
+              {t("Run")}
             </Button>
             <Button disabled={busy !== null} onClick={() => void doCheck()}>
-              Check
+              {t("Check")}
             </Button>
             <Button variant="ghost" disabled={busy !== null || hintsShown >= lesson.hints.length} onClick={() => void doProgress("hint")}>
-              {hintsShown >= lesson.hints.length ? "No more hints" : `Hint (${hintsShown + 1} of ${lesson.hints.length})`}
+              {hintsShown >= lesson.hints.length ? t("No more hints") : t("Hint ({n} of {total})", { n: hintsShown + 1, total: lesson.hints.length })}
             </Button>
             <Button
               variant="ghost"
               disabled={busy !== null || !solutionUnlocked || entry?.solutionShown}
-              title={solutionUnlocked ? undefined : "Unlocks after a failed check or all hints"}
+              title={solutionUnlocked ? undefined : t("Unlocks after a failed check or all hints")}
               onClick={() => void doProgress("solution")}
             >
-              Show solution
+              {t("Show solution")}
             </Button>
             <Button variant="ghost" disabled={busy !== null} onClick={() => void doProgress("reset")}>
-              Reset query
+              {t("Reset query")}
             </Button>
           </div>
           <p role="status" aria-live="polite" className="min-h-5 text-xs text-muted" data-agent-region="learn-status">
@@ -344,10 +356,10 @@ function LessonPane({
           </p>
           {error ? <Notice tone="error">{error}</Notice> : null}
           {hintsShown > 0 ? (
-            <ol className="space-y-1.5" aria-label="Hints">
+            <ol className="space-y-1.5" aria-label={t("Hints")}>
               {lesson.hints.slice(0, hintsShown).map((hint, i) => (
                 <li key={i} className="rounded-lg border border-line bg-raised/40 px-3 py-2 text-sm">
-                  <span className="mr-1 text-xs font-semibold text-muted">Hint {i + 1}:</span>
+                  <span className="mr-1 text-xs font-semibold text-muted">{t("Hint {value}:", { value: i + 1 })}</span>
                   <Markdown text={hint} className="inline [&_p]:inline" />
                 </li>
               ))}
@@ -355,10 +367,10 @@ function LessonPane({
           ) : null}
           {entry?.solutionShown ? (
             <div className="space-y-1.5" data-agent-region="learn-solution">
-              <p className="text-xs font-semibold text-muted">Reference solution</p>
+              <p className="text-xs font-semibold text-muted">{t("Reference solution")}</p>
               <pre className="overflow-auto rounded-lg border border-line bg-field p-3 font-mono text-xs text-ink">{lesson.solution}</pre>
               <Button size="sm" onClick={() => setSql(lesson.solution)}>
-                Copy into the editor
+                {t("Copy into the editor")}
               </Button>
             </div>
           ) : null}
@@ -367,7 +379,7 @@ function LessonPane({
       </Panel>
 
       {run ? (
-        <Panel title="Result">
+        <Panel title={t("Result")}>
           <SqlResults run={run.output} sql={run.sql} />
         </Panel>
       ) : null}
@@ -376,6 +388,8 @@ function LessonPane({
 }
 
 function Workspace({ onDbLost }: { onDbLost: () => void }) {
+  const COURSE = useCourse();
+  const { t } = useT();
   const [progress, setProgress] = useState<CourseProgress | null>(null);
   const [schema, setSchema] = useState<SchemaTable[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
@@ -420,7 +434,7 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
   if (!progress || !current) {
     return (
       <p role="status" className="py-6 text-sm text-muted">
-        Loading your progress…
+        {t("Loading your progress…")}
       </p>
     );
   }
@@ -435,7 +449,7 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
         <div className="space-y-2 border-t border-line pt-3">
           {confirmReset ? (
             <div className="space-y-2">
-              <p className="text-xs text-muted">Forget every completed lesson, hint and saved query of this course?</p>
+              <p className="text-xs text-muted">{t("Forget every completed lesson, hint and saved query of this course?")}</p>
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -451,16 +465,16 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
                     }
                   }}
                 >
-                  Reset progress
+                  {t("Reset progress")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>
-                  Keep it
+                  {t("Keep it")}
                 </Button>
               </div>
             </div>
           ) : (
             <Button size="sm" variant="ghost" onClick={() => setConfirmReset(true)}>
-              Reset progress…
+              {t("Reset progress…")}
             </Button>
           )}
         </div>
@@ -478,11 +492,11 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
         />
       </div>
       <aside className="min-w-0 lg:col-span-2 2xl:col-span-1">
-        <Panel title="Tables">
+        <Panel title={t("Tables")}>
           {schema ? (
             <div className="space-y-3">
               <SchemaBrowser tables={schema} onInsert={(text) => insertRef.current?.(text)} />
-              <p className="text-xs text-faint">Click a column name to insert it at the cursor.</p>
+              <p className="text-xs text-faint">{t("Click a column name to insert it at the cursor.")}</p>
               <Button
                 size="sm"
                 variant="ghost"
@@ -499,12 +513,12 @@ function Workspace({ onDbLost }: { onDbLost: () => void }) {
                   }
                 }}
               >
-                {rebuilding ? "Rebuilding the course data…" : "Rebuild course data"}
+                {rebuilding ? t("Rebuilding the course data…") : t("Rebuild course data")}
               </Button>
             </div>
           ) : (
             <p role="status" className="text-sm text-muted">
-              Loading tables…
+              {t("Loading tables…")}
             </p>
           )}
         </Panel>
@@ -522,6 +536,8 @@ type Stage = { kind: "waiting" } | { kind: "starting" } | { kind: "seeding" } | 
  * (`ensure`) and the course data check (`setup`) run before the lessons show. docs/LEARN.md.
  */
 export default function SqlCourse() {
+  const COURSE = useCourse();
+  const { t } = useT();
   const sidecar = useSidecar(SERVICE);
   const { follow, op, refresh } = sidecar;
   const installed = Boolean(sidecar.service?.installed);
@@ -580,12 +596,11 @@ export default function SqlCourse() {
           compact
           intro={
             <Notice tone="info">
-              The course runs your queries against a real PostgreSQL + PostGIS database on this machine. Install it once (about
-              600 MB download); it starts by itself when you open the course and stops when idle. Nothing you run is kept.
+              {t("The course runs your queries against a real PostgreSQL + PostGIS database on this machine. Install it once (about 600 MB download); it starts by itself when you open the course and stops when idle. Nothing you run is kept.")}
             </Notice>
           }
         />
-        <Panel title="What you will learn">
+        <Panel title={t("What you will learn")}>
           <ul className="grid gap-1.5 text-sm text-muted sm:grid-cols-2">
             {COURSE.modules.map((group) => (
               <li key={group.id}>
@@ -600,22 +615,22 @@ export default function SqlCourse() {
 
   if (stage.kind !== "ready") {
     return (
-      <Panel title="Course database">
+      <Panel title={t("Course database")}>
         <div className="space-y-3">
           {stage.kind === "failed" ? (
             <>
               {stage.needsAdmin ? (
-                <Notice tone="info">{stage.message} The course opens once the database is running.</Notice>
+                <Notice tone="info">{stage.message} {" "}{t("The course opens once the database is running.")}</Notice>
               ) : (
-                <Notice tone="error">Could not get the course database ready: {stage.message}</Notice>
+                <Notice tone="error">{t("Could not get the course database ready:")}{" "} {stage.message}</Notice>
               )}
               <Button variant="primary" onClick={() => setAttempt((n) => n + 1)}>
-                Try again
+                {t("Try again")}
               </Button>
             </>
           ) : (
             <p role="status" aria-live="polite" className="text-sm text-muted" data-agent-region="learn-db-status">
-              {stage.kind === "seeding" ? "Preparing the course data (first time: a few seconds)…" : "Starting the course database…"}
+              {stage.kind === "seeding" ? t("Preparing the course data (first time: a few seconds)…") : t("Starting the course database…")}
             </p>
           )}
           {stage.kind === "starting" ? <OpProgress op={op} /> : null}

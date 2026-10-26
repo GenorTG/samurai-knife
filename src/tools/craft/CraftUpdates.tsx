@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, Drawer, Notice, SegmentedControl } from "@/components/ui";
 import { errorText, getCraftUpdates, postCraftUpdates, type CraftUpdateAction, type CraftUpdatesView } from "@/tools/sidecars/client";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 const MODES = [
-  { value: "auto", label: "Automatic" },
-  { value: "notify", label: "Notify only" },
-  { value: "off", label: "Off" },
+  { value: "auto", label: msg("Automatic") },
+  { value: "notify", label: msg("Notify only") },
+  { value: "off", label: msg("Off") },
 ] as const;
 
 /** UTC, pinned format: never locale-dependent output (AGENTS.md hydration rule; this drawer is client-only anyway). */
@@ -20,6 +22,7 @@ function when(iso: string | null): string {
  * per app the served/available/previous versions with Update, Roll back and Hold.
  */
 export function CraftUpdates({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged?: () => void }) {
+  const { t } = useT();
   const [view, setView] = useState<CraftUpdatesView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -63,28 +66,27 @@ export function CraftUpdates({ open, onClose, onChanged }: { open: boolean; onCl
 
   const checking = Boolean(view?.running) || busy === "check";
   return (
-    <Drawer open={open} title="Craft apps updates" onClose={onClose}>
+    <Drawer open={open} title={t("Craft apps updates")} onClose={onClose}>
       <p className="text-sm text-muted">
-        New releases come from each app&apos;s GitHub releases, checked once a day. A download must match the sha256 GitHub publishes for it; the previous
-        version stays for a one-click roll back. Updates need no restart and no host command.
+        {t("New releases come from each app's GitHub releases, checked once a day. A download must match the sha256 GitHub publishes for it; the previous version stays for a one-click roll back. Updates need no restart and no host command.")}
       </p>
       {view ? (
         <>
           <SegmentedControl
-            label="Update mode"
+            label={t("Update mode")}
             value={view.mode}
-            options={MODES.map((mode) => ({ value: mode.value, label: mode.label }))}
+            options={MODES.map((mode) => ({ value: mode.value, label: t(mode.label) }))}
             onChange={(mode) => void act("mode", { action: "mode", mode })}
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={checking} onClick={() => void act("check", { action: "check" })}>
-              Check now
+              {t("Check now")}
             </Button>
             <Button size="sm" variant="primary" disabled={checking} onClick={() => void act("check", { action: "check", apply: true })}>
-              Check and update all
+              {t("Check and update all")}
             </Button>
             <p role="status" className="text-xs text-faint">
-              {checking ? "Checking the releases…" : `Last check: ${when(view.checkedAt)}`}
+              {checking ? t("Checking the releases…") : t("Last check: {checkedAt}", { checkedAt: when(view.checkedAt) })}
             </p>
           </div>
           {view.error ? <Notice tone="error">{view.error}</Notice> : null}
@@ -93,22 +95,22 @@ export function CraftUpdates({ open, onClose, onChanged }: { open: boolean; onCl
       {error ? <Notice tone="error">{error}</Notice> : null}
       {!view && !error ? (
         <p role="status" className="text-sm text-muted">
-          Loading…
+          {t("Loading…")}
         </p>
       ) : null}
       {view ? (
-        <ul className="divide-y divide-line rounded-tool border border-line" aria-label="Apps">
+        <ul className="divide-y divide-line rounded-tool border border-line" aria-label={t("Apps")}>
           {view.apps.map((app) => (
             <li key={app.id} className="space-y-1.5 px-3 py-2.5" data-craft-update={app.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-ink">{app.name}</span>
                 <span className="text-sm text-muted">{app.active}</span>
-                {app.available ? <Badge tone="accent">{app.available} available</Badge> : null}
-                {app.hold ? <Badge>held</Badge> : null}
-                {app.served && app.served !== app.active ? <Badge tone="warn">serving {app.served}</Badge> : null}
+                {app.available ? <Badge tone="accent">{app.available} {" "}{t("available")}</Badge> : null}
+                {app.hold ? <Badge>{t("held")}</Badge> : null}
+                {app.served && app.served !== app.active ? <Badge tone="warn">{t("serving")}{" "} {app.served}</Badge> : null}
               </div>
               <p className="text-xs text-faint">
-                Minimum {app.minimum}
+                {t("Minimum {minimum}", { minimum: app.minimum })}
                 {app.previous ? ` · previous ${app.previous}` : ""}
                 {app.changedAt ? ` · ${app.change ?? "changed"} ${when(app.changedAt)}` : ""}
                 {app.knownBad.length ? ` · never installed: ${app.knownBad.join(", ")}` : ""}
@@ -117,16 +119,16 @@ export function CraftUpdates({ open, onClose, onChanged }: { open: boolean; onCl
               <div className="flex flex-wrap gap-2">
                 {app.available ? (
                   <Button size="sm" disabled={busy !== null || checking} onClick={() => void act(`apply:${app.id}`, { action: "apply", app: app.id })}>
-                    {busy === `apply:${app.id}` ? "Updating…" : `Update to ${app.available}`}
+                    {busy === `apply:${app.id}` ? t("Updating…") : t("Update to {available}", { available: app.available })}
                   </Button>
                 ) : null}
                 {app.previous ? (
                   <Button size="sm" variant="ghost" disabled={busy !== null || checking} onClick={() => void act(`rollback:${app.id}`, { action: "rollback", app: app.id })}>
-                    {busy === `rollback:${app.id}` ? "Rolling back…" : `Roll back to ${app.previous}`}
+                    {busy === `rollback:${app.id}` ? t("Rolling back…") : t("Roll back to {previous}", { previous: app.previous })}
                   </Button>
                 ) : null}
                 <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void act(`hold:${app.id}`, { action: "hold", app: app.id, hold: !app.hold })}>
-                  {app.hold ? "Release hold" : "Hold this version"}
+                  {app.hold ? t("Release hold") : t("Hold this version")}
                 </Button>
               </div>
             </li>

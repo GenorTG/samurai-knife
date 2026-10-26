@@ -1,5 +1,7 @@
 import type { Application, CvData, CvLang, Job, Variant } from "./schema";
 import type { CvOp } from "./ops";
+import { msgf } from "@/lib/i18n/msg";
+import { cmsg } from "@/lib/i18n/client-locale";
 
 /**
  * Typed browser helpers for the CV routes. Same-origin relative URLs so the browser sends the Origin header the
@@ -19,8 +21,9 @@ export function isUnavailable(error: unknown): boolean {
   return error instanceof CvApiError && (error.status === 404 || error.status === 405 || error.status === 501);
 }
 
+/** The error's message, in the interface language when the catalogue knows it (browser only). */
 export function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return cmsg(error instanceof Error ? error.message : String(error));
 }
 
 async function request<T>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
@@ -34,7 +37,7 @@ async function request<T>(method: "GET" | "POST" | "DELETE", path: string, body?
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (error) {
-    throw new CvApiError(`Network error: ${errorText(error)}`, 0);
+    throw new CvApiError(msgf("Network error: {error}", { error: errorText(error) }), 0);
   }
   const raw = await response.text();
   let parsed: unknown = null;

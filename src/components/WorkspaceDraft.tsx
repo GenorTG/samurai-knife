@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type { WorkspaceState } from "@/lib/workspace-state/store";
+import { useT } from "@/lib/i18n/react";
 
 type ControlValue = string | boolean;
 
@@ -83,6 +84,7 @@ function restore(root: HTMLElement, fields: Record<string, ControlValue>): void 
  * work the draft. Signed out: nothing is offered or saved.
  */
 export function WorkspaceDraft({ tool, Component }: DraftProps) {
+  const { t } = useT();
   const ref = useRef<HTMLDivElement>(null);
   const savedRef = useRef<Record<string, ControlValue> | undefined>(undefined);
   const restoringRef = useRef(false);
@@ -214,21 +216,21 @@ export function WorkspaceDraft({ tool, Component }: DraftProps) {
       .catch(() => setSaveState("error"));
   };
 
-  const status = saveState === "error" ? "Could not save this draft"
-    : tooLarge && saveState !== "saving" ? "Large inputs are not kept in drafts"
+  const status = saveState === "error" ? t("Could not save this draft")
+    : tooLarge && saveState !== "saving" ? t("Large inputs are not kept in drafts")
     : saveState === "saving" ? "Saving…"
-    : saveState === "saved" ? "Draft saved to your account"
-    : phase === "ready" && !offer ? "Edits are saved to your account" : "";
+    : saveState === "saved" ? t("Draft saved to your account")
+    : phase === "ready" && !offer ? t("Edits are saved to your account") : "";
   return (
     <div ref={ref} data-workspace-tool={tool}>
       {/* Not role=status: automation reads the first `main [role=status]` as the tool's own progress line. Always rendered at
           one fixed height so the tool never moves when the draft state or the offer arrives. */}
       <div className="mb-2 flex h-6 items-center justify-end gap-2 overflow-hidden whitespace-nowrap text-xs text-muted">
         {offer ? (
-          <span data-workspace-offer className="flex items-center gap-2" role="group" aria-label="Saved draft">
-            <span>Saved draft:</span>
-            <button type="button" className="rounded border border-line px-2 leading-5 text-ink hover:bg-raised" onClick={restoreDraft}>Restore saved draft</button>
-            <button type="button" className="rounded px-2 leading-5 hover:bg-raised" onClick={discardDraft}>Discard</button>
+          <span data-workspace-offer className="flex items-center gap-2" role="group" aria-label={t("Saved draft")}>
+            <span>{t("Saved draft:")}</span>
+            <button type="button" className="rounded border border-line px-2 leading-5 text-ink hover:bg-raised" onClick={restoreDraft}>{t("Restore saved draft")}</button>
+            <button type="button" className="rounded px-2 leading-5 hover:bg-raised" onClick={discardDraft}>{t("Discard")}</button>
           </span>
         ) : null}
         <span aria-live="polite">{status}</span>

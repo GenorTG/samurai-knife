@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { CopyButton, Field, KeyValues, Notice, Panel, Select, TextInput } from "@/components/ui";
+import { useT } from "@/lib/i18n/react";
 
 /**
  * Epoch ⇄ calendar time. No date library: `Date` plus `Intl.DateTimeFormat`
@@ -102,6 +103,7 @@ function dayOfYear(stamp: Date): number {
 }
 
 export default function EpochTool() {
+  const { t } = useT();
   const [raw, setRaw] = useState<string | null>(null);
   const [zone, setZone] = useState("Europe/Warsaw");
   const [start, setStart] = useState("");
@@ -118,15 +120,15 @@ export default function EpochTool() {
     if (seconds === null) return [];
     const stamp = new Date(seconds * 1000);
     return [
-      ["Unix seconds", String(Math.floor(seconds))],
-      ["Unix milliseconds", String(Math.floor(seconds * 1000))],
+      [t("Unix seconds"), String(Math.floor(seconds))],
+      [t("Unix milliseconds"), String(Math.floor(seconds * 1000))],
       ["ISO 8601 UTC", stamp.toISOString()],
-      ["Your zone", wallClock(seconds, localZone)],
-      ["Selected zone", wallClock(seconds, zone)],
-      ["Offset from now", now === null ? "—" : `${breakdown(seconds - now)} ${seconds >= now ? "ahead" : "behind"}`],
+      [t("Your zone"), wallClock(seconds, localZone)],
+      [t("Selected zone"), wallClock(seconds, zone)],
+      [t("Offset from now"), now === null ? "—" : `${breakdown(seconds - now)} ${seconds >= now ? "ahead" : "behind"}`],
       ["Week / day-of-year", `W${isoWeek(stamp)} · day ${dayOfYear(stamp)}`],
     ];
-  }, [localZone, now, seconds, zone]);
+  }, [t, localZone, now, seconds, zone]);
 
   const duration = useMemo(() => {
     if (startSeconds === null || endSeconds === null) return null;
@@ -137,25 +139,25 @@ export default function EpochTool() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Right now"
-        right={<span className="font-mono text-[11px] text-faint">ticks every second</span>}
+        title={t("Right now")}
+        right={<span className="font-mono text-[11px] text-faint">{t("ticks every second")}</span>}
       >
         <KeyValues
           rows={[
-            ["Unix seconds", now === null ? "—" : String(now)],
-            ["Unix milliseconds", now === null ? "—" : String(now * 1000)],
+            [t("Unix seconds"), now === null ? "—" : String(now)],
+            [t("Unix milliseconds"), now === null ? "—" : String(now * 1000)],
             ["ISO 8601 UTC", now === null ? "—" : new Date(now * 1000).toISOString()],
-            [`Your zone (${localZone})`, now === null ? "—" : wallClock(now, localZone)],
+            [t("Your zone ({localZone})", { localZone }), now === null ? "—" : wallClock(now, localZone)],
           ]}
         />
         <div className="flex flex-wrap gap-1.5">
-          <CopyButton text={now === null ? "" : String(now)} label="Copy epoch" />
+          <CopyButton text={now === null ? "" : String(now)} label={t("Copy epoch")} />
         </div>
       </Panel>
 
-      <Panel title="Convert">
+      <Panel title={t("Convert")}>
         <div className="space-y-3">
-          <Field label="Epoch or ISO date" hint="A number under 1e12 is seconds; above it is milliseconds. Dates may carry an explicit offset.">
+          <Field label={t("Epoch or ISO date")} hint={t("A number under 1e12 is seconds; above it is milliseconds. Dates may carry an explicit offset.")}>
             <TextInput
               value={currentInput}
               spellCheck={false}
@@ -166,7 +168,7 @@ export default function EpochTool() {
           </Field>
 
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="Zone" className="w-40">
+            <Field label={t("Zone")} className="w-40">
               <Select value={zone} onChange={(e) => setZone(e.target.value)}>
                 {ZONES.map((value) => (
                   <option key={value} value={value}>
@@ -178,15 +180,15 @@ export default function EpochTool() {
           </div>
 
           {currentInput.trim() && seconds === null ? (
-            <Notice tone="error">That is neither a number nor a date this browser can read.</Notice>
+            <Notice tone="error">{t("That is neither a number nor a date this browser can read.")}</Notice>
           ) : null}
 
           {seconds !== null ? (
             <div className="space-y-2">
               <KeyValues rows={rows} />
               <div className="flex flex-wrap gap-1.5">
-                <CopyButton text={String(Math.floor(seconds))} label="Copy seconds" />
-                <CopyButton text={new Date(seconds * 1000).toISOString()} label="Copy ISO" />
+                <CopyButton text={String(Math.floor(seconds))} label={t("Copy seconds")} />
+                <CopyButton text={new Date(seconds * 1000).toISOString()} label={t("Copy ISO")} />
               </div>
             </div>
           ) : null}
@@ -194,7 +196,7 @@ export default function EpochTool() {
       </Panel>
 
       <Panel
-        title="Duration"
+        title={t("Duration")}
         right={
           duration
             ? <span className="font-mono text-[11px] text-faint">{duration.human}</span>
@@ -203,21 +205,21 @@ export default function EpochTool() {
       >
         <div className="space-y-3">
           <div className="grid gap-4 lg:grid-cols-2">
-            <Field label="From">
+            <Field label={t("From")}>
               <TextInput
                 value={start}
                 spellCheck={false}
                 onChange={(e) => setStart(e.target.value)}
-                placeholder="epoch or date"
+                placeholder={t("epoch or date")}
                 className="font-mono"
               />
             </Field>
-            <Field label="To">
+            <Field label={t("To")}>
               <TextInput
                 value={end}
                 spellCheck={false}
                 onChange={(e) => setEnd(e.target.value)}
-                placeholder="epoch or date"
+                placeholder={t("epoch or date")}
                 className="font-mono"
               />
             </Field>
@@ -232,11 +234,11 @@ export default function EpochTool() {
                   ["Milliseconds", String(Math.round(duration.delta * 1000))],
                 ]}
               />
-              <CopyButton text={String(Math.round(duration.delta))} label="Copy seconds" />
+              <CopyButton text={String(Math.round(duration.delta))} label={t("Copy seconds")} />
             </div>
           ) : (
             <p className="text-xs text-faint">
-              Fill both sides — epochs and dates mix freely.
+              {t("Fill both sides — epochs and dates mix freely.")}
             </p>
           )}
         </div>

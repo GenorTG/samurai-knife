@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { toolContextFor } from "@/lib/accounts/authz";
 import { ADMIN_TOOL_MESSAGE } from "@/lib/mcp/define";
 import { KNIFE_TOOLS, callKnifeTool, serializeKnifeToolResult, toolsFor } from "@/lib/mcp/tools";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 512 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError("Expected { name, args }.", 400, { ok: false });
+  if (!parsed.success) return jsonError(msg("Expected { name, args }."), 400, { ok: false });
 
   if (!KNIFE_TOOLS.some((tool) => tool.name === parsed.data.name)) {
     return json({ ok: false, error: `Unknown tool: ${parsed.data.name}` }, 404);

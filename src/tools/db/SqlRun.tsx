@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { SqlValue } from "sql.js";
 import { Button, Dropzone, Field, Notice, Panel, StatGrid, Stat, TextArea, TextInput } from "@/components/ui";
-import { cx, downloadBlob, formatBytes, formatInt, plural, safeFilename } from "@/lib/format";
+import { cx, downloadBlob, formatBytes, formatInt, safeFilename } from "@/lib/format";
 import { saveSchema, useStoredSchema } from "@/lib/sql/schema-store";
 import { RUN_EXAMPLE_QUERY, SAMPLE_RUN_SQL } from "@/lib/sql/samples";
 import { MAX_STORED_ROWS, type EngineState, type RunOutput, type StatementMeta } from "@/lib/sql/sqlite-protocol";
@@ -11,6 +11,8 @@ import { isAbortError, SqlEngine } from "@/lib/sql/sqlite-client";
 import { WorkerCrashError } from "@/lib/workers/errors";
 import { displayValue, looksLikeSqlite, MAX_DB_BYTES, quoteIdent, schemaToSqliteDdl, tableNameFromFile, type TableInfo } from "@/lib/sql/sqlite-runtime";
 import { CurrentSchemaRegion } from "./sql-shared";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 interface Flash {
   tone: "info" | "good" | "error";
@@ -46,13 +48,14 @@ function formatElapsed(ms: number): string {
 }
 
 const BUSY_LABEL: Record<Busy["kind"], { running: string; cancel: string }> = {
-  query: { running: "Running query", cancel: "Cancel running query" },
-  import: { running: "Importing file", cancel: "Cancel import" },
-  open: { running: "Opening database", cancel: "Cancel opening database" },
-  task: { running: "Working", cancel: "Cancel" },
+  query: { running: msg("Running query"), cancel: msg("Cancel running query") },
+  import: { running: msg("Importing file"), cancel: msg("Cancel import") },
+  open: { running: msg("Opening database"), cancel: msg("Cancel opening database") },
+  task: { running: msg("Working"), cancel: msg("Cancel") },
 };
 
 export default function SqlRun() {
+  const { t, tn } = useT();
   // Constructing the engine starts nothing: the worker spawns on first use (or when the SQL box is focused), so merely opening
   // the tab leaves no live worker request behind.
   const [engine] = useState(() => new SqlEngine());
@@ -123,12 +126,12 @@ export default function SqlRun() {
           // restore failed too: the previous state stays on screen, the message below says what happened
         }
         setOutcome(null);
-        const restored = `The database was restored from its ${point.label} snapshot (${formatBytes(point.bytes ?? 0)}, taken ${formatElapsed(Date.now() - point.takenAt)} ago).`;
+        const restored = t("The database was restored from its {label} snapshot ({formatBytes}, taken {formatElapsed} ago).", { label: point.label, formatBytes: formatBytes(point.bytes ?? 0), formatElapsed: formatElapsed(Date.now() - point.takenAt) });
         setFlash(
           cancelled
             ? {
                 tone: "info",
-                text: `Cancelled ${BUSY_LABEL[kind].running.toLowerCase()} after ${formatElapsed(performance.now() - startedAt)}. ${restored} Changes made by the cancelled work are gone.${point.stale ? " The database has since outgrown the snapshot limit, so this snapshot predates your latest writes." : ""}`,
+                text: t("Cancelled {toLowerCase} after {formatElapsed}. {restored} Changes made by the cancelled work are gone.{value}", { toLowerCase: BUSY_LABEL[kind].running.toLowerCase(), formatElapsed: formatElapsed(performance.now() - startedAt), restored, value: point.stale ? " The database has since outgrown the snapshot limit, so this snapshot predates your latest writes." : "" }),
               }
             : { tone: "error", text: `${message} ${restored}` },
         );
@@ -138,7 +141,7 @@ export default function SqlRun() {
         setBusy(null);
       }
     },
-    [applyState, engine],
+    [t, applyState, engine],
   );
 
   const cancel = () => abortRef.current?.abort();
@@ -146,7 +149,7 @@ export default function SqlRun() {
   const execute = useCallback(
     (sql: string, label = "Results") => {
       if (!sql.trim()) {
-        setFlash({ tone: "error", text: "Write some SQL first." });
+        setFlash({ tone: "error", text: t("Write some SQL first.") });
         return;
       }
       const startedAt = performance.now();
@@ -169,7 +172,7 @@ export default function SqlRun() {
         setHistory((h) => [{ id: (historyId.current += 1), sql, ms: out.ms, ok: !out.error }, ...h].slice(0, 25));
       });
     },
-    [applyState, work],
+    [t, applyState, work],
   );
 
   const handleFiles = async (files: File[]) => {
@@ -190,7 +193,7 @@ export default function SqlRun() {
           }
           setDbName(file.name);
           setOutcome(null);
-          setFlash({ tone: "good", text: `Opened ${file.name} (${formatBytes(file.size)}). It is held in memory; nothing was uploaded.` });
+          setFlash({ tone: "good", text: t("Opened {name} ({file}). It is held in memory; nothing was uploaded.", { name: file.name, file: formatBytes(file.size) }) });
           return true;
         });
         if (!ok) return;
@@ -208,7 +211,7 @@ export default function SqlRun() {
         setSqlText(`SELECT * FROM ${quoteIdent(out.name)} LIMIT 100;`);
         setFlash({
           tone: "good",
-          text: `Imported ${file.name} as table ${out.name}: ${plural(out.rows, "row")}, ${plural(out.columns.length, "column")} (${out.columns.join(", ")}). Column types were inferred (INTEGER, REAL or TEXT).`,
+          text: t("Imported {name} as table {name2}: {rows}, {columns} ({join}). Column types were inferred (INTEGER, REAL or TEXT).", { name: file.name, name2: out.name, rows: tn("{n} row", "{n} rows", out.rows), columns: tn("{n} column", "{n} columns", out.columns.length), join: out.columns.join(", ") }),
         });
         return true;
       });
@@ -221,7 +224,7 @@ export default function SqlRun() {
       applyState(await engine.open(null, "empty database", { signal }));
       setDbName("memory");
       setOutcome(null);
-      setFlash({ tone: "info", text: "Started a new empty in-memory database." });
+      setFlash({ tone: "info", text: t("Started a new empty in-memory database.") });
     });
   };
 
@@ -231,13 +234,13 @@ export default function SqlRun() {
       const out = await engine.run(SAMPLE_RUN_SQL, { signal, keepResults: true });
       applyState(out.state);
       if (out.error) {
-        setFlash({ tone: "error", text: `Sample failed: ${out.error.message}` });
+        setFlash({ tone: "error", text: t("Sample failed: {message}", { message: out.error.message }) });
         return;
       }
       setDbName("shop-sample");
       setOutcome(null);
       setSqlText(RUN_EXAMPLE_QUERY);
-      setFlash({ tone: "good", text: "Loaded the sample shop database (customers, products, orders, order_items). Press Run query." });
+      setFlash({ tone: "good", text: t("Loaded the sample shop database (customers, products, orders, order_items). Press Run query.") });
     });
   };
 
@@ -248,8 +251,8 @@ export default function SqlRun() {
       applyState(out.state);
       setFlash(
         out.error
-          ? { tone: "error", text: `Could not create tables: ${out.error.message}` }
-          : { tone: "good", text: `Created ${plural(stored.schema.tables.length, "table")} from the current schema (existing tables were left alone).` },
+          ? { tone: "error", text: t("Could not create tables: {message}", { message: out.error.message }) }
+          : { tone: "good", text: t("Created {tables} from the current schema (existing tables were left alone).", { tables: tn("{n} table", "{n} tables", stored.schema.tables.length) }) },
       );
     });
   };
@@ -257,8 +260,8 @@ export default function SqlRun() {
   const useAsSchema = () => {
     void work("task", async (engine) => {
       const schema = await engine.schema();
-      saveSchema(schema, `Run tab: ${dbName}`);
-      setFlash({ tone: "good", text: `Saved ${plural(schema.tables.length, "table")} from ${dbName} as the current schema (used by Validate and Build).` });
+      saveSchema(schema, t("Run tab: {dbName}", { dbName }));
+      setFlash({ tone: "good", text: t("Saved {tables} from {dbName} as the current schema (used by Validate and Build).", { tables: tn("{n} table", "{n} tables", schema.tables.length), dbName }) });
     });
   };
 
@@ -267,7 +270,7 @@ export default function SqlRun() {
       const bytes = await engine.exportDb();
       const base = safeFilename(dbName.replace(/\.[^.]+$/, "")) || "database";
       downloadBlob(new Blob([bytes.slice().buffer], { type: "application/vnd.sqlite3" }), `${base}.sqlite`);
-      setFlash({ tone: "good", text: `Exported ${base}.sqlite (${formatBytes(bytes.length)}).` });
+      setFlash({ tone: "good", text: t("Exported {base}.sqlite ({bytes}).", { base, bytes: formatBytes(bytes.length) }) });
     });
   };
 
@@ -281,14 +284,14 @@ export default function SqlRun() {
         return;
       }
       if (!first) {
-        setFlash({ tone: "error", text: "Write a statement to explain first." });
+        setFlash({ tone: "error", text: t("Write a statement to explain first.") });
         return;
       }
       const sql = `EXPLAIN QUERY PLAN ${first}`;
       const out = await engine.run(sql, { signal });
       setOutcome(out);
       setRunId((n) => n + 1);
-      setOutcomeLabel("Query plan");
+      setOutcomeLabel(t("Query plan"));
       applyState(out.state);
       setFlash(null);
       setHistory((h) => [{ id: (historyId.current += 1), sql, ms: out.ms, ok: !out.error }, ...h].slice(0, 25));
@@ -310,41 +313,40 @@ export default function SqlRun() {
         {busy && now - busy.startedAt > 300 ? (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line-strong bg-raised/60 px-3 py-2 text-sm text-muted">
             <span className="min-w-0 flex-1">
-              {BUSY_LABEL[busy.kind].running}… {formatElapsed(now - busy.startedAt)} elapsed{busy.detail ? `, ${busy.detail}` : ""}. The page stays usable; Cancel stops it and restores the last snapshot.
+              {t("{running}… {elapsed} elapsed", { running: t(BUSY_LABEL[busy.kind].running), elapsed: formatElapsed(now - busy.startedAt) })}{busy.detail ? `, ${busy.detail}` : ""}{t(". The page stays usable; Cancel stops it and restores the last snapshot.")}
             </span>
-            <Button size="sm" variant="danger" onClick={cancel}>{BUSY_LABEL[busy.kind].cancel}</Button>
+            <Button size="sm" variant="danger" onClick={cancel}>{t(BUSY_LABEL[busy.kind].cancel)}</Button>
           </div>
         ) : null}
       </div>
 
       <div className="min-w-0 space-y-4">
-        <Panel title="Database">
+        <Panel title={t("Database")}>
           <div className="space-y-3">
             <div role="status" aria-live="polite" data-agent-region="database-status">
               <StatGrid>
-                <Stat label="Open" value={<span className="break-all text-[13px]">{dbName}</span>} />
-                <Stat label="Tables" value={formatInt(tables.length)} />
-                <Stat label="Size" value={dbBytes === null ? "—" : formatBytes(dbBytes)} />
+                <Stat label={t("Open")} value={<span className="break-all text-[13px]">{dbName}</span>} />
+                <Stat label={t("Tables")} value={formatInt(tables.length)} />
+                <Stat label={t("Size")} value={dbBytes === null ? "—" : formatBytes(dbBytes)} />
               </StatGrid>
             </div>
             <Dropzone
               multiple
               disabled={!idle}
               accept=".sqlite,.sqlite3,.db,.db3,.csv,.tsv,.txt,.json,.ndjson,.jsonl"
-              hint="Choose a SQLite database to open, or CSV / TSV / JSON to import as a table (max 64 MB, stays in this tab)"
+              hint={t("Choose a SQLite database to open, or CSV / TSV / JSON to import as a table (max 64 MB, stays in this tab)")}
               onFiles={handleFiles}
             />
-            <Field label="Table name for the next CSV/JSON import" hint="Leave empty to use the file name.">
-              <TextInput value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="orders" spellCheck={false} />
+            <Field label={t("Table name for the next CSV/JSON import")} hint={t("Leave empty to use the file name.")}>
+              <TextInput value={importName} onChange={(e) => setImportName(e.target.value)} placeholder={t("orders")} spellCheck={false} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={loadSample} disabled={!idle}>Load sample database</Button>
-              <Button size="sm" onClick={newDatabase} disabled={!idle}>New empty database</Button>
-              <Button size="sm" onClick={exportDb} disabled={!idle}>Export database (.sqlite)</Button>
+              <Button size="sm" onClick={loadSample} disabled={!idle}>{t("Load sample database")}</Button>
+              <Button size="sm" onClick={newDatabase} disabled={!idle}>{t("New empty database")}</Button>
+              <Button size="sm" onClick={exportDb} disabled={!idle}>{t("Export database (.sqlite)")}</Button>
             </div>
             <p className="text-xs text-faint">
-              Queries and imports run in a background worker. A snapshot of the database is kept when it opens and after every batch that changes it
-              (up to {formatBytes(64 * 1024 * 1024)}); Cancel restores it.
+              {t("Queries and imports run in a background worker. A snapshot of the database is kept when it opens and after every batch that changes it (up to {bytes}); Cancel restores it.", { bytes: formatBytes(64 * 1024 * 1024) })}
             </p>
             {flash ? (
               <div role={flash.tone === "error" ? "alert" : "status"}>
@@ -354,15 +356,15 @@ export default function SqlRun() {
           </div>
         </Panel>
 
-        <Panel title="Tables" right={<span className="text-xs text-faint">{plural(tables.length, "table")}</span>}>
+        <Panel title={t("Tables")} right={<span className="text-xs text-faint">{tn("{n} table", "{n} tables", tables.length)}</span>}>
           <div className="space-y-3" data-agent-region="table-list">
-            {tables.length === 0 ? <p className="text-sm text-faint">No tables yet. Load the sample, import a CSV or JSON file, or run CREATE TABLE.</p> : null}
+            {tables.length === 0 ? <p className="text-sm text-faint">{t("No tables yet. Load the sample, import a CSV or JSON file, or run CREATE TABLE.")}</p> : null}
             <ul className="space-y-2">
               {tables.map((table) => (
                 <li key={table.name} className="rounded-lg border border-line bg-raised/40 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate font-mono text-[13px] font-medium text-ink">{table.name}{table.isView ? " (view)" : ""}</span>
-                    <span className="shrink-0 text-xs text-faint">{formatInt(table.rows)} rows</span>
+                    <span className="min-w-0 truncate font-mono text-[13px] font-medium text-ink">{table.name}{table.isView ? t(" (view)") : ""}</span>
+                    <span className="shrink-0 text-xs text-faint">{formatInt(table.rows)} {" "}{t("rows")}</span>
                   </div>
                   <p className="mt-0.5 font-mono text-[11.5px] leading-relaxed break-words text-muted">
                     {table.columns.map((c) => `${c.name}${c.type ? ` ${c.type}` : ""}${c.pk ? " PK" : ""}`).join(", ")}
@@ -378,14 +380,14 @@ export default function SqlRun() {
                       execute(sql);
                     }}
                   >
-                    {`Preview ${table.name}`}
+                    {t("Preview {name}", { name: table.name })}
                   </Button>
                 </li>
               ))}
             </ul>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={useAsSchema} disabled={!idle || tables.length === 0}>Use this database as current schema</Button>
-              <Button size="sm" onClick={createFromSchema} disabled={!idle || !stored}>Create tables from current schema</Button>
+              <Button size="sm" onClick={useAsSchema} disabled={!idle || tables.length === 0}>{t("Use this database as current schema")}</Button>
+              <Button size="sm" onClick={createFromSchema} disabled={!idle || !stored}>{t("Create tables from current schema")}</Button>
             </div>
             <CurrentSchemaRegion />
           </div>
@@ -397,46 +399,46 @@ export default function SqlRun() {
           title="SQL"
           right={
             <div className="flex flex-wrap gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => setSqlText(RUN_EXAMPLE_QUERY)}>Example query</Button>
-              <Button size="sm" variant="ghost" onClick={() => setSqlText("")} disabled={!sqlText}>Clear SQL</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSqlText(RUN_EXAMPLE_QUERY)}>{t("Example query")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSqlText("")} disabled={!sqlText}>{t("Clear SQL")}</Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <Field label="SQL to run" hint="Multiple statements are fine. Ctrl/Cmd+Enter runs. Statements run in a background worker in your browser against the open database.">
-              <TextArea rows={9} spellCheck={false} value={sqlText} onChange={(e) => setSqlText(e.target.value)} onKeyDown={onKey} onFocus={() => engine.warm()} placeholder="SELECT * FROM my_table LIMIT 10;" />
+            <Field label={t("SQL to run")} hint={t("Multiple statements are fine. Ctrl/Cmd+Enter runs. Statements run in a background worker in your browser against the open database.")}>
+              <TextArea rows={9} spellCheck={false} value={sqlText} onChange={(e) => setSqlText(e.target.value)} onKeyDown={onKey} onFocus={() => engine.warm()} placeholder={t("SELECT * FROM my_table LIMIT 10;")} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => execute(sqlText)} disabled={!idle}>Run query</Button>
-              <Button onClick={explain} disabled={!idle}>EXPLAIN QUERY PLAN (first statement)</Button>
+              <Button variant="primary" onClick={() => execute(sqlText)} disabled={!idle}>{t("Run query")}</Button>
+              <Button onClick={explain} disabled={!idle}>{t("EXPLAIN QUERY PLAN (first statement)")}</Button>
             </div>
           </div>
         </Panel>
 
-        <Panel title={outcomeLabel} right={outcome ? <span className="text-xs text-faint">{formatMs(outcome.ms)} total</span> : null}>
+        <Panel title={outcomeLabel} right={outcome ? <span className="text-xs text-faint">{formatMs(outcome.ms)} {" "}{t("total")}</span> : null}>
           <div className="space-y-4" data-agent-region="query-results" aria-live="polite">
-            {!outcome ? <p className="text-sm text-faint">Run a query to see results here.</p> : null}
+            {!outcome ? <p className="text-sm text-faint">{t("Run a query to see results here.")}</p> : null}
             {engine && outcome?.results.map((result) => <ResultCard key={`${runId}-${result.index}`} result={result} engine={engine} />)}
             {outcome?.error ? (
               <div role="alert">
                 <Notice tone="error">
-                  Statement {outcome.error.index} failed: {outcome.error.message}
+                  {t("Statement {index} failed: {message}", { index: outcome.error.index, message: outcome.error.message })}
                   {outcome.results.length ? ` ${outcome.results.length === 1 ? "Statement 1 ran" : `Statements 1–${outcome.results.length} ran`} before the error and stays applied (SQLite autocommit); later statements were skipped.` : ""}
                 </Notice>
                 <pre className="mt-2 sk-input overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap">{outcome.error.sql}</pre>
               </div>
             ) : null}
-            {outcome && !outcome.error && outcome.results.length === 0 ? <Notice>Done: no statements produced results.</Notice> : null}
+            {outcome && !outcome.error && outcome.results.length === 0 ? <Notice>{t("Done: no statements produced results.")}</Notice> : null}
           </div>
         </Panel>
 
-        <Panel title="Query history" right={<span className="text-xs text-faint">This session only, kept in memory</span>}>
-          {history.length === 0 ? <p className="text-sm text-faint">Nothing run yet.</p> : null}
+        <Panel title={t("Query history")} right={<span className="text-xs text-faint">{t("This session only, kept in memory")}</span>}>
+          {history.length === 0 ? <p className="text-sm text-faint">{t("Nothing run yet.")}</p> : null}
           <ul className="space-y-1.5" data-agent-region="query-history">
             {history.map((entry) => (
               <li key={entry.id} className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" className="min-w-0 flex-1 justify-start" onClick={() => setSqlText(entry.sql)} aria-label={`Load query ${entry.id} into the editor`}>
-                  <span className={cx("shrink-0 text-xs", entry.ok ? "text-good" : "text-danger")}>{entry.ok ? "ok" : entry.note ?? "failed"}</span>
+                <Button size="sm" variant="ghost" className="min-w-0 flex-1 justify-start" onClick={() => setSqlText(entry.sql)} aria-label={t("Load query {id} into the editor", { id: entry.id })}>
+                  <span className={cx("shrink-0 text-xs", entry.ok ? "text-good" : "text-danger")}>{entry.ok ? "ok" : entry.note ?? t("failed")}</span>
                   <span className="truncate font-mono text-xs">{entry.sql.replace(/\s+/g, " ")}</span>
                 </Button>
                 <span className="shrink-0 text-xs text-faint">{formatMs(entry.ms)}</span>
@@ -450,6 +452,7 @@ export default function SqlRun() {
 }
 
 function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngine }) {
+  const { t, tn } = useT();
   const [exporting, setExporting] = useState<"csv" | "json" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const hasGrid = result.columns.length > 0;
@@ -457,7 +460,7 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
   const summary = hasGrid
     ? `${result.kind}: ${totalText} ${result.total === 1 ? "row" : "rows"} in ${formatMs(result.ms)}`
     : result.changes !== null
-      ? `${result.kind}: ${plural(result.changes, "row")} affected in ${formatMs(result.ms)}`
+      ? `${result.kind}: ${tn("{n} row", "{n} rows", result.changes)} affected in ${formatMs(result.ms)}`
       : `${result.kind}: done in ${formatMs(result.ms)}`;
   const base = `result-${result.index}`;
   const windowed = result.stored > result.inline.length;
@@ -475,21 +478,21 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
   };
 
   return (
-    <section aria-label={`Statement ${result.index} result`} className="space-y-2">
+    <section aria-label={t("Statement {index} result", { index: result.index })} className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[13px] font-semibold text-ink">Statement {result.index}: <span className="font-normal text-muted">{summary}</span></h3>
+        <h3 className="text-[13px] font-semibold text-ink">{t("Statement {index}:", { index: result.index })}{" "} <span className="font-normal text-muted">{summary}</span></h3>
         {hasGrid ? (
           <div className="flex flex-wrap gap-1.5">
             <Button size="sm" disabled={exporting !== null} onClick={() => void exportAs("csv")}>
-              {`Export statement ${result.index} as CSV`}
+              {t("Export statement {index} as CSV", { index: result.index })}
             </Button>
             <Button size="sm" disabled={exporting !== null} onClick={() => void exportAs("json")}>
-              {`Export statement ${result.index} as JSON`}
+              {t("Export statement {index} as JSON", { index: result.index })}
             </Button>
           </div>
         ) : null}
       </div>
-      {exporting ? <p role="status" className="text-xs text-muted">Preparing the {exporting.toUpperCase()} export of {formatInt(result.stored)} rows…</p> : null}
+      {exporting ? <p role="status" className="text-xs text-muted">{t("Preparing the {value} export of {stored} rows…", { value: exporting.toUpperCase(), stored: formatInt(result.stored) })}</p> : null}
       {exportError ? <p role="alert" className="text-xs text-danger">{exportError}</p> : null}
       <pre className="overflow-auto rounded-md bg-raised/60 px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted">{result.sql}</pre>
       {hasGrid ? (
@@ -497,7 +500,7 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
           {windowed ? (
             <WindowedGrid result={result} engine={engine} />
           ) : (
-            <div className="max-h-[60vh] overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label={`Statement ${result.index} rows`}>
+            <div className="max-h-[60vh] overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label={t("Statement {index} rows", { index: result.index })}>
               <table className="w-full border-collapse font-mono text-[12.5px]">
                 <thead className="sticky top-0 bg-raised">
                   <tr>
@@ -517,7 +520,7 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
                     </tr>
                   ))}
                   {result.inline.length === 0 ? (
-                    <tr><td colSpan={result.columns.length} className="px-3 py-3 text-faint">No rows.</td></tr>
+                    <tr><td colSpan={result.columns.length} className="px-3 py-3 text-faint">{t("No rows.")}</td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -525,11 +528,11 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
           )}
           {result.total > result.stored ? (
             <Notice tone="warn">
-              Only the first {formatInt(result.stored)} of {totalText} rows are kept for the grid and exports (limit {formatInt(MAX_STORED_ROWS)}); add LIMIT/WHERE to narrow the query.
+              {t("Only the first {stored} of {totalText} rows are kept for the grid and exports (limit {maxStoredRows}); add LIMIT/WHERE to narrow the query.", { stored: formatInt(result.stored), totalText, maxStoredRows: formatInt(MAX_STORED_ROWS) })}
             </Notice>
           ) : windowed ? (
             <Notice>
-              All {formatInt(result.stored)} rows are in the scrolling grid above (only the visible rows are drawn); exports contain every row.
+              {t("All {stored} rows are in the scrolling grid above (only the visible rows are drawn); exports contain every row.", { stored: formatInt(result.stored) })}
             </Notice>
           ) : null}
         </>
@@ -540,6 +543,7 @@ function ResultCard({ result, engine }: { result: StatementMeta; engine: SqlEngi
 
 /** Row-windowed grid: draws only the visible rows and pulls blocks of rows from the worker as the user scrolls. */
 function WindowedGrid({ result, engine }: { result: StatementMeta; engine: SqlEngine }) {
+  const { t } = useT();
   const { index, columns, stored } = result;
   const scroller = useRef<HTMLDivElement>(null);
   const pending = useRef(new Set<number>());
@@ -589,15 +593,15 @@ function WindowedGrid({ result, engine }: { result: StatementMeta; engine: SqlEn
     <div className="space-y-1.5" data-agent-region={`statement-${index}-grid`}>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span>
-          Rows {formatInt(firstVisible + 1)}–{formatInt(lastVisible + 1)} of {formatInt(stored)}
+          {t("Rows {int}–{int2} of {stored}", { int: formatInt(firstVisible + 1), int2: formatInt(lastVisible + 1), stored: formatInt(stored) })}
         </span>
         <label className="flex items-center gap-1.5">
-          <span>Jump to row</span>
+          <span>{t("Jump to row")}</span>
           <input
             type="number"
             min={1}
             max={stored}
-            aria-label={`Jump to row in statement ${index}`}
+            aria-label={t("Jump to row in statement {index}", { index })}
             className="sk-input h-7 w-28 px-2 text-xs"
             onChange={(e) => {
               const n = Number(e.target.value);
@@ -611,7 +615,7 @@ function WindowedGrid({ result, engine }: { result: StatementMeta; engine: SqlEn
         className="h-[60vh] overflow-auto rounded-lg border border-line"
         tabIndex={0}
         role="region"
-        aria-label={`Statement ${index} rows`}
+        aria-label={t("Statement {index} rows", { index })}
         onScroll={(e) => {
           setScrollTop(e.currentTarget.scrollTop);
           setViewH(e.currentTarget.clientHeight);

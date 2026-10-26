@@ -4,11 +4,13 @@ import { Launcher } from "@/components/Launcher";
 import { isGuest } from "@/lib/accounts/viewer";
 import { loadApp } from "@/lib/github-app/config";
 import { TOOLS } from "@/lib/registry";
+import { getT } from "@/lib/i18n/server";
 
 // Signed in or not is decided per request (public mode); a prerendered page would show one answer to everybody.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const { t } = await getT();
   const serverCount = TOOLS.filter((tool) => tool.kind === "server").length;
 
   // Public mode, no session: the welcome page (the public frame has its own header and footer). Every tool needs an account.
@@ -26,20 +28,17 @@ export default async function Home() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-              A private room of hand-made tools.
+              {t("A private room of hand-made tools.")}
             </h1>
             <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-muted">
-              Small, sharp, single-purpose. Most run in your browser and keep
-              files local. Favorites and recent history stay in this browser.
-              PDFs use local Python; chat-widget messages go to the provider
-              configured for your account.
+              {t("Small, sharp, single-purpose. Most run in your browser and keep files local. Favorites and recent history stay in this browser. PDFs use local Python; chat-widget messages go to the provider configured for your account.")}
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-muted shadow-xs">
-            <span className="font-mono tabular-nums">{TOOLS.length} tools</span>
+            <span className="font-mono tabular-nums">{TOOLS.length} {" "}{t("tools")}</span>
             <span aria-hidden>·</span>
             <KindBadge kind={serverCount > 0 ? "server" : "client"} />
-            <span className="font-mono">{serverCount} on server</span>
+            <span className="font-mono">{serverCount} {" "}{t("on server")}</span>
           </div>
         </div>
       </header>
@@ -48,7 +47,7 @@ export default async function Home() {
 
       <footer className="mt-14 border-t border-line pt-5 text-xs text-faint">
         <p>
-          Smart Knife · self-hosted
+          {t("Smart Knife · self-hosted")}
         </p>
       </footer>
     </main>

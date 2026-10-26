@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { requestLocale } from "@/lib/i18n/server";
 import { flowErrorResponse, json, parseBody, publicOnly } from "@/lib/accounts/http";
 import { clientIp } from "@/lib/accounts/network";
 import { resendVerification } from "@/lib/accounts/flows";
@@ -15,6 +16,6 @@ export async function POST(request: Request): Promise<Response> {
   if (off) return off;
   const parsed = await parseBody(request, bodySchema, "{ email, pow }");
   if ("response" in parsed) return parsed.response;
-  const result = resendVerification(parsed.data.email, clientIp(request), parsed.data.pow);
+  const result = resendVerification(parsed.data.email, clientIp(request), parsed.data.pow, requestLocale(request));
   return result.ok ? json({ ok: true, message: result.message }, 202) : flowErrorResponse(result);
 }

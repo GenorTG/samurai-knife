@@ -6,6 +6,8 @@ import { Button, Field, Notice, Panel, TextInput } from "@/components/ui";
 import { call, hardNavigate, safeNext } from "./api";
 import { CHECKING_TEXT, withChallenge } from "./challenge";
 import { GithubButton } from "./GithubButton";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 /** Centered single-panel frame for the sign-in pages (inside <main>, like every page). */
 export function AuthFrame({ title, intro, aside, children }: { title: string; intro?: ReactNode; aside?: ReactNode; children: ReactNode }) {
@@ -33,19 +35,20 @@ export function AuthFrame({ title, intro, aside, children }: { title: string; in
 }
 
 const PERKS: [string, string][] = [
-  ["CV studio", "a bilingual CV, a tailored version per job offer, ATS checks and an application tracker"],
-  ["Office library", "Word, Excel and PowerPoint files with folders and versions, edited in the browser"],
-  ["Website studio and database course", "audit your site from its GitHub repo; learn SQL and PostGIS on a real database"],
-  ["AI assistant", "drives the tools with you on the model you choose; connect your own agents over MCP"],
-  ["Private storage", "1 GB per account, encrypted at rest, visible to you only"],
+  [msg("CV studio"), msg("a bilingual CV, a tailored version per job offer, ATS checks and an application tracker")],
+  [msg("Office library"), msg("Word, Excel and PowerPoint files with folders and versions, edited in the browser")],
+  [msg("Website studio and database course"), msg("audit your site from its GitHub repo; learn SQL and PostGIS on a real database")],
+  [msg("AI assistant"), msg("drives the tools with you on the model you choose; connect your own agents over MCP")],
+  [msg("Private storage"), msg("1 GB per account, encrypted at rest, visible to you only")],
 ];
 
 /** Register page side panel: what an account adds to the browser tools. */
 export function AccountPerks() {
+  const { t } = useT();
   return (
     <div className="rounded-tool border border-line bg-surface/60 p-6">
-      <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-soft">Free account</p>
-      <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">Everything in Smart Knife, kept for you</h2>
+      <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent-soft">{t("Free account")}</p>
+      <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink">{t("Everything in Smart Knife, kept for you")}</h2>
       <ul className="mt-5 space-y-3.5">
         {PERKS.map(([title, text]) => (
           <li key={title} className="flex gap-3 text-sm">
@@ -53,13 +56,13 @@ export function AccountPerks() {
               <path d="M3.5 8.5l3 3 6-7" />
             </svg>
             <span className="text-muted">
-              <span className="font-medium text-ink">{title}</span>: {text}
+              <span className="font-medium text-ink">{t(title)}</span>: {t(text)}
             </span>
           </li>
         ))}
       </ul>
       <p className="mt-6 border-t border-line pt-4 text-xs text-faint">
-        No card and no trial clock. The browser tools also work without an account: <A href="/">look around first</A>.
+        {t("No card and no trial clock. The browser tools also work without an account:")}{" "} <A href="/">{t("look around first")}</A>.
       </p>
     </div>
   );
@@ -92,6 +95,7 @@ function Status({ note }: { note: Note }) {
 /* ------------------------------------------------------------------------------------------------ login */
 
 export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: string }) {
+  const { t } = useT();
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const { working, setWorking, note, setNote } = useSubmit();
@@ -107,7 +111,7 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
       onChecking: () => setNote({ tone: "info", text: CHECKING_TEXT }),
     });
     if (reply.ok) {
-      setNote({ tone: "good", text: "Logged in." });
+      setNote({ tone: "good", text: t("Logged in.") });
       hardNavigate(safeNext(next));
       return;
     }
@@ -117,27 +121,27 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
 
   return (
     <Panel>
-      <form onSubmit={submit} className="space-y-4" aria-label="Log in">
-        <Field label={publicMode ? "Username or email" : "Account"}>
+      <form onSubmit={submit} className="space-y-4" aria-label={t("Log in")}>
+        <Field label={publicMode ? t("Username or email") : t("Account")}>
           <TextInput autoFocus autoComplete="username" value={id} onChange={(e) => setId(e.target.value)} required />
         </Field>
-        <Field label="Password">
+        <Field label={t("Password")}>
           <TextInput type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </Field>
         <Status note={note} />
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="primary" disabled={working || !id.trim() || !password}>
-            {working ? "Logging in…" : "Log in"}
+            {working ? t("Logging in…") : t("Log in")}
           </Button>
           {publicMode ? (
             <span className="text-sm text-muted">
-              <A href="/forgot-password">Forgot your password?</A>
+              <A href="/forgot-password">{t("Forgot your password?")}</A>
             </span>
           ) : null}
         </div>
         {publicMode ? (
           <p className="border-t border-line pt-4 text-sm text-muted">
-            No account yet? <A href="/register">Create one</A>. Did not get the confirmation email? <A href="/verify">Send it again</A>.
+            {t("No account yet?")}{" "} <A href="/register">{t("Create one")}</A>{t(". Did not get the confirmation email?")}{" "} <A href="/verify">{t("Send it again")}</A>.
           </p>
         ) : null}
       </form>
@@ -152,6 +156,7 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
  * the password form. The server refuses a sign-up without it (400 terms_required) or for another version (409).
  */
 export function RegisterChoices({ terms, github }: { terms: string; github: boolean }) {
+  const { t, locale } = useT();
   const [accepted, setAccepted] = useState(false);
   return (
     <div className="space-y-4">
@@ -159,16 +164,25 @@ export function RegisterChoices({ terms, github }: { terms: string; github: bool
         <label className="flex items-start gap-3 text-sm text-ink">
           <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--c-accent)]" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} required />
           <span>
-            I have read and accept the <A href="/terms">Terms of Service</A> and have read the <A href="/privacy">privacy notice</A> (what is
-            stored, where, and your rights). Akceptuję <A href="/terms?lang=pl">Regulamin</A> i zapoznałem/am się z{" "}
-            <A href="/privacy?lang=pl">Polityką prywatności</A>.
+            {/* legal consent: written out per language (not catalogue text), with the documents in that language */}
+            {locale === "pl" ? (
+              <>
+                Akceptuję <A href="/terms?lang=pl">Regulamin</A> i zapoznałem/am się z <A href="/privacy?lang=pl">Polityką prywatności</A> (co jest
+                przechowywane, gdzie i jakie masz prawa).
+              </>
+            ) : (
+              <>
+                I have read and accept the <A href="/terms?lang=en">Terms of Service</A> and have read the <A href="/privacy?lang=en">privacy notice</A> (what
+                is stored, where, and your rights).
+              </>
+            )}
           </span>
         </label>
       </Panel>
       {github ? (
         <div className="space-y-3">
-          <GithubButton label="Sign up with GitHub" purpose="register" terms={terms} disabled={!accepted} />
-          <p className="text-center text-xs text-faint">GitHub&apos;s verified email is used; no password needed. Or create an account with a password:</p>
+          <GithubButton label={t("Sign up with GitHub")} purpose="register" terms={terms} disabled={!accepted} />
+          <p className="text-center text-xs text-faint">{t("GitHub's verified email is used; no password needed. Or create an account with a password:")}</p>
         </div>
       ) : null}
       <RegisterForm terms={terms} accepted={accepted} />
@@ -177,6 +191,7 @@ export function RegisterChoices({ terms, github }: { terms: string; github: bool
 }
 
 export function RegisterForm({ terms, accepted }: { terms: string; accepted: boolean }) {
+  const { t } = useT();
   const [mismatch, setMismatch] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const { working, setWorking, note, setNote } = useSubmit();
@@ -212,7 +227,7 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
       <Panel>
         <div className="space-y-3" role="status" aria-live="polite">
           <Notice tone="good">{done}</Notice>
-          <p className="text-sm text-muted">The link works once and expires in 24 hours. Then <A href="/login">log in</A>.</p>
+          <p className="text-sm text-muted">{t("The link works once and expires in 24 hours. Then")}{" "} <A href="/login">{t("log in")}</A>.</p>
         </div>
       </Panel>
     );
@@ -220,26 +235,26 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
 
   return (
     <Panel>
-      <form onSubmit={submit} onInput={() => setMismatch(false)} className="space-y-4" aria-label="Create account">
-        <Field label="Username" hint="Lowercase letters, digits, - and _; up to 32 characters.">
+      <form onSubmit={submit} onInput={() => setMismatch(false)} className="space-y-4" aria-label={t("Create account")}>
+        <Field label={t("Username")} hint={t("Lowercase letters, digits, - and _; up to 32 characters.")}>
           <TextInput autoFocus name="username" autoComplete="username" required maxLength={32} />
         </Field>
-        <Field label="Email" hint="You confirm it before the first login.">
+        <Field label={t("Email")} hint={t("You confirm it before the first login.")}>
           <TextInput name="email" type="email" autoComplete="email" required />
         </Field>
-        <Field label="Password" hint="At least 10 characters.">
+        <Field label={t("Password")} hint={t("At least 10 characters.")}>
           <TextInput name="password" type="password" autoComplete="new-password" required minLength={10} />
         </Field>
-        <Field label="Repeat password">
+        <Field label={t("Repeat password")}>
           <TextInput name="repeatPassword" type="password" autoComplete="new-password" required />
         </Field>
-        {mismatch ? <Notice tone="warn">The passwords do not match.</Notice> : null}
+        {mismatch ? <Notice tone="warn">{t("The passwords do not match.")}</Notice> : null}
         <Status note={note} />
         <Button type="submit" variant="primary" disabled={working || !accepted}>
-          {working ? "Creating…" : "Create account"}
+          {working ? t("Creating…") : t("Create account")}
         </Button>
         <p className="border-t border-line pt-4 text-sm text-muted">
-          Already have an account? <A href="/login">Log in</A>.
+          {t("Already have an account?")}{" "} <A href="/login">{t("Log in")}</A>.
         </p>
       </form>
     </Panel>
@@ -250,6 +265,7 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
 
 /** With a token: one button consumes it (a mail scanner prefetching the link does not). Without: resend the link. */
 export function VerifyPanel({ token }: { token: string | null }) {
+  const { t } = useT();
   const [result, setResult] = useState<Note>(null);
   const [working, setWorking] = useState(false);
   const [verified, setVerified] = useState(false);
@@ -264,8 +280,8 @@ export function VerifyPanel({ token }: { token: string | null }) {
       setResult({
         tone: "good",
         text: reply.body.kind === "verified"
-          ? `Your email is confirmed, ${reply.body.username}. You can log in now.`
-          : "Your new email address is confirmed and in use now.",
+          ? t("Your email is confirmed, {username}. You can log in now.", { username: reply.body.username })
+          : t("Your new email address is confirmed and in use now."),
       });
     } else {
       setResult({ tone: "error", text: reply.message });
@@ -275,15 +291,15 @@ export function VerifyPanel({ token }: { token: string | null }) {
   return (
     <div className="space-y-4">
       {token ? (
-        <Panel title="Confirm your email">
+        <Panel title={t("Confirm your email")}>
           <div className="space-y-3">
             {!verified ? (
               <Button variant="primary" onClick={confirm} disabled={working}>
-                {working ? "Confirming…" : "Confirm my email"}
+                {working ? t("Confirming…") : t("Confirm my email")}
               </Button>
             ) : null}
             <Status note={result} />
-            {verified ? <p className="text-sm text-muted"><A href="/login">Log in</A> or go <A href="/account">to your account</A>.</p> : null}
+            {verified ? <p className="text-sm text-muted"><A href="/login">{t("Log in")}</A> {" "}{t("or go")}{" "} <A href="/account">{t("to your account")}</A>.</p> : null}
           </div>
         </Panel>
       ) : null}
@@ -293,6 +309,7 @@ export function VerifyPanel({ token }: { token: string | null }) {
 }
 
 export function ResendForm() {
+  const { t } = useT();
   const [email, setEmail] = useState("");
   const { working, setWorking, note, setNote } = useSubmit();
 
@@ -310,14 +327,14 @@ export function ResendForm() {
   }
 
   return (
-    <Panel title="Send the confirmation link again">
-      <form onSubmit={submit} className="space-y-4" aria-label="Resend confirmation">
-        <Field label="Email">
+    <Panel title={t("Send the confirmation link again")}>
+      <form onSubmit={submit} className="space-y-4" aria-label={t("Resend confirmation")}>
+        <Field label={t("Email")}>
           <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         <Status note={note} />
         <Button type="submit" disabled={working || !email.trim()}>
-          {working ? "Sending…" : "Send a new link"}
+          {working ? t("Sending…") : t("Send a new link")}
         </Button>
       </form>
     </Panel>
@@ -327,6 +344,7 @@ export function ResendForm() {
 /* ---------------------------------------------------------------------------------------- forgot / reset */
 
 export function ForgotForm() {
+  const { t } = useT();
   const [email, setEmail] = useState("");
   const { working, setWorking, note, setNote } = useSubmit();
 
@@ -345,16 +363,16 @@ export function ForgotForm() {
 
   return (
     <Panel>
-      <form onSubmit={submit} className="space-y-4" aria-label="Reset password">
-        <Field label="Email" hint="The link works once and expires in 1 hour.">
+      <form onSubmit={submit} className="space-y-4" aria-label={t("Reset password")}>
+        <Field label={t("Email")} hint={t("The link works once and expires in 1 hour.")}>
           <TextInput autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         <Status note={note} />
         <Button type="submit" variant="primary" disabled={working || !email.trim()}>
-          {working ? "Sending…" : "Send reset link"}
+          {working ? t("Sending…") : t("Send reset link")}
         </Button>
         <p className="border-t border-line pt-4 text-sm text-muted">
-          Remembered it? <A href="/login">Log in</A>.
+          {t("Remembered it?")}{" "} <A href="/login">{t("Log in")}</A>.
         </p>
       </form>
     </Panel>
@@ -362,6 +380,7 @@ export function ForgotForm() {
 }
 
 export function ResetForm({ token }: { token: string | null }) {
+  const { t } = useT();
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");
   const [done, setDone] = useState(false);
@@ -371,7 +390,7 @@ export function ResetForm({ token }: { token: string | null }) {
   if (!token) {
     return (
       <Panel>
-        <Notice tone="error">This page needs the link from the reset email. <A href="/forgot-password">Ask for one</A>.</Notice>
+        <Notice tone="error">{t("This page needs the link from the reset email.")}{" "} <A href="/forgot-password">{t("Ask for one")}</A>.</Notice>
       </Panel>
     );
   }
@@ -388,8 +407,8 @@ export function ResetForm({ token }: { token: string | null }) {
     setWorking(false);
     if (reply.ok) {
       setDone(true);
-      const keys = reply.body.mcpKeysRevoked > 0 ? ` Your ${reply.body.mcpKeysRevoked} MCP key(s) were revoked too.` : "";
-      setNote({ tone: "good", text: `Your password is set. Every device was signed out; log in with the new password.${keys}` });
+      const keys = reply.body.mcpKeysRevoked > 0 ? t(" Your {mcpKeysRevoked} MCP key(s) were revoked too.", { mcpKeysRevoked: reply.body.mcpKeysRevoked }) : "";
+      setNote({ tone: "good", text: t("Your password is set. Every device was signed out; log in with the new password.{keys}", { keys }) });
     } else {
       setNote({ tone: "error", text: reply.message });
     }
@@ -397,24 +416,24 @@ export function ResetForm({ token }: { token: string | null }) {
 
   return (
     <Panel>
-      <form onSubmit={submit} className="space-y-4" aria-label="Set a new password">
+      <form onSubmit={submit} className="space-y-4" aria-label={t("Set a new password")}>
         {!done ? (
           <>
-            <Field label="New password" hint="At least 10 characters.">
+            <Field label={t("New password")} hint={t("At least 10 characters.")}>
               <TextInput autoFocus type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} />
             </Field>
-            <Field label="Repeat password">
+            <Field label={t("Repeat password")}>
               <TextInput type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required />
             </Field>
-            {mismatch ? <Notice tone="warn">The passwords do not match.</Notice> : null}
+            {mismatch ? <Notice tone="warn">{t("The passwords do not match.")}</Notice> : null}
           </>
         ) : null}
         <Status note={note} />
         {done ? (
-          <p className="text-sm text-muted"><A href="/login">Log in</A></p>
+          <p className="text-sm text-muted"><A href="/login">{t("Log in")}</A></p>
         ) : (
           <Button type="submit" variant="primary" disabled={working || mismatch || password.length < 10}>
-            {working ? "Saving…" : "Set password"}
+            {working ? t("Saving…") : t("Set password")}
           </Button>
         )}
       </form>

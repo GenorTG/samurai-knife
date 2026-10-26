@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, ButtonLink, EmptyState, Field, Notice, Panel, Select, TextArea, TextInput } from "@/components/ui";
 import { workflowsApi, type PublicCredential } from "@/lib/workflows/client";
 import { CREDENTIAL_TYPES, credentialType, oauthPreset, type CredentialField } from "@/lib/workflows/credential-types";
+import { useT } from "@/lib/i18n/react";
 
 function redirectUri(): string {
   return typeof window === "undefined" ? "" : `${window.location.origin}/api/workflows/oauth/callback`;
@@ -26,6 +27,7 @@ export function CredentialForm({
   onSaved: (credential: PublicCredential) => void;
   onCancel?: () => void;
 }) {
+  const { t } = useT();
   const types = CREDENTIAL_TYPES.filter((type) => !allowedTypes || allowedTypes.includes(type.type));
   const [type, setType] = useState(initial?.type ?? types[0]?.type ?? "httpHeaderAuth");
   const [name, setName] = useState(initial?.name ?? "");
@@ -78,35 +80,35 @@ export function CredentialForm({
   return (
     <form
       className="space-y-4"
-      aria-label={initial ? `Edit credential ${initial.name}` : "New credential"}
+      aria-label={initial ? t("Edit credential {name}", { name: initial.name }) : t("New credential")}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Type">
+        <Field label={t("Type")}>
           <Select value={type} disabled={Boolean(initial)} onChange={(event) => setType(event.target.value)}>
             {types.map((entry) => (
               <option key={entry.type} value={entry.type}>
-                {entry.label}
+                {t(entry.label)}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Name">
+        <Field label={t("Name")}>
           <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder={spec?.label} maxLength={80} />
         </Field>
       </div>
-      {spec ? <p className="text-[13px] text-muted">{spec.description}</p> : null}
+      {spec ? <p className="text-[13px] text-muted">{t(spec.description)}</p> : null}
       {type === "oAuth2Api" ? (
         <Notice>
-          Register an app with the provider{preset?.consoleUrl ? (
+          {t("Register an app with the provider")}{preset?.consoleUrl ? (
             <>
               {" "}(<a className="underline" href={preset.consoleUrl} target="_blank" rel="noreferrer noopener">{new URL(preset.consoleUrl).host}</a>)
             </>
           ) : null}
-          , add this redirect URI to it, then paste its client ID and secret: <code className="font-mono break-all">{redirectUri()}</code>
+          {t(", add this redirect URI to it, then paste its client ID and secret:")}{" "} <code className="font-mono break-all">{redirectUri()}</code>
         </Notice>
       ) : null}
       {(spec?.fields ?? [])
@@ -117,28 +119,28 @@ export function CredentialForm({
             return (
               <label key={field.name} className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={value === true || value === "true"} onChange={(event) => setField(field.name, event.target.checked)} />
-                {field.label}
+                {t(field.label)}
               </label>
             );
           }
           const hint = field.secret && secretSet(field) ? "Saved. Leave empty to keep it, type to replace it." : field.description;
           return (
-            <Field key={field.name} label={`${field.label}${field.required ? " *" : ""}`} hint={hint}>
+            <Field key={field.name} label={`${t(field.label)}${field.required ? " *" : ""}`} hint={hint}>
               {field.type === "options" ? (
                 <Select value={String(value ?? field.default ?? "")} onChange={(event) => setField(field.name, event.target.value)}>
                   {(field.options ?? []).map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {t(option.label)}
                     </option>
                   ))}
                 </Select>
               ) : field.type === "text" ? (
-                <TextArea rows={4} value={value === true ? "" : String(value ?? "")} placeholder={field.secret && secretSet(field) ? "•••••• (saved)" : field.placeholder} onChange={(event) => setField(field.name, event.target.value)} autoComplete="off" />
+                <TextArea rows={4} value={value === true ? "" : String(value ?? "")} placeholder={field.secret && secretSet(field) ? t("•••••• (saved)") : field.placeholder} onChange={(event) => setField(field.name, event.target.value)} autoComplete="off" />
               ) : (
                 <TextInput
                   type={field.type === "password" ? "password" : "text"}
                   value={value === true ? "" : String(value ?? field.default ?? "")}
-                  placeholder={field.secret && secretSet(field) ? "•••••• (saved)" : field.placeholder}
+                  placeholder={field.secret && secretSet(field) ? t("•••••• (saved)") : field.placeholder}
                   onChange={(event) => setField(field.name, event.target.value)}
                   autoComplete={field.type === "password" ? "new-password" : "off"}
                 />
@@ -149,11 +151,11 @@ export function CredentialForm({
       {error ? <Notice tone="error">{error}</Notice> : null}
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" disabled={busy}>
-          {busy ? "Saving…" : "Save credential"}
+          {busy ? t("Saving…") : t("Save credential")}
         </Button>
         {onCancel ? (
           <Button variant="ghost" onClick={onCancel}>
-            Cancel
+            {t("Cancel")}
           </Button>
         ) : null}
       </div>
@@ -185,9 +187,10 @@ export function connectOAuth(credentialId: string): Promise<boolean> {
 
 /** The credentials tab on its own (old bookmarks: `?tab=credentials`); the Workflows page opens the same manager in a drawer. */
 export default function CredentialsTab() {
+  const { t } = useT();
   return (
     <div className="space-y-4">
-      <Panel title="Credentials" right={<ButtonLink href="/tools/workflows" size="sm">← Workflows</ButtonLink>}>
+      <Panel title={t("Credentials")} right={<ButtonLink href="/tools/workflows" size="sm">{t("← Workflows")}</ButtonLink>}>
         <CredentialsManager />
       </Panel>
     </div>
@@ -196,6 +199,7 @@ export default function CredentialsTab() {
 
 /** List, add, edit, connect (OAuth2) and delete the account's workflow credentials. `onChange` after every change. */
 export function CredentialsManager({ onChange }: { onChange?: () => void }) {
+  const { t } = useT();
   const [credentials, setCredentials] = useState<PublicCredential[] | null>(null);
   const [editing, setEditing] = useState<PublicCredential | "new" | null>(null);
   const [message, setMessage] = useState<{ tone: "good" | "error" | "info"; text: string } | null>(null);
@@ -228,12 +232,12 @@ export function CredentialsManager({ onChange }: { onChange?: () => void }) {
       {editing ? null : (
         <div className="mb-3 flex justify-end">
           <Button size="sm" variant="primary" onClick={() => setEditing("new")}>
-            New credential
+            {t("New credential")}
           </Button>
         </div>
       )}
       <p className="mb-4 text-[13px] text-muted">
-        Keys, tokens and logins your workflow nodes use (HTTP Request, Webhook auth, JWT, TOTP…). They are sealed in your account and never shown again after saving; a run hands each node only the credential it names.
+        {t("Keys, tokens and logins your workflow nodes use (HTTP Request, Webhook auth, JWT, TOTP…). They are sealed in your account and never shown again after saving; a run hands each node only the credential it names.")}
       </p>
       {message ? (
         <div className="mb-3">
@@ -246,57 +250,57 @@ export function CredentialsManager({ onChange }: { onChange?: () => void }) {
           onCancel={() => setEditing(null)}
           onSaved={(credential) => {
             setEditing(null);
-            setMessage({ tone: "good", text: `Saved "${credential.name}".${credential.connected === false ? " Press Connect to sign in with the provider." : ""}` });
+            setMessage({ tone: "good", text: `Saved "${credential.name}".${credential.connected === false ? t(" Press Connect to sign in with the provider.") : ""}` });
             void load();
           }}
         />
       ) : credentials === null ? (
-        <p role="status" className="text-sm text-muted">Loading credentials…</p>
+        <p role="status" className="text-sm text-muted">{t("Loading credentials…")}</p>
       ) : credentials.length === 0 ? (
-        <EmptyState title="No credentials yet" action={<Button variant="primary" onClick={() => setEditing("new")}>New credential</Button>}>
-          Add an API key, a bearer token, a login or an OAuth2 app (Google, Meta, Microsoft…) for your workflows.
+        <EmptyState title={t("No credentials yet")} action={<Button variant="primary" onClick={() => setEditing("new")}>{t("New credential")}</Button>}>
+          {t("Add an API key, a bearer token, a login or an OAuth2 app (Google, Meta, Microsoft…) for your workflows.")}
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-line rounded-lg border border-line" aria-label="Credentials">
+        <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t("Credentials")}>
           {credentials.map((credential) => (
             <li key={credential.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink">{credential.name}</p>
                 <p className="text-xs text-muted">
-                  {credentialType(credential.type)?.label ?? credential.type} · updated {new Date(credential.updatedAt).toLocaleString("en-GB")}
+                  {t("{value} · updated {value2}", { value: credentialType(credential.type)?.label ?? credential.type, value2: new Date(credential.updatedAt).toLocaleString("en-GB") })}
                 </p>
               </div>
-              {credential.connected !== undefined ? <Badge tone={credential.connected ? "good" : "warn"}>{credential.connected ? "Connected" : "Not connected"}</Badge> : null}
+              {credential.connected !== undefined ? <Badge tone={credential.connected ? "good" : "warn"}>{credential.connected ? t("Connected") : t("Not connected")}</Badge> : null}
               {credential.type === "oAuth2Api" ? (
                 <Button
                   size="sm"
                   onClick={async () => {
                     const ok = await connectOAuth(credential.id);
-                    setMessage(ok ? { tone: "good", text: `"${credential.name}" is connected.` } : { tone: "info", text: "The sign-in window closed before connecting." });
+                    setMessage(ok ? { tone: "good", text: `"${credential.name}" is connected.` } : { tone: "info", text: t("The sign-in window closed before connecting.") });
                     void load();
                   }}
                 >
-                  {credential.connected ? "Reconnect" : "Connect"}
+                  {credential.connected ? t("Reconnect") : t("Connect")}
                 </Button>
               ) : null}
               <Button size="sm" variant="ghost" onClick={() => setEditing(credential)}>
-                Edit
+                {t("Edit")}
               </Button>
               <Button
                 size="sm"
                 variant="danger"
                 onClick={async () => {
-                  if (!window.confirm(`Delete the credential "${credential.name}"? Nodes using it will fail until you choose another.`)) return;
+                  if (!window.confirm(t("Delete the credential \"{name}\"? Nodes using it will fail until you choose another.", { name: credential.name }))) return;
                   try {
                     const { usedBy } = await workflowsApi.deleteCredential(credential.id);
-                    setMessage({ tone: usedBy.length ? "info" : "good", text: usedBy.length ? `Deleted. It was used by: ${usedBy.join(", ")}.` : "Deleted." });
+                    setMessage({ tone: usedBy.length ? "info" : "good", text: usedBy.length ? t("Deleted. It was used by: {nodes}.", { nodes: usedBy.join(", ") }) : t("Deleted.") });
                   } catch (caught) {
                     setMessage({ tone: "error", text: caught instanceof Error ? caught.message : String(caught) });
                   }
                   void load();
                 }}
               >
-                Delete
+                {t("Delete")}
               </Button>
             </li>
           ))}

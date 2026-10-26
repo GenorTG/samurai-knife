@@ -2,6 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { quotaErrorResponse } from "@/lib/storage/http";
 import { CvPhotoError, decodeJpegDataUrl, deletePhoto, MAX_PHOTO_BYTES, photoMeta, readPhoto, savePhoto } from "@/lib/cv/photo-store";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     if (new URL(request.url).searchParams.has("meta")) return json({ photo: photoMeta(auth.account.id) });
     const bytes = readPhoto(auth.account.id);
-    if (!bytes) return jsonError("No photo yet.", 404);
+    if (!bytes) return jsonError(msg("No photo yet."), 404);
     return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   } catch (error) {
     return photoError(error);
@@ -39,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, Math.ceil((MAX_PHOTO_BYTES * 4) / 3) + 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError(`Bad request: ${parsed.error.issues[0].path.join("/") || "body"}: ${parsed.error.issues[0].message}`, 422);
+  if (!parsed.success) return jsonError(msgf("Bad request: {value}: {message}", { value: parsed.error.issues[0].path.join("/") || "body", message: parsed.error.issues[0].message }), 422);
   try {
     return json({ photo: savePhoto(auth.account.id, decodeJpegDataUrl(parsed.data.dataUrl)) });
   } catch (error) {

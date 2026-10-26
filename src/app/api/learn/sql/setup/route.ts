@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/accounts/authz";
 import { touch } from "@/lib/services/manager";
 import { learnError } from "@/lib/learn/sql/api";
 import { ensureSeeded, SERVICE_ID, sidecarConnection } from "@/lib/learn/sql/db";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError("Bad request: body: expected { force?: boolean }", 422);
+  if (!parsed.success) return jsonError(msg("Bad request: body: expected { force?: boolean }"), 422);
   // Rebuilding wipes the shared course data for everyone.
   if (parsed.data.force) {
     const denied = requireAdmin(auth.account, "rebuild the course data");

@@ -5,6 +5,7 @@ import { deviceCookieHeader, DEVICE_COOKIE } from "@/lib/accounts/known-device";
 import { powField } from "@/lib/accounts/pow";
 import { attemptLogin, clientIp, cookieValue, isHttps, passwordFingerprint, rotateSession } from "@/lib/accounts/session";
 import { toPublicAccount } from "@/lib/accounts/store";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
   const read = await readJsonBody(request, 8 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
-  if (!parsed.success) return jsonError("Expected { id, password }.", 400);
+  if (!parsed.success) return jsonError(msg("Expected { id, password }."), 400);
 
   const result = await attemptLogin(parsed.data.id, parsed.data.password, clientIp(request), {
     deviceCookie: cookieValue(request, DEVICE_COOKIE),

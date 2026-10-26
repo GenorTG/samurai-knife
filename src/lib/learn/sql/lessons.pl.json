@@ -1,0 +1,503 @@
+{
+ "title": "SQL i PostGIS",
+ "modules": {
+  "select": {
+   "title": "1. Podstawy SELECT",
+   "summary": "Czytanie wierszy: kolumny, WHERE, ORDER BY, LIMIT, DISTINCT, NULL."
+  },
+  "aggregate": {
+   "title": "2. Agregaty",
+   "summary": "COUNT, SUM, AVG, GROUP BY i HAVING."
+  },
+  "join": {
+   "title": "3. Złączenia",
+   "summary": "INNER, LEFT, kilka tabel, złączenie tabeli z samą sobą, antyzłączenie."
+  },
+  "subquery": {
+   "title": "4. Podzapytania i CTE",
+   "summary": "Zapytania w zapytaniach, WITH, rekurencja."
+  },
+  "window": {
+   "title": "5. Funkcje okna",
+   "summary": "ROW_NUMBER, RANK, sumy narastające, LAG."
+  },
+  "write": {
+   "title": "6. Zapisywanie danych",
+   "summary": "INSERT, UPDATE, DELETE, upserty i punkty zapisu (zawsze wycofywane)."
+  },
+  "index": {
+   "title": "7. Indeksy i EXPLAIN",
+   "summary": "Czytanie planów zapytań i sprawianie, żeby zapytania używały indeksu."
+  },
+  "postgis": {
+   "title": "8. PostGIS",
+   "summary": "Geometry a geography, odległości, najbliżsi sąsiedzi, wielokąty, obszary obsługi."
+  },
+  "drills": {
+   "title": "9. Ćwiczenia rekrutacyjne",
+   "summary": "Różne pytania w stylu rozmowy technicznej."
+  }
+ },
+ "lessons": {
+  "select-all": {
+   "title": "Twój pierwszy SELECT",
+   "explanation": "Tabela to siatka **wierszy** i **kolumn**. `SELECT` czyta z niej wiersze:\n\n```sql\nSELECT * FROM categories;\n```\n\n`*` oznacza *każdą kolumnę*. `FROM` wskazuje tabelę. Tabele kursu są w dwóch schematach, `shop` i `geo`; oba są na ścieżce wyszukiwania, więc wystarczy `categories` (pełna nazwa to `shop.categories`). Przeglądarka schematu po prawej wypisuje każdą tabelę.",
+   "task": "Wypisz **każdą kolumnę każdego wiersza** tabeli `categories`.",
+   "hints": [
+    "Potrzebujesz dwóch słów kluczowych: SELECT i FROM.",
+    "`*` wybiera każdą kolumnę.",
+    "SELECT * FROM categories;"
+   ]
+  },
+  "select-columns": {
+   "title": "Wybieranie kolumn i zmiana ich nazw",
+   "explanation": "Zamiast `*` wypisz potrzebne kolumny, oddzielone przecinkami. `AS` nadaje kolumnie nową nazwę w wyniku (**alias**):\n\n```sql\nSELECT first_name, last_name AS surname FROM employees;\n```\n\nJawne nazywanie kolumn to dobry nawyk: wynik zostaje taki sam, gdy ktoś doda kolumnę do tabeli.",
+   "task": "Zwróć `name` i `price` każdego produktu, ze zmienioną nazwą kolumny ceny na `price_pln`.",
+   "hints": [
+    "Dwie kolumny z `products`: name i price.",
+    "Zmień nazwę przez `price AS price_pln`.",
+    "SELECT name, price AS price_pln FROM products;"
+   ]
+  },
+  "select-where": {
+   "title": "Filtrowanie wierszy przez WHERE",
+   "explanation": "`WHERE` zostawia tylko wiersze, dla których warunek jest prawdziwy. Łącz warunki przez `AND` / `OR`, a dla zakresów używaj `BETWEEN low AND high` (włącznie) albo `IN (...)` dla list:\n\n```sql\nSELECT name, price FROM products\nWHERE category_id IN (9, 10) AND price < 100;\n```\n\nWartości tekstowe zapisuje się w apostrofach: `WHERE status = 'shipped'`.",
+   "task": "Znajdź produkty z kategorii **4 lub 5** (Dairy, Bakery), których cena jest **między 3 a 7** (włącznie). Zwróć `name` i `price`.",
+   "hints": [
+    "Dwa warunki połączone przez AND.",
+    "`category_id IN (4, 5)` i `price BETWEEN 3 AND 7`.",
+    "SELECT name, price FROM products WHERE category_id IN (4, 5) AND price BETWEEN 3 AND 7;"
+   ]
+  },
+  "select-order-limit": {
+   "title": "Sortowanie przez ORDER BY, przycinanie przez LIMIT",
+   "explanation": "Wiersze wracają w **dowolnej kolejności**, chyba że o nią poprosisz. `ORDER BY kolumna` sortuje rosnąco; dodaj `DESC`, żeby sortować malejąco. `LIMIT n` zostawia pierwsze n wierszy:\n\n```sql\nSELECT name, hire_date FROM employees\nORDER BY hire_date\nLIMIT 3;          -- trzech pracowników z najdłuższym stażem\n```\n\nLIMIT bez ORDER BY daje *jakieś* wiersze, a nie *najlepsze* wiersze.",
+   "task": "Zwróć **5 najdroższych produktów** (`name`, `price`), od najdroższego.",
+   "hints": [
+    "Sortuj po cenie, od najwyższej.",
+    "`ORDER BY price DESC`, potem `LIMIT 5`.",
+    "SELECT name, price FROM products ORDER BY price DESC LIMIT 5;"
+   ]
+  },
+  "select-distinct": {
+   "title": "Unikalne wartości przez DISTINCT",
+   "explanation": "`SELECT DISTINCT` usuwa z wyniku powtórzone wiersze:\n\n```sql\nSELECT DISTINCT status FROM orders;\n```\n\nPrzy kilku kolumnach wiersz jest powtórzeniem tylko wtedy, gdy powtarzają się **wszystkie** jego kolumny.",
+   "task": "Z jakich **krajów** pochodzą nasi klienci? Zwróć każdy kraj raz (kolumna `country`).",
+   "hints": [
+    "Kolumna to `country` w `customers`.",
+    "Wstaw DISTINCT zaraz po SELECT.",
+    "SELECT DISTINCT country FROM customers;"
+   ]
+  },
+  "select-null": {
+   "title": "NULL: brakująca wartość",
+   "explanation": "`NULL` oznacza *nieznane / brakujące*. Nie jest równe niczemu, nawet innemu NULL, więc `email = NULL` nigdy nie jest prawdą. Sprawdzaj je przez `IS NULL` / `IS NOT NULL`:\n\n```sql\nSELECT order_id FROM orders WHERE employee_id IS NULL;   -- zamówienia internetowe\n```\n\n`COALESCE(a, b)` zwraca pierwszy argument różny od NULL: `COALESCE(email, 'no email')`.",
+   "task": "Wypisz klientów, którzy **nie mają adresu e-mail**: `customer_id`, `first_name`, `last_name`.",
+   "hints": [
+    "`= NULL` nigdy niczego nie dopasowuje.",
+    "Użyj `email IS NULL`.",
+    "SELECT customer_id, first_name, last_name FROM customers WHERE email IS NULL;"
+   ]
+  },
+  "agg-count": {
+   "title": "Liczenie wierszy",
+   "explanation": "Funkcje agregujące zamieniają wiele wierszy w jedną wartość. `COUNT(*)` liczy wiersze; `COUNT(kolumna)` liczy tylko wiersze, w których ta kolumna **nie jest NULL**:\n\n```sql\nSELECT COUNT(*) AS orders, COUNT(employee_id) AS with_sales_rep FROM orders;\n```",
+   "task": "W jednym wierszu zwróć liczbę klientów (`total`) i liczbę tych, którzy mają e-mail (`with_email`).",
+   "hints": [
+    "Dwa agregaty w jednym SELECT.",
+    "COUNT(*) liczy każdy wiersz, COUNT(email) pomija e-maile równe NULL.",
+    "SELECT COUNT(*) AS total, COUNT(email) AS with_email FROM customers;"
+   ]
+  },
+  "agg-min-max-avg": {
+   "title": "MIN, MAX, AVG, SUM",
+   "explanation": "`MIN`, `MAX`, `AVG` i `SUM` działają jak COUNT. `ROUND(wartość, 2)` zaokrągla do dwóch miejsc po przecinku:\n\n```sql\nSELECT ROUND(AVG(salary), 2) AS avg_salary FROM employees;\n```",
+   "task": "Zwróć najniższą cenę (`min_price`), najwyższą (`max_price`) i średnią cenę zaokrągloną do 2 miejsc (`avg_price`) wszystkich produktów.",
+   "hints": [
+    "Trzy agregaty na kolumnie `price`.",
+    "ROUND(AVG(price), 2) dla średniej.",
+    "SELECT MIN(price) AS min_price, MAX(price) AS max_price, ROUND(AVG(price), 2) AS avg_price FROM products;"
+   ]
+  },
+  "agg-group-by": {
+   "title": "GROUP BY",
+   "explanation": "`GROUP BY` dzieli wiersze na grupy i liczy agregat **dla każdej grupy**. Każda wybrana kolumna musi być albo w GROUP BY, albo wewnątrz agregatu:\n\n```sql\nSELECT city, COUNT(*) AS customers\nFROM customers\nGROUP BY city;\n```",
+   "task": "Ile jest zamówień **w każdym statusie**? Zwróć `status` i liczbę (`orders`).",
+   "hints": [
+    "Pogrupuj zamówienia według statusu.",
+    "SELECT status, COUNT(*) ... GROUP BY status",
+    "SELECT status, COUNT(*) AS orders FROM orders GROUP BY status;"
+   ]
+  },
+  "agg-having": {
+   "title": "Filtrowanie grup przez HAVING",
+   "explanation": "`WHERE` filtruje wiersze **przed** grupowaniem; `HAVING` filtruje grupy **po** obliczeniu agregatów:\n\n```sql\nSELECT city, COUNT(*) AS customers\nFROM customers\nGROUP BY city\nHAVING COUNT(*) >= 15;\n```",
+   "task": "Którzy klienci złożyli **więcej niż 15 zamówień**? Zwróć `customer_id` i liczbę zamówień (`orders`).",
+   "hints": [
+    "Najpierw pogrupuj zamówienia według customer_id.",
+    "Warunek na COUNT(*) idzie do HAVING, a nie do WHERE.",
+    "SELECT customer_id, COUNT(*) AS orders FROM orders GROUP BY customer_id HAVING COUNT(*) > 15;"
+   ]
+  },
+  "agg-by-month": {
+   "title": "Grupowanie po miesiącach",
+   "explanation": "`date_trunc('month', d)` obcina datę do pierwszego dnia jej miesiąca, co daje dobry klucz grupowania. `EXTRACT(year FROM d)` wyciąga jedną część:\n\n```sql\nSELECT date_trunc('month', order_date)::date AS month, COUNT(*)\nFROM orders GROUP BY 1 ORDER BY 1;\n```\n\n`GROUP BY 1` / `ORDER BY 1` odnoszą się do pierwszej wybranej kolumny. `::date` to rzutowanie.",
+   "task": "Policz zamówienia z **2024 roku według miesięcy**: zwróć `month` (pierwszy dzień miesiąca) i `orders`, posortowane według miesiąca.",
+   "hints": [
+    "W WHERE zostaw tylko daty z 2024, potem grupuj po obciętym miesiącu.",
+    "WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01' ... GROUP BY 1 ORDER BY 1",
+    "SELECT date_trunc('month', order_date)::date AS month, COUNT(*) AS orders FROM orders WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01' GROUP BY 1 ORDER BY 1;"
+   ]
+  },
+  "join-inner": {
+   "title": "INNER JOIN",
+   "explanation": "**Złączenie** łączy wiersze dwóch tabel, które pasują do warunku, zwykle klucza obcego. Nadaj każdej tabeli krótki alias:\n\n```sql\nSELECT o.order_id, c.last_name\nFROM orders AS o\nJOIN customers AS c ON c.customer_id = o.customer_id;\n```\n\n`JOIN` oznacza `INNER JOIN`: wiersze bez dopasowania po drugiej stronie są odrzucane.",
+   "task": "Wypisz każdy produkt z nazwą jego kategorii: zwróć `product` (nazwę produktu) i `category` (nazwę kategorii).",
+   "hints": [
+    "products.category_id wskazuje na categories.category_id.",
+    "JOIN categories AS c ON c.category_id = p.category_id",
+    "SELECT p.name AS product, c.name AS category FROM products AS p JOIN categories AS c ON c.category_id = p.category_id;"
+   ]
+  },
+  "join-left": {
+   "title": "LEFT JOIN zachowuje niedopasowane wiersze",
+   "explanation": "`LEFT JOIN` zachowuje **każdy** wiersz lewej tabeli; tam, gdzie prawa tabela nie ma dopasowania, jej kolumny są NULL. Licz kolumnę z prawej strony (a nie `*`), żeby dla takich wierszy dostać 0:\n\n```sql\nSELECT c.customer_id, COUNT(o.order_id) AS orders\nFROM customers AS c\nLEFT JOIN orders AS o ON o.customer_id = c.customer_id\nGROUP BY c.customer_id;\n```",
+   "task": "Zwróć nazwę **każdej** kategorii (`category`) z liczbą jej produktów (`products`), łącznie z kategoriami, które nie mają żadnych.",
+   "hints": [
+    "INNER JOIN odrzuca Garden (nie ma produktów).",
+    "LEFT JOIN products, potem GROUP BY nazwa kategorii i COUNT(p.product_id).",
+    "SELECT c.name AS category, COUNT(p.product_id) AS products FROM categories AS c LEFT JOIN products AS p ON p.category_id = c.category_id GROUP BY c.name;"
+   ]
+  },
+  "join-multi": {
+   "title": "Złączanie kilku tabel",
+   "explanation": "Łącz złączenia w łańcuch, żeby przechodzić od tabeli do tabeli. Przychód jest w `order_items` (`quantity * unit_price`), kategoria w `products`, status w `orders`:\n\n```sql\nSELECT ...\nFROM order_items AS oi\nJOIN orders   AS o ON o.order_id = oi.order_id\nJOIN products AS p ON p.product_id = oi.product_id\n```",
+   "task": "Przychód według **kategorii** tylko z zamówień **dostarczonych** (`delivered`): zwróć `category` i `revenue` (suma quantity × unit_price), od najwyższego przychodu.",
+   "hints": [
+    "Potrzebujesz czterech tabel: order_items, orders, products, categories.",
+    "Filtruj przez WHERE o.status = 'delivered', grupuj po nazwie kategorii, ORDER BY revenue DESC.",
+    "SELECT c.name AS category, SUM(oi.quantity * oi.unit_price) AS revenue FROM order_items AS oi JOIN orders AS o ON o.order_id = oi.order_id JOIN products AS p ON p.product_id = oi.product_id JOIN categories AS c ON c.category_id = p.category_id WHERE o.status = 'delivered' GROUP BY c.name ORDER BY revenue DESC;"
+   ]
+  },
+  "join-self": {
+   "title": "Złączenie tabeli z samą sobą",
+   "explanation": "Tabelę można złączyć **z nią samą** pod dwoma aliasami. `employees.manager_id` wskazuje na innego pracownika:\n\n```sql\nSELECT e.last_name, m.last_name AS boss\nFROM employees AS e\nJOIN employees AS m ON m.employee_id = e.manager_id;\n```\n\nUżyj LEFT JOIN, gdy szczyt hierarchii (bez przełożonego) ma zostać w wyniku.",
+   "task": "Wypisz pełne imię i nazwisko **każdego** pracownika (`employee`, imię i nazwisko ze spacją) oraz pełne imię i nazwisko jego przełożonego (`manager`); prezes nie ma przełożonego i powinien mieć NULL.",
+   "hints": [
+    "`||` łączy tekst; NULL || 'x' daje NULL, czyli to, czego chcemy dla prezesa.",
+    "LEFT JOIN employees AS m ON m.employee_id = e.manager_id",
+    "SELECT e.first_name || ' ' || e.last_name AS employee, m.first_name || ' ' || m.last_name AS manager FROM employees AS e LEFT JOIN employees AS m ON m.employee_id = e.manager_id;"
+   ]
+  },
+  "join-anti": {
+   "title": "Antyzłączenie: wiersze bez dopasowania",
+   "explanation": "Żeby znaleźć wiersze, które **nie** mają pary w innej tabeli, użyj `NOT EXISTS` (najczytelniej) albo LEFT JOIN, który zostawia tylko stronę z NULL:\n\n```sql\nSELECT p.name FROM products AS p\nWHERE NOT EXISTS (SELECT 1 FROM order_items AS oi WHERE oi.product_id = p.product_id);\n```\n\nUważaj na `NOT IN (podzapytanie)`: jeśli podzapytanie zwróci NULL, NOT IN nie zwraca żadnych wierszy.",
+   "task": "Którzy klienci **nigdy nie złożyli zamówienia**? Zwróć `customer_id`, `first_name`, `last_name`.",
+   "hints": [
+    "Szukaj klientów bez żadnego wiersza w orders.",
+    "WHERE NOT EXISTS (SELECT 1 FROM orders AS o WHERE o.customer_id = c.customer_id)",
+    "SELECT c.customer_id, c.first_name, c.last_name FROM customers AS c WHERE NOT EXISTS (SELECT 1 FROM orders AS o WHERE o.customer_id = c.customer_id);"
+   ]
+  },
+  "sub-scalar": {
+   "title": "Podzapytanie skalarne",
+   "explanation": "Podzapytanie w nawiasach, które zwraca **jedną wartość**, można użyć wszędzie tam, gdzie można użyć wartości:\n\n```sql\nSELECT first_name, salary FROM employees\nWHERE salary > (SELECT AVG(salary) FROM employees);\n```",
+   "task": "Wypisz produkty, które kosztują **więcej niż średnia cena produktu**: `name`, `price`.",
+   "hints": [
+    "Policz średnią w podzapytaniu.",
+    "WHERE price > (SELECT AVG(price) FROM products)",
+    "SELECT name, price FROM products WHERE price > (SELECT AVG(price) FROM products);"
+   ]
+  },
+  "sub-in": {
+   "title": "IN z podzapytaniem",
+   "explanation": "`kolumna IN (SELECT ...)` sprawdza przynależność do listy, którą zwraca podzapytanie:\n\n```sql\nSELECT name FROM products\nWHERE category_id IN (SELECT category_id FROM categories WHERE parent_id = 1);\n```",
+   "task": "Którzy klienci kupili **co najmniej jeden produkt Audio** (nazwa kategorii `Audio`)? Zwróć każde `customer_id` raz.",
+   "hints": [
+    "Podzapytanie zwraca product_id produktów Audio.",
+    "W środku: SELECT p.product_id FROM products AS p JOIN categories AS c ON ... WHERE c.name = 'Audio'",
+    "Pełne rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  },
+  "sub-cte": {
+   "title": "WITH: wspólne wyrażenia tabelowe (CTE)",
+   "explanation": "`WITH nazwa AS (zapytanie)` nazywa wynik pośredni, z którego potem wybierasz jak z tabeli. Dzięki temu zapytania wieloetapowe są czytelne:\n\n```sql\nWITH per_city AS (\n  SELECT city, COUNT(*) AS n FROM customers GROUP BY city\n)\nSELECT city FROM per_city WHERE n > 10;\n```",
+   "task": "Używając CTE, znajdź klientów, których **łączne wydatki** (suma quantity × unit_price ze wszystkich ich zamówień, w dowolnym statusie) są **powyżej średnich łącznych wydatków** klientów, którzy zamawiali. Zwróć `customer_id` i `total` (wydatki).",
+   "hints": [
+    "CTE `totals` daje już jeden wiersz na klienta.",
+    "Porównaj każdą sumę z (SELECT AVG(total) FROM totals).",
+    "...SELECT customer_id, total FROM totals WHERE total > (SELECT AVG(total) FROM totals);"
+   ]
+  },
+  "sub-recursive": {
+   "title": "Rekurencyjne CTE: chodzenie po hierarchii",
+   "explanation": "`WITH RECURSIVE` powtarza zapytanie na własnym wyniku: wiersz początkowy (kotwica), potem `UNION ALL` z krokiem, który dołącza poprzedni poziom. Idealne dla drzew takich jak `manager_id`:\n\n```sql\nWITH RECURSIVE chain AS (\n  SELECT employee_id, manager_id, 0 AS depth FROM employees WHERE employee_id = 9\n  UNION ALL\n  SELECT e.employee_id, e.manager_id, chain.depth + 1\n  FROM employees AS e JOIN chain ON e.employee_id = chain.manager_id\n)\nSELECT * FROM chain;   -- pracownik 9 i każdy przełożony nad nim\n```",
+   "task": "Wypisz **wszystkich, którzy podlegają kierownikowi sprzedaży (pracownik 2), bezpośrednio albo pośrednio**: `employee_id`, `last_name` i `level` (1 = bezpośredni podwładny, 2 = podwładny podwładnego…). Nie uwzględniaj pracownika 2.",
+   "hints": [
+    "Kotwica już wybiera bezpośrednich podwładnych (poziom 1).",
+    "Krok rekurencyjny dołącza pracowników, których manager_id to employee_id członka zespołu.",
+    "SELECT e.employee_id, e.last_name, team.level + 1 FROM employees AS e JOIN team ON e.manager_id = team.employee_id"
+   ]
+  },
+  "win-row-number": {
+   "title": "ROW_NUMBER w obrębie partycji",
+   "explanation": "**Funkcja okna** liczy wartość dla każdego wiersza na podstawie zbioru powiązanych wierszy, nie zwijając ich tak jak GROUP BY. `OVER (PARTITION BY ... ORDER BY ...)` określa ten zbiór:\n\n```sql\nSELECT customer_id, order_id, order_date,\n       ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date, order_id) AS n\nFROM orders;\n```\n\nZamówienia każdego klienta są numerowane 1, 2, 3… według daty.",
+   "task": "Tylko dla klientów **1, 2 i 3** ponumeruj zamówienia każdego klienta według daty (najstarsze = 1; przy tej samej dacie najpierw niższe order_id). Zwróć `customer_id`, `order_id`, `order_date`, `n`, posortowane według customer_id i n.",
+   "hints": [
+    "Zaczynaj numerację od nowa dla każdego klienta: PARTITION BY customer_id.",
+    "W OVER: PARTITION BY customer_id ORDER BY order_date, order_id",
+    "ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date, order_id) AS n"
+   ]
+  },
+  "win-rank": {
+   "title": "RANK i DENSE_RANK",
+   "explanation": "`RANK()` daje równym wartościom tę samą pozycję, a potem przeskakuje (1, 1, 3); `DENSE_RANK()` nie przeskakuje (1, 1, 2); `ROW_NUMBER()` nigdy nie daje remisów.\n\n```sql\nSELECT last_name, salary, RANK() OVER (ORDER BY salary DESC) AS pay_rank\nFROM employees;\n```",
+   "task": "Uszereguj produkty **według ceny w obrębie ich kategorii**, najdroższy = 1, używając RANK(). Zwróć `category_id`, `name`, `price`, `price_rank`.",
+   "hints": [
+    "Jeden ranking na kategorię: PARTITION BY category_id.",
+    "ORDER BY price DESC w OVER.",
+    "RANK() OVER (PARTITION BY category_id ORDER BY price DESC) AS price_rank"
+   ]
+  },
+  "win-top-n": {
+   "title": "N najlepszych w grupie",
+   "explanation": "Klasyczny wzorzec z rozmów rekrutacyjnych: uszereguj w podzapytaniu albo CTE, a potem filtruj po pozycji na zewnątrz (funkcji okna nie można użyć bezpośrednio w WHERE):\n\n```sql\nWITH ranked AS (\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY city ORDER BY signup_date) AS rn\n  FROM customers\n)\nSELECT city, first_name FROM ranked WHERE rn = 1;   -- pierwszy klient w każdym mieście\n```",
+   "task": "Zwróć **najdroższy produkt każdej kategorii**, która ma produkty: `category_id`, `name`, `price`.",
+   "hints": [
+    "CTE już numeruje produkty w każdej kategorii, najdroższy = 1.",
+    "Zostaw tylko rn = 1.",
+    "SELECT category_id, name, price FROM ranked WHERE rn = 1;"
+   ]
+  },
+  "win-running-total": {
+   "title": "Sumy narastające",
+   "explanation": "`SUM(x) OVER (ORDER BY d)` sumuje wszystko od pierwszego wiersza do bieżącego: to suma narastająca. Najpierw zagreguj po dniach, potem uruchom okno na wierszach dziennych:\n\n```sql\nSELECT day, amount, SUM(amount) OVER (ORDER BY day) AS so_far\nFROM daily;\n```",
+   "task": "Dzienny przychód (quantity × unit_price, każdy status) w **styczniu 2024** i jego suma narastająca: zwróć `day`, `revenue`, `running_total`, posortowane według dnia. Pojawiają się tylko dni z zamówieniami.",
+   "hints": [
+    "CTE daje jeden wiersz na dzień.",
+    "SUM(revenue) OVER (ORDER BY day)",
+    "SELECT day, revenue, SUM(revenue) OVER (ORDER BY day) AS running_total FROM daily ORDER BY day;"
+   ]
+  },
+  "win-lag": {
+   "title": "LAG: porównanie z poprzednim wierszem",
+   "explanation": "`LAG(x) OVER (ORDER BY d)` zwraca `x` z **poprzedniego** wiersza (NULL dla pierwszego); `LEAD` patrzy do przodu. Idealne do zmian miesiąc do miesiąca:\n\n```sql\nSELECT month, revenue, revenue - LAG(revenue) OVER (ORDER BY month) AS change\nFROM monthly;\n```",
+   "task": "Miesięczny przychód w **2024** (quantity × unit_price, zamówienia **dostarczone**) i zmiana względem poprzedniego miesiąca: zwróć `month` (pierwszy dzień, jako data), `revenue`, `change` (NULL dla stycznia), posortowane według miesiąca.",
+   "hints": [
+    "CTE daje jeden wiersz na miesiąc.",
+    "change = revenue - LAG(revenue) OVER (ORDER BY month)",
+    "SELECT month, revenue, revenue - LAG(revenue) OVER (ORDER BY month) AS change FROM monthly ORDER BY month;"
+   ]
+  },
+  "write-insert": {
+   "title": "INSERT ... RETURNING",
+   "explanation": "`INSERT INTO tabela (kolumny) VALUES (...)` dodaje wiersze. `RETURNING` oddaje wstawione wiersze, łącznie z wygenerowanymi wartościami:\n\n```sql\nINSERT INTO customers (first_name, last_name, city, country, signup_date)\nVALUES ('Ada', 'Lovelace', 'Katowice', 'PL', CURRENT_DATE)\nRETURNING customer_id, first_name;\n```\n\n**Tutaj każde uruchomienie jest wycofywane**: twoją zmianę widzą polecenia tego samego uruchomienia, a potem znika, więc dane nigdy się nie rozjeżdżają.",
+   "task": "Wstaw nową kategorię o nazwie `Pet supplies` pod kategorią nadrzędną `Household` (id 2) i zwróć jej `name` i `parent_id`.",
+   "hints": [
+    "Id generuje tabela, więc wypisz tylko name i parent_id.",
+    "VALUES ('Pet supplies', 2) RETURNING name, parent_id",
+    "INSERT INTO categories (name, parent_id) VALUES ('Pet supplies', 2) RETURNING name, parent_id;"
+   ]
+  },
+  "write-update": {
+   "title": "UPDATE",
+   "explanation": "`UPDATE tabela SET kolumna = wyrażenie WHERE ...` zmienia istniejące wiersze. **Zawsze sprawdzaj WHERE**: bez niego zmienia się każdy wiersz.\n\n```sql\nUPDATE employees SET salary = salary * 1.05\nWHERE title = 'Sales Representative'\nRETURNING last_name, salary;\n```",
+   "task": "Podnieś cenę każdego produktu z kategorii **Bakery** (kategoria 5) o **10 %** i zwróć `name` oraz nową `price` każdego produktu.",
+   "hints": [
+    "SET price = price * 1.10",
+    "Ogranicz to przez WHERE category_id = 5, potem RETURNING name, price.",
+    "UPDATE products SET price = price * 1.10 WHERE category_id = 5 RETURNING name, price;"
+   ]
+  },
+  "write-delete": {
+   "title": "DELETE, a potem sprawdź jeszcze raz",
+   "explanation": "`DELETE FROM tabela WHERE ...` usuwa wiersze. Kilka poleceń oddzielonych `;` wykonuje się po kolei w tej samej transakcji, więc późniejszy SELECT widzi usunięcie:\n\n```sql\nDELETE FROM order_items WHERE order_id = 1;\nSELECT COUNT(*) FROM order_items WHERE order_id = 1;   -- 0\n```\n\nSprawdzenie porównuje wynik **ostatniego** polecenia.",
+   "task": "Usuń pozycje każdego **anulowanego** zamówienia (`cancelled`), a potem (w tym samym uruchomieniu) zwróć, ile pozycji zamówień zostało, jako `remaining`.",
+   "hints": [
+    "Podzapytanie wybiera order_id anulowanych zamówień.",
+    "WHERE order_id IN (SELECT order_id FROM orders WHERE status = 'cancelled')",
+    "DELETE FROM order_items WHERE order_id IN (SELECT order_id FROM orders WHERE status = 'cancelled'); SELECT COUNT(*) AS remaining FROM order_items;"
+   ]
+  },
+  "write-upsert": {
+   "title": "Upsert przez ON CONFLICT",
+   "explanation": "`INSERT ... ON CONFLICT (unikalna kolumna) DO UPDATE` wstawia wiersz albo aktualizuje istniejący, gdy unikalny klucz już istnieje. `EXCLUDED` to wiersz, który próbowałeś wstawić:\n\n```sql\nINSERT INTO categories (name, parent_id) VALUES ('Garden', 2)\nON CONFLICT (name) DO UPDATE SET parent_id = EXCLUDED.parent_id\nRETURNING category_id, name, parent_id;\n```",
+   "task": "Wykonaj upsert kategorii `Garden` i `Toys`, obu z parent_id **2**: Garden istnieje (zostanie zaktualizowana), Toys nie (zostanie wstawiona). Zwróć `name` i `parent_id` obu wierszy.",
+   "hints": [
+    "`name` jest unikalne w categories.",
+    "ON CONFLICT (name) DO UPDATE SET parent_id = EXCLUDED.parent_id",
+    "... RETURNING name, parent_id;"
+   ]
+  },
+  "write-savepoint": {
+   "title": "Transakcje i punkty zapisu",
+   "explanation": "**Transakcja** sprawia, że kilka poleceń działa na zasadzie wszystko albo nic: `BEGIN` ... `COMMIT` je zachowuje, `ROLLBACK` cofa wszystkie. **Punkt zapisu** (savepoint) oznacza miejsce, do którego możesz się cofnąć bez utraty wcześniejszej pracy:\n\n```sql\nSAVEPOINT before_change;\nUPDATE products SET price = 0;           -- ups\nROLLBACK TO SAVEPOINT before_change;     -- cofnięte, transakcja trwa dalej\n```\n\nKażde uruchomienie tutaj jest już jedną transakcją wycofywaną na końcu, więc BEGIN/COMMIT są odrzucane; punkty zapisu działają.",
+   "task": "W jednym uruchomieniu: podnieś wszystkie ceny w kategorii Kitchen (kategoria 8) o 20 %; ustaw punkt zapisu; **usuń każdy wiersz zamówień (`order_items`) produktów Kitchen**; cofnij się do punktu zapisu; na koniec zwróć `name`, `price` każdego produktu Kitchen i liczbę jego wierszy zamówień jako `order_lines`. Podwyżka cen ma zostać, usunięte wiersze zamówień mają wrócić.",
+   "hints": [
+    "Kolejność ma znaczenie: UPDATE, SAVEPOINT, DELETE, ROLLBACK TO SAVEPOINT, SELECT.",
+    "DELETE FROM order_items WHERE product_id IN (SELECT product_id FROM products WHERE category_id = 8);",
+    "Potem: ROLLBACK TO SAVEPOINT before_delete; i SELECT z zapytania startowego."
+   ]
+  },
+  "idx-explain": {
+   "title": "Czytanie EXPLAIN",
+   "explanation": "`EXPLAIN zapytanie` pokazuje **plan**, który wybrał Postgres, bez wykonywania zapytania. Czytaj go od dołu, od najgłębszego poziomu. `Seq Scan` = odczyt całej tabeli; `Index Scan` = przejście przez indeks:\n\n```sql\nEXPLAIN SELECT * FROM orders WHERE order_id = 7;\n--  Index Scan using orders_pkey on orders  (cost=0.28..8.29 rows=1 width=...)\n```\n\n`cost` to szacunek planisty (umowne jednostki), `rows` szacowana liczba wierszy. `shop.events` ma 200 000 wierszy i **nie ma indeksu na customer_id**.",
+   "task": "Pokaż plan zapytania `SELECT * FROM events WHERE customer_id = 42` (wystarczy EXPLAIN). Powinieneś zobaczyć skan sekwencyjny.",
+   "hints": [
+    "Wstaw EXPLAIN przed zapytaniem.",
+    "Przeczytaj pierwszy wiersz planu: jakiego skanu używa?",
+    "EXPLAIN SELECT * FROM events WHERE customer_id = 42;"
+   ]
+  },
+  "idx-explain-analyze": {
+   "title": "EXPLAIN ANALYZE: szacunki a rzeczywistość",
+   "explanation": "`EXPLAIN ANALYZE` **wykonuje** zapytanie i dodaje prawdziwe liczby: `actual time` (ms, początek..koniec) i rzeczywiste `rows` obok szacunków. Duża różnica między szacowaną a rzeczywistą liczbą wierszy sugeruje nieaktualne statystyki.\n\n```sql\nEXPLAIN ANALYZE SELECT COUNT(*) FROM events;\n```\n\nUwaga poza tym kursem: EXPLAIN ANALYZE dla UPDATE naprawdę aktualizuje (tutaj jest to wycofywane).",
+   "task": "Uruchom `EXPLAIN ANALYZE` dla: policz zdarzenia typu `checkout` (`SELECT COUNT(*) FROM events WHERE event_type = 'checkout'`).",
+   "hints": [
+    "EXPLAIN ANALYZE idzie przed zapytanie.",
+    "Porównaj `rows=` w szacunku z `rows=` w części actual.",
+    "EXPLAIN ANALYZE SELECT COUNT(*) FROM events WHERE event_type = 'checkout';"
+   ]
+  },
+  "idx-create": {
+   "title": "Utwórz indeks i zobacz, jak zmienia się plan",
+   "explanation": "Indeks na kolumnie pozwala Postgresowi znaleźć pasujące wiersze bez czytania całej tabeli. Indeksować możesz tylko tabele, których jesteś właścicielem, więc skopiuj dane do **tabeli tymczasowej** (TEMP, twój prywatny brudnopis na to uruchomienie):\n\n```sql\nCREATE TEMP TABLE ev AS SELECT * FROM events;\nCREATE INDEX ON ev (customer_id);\nANALYZE ev;                -- odśwież statystyki planisty\nEXPLAIN SELECT * FROM ev WHERE customer_id = 42;\n```\n\n`Bitmap Index Scan` to też użycie indeksu: Postgres zbiera pozycje pasujących wierszy, a potem czyta te strony po kolei.",
+   "task": "Skopiuj `events` do tabeli tymczasowej, załóż indeks na jej `customer_id`, wykonaj ANALYZE i pokaż (jako ostatnie polecenie) EXPLAIN wybrania wierszy klienta 42 z twojej kopii. Plan musi używać indeksu.",
+   "hints": [
+    "Brakuje dwóch wierszy: CREATE INDEX i ANALYZE.",
+    "CREATE INDEX ON ev (customer_id); ANALYZE ev;",
+    "CREATE TEMP TABLE ev AS SELECT * FROM events; CREATE INDEX ON ev (customer_id); ANALYZE ev; EXPLAIN SELECT * FROM ev WHERE customer_id = 42;"
+   ]
+  },
+  "idx-sargable": {
+   "title": "Pisz warunki, których indeks może użyć",
+   "explanation": "`events` ma indeks na `created_at`. Warunek może go użyć tylko wtedy, gdy **sama kolumna** jest porównywana z wartością. Owinięcie kolumny funkcją albo rzutowaniem ukrywa ją przed indeksem:\n\n```sql\n-- nie może użyć indeksu (rzutowanie jest stosowane do każdego wiersza):\nSELECT * FROM events WHERE created_at::date = '2024-03-01';\n-- może go użyć (zakres na samej kolumnie):\nSELECT * FROM events WHERE created_at >= '2024-03-01' AND created_at < '2024-03-02';\n```",
+   "task": "Napisz `EXPLAIN` wybrania wszystkich zdarzeń z **1 marca 2024** tak, żeby plan **używał indeksu created_at** (bez Seq Scan na events).",
+   "hints": [
+    "Rzutowanie `created_at::date` ukrywa kolumnę przed indeksem.",
+    "Użyj zakresu półotwartego: >= ten dzień, < następny dzień.",
+    "EXPLAIN SELECT * FROM events WHERE created_at >= '2024-03-01' AND created_at < '2024-03-02';"
+   ]
+  },
+  "gis-geometry-geography": {
+   "title": "Geometry a geography",
+   "explanation": "PostGIS przechowuje kształty w kolumnach `geometry`. Nasze używają **SRID 4326**: długość/szerokość geograficzna w **stopniach**. `ST_Distance` na geometry mierzy w tych stopniach, co nic nie mówi o kilometrach. Rzutuj na **geography**, żeby mierzyć na powierzchni Ziemi w **metrach**:\n\n```sql\nSELECT ST_Distance(a.geom, b.geom)                       AS degrees,\n       ST_Distance(a.geom::geography, b.geom::geography) AS metres\nFROM cities AS a, cities AS b\nWHERE a.name = 'Gliwice' AND b.name = 'Zabrze';\n```\n\n`ST_AsText(geom)` pokazuje punkt jako `POINT(lon lat)`: długość geograficzna jest pierwsza.",
+   "task": "Zwróć odległość między **Katowicami** a **Krakowem** w **kilometrach, zaokrągloną do 1 miejsca po przecinku**, jako `km`.",
+   "hints": [
+    "Odległość w metrach: ST_Distance(a.geom::geography, b.geom::geography).",
+    "Podziel przez 1000; ROUND(x::numeric, 1) (ROUND z miejscami po przecinku wymaga numeric).",
+    "SELECT ROUND((ST_Distance(a.geom::geography, b.geom::geography) / 1000)::numeric, 1) AS km FROM ..."
+   ]
+  },
+  "gis-dwithin": {
+   "title": "ST_DWithin: wszystko w promieniu X metrów",
+   "explanation": "`ST_DWithin(a, b, odległość)` jest prawdą, gdy dwa kształty są od siebie nie dalej niż `odległość`. Z argumentami geography odległość jest w metrach i może korzystać z indeksu przestrzennego (`stores` ma taki na `geom::geography`), w przeciwieństwie do `ST_Distance(...) < x`:\n\n```sql\nSELECT s.name\nFROM stores AS s, cities AS c\nWHERE c.name = 'Gliwice'\n  AND ST_DWithin(s.geom::geography, c.geom::geography, 2000);\n```",
+   "task": "Wypisz sklepy w promieniu **3 km od centrum Katowic** (punkt z `cities`): zwróć `name` sklepu i nazwę jego sieci jako `chain`.",
+   "hints": [
+    "3 km = 3000 metrów, z argumentami geography.",
+    "ST_DWithin(s.geom::geography, c.geom::geography, 3000)",
+    "... WHERE ST_DWithin(s.geom::geography, c.geom::geography, 3000);"
+   ]
+  },
+  "gis-knn": {
+   "title": "Najbliżsi sąsiedzi przez <->",
+   "explanation": "`ORDER BY a <-> b LIMIT n` zwraca n najbliższych kształtów, przechodząc przez indeks przestrzenny zamiast mierzyć każdy wiersz. Na geography `<->` to odległość w metrach na sferze:\n\n```sql\nSELECT s.name\nFROM stores AS s, candidate_sites AS site\nWHERE site.name = 'Site C'\nORDER BY s.geom::geography <-> site.geom::geography\nLIMIT 3;\n```",
+   "task": "Zwróć **5 sklepów najbliższych `Site A`** (tabela `candidate_sites`), od najbliższego: `name` sklepu i `distance_m` (metry, zaokrąglone do pełnych metrów).",
+   "hints": [
+    "Dodaj ORDER BY ... i LIMIT 5.",
+    "ORDER BY s.geom::geography <-> site.geom::geography",
+    "... ORDER BY s.geom::geography <-> site.geom::geography LIMIT 5;"
+   ]
+  },
+  "gis-contains": {
+   "title": "Punkty w wielokątach: ST_Contains",
+   "explanation": "`ST_Contains(wielokąt, punkt)` jest prawdą, gdy punkt leży wewnątrz wielokąta (`ST_Within(punkt, wielokąt)` to ten sam test odwrotnie; `ST_Intersects` liczy też stykające się krawędzie). `regions` zawiera pięć przybliżonych prostokątów:\n\n```sql\nSELECT c.name, r.name AS region\nFROM cities AS c\nJOIN regions AS r ON ST_Contains(r.geom, c.geom);\n```",
+   "task": "Policz **sklepy w wielokącie każdego regionu**: zwróć `name` regionu i `stores`, dla każdego regionu (0, gdy nie ma żadnych).",
+   "hints": [
+    "Predykat przestrzenny może być warunkiem złączenia.",
+    "LEFT JOIN stores AS s ON ST_Contains(r.geom, s.geom), potem GROUP BY r.name",
+    "SELECT r.name, COUNT(s.store_id) AS stores FROM regions AS r LEFT JOIN stores AS s ON ST_Contains(r.geom, s.geom) GROUP BY r.name;"
+   ]
+  },
+  "gis-buffer": {
+   "title": "Obszary obsługi przez ST_Buffer",
+   "explanation": "`ST_Buffer(kształt, odległość)` powiększa kształt o odległość: wokół punktu daje wielokąt zbliżony do koła, czyli klasyczny **obszar obsługi** sklepu. Na geography odległość jest w metrach; `ST_Area(geography)` zwraca metry kwadratowe:\n\n```sql\nSELECT ST_Area(ST_Buffer(geom::geography, 1000)) / 1e6 AS km2\nFROM candidate_sites WHERE name = 'Site B';   -- około 3.14\n```",
+   "task": "Dla każdego sklepu **FreshMart** w **Katowicach** zbuduj obszar obsługi **1,5 km** i zwróć `name` sklepu oraz pole obszaru w km² zaokrąglone do 1 miejsca jako `area_km2`.",
+   "hints": [
+    "Zbuforuj punkt geography o 1500 metrów.",
+    "ST_Area(ST_Buffer(s.geom::geography, 1500)) / 1e6 to km²; zaokrąglij jako numeric.",
+    "ROUND((ST_Area(ST_Buffer(s.geom::geography, 1500)) / 1e6)::numeric, 1) AS area_km2"
+   ]
+  },
+  "gis-population": {
+   "title": "Ludność wokół lokalizacji",
+   "explanation": "`population_grid` dzieli aglomerację górnośląską na komórki ~1 km z liczbą mieszkańców. Żeby oszacować liczbę ludzi wokół lokalizacji, zsumuj pobliskie komórki. Prosta, popularna reguła: komórka się liczy, gdy jej **środek** jest w promieniu (`ST_Centroid`):\n\n```sql\nSELECT SUM(g.population)\nFROM population_grid AS g, candidate_sites AS s\nWHERE s.name = 'Site C'\n  AND ST_DWithin(ST_Centroid(g.geom)::geography, s.geom::geography, 1000);\n```",
+   "task": "Dla **każdej proponowanej lokalizacji** zwróć jej `name` i ludność, której środek komórki leży w promieniu **2 km**, jako `population`.",
+   "hints": [
+    "Warunek złączenia to test odległości między środkiem komórki a lokalizacją.",
+    "ON ST_DWithin(ST_Centroid(g.geom)::geography, s.geom::geography, 2000)",
+    "SELECT s.name, SUM(g.population) AS population FROM candidate_sites AS s JOIN population_grid AS g ON ST_DWithin(ST_Centroid(g.geom)::geography, s.geom::geography, 2000) GROUP BY s.name;"
+   ]
+  },
+  "gis-overlap": {
+   "title": "Wspólna ludność dwóch lokalizacji",
+   "explanation": "Dwa sklepy blisko siebie konkurują o tych samych klientów. **Część wspólna** ich obszarów obsługi to komórki liczone dla **obu** lokalizacji. Połącz dwa testy odległości przez AND albo przetnij bufory (`ST_Intersection`):\n\n```sql\nSELECT SUM(g.population)\nFROM population_grid AS g\nJOIN candidate_sites AS a ON a.name = 'Site A'\nJOIN candidate_sites AS b ON b.name = 'Site B'\nWHERE ST_DWithin(ST_Centroid(g.geom)::geography, a.geom::geography, 1000)\n  AND ST_DWithin(ST_Centroid(g.geom)::geography, b.geom::geography, 1000);\n```",
+   "task": "Przy obszarze obsługi **3 km** (reguła środka komórki) zwróć trzy liczby w jednym wierszu: ludność Site A (`site_a`), Site B (`site_b`) i ludność **wspólną** dla obu (`shared`).",
+   "hints": [
+    "`SUM(x) FILTER (WHERE warunek)` sumuje tylko wiersze spełniające warunek.",
+    "site_b używa in_b; shared używa in_a AND in_b.",
+    "SUM(g.population) FILTER (WHERE in_b) AS site_b, SUM(g.population) FILTER (WHERE in_a AND in_b) AS shared"
+   ]
+  },
+  "drill-top-customers": {
+   "title": "Ćwiczenie: najlepsi klienci",
+   "explanation": "Styl rozmowy rekrutacyjnej: pytanie jest krótkie, a wybór tabel to część zadania. Pomyśl: które tabele, jakie klucze złączeń, po czym grupować, jak sortować i przycinać.",
+   "task": "Zwróć **3 klientów z najwyższymi łącznymi wydatkami na dostarczone zamówienia**: `customer_id`, `first_name`, `last_name`, `spend` (suma quantity × unit_price), od najwyższych.",
+   "hints": [
+    "customers → orders → order_items; filtruj status = 'delivered'.",
+    "GROUP BY kolumny klienta, ORDER BY spend DESC LIMIT 3.",
+    "Rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  },
+  "drill-earn-more-than-manager": {
+   "title": "Ćwiczenie: zarabia więcej niż przełożony",
+   "explanation": "Ulubione zadanie: porównaj każdy wiersz z innym wierszem tej samej tabeli.",
+   "task": "Którzy pracownicy zarabiają **więcej niż ich własny przełożony**? Zwróć `employee_id`, `last_name`, `salary` i `manager_salary`.",
+   "hints": [
+    "Złącz employees z ich przełożonym.",
+    "WHERE e.salary > m.salary",
+    "Rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  },
+  "drill-best-seller-per-category": {
+   "title": "Ćwiczenie: bestseller w każdej kategorii",
+   "explanation": "Najlepszy w grupie przez funkcję okna, na agregacie.",
+   "task": "Dla każdej kategorii ze sprzedażą zwróć jej **najlepiej sprzedający się produkt według łącznej ilości** (wszystkie zamówienia): `category`, `product`, `quantity`. Przy remisie wygrywa niższe product_id.",
+   "hints": [
+    "Najpierw zsumuj ilość dla każdego produktu (z jego kategorią).",
+    "Potem ROW_NUMBER() OVER (PARTITION BY category ORDER BY quantity DESC, product_id) i zostaw rn = 1.",
+    "Rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  },
+  "drill-repeat-customers": {
+   "title": "Ćwiczenie: udział powracających klientów",
+   "explanation": "Procenty: policz części, podziel i uważaj na dzielenie całkowite (`7 / 2 = 3` dla liczb całkowitych; najpierw pomnóż przez `100.0`).",
+   "task": "Spośród klientów, którzy złożyli co najmniej jedno zamówienie, jaki **procent złożył więcej niż jedno**? Zwróć jedną wartość `repeat_pct` zaokrągloną do 1 miejsca po przecinku.",
+   "hints": [
+    "Najpierw policz zamówienia na klienta (GROUP BY customer_id).",
+    "100.0 * (klienci z więcej niż jednym) / (wszyscy klienci z zamówieniami)",
+    "Rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  },
+  "drill-competitors": {
+   "title": "Ćwiczenie: konkurencja wokół każdego sklepu",
+   "explanation": "Analiza lokalizacji handlowych: ile sklepów konkurencji (innych sieci) jest w pobliżu każdego z naszych sklepów?",
+   "task": "Dla każdego sklepu **FreshMart** policz sklepy **innych sieci w promieniu 2 km**. Zwróć 5 sklepów z największą konkurencją: `name`, `competitors`, od największej; przy remisie według nazwy.",
+   "hints": [
+    "Złącz stores ze stores: drugi alias to konkurenci.",
+    "Warunek: inna sieć AND ST_DWithin(..., 2000); GROUP BY sklep FreshMart.",
+    "Rozwiązanie zobaczysz po sprawdzeniu."
+   ]
+  }
+ }
+}

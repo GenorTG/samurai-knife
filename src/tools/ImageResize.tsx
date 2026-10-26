@@ -5,6 +5,8 @@ import { Button, CopyButton, Dropzone, Field, Notice, NumberField, Panel, Select
 import { clamp, cx, downloadBlob, formatBytes } from "@/lib/format";
 import { resizeInWorker } from "@/lib/image-resize-client";
 import { isAbortError } from "@/lib/workers/errors";
+import { useT } from "@/lib/i18n/react";
+import { msg } from "@/lib/i18n/msg";
 
 type Format = "image/png" | "image/jpeg" | "image/webp";
 
@@ -15,7 +17,7 @@ const FORMATS: { value: Format; label: string; ext: string }[] = [
 ];
 
 const PRESETS = [
-  { label: "Original", w: 0, h: 0 },
+  { label: msg("Original"), w: 0, h: 0 },
   { label: "1200 w", w: 1200, h: 0 },
   { label: "1920 w", w: 1920, h: 0 },
   { label: "800 × 600", w: 800, h: 600 },
@@ -33,6 +35,7 @@ interface Source {
 }
 
 export default function ImageResize() {
+  const { t } = useT();
   const [source, setSource] = useState<Source | null>(null);
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
@@ -52,7 +55,7 @@ export default function ImageResize() {
 
   const loadFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      setError("That is not an image file.");
+      setError(t("That is not an image file."));
       return;
     }
     setError(null);
@@ -63,7 +66,7 @@ export default function ImageResize() {
       try {
         bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
       } catch {
-        throw new Error("Could not decode that image.");
+        throw new Error(t("Could not decode that image."));
       }
       const next: Source = {
         name: file.name,
@@ -84,9 +87,9 @@ export default function ImageResize() {
         file.type === "image/jpeg" ? "image/jpeg" : file.type === "image/webp" ? "image/webp" : current,
       );
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : "Could not read that image.");
+      setError(exc instanceof Error ? exc.message : t("Could not read that image."));
     }
-  }, []);
+  }, [t]);
 
   const setWidthSafely = (value: number) => {
     const w = clamp(Math.round(value) || 0, 1, 8192);
@@ -131,11 +134,11 @@ export default function ImageResize() {
           // superseded by a newer render (it owns `busy`) or cancelled by the user (cancel() clears it)
           return;
         }
-        setError(exc instanceof Error ? exc.message : "Resize failed.");
+        setError(exc instanceof Error ? exc.message : t("Resize failed."));
         setBusy(false);
       }
     },
-    [background, fillMode, format, height, quality, source, width],
+    [t, background, fillMode, format, height, quality, source, width],
   );
 
   useEffect(() => {
@@ -178,16 +181,16 @@ export default function ImageResize() {
         {!source ? (
           <Dropzone
             accept="image/*"
-            hint="PNG, JPEG, WebP, GIF, SVG — decoded locally"
+            hint={t("PNG, JPEG, WebP, GIF, SVG — decoded locally")}
             onFiles={(files) => void loadFile(files[0])}
           />
         ) : (
           <>
             <Panel
-              title="Source"
+              title={t("Source")}
               right={
                 <Button size="sm" variant="ghost" onClick={() => { setSource(null); setResult(null); setError(null); }}>
-                  Clear
+                  {t("Clear")}
                 </Button>
               }
             >
@@ -207,7 +210,7 @@ export default function ImageResize() {
               </div>
             </Panel>
 
-            <Panel title="Output size">
+            <Panel title={t("Output size")}>
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   {PRESETS.map((preset) => (
@@ -233,20 +236,20 @@ export default function ImageResize() {
                         }
                       }}
                     >
-                      {preset.label}
+                      {t(preset.label)}
                     </Button>
                   ))}
                 </div>
 
                 <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-                  <Field label="Width">
+                  <Field label={t("Width")}>
                     <NumberField type="text" min={1} max={8192} integer value={width} onValueChange={setWidthSafely} />
                   </Field>
                   <button
                     autoComplete="off"
                     type="button"
                     onClick={() => setLockRatio((v) => !v)}
-                    title="Lock aspect ratio"
+                    title={t("Lock aspect ratio")}
                     className={cx(
                       "mb-1 rounded-lg border px-3 py-2 text-sm transition-colors",
                       lockRatio
@@ -256,34 +259,34 @@ export default function ImageResize() {
                   >
                     {lockRatio ? "🔗" : "⛓️‍💥"}
                   </button>
-                  <Field label="Height">
+                  <Field label={t("Height")}>
                     <NumberField type="text" min={1} max={8192} integer value={height} onValueChange={setHeightSafely} />
                   </Field>
                 </div>
 
-                <Field label="Fit" hint="Cover crops to fill the box; contain leaves margins.">
+                <Field label={t("Fit")} hint={t("Cover crops to fill the box; contain leaves margins.")}>
                   <Select value={fillMode} onChange={(e) => setFillMode(e.target.value as "contain" | "cover")}>
-                    <option value="contain">Contain — fit inside, no crop</option>
-                    <option value="cover">Cover — fill the box, crop edges</option>
+                    <option value="contain">{t("Contain — fit inside, no crop")}</option>
+                    <option value="cover">{t("Cover — fill the box, crop edges")}</option>
                   </Select>
                 </Field>
               </div>
             </Panel>
 
-            <Panel title="Encoding">
+            <Panel title={t("Encoding")}>
               <div className="space-y-3">
-                <Field label="Format">
+                <Field label={t("Format")}>
                   <Select value={format} onChange={(e) => setFormat(e.target.value as Format)}>
                     {FORMATS.map((f) => (
                       <option key={f.value} value={f.value}>
-                        {f.label}
+                        {t(f.label)}
                       </option>
                     ))}
                   </Select>
                 </Field>
                 {format !== "image/png" ? (
                   <>
-                    <Field label={`Quality — ${Math.round(quality * 100)}`}>
+                    <Field label={t("Quality — {value}", { value: Math.round(quality * 100) })}>
                       <input
                         type="range"
                         min={10}
@@ -293,21 +296,21 @@ export default function ImageResize() {
                         className="w-full accent-[var(--color-accent)]"
                       />
                     </Field>
-                    <Field label="Flatten onto" hint="Transparency is filled with this colour.">
+                    <Field label={t("Flatten onto")} hint={t("Transparency is filled with this colour.")}>
                       <div className="flex gap-2">
                         <input
                           type="color"
                           value={background}
                           onChange={(e) => setBackground(e.target.value)}
                           className="sk-input size-11 p-1"
-                          aria-label="Background colour"
+                          aria-label={t("Background colour")}
                         />
                         <TextInput value={background} onChange={(e) => setBackground(e.target.value)} />
                       </div>
                     </Field>
                   </>
                 ) : (
-                  <Notice>PNG keeps transparency and stays lossless.</Notice>
+                  <Notice>{t("PNG keeps transparency and stays lossless.")}</Notice>
                 )}
               </div>
             </Panel>
@@ -317,7 +320,7 @@ export default function ImageResize() {
 
       <div className="space-y-4">
         <Panel
-          title="Result"
+          title={t("Result")}
           right={
             result ? (
               <div className="flex gap-1.5">
@@ -326,33 +329,33 @@ export default function ImageResize() {
                   variant="primary"
                   onClick={() => result && downloadBlob(result.blob, outName)}
                 >
-                  Download
+                  {t("Download")}
                 </Button>
               </div>
             ) : null
           }
         >
-          <WorkStatus running={busy} elapsedMs={Math.max(0, now - startedAt)} label="Resizing image" cancelLabel="Cancel resizing" onCancel={cancel} />
-          {cancelled && !busy ? <Notice>Resizing cancelled. Change a setting to resize again.</Notice> : null}
+          <WorkStatus running={busy} elapsedMs={Math.max(0, now - startedAt)} label={t("Resizing image")} cancelLabel={t("Cancel resizing")} onCancel={cancel} />
+          {cancelled && !busy ? <Notice>{t("Resizing cancelled. Change a setting to resize again.")}</Notice> : null}
           {error ? (
             <Notice tone="error">{error}</Notice>
           ) : !source ? (
             <div className="grid h-64 place-items-center text-sm text-faint">
-              Pick an image to start.
+              {t("Pick an image to start.")}
             </div>
           ) : busy ? (
-            <div className="grid h-64 place-items-center text-sm text-faint">Rendering…</div>
+            <div className="grid h-64 place-items-center text-sm text-faint">{t("Rendering…")}</div>
           ) : result ? (
             <div className="space-y-3">
               <div className="grid max-h-[46vh] place-items-center overflow-auto rounded-lg border border-line bg-raised/40 p-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={result.url} alt="Resized result" className="max-w-full object-contain" />
+                <img src={result.url} alt={t("Resized result")} className="max-w-full object-contain" />
               </div>
               <StatGrid>
-                <Stat label="Dimensions" value={`${width}×${height}`} />
-                <Stat label="Size" value={formatBytes(result.blob.size)} />
+                <Stat label={t("Dimensions")} value={`${width}×${height}`} />
+                <Stat label={t("Size")} value={formatBytes(result.blob.size)} />
                 <Stat
-                  label="vs source"
+                  label={t("vs source")}
                   value={
                     source
                       ? `${savings > 0 ? "−" : "+"}${Math.abs(savings).toFixed(0)}%`
@@ -360,10 +363,10 @@ export default function ImageResize() {
                   }
                 />
               </StatGrid>
-              <CopyButton text={outName} label="Copy filename" />
+              <CopyButton text={outName} label={t("Copy filename")} />
             </div>
           ) : (
-            <div className="grid h-64 place-items-center text-sm text-faint">Rendering…</div>
+            <div className="grid h-64 place-items-center text-sm text-faint">{t("Rendering…")}</div>
           )}
         </Panel>
       </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { Notice } from "@/components/ui";
+import { getLocale } from "@/lib/i18n/server";
 import { legalEditions, legalHistory, legalPage, pickLang, recordLegalVersion, termsTransition, type LegalDoc } from "@/lib/legal/legal";
 
 const PROSE = [
@@ -48,7 +49,8 @@ const day = (iso: string | null): string => (iso ? iso.slice(0, 10) : "");
  * earlier version from the instance's history, ?edition= an earlier edition of the default texts. Public.
  */
 export async function LegalDocument({ doc, lang: requested, version, edition }: { doc: LegalDoc; lang: string | undefined; version?: string; edition?: string }) {
-  const lang = pickLang(requested, (await headers()).get("accept-language"));
+  // no ?lang=: the interface language (the switcher, the account, then the browser)
+  const lang = pickLang(requested ?? (await getLocale()), (await headers()).get("accept-language"));
   // Showing the current version keeps it in the history (what a person reads now stays readable after a change).
   recordLegalVersion();
   const editionNumber = edition && /^\d{1,4}$/.test(edition) ? Number(edition) : undefined;

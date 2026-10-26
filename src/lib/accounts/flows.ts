@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
+import { msg, msgf } from "@/lib/i18n/msg";
+import type { Locale } from "@/lib/i18n/core";
 import {
   ACCOUNT_ID_PATTERN,
   DEFAULT_USER_QUOTA_BYTES,
@@ -62,8 +64,8 @@ export const RESERVED = new Set([
 export type FlowError = { ok: false; status: number; error: string; retryAfterSeconds?: number; bits?: number; message?: string };
 export type FlowOk<T = object> = { ok: true } & T;
 
-const TERMS_REQUIRED = "Accept the Terms of Service and the privacy notice to create an account.";
-const TERMS_CHANGED = "The Terms of Service or privacy notice changed while this page was open: reload it, read them and try again.";
+const TERMS_REQUIRED = msg("Accept the Terms of Service and the privacy notice to create an account.");
+const TERMS_CHANGED = msg("The Terms of Service or privacy notice changed while this page was open: reload it, read them and try again.");
 
 function fail(status: number, error: string, extra?: { retryAfterSeconds?: number; bits?: number; message?: string }): FlowError {
   return { ok: false, status, error, ...extra };
@@ -106,21 +108,21 @@ export function validateEmail(value: string): string | null {
 }
 
 export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_CHARS) return `The password needs at least ${MIN_PASSWORD_CHARS} characters.`;
-  if (password.length > MAX_PASSWORD_CHARS) return `The password can have at most ${MAX_PASSWORD_CHARS} characters.`;
+  if (password.length < MIN_PASSWORD_CHARS) return msgf("The password needs at least {n} characters.", { n: MIN_PASSWORD_CHARS });
+  if (password.length > MAX_PASSWORD_CHARS) return msgf("The password can have at most {n} characters.", { n: MAX_PASSWORD_CHARS });
   return null;
 }
 
 const link = (path: string, token?: string): string => `${publicBaseUrl()}${path}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
-export const GENERIC_REGISTER = "If the details can be used, a message is on its way to that address. Open the link in it to finish.";
-export const GENERIC_RESEND = "If that address has an account waiting for confirmation, a new link is on its way.";
-export const GENERIC_FORGOT = "If that address belongs to an account, a link to set a new password is on its way.";
-export const PENDING_FULL = "Too many sign-ups are waiting for confirmation right now. Try again later.";
+export const GENERIC_REGISTER = msg("If the details can be used, a message is on its way to that address. Open the link in it to finish.");
+export const GENERIC_RESEND = msg("If that address has an account waiting for confirmation, a new link is on its way.");
+export const GENERIC_FORGOT = msg("If that address belongs to an account, a link to set a new password is on its way.");
+export const PENDING_FULL = msg("Too many sign-ups are waiting for confirmation right now. Try again later.");
 
 /* ------------------------------------------------------------------------------------------- register */
 
-export async function register(input: { username: string; email: string; password: string; acceptTerms?: string | null }, ip: string, pow?: PowSolution | null): Promise<FlowOk<{ message: string }> | FlowError> {
+export async function register(input: { username: string; email: string; password: string; acceptTerms?: string | null; locale?: Locale }, ip: string, pow?: PowSolution | null): Promise<FlowOk<{ message: string }> | FlowError> {
   // The Terms and privacy notice must be accepted before the contract exists; the version the page showed is recorded.
   // A version that changed in between (the operator edited the texts) is refused, so the record names what was shown.
   const terms = legalVersion();
@@ -129,10 +131,10 @@ export async function register(input: { username: string; email: string; passwor
   recordLegalVersion();
   const username = input.username.trim();
   if (!ACCOUNT_ID_PATTERN.test(username)) {
-    return fail(400, "The username needs 1-32 characters: lowercase letters, digits, - and _ (starting with a letter or digit).");
+    return fail(400, msg("The username needs 1-32 characters: lowercase letters, digits, - and _ (starting with a letter or digit)."));
   }
   const email = validateEmail(input.email);
-  if (!email) return fail(400, "That does not look like an email address.");
+  if (!email) return fail(400, msg("That does not look like an email address."));
   const problem = passwordProblem(input.password);
   if (problem) return fail(400, problem);
   // Static address rules and cached lists follow syntax validation and precede proof-of-work. DNS is outbound work an
@@ -175,14 +177,16 @@ export async function register(input: { username: string; email: string; passwor
       pendingIpp: ipTag,
       termsAcceptedAt: new Date().toISOString(),
       termsVersion: terms,
+      language: input.locale ?? null,
     }));
     if (store.accounts.length === 1) store.defaultAccountId = username;
     return "created";
   });
   if (outcome === "pending_full") return fail(429, "pending_full", { message: PENDING_FULL, retryAfterSeconds: 3_600 });
-  if (outcome === "created") sendMail(email, verifyEmailMail(username, link("/verify", token.raw)));
-  else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password")));
-  else sendMail(email, usernameTakenMail(username, link("/register")));
+  const locale = input.locale ?? "en";
+  if (outcome === "created") sendMail(email, verifyEmailMail(username, link("/verify", token.raw), locale));
+  else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password"), locale));
+  else sendMail(email, usernameTakenMail(username, link("/register"), locale));
   return { ok: true, message: GENERIC_REGISTER };
 }
 
@@ -228,7 +232,7 @@ export function verifyToken(raw: string, ip = "local", sessionToken?: string): V
   if (!result) return fail(400, "invalid_or_expired");
   if (result.kind === "email_changed") {
     revokeAllSessions(result.account.id, sessionToken);
-    if (result.oldEmail && result.account.email) sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email));
+    if (result.oldEmail && result.account.email) sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email, result.account.language ?? "en"));
   }
   return { ok: true, kind: result.kind, username: result.account.id };
 }
@@ -240,27 +244,27 @@ export function verifyToken(raw: string, ip = "local", sessionToken?: string): V
  * address asks for any link (resend, forgot), that sign-up is cancelled and they get a "create your account" link: the
  * squatter's verification link is never sent to them again. Returns whether a record was released.
  */
-function releasePendingFor(email: string): boolean {
+function releasePendingFor(email: string, locale: Locale = "en"): boolean {
   const released = mutateStore((store) => {
     const before = store.accounts.length;
     store.accounts = store.accounts.filter((account) => !(account.email === email && account.status === "pending" && account.emailVerifiedAt === null));
     if (store.accounts.length > 0 && !store.accounts.some((account) => account.id === store.defaultAccountId)) store.defaultAccountId = store.accounts[0].id;
     return store.accounts.length < before;
   });
-  if (released) sendMail(email, pendingReleasedMail(link("/register")));
+  if (released) sendMail(email, pendingReleasedMail(link("/register"), locale));
   return released;
 }
 
-export function resendVerification(emailInput: string, ip: string, pow?: PowSolution | null): FlowOk<{ message: string }> | FlowError {
+export function resendVerification(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = "en"): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
-  if (!email) return fail(400, "That does not look like an email address.");
+  if (!email) return fail(400, msg("That does not look like an email address."));
   const unpaid = powGate("resend", ip, pow);
   if (unpaid) return unpaid;
   const blocked = limited(consumeLimits([LIMITS.resendIp(ip), LIMITS.resendEmail(email)]));
   if (blocked) return blocked;
   ensurePendingSweeper();
   const existing = findByEmail(email);
-  if (existing?.status === "pending") releasePendingFor(email);
+  if (existing?.status === "pending") releasePendingFor(email, locale);
   // An active account without a confirmed address (made by the owner with the CLI) gets a fresh confirmation link.
   else if (existing) issueVerification((account) => account.id === existing.id);
   return { ok: true, message: GENERIC_RESEND };
@@ -275,15 +279,15 @@ export function issueVerification(match: (account: Account) => boolean): boolean
     account.verifyToken = token.record;
     return account;
   });
-  if (target?.email) sendMail(target.email, verifyEmailMail(target.id, link("/verify", token.raw)));
+  if (target?.email) sendMail(target.email, verifyEmailMail(target.id, link("/verify", token.raw), target.language ?? "en"));
   return Boolean(target);
 }
 
 /* --------------------------------------------------------------------------------------- forgot / reset */
 
-export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution | null): FlowOk<{ message: string }> | FlowError {
+export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = "en"): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
-  if (!email) return fail(400, "That does not look like an email address.");
+  if (!email) return fail(400, msg("That does not look like an email address."));
   const unpaid = powGate("forgot", ip, pow);
   if (unpaid) return unpaid;
   const blocked = limited(consumeLimits([LIMITS.forgotIp(ip), LIMITS.forgotEmail(email)]));
@@ -291,14 +295,14 @@ export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution
   ensurePendingSweeper();
   const existing = findByEmail(email);
   if (existing && existing.status === "pending") {
-    releasePendingFor(email);
+    releasePendingFor(email, locale);
   } else if (existing && existing.status === "active") {
     const token = newToken(RESET_TTL_MS);
     mutateStore((store) => {
       const account = store.accounts.find((candidate) => candidate.id === existing.id);
       if (account) account.resetToken = token.record;
     });
-    sendMail(email, resetPasswordMail(existing.id, link("/reset-password", token.raw)));
+    sendMail(email, resetPasswordMail(existing.id, link("/reset-password", token.raw), existing.language ?? locale));
   }
   return { ok: true, message: GENERIC_FORGOT };
 }
@@ -331,7 +335,7 @@ export async function resetPassword(raw: string, password: string, ip = "local",
   // Whoever had the password may have left credentials behind: every session and every MCP key ends (audit M2).
   revokeAllSessions(account.id);
   const mcpKeysRevoked = revokeAllMcpKeys(account.id);
-  if (account.email) sendMail(account.email, passwordChangedMail(account.id, mcpKeysRevoked));
+  if (account.email) sendMail(account.email, passwordChangedMail(account.id, mcpKeysRevoked, account.language ?? "en"));
   return { ok: true, username: account.id, mcpKeysRevoked };
 }
 
@@ -373,14 +377,14 @@ export async function changePassword(account: Account, current: string, next: st
   const revoked = revokeAllSessions(updated.id);
   // A password change is what a user does after noticing a takeover: MCP keys an intruder made go too (audit M2).
   const mcpKeysRevoked = revokeAllMcpKeys(updated.id);
-  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id, mcpKeysRevoked));
+  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id, mcpKeysRevoked, updated.language ?? "en"));
   return { ok: true, account: updated, revoked, mcpKeysRevoked };
 }
 
 export async function changeEmail(account: Account, password: string, emailInput: string): Promise<FlowOk<{ message: string }> | FlowError> {
   const email = validateEmail(emailInput);
-  if (!email) return fail(400, "That does not look like an email address.");
-  if (email === account.email) return fail(400, "That is already your address.");
+  if (!email) return fail(400, msg("That does not look like an email address."));
+  if (email === account.email) return fail(400, msg("That is already your address."));
   // Email policy (signed-in caller, so the DNS part needs no proof-of-work): before the password check and the mail.
   if (!(await checkEmailPolicy(email)).ok) return fail(400, EMAIL_POLICY_MESSAGE);
   const wrong = await confirmPassword(account, password);
@@ -396,9 +400,9 @@ export async function changeEmail(account: Account, password: string, emailInput
     return "pending" as const;
   });
   if (outcome === "missing") return fail(404, "not_found");
-  if (outcome === "pending") sendMail(email, changeEmailMail(account.id, email, link("/verify", token.raw)));
-  else sendMail(email, emailInUseMail(link("/forgot-password")));
-  return { ok: true, message: `A confirmation link is on its way to ${email}. Your address changes when you open it.` };
+  if (outcome === "pending") sendMail(email, changeEmailMail(account.id, email, link("/verify", token.raw), account.language ?? "en"));
+  else sendMail(email, emailInUseMail(link("/forgot-password"), account.language ?? "en"));
+  return { ok: true, message: msgf("A confirmation link is on its way to {email}. Your address changes when you open it.", { email }) };
 }
 
 /** Removes the account record, its sessions and every data location. Shared by self-deletion and the admin page. */
@@ -432,9 +436,9 @@ export async function deleteOwnAccount(account: Account, password: string, store
     const wrong = await confirmPassword(account, password);
     if (wrong) return wrong;
   }
-  if (isLastAdmin(account.id, store)) return fail(409, "You are the only administrator. Make someone else an administrator first.");
+  if (isLastAdmin(account.id, store)) return fail(409, msg("You are the only administrator. Make someone else an administrator first."));
   const result = purgeAccount(account.id);
   if (!result) return fail(404, "not_found");
-  if (result.email) sendMail(result.email, accountDeletedMail(account.id));
+  if (result.email) sendMail(result.email, accountDeletedMail(account.id, account.language ?? "en"));
   return { ok: true, removed: result.removed };
 }

@@ -1,4 +1,5 @@
 import * as z from "zod/v4";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * What a tool may touch, declared by every tool (no default: a new tool must pick one).
@@ -127,9 +128,9 @@ export function defineTool<Schema extends z.ZodType>(options: {
   run(input: z.output<Schema>, ctx?: KnifeToolContext): unknown | Promise<unknown>;
 }): KnifeToolDefinition {
   // Fail at module load, not at call time: an outbound tool must name where it goes, and only outbound tools do.
-  if (!KNIFE_TOOL_EFFECTS.includes(options.effect)) throw new Error(`${options.name}: unknown effect ${String(options.effect)}`);
-  if ((options.effect === "outbound") !== Boolean(options.urlArgs?.length)) throw new Error(`${options.name}: urlArgs are required for, and only for, outbound tools`);
-  if (options.publishes && options.effect !== "write") throw new Error(`${options.name}: only write tools can publish`);
+  if (!KNIFE_TOOL_EFFECTS.includes(options.effect)) throw new Error(msgf("{name}: unknown effect {effect}", { name: options.name, effect: String(options.effect) }));
+  if ((options.effect === "outbound") !== Boolean(options.urlArgs?.length)) throw new Error(msgf("{name}: urlArgs are required for, and only for, outbound tools", { name: options.name }));
+  if (options.publishes && options.effect !== "write") throw new Error(msgf("{name}: only write tools can publish", { name: options.name }));
   return {
     name: options.name,
     scope: options.scope,
@@ -140,7 +141,7 @@ export function defineTool<Schema extends z.ZodType>(options: {
       // Second check behind the routes' filter: a tool never runs outside its scope, whoever dispatches it.
       if (!toolAllowed(options, ctx)) {
         if (options.scope === "admin" && ctx?.accountId) throw new KnifeToolForbiddenError(options.name);
-        throw new Error(`${options.name} needs an account context.`);
+        throw new Error(msgf("{name} needs an account context.", { name: options.name }));
       }
       const parsed = options.schema.safeParse(input);
       if (!parsed.success) {

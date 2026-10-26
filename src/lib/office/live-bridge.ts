@@ -1,4 +1,5 @@
 import { LIVE_PROTOCOL, parseHello, parsePortMessage, type LiveCommand, type LiveEditor, type LiveHello } from "./live-protocol";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Browser end of the live-editing channel to the editor plugin (protocol: live-protocol.ts, contract docs/SIDECARS.md).
@@ -74,7 +75,7 @@ export class OfficeLiveBridge {
     this.docName = options.docName;
     const fallback = typeof window === "undefined" ? null : (window as BridgeWindow);
     const win = options.win ?? fallback;
-    if (!win) throw new Error("OfficeLiveBridge needs a window");
+    if (!win) throw new Error(msg("OfficeLiveBridge needs a window"));
     this.win = win;
     this.onWindowMessage = this.onWindowMessage.bind(this);
   }

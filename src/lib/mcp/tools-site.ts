@@ -11,6 +11,7 @@ import * as service from "@/lib/site/service";
 import { loadSite, siteView } from "@/lib/site/store";
 import { defineTool, type KnifeToolContext, type KnifeToolDefinition } from "./define";
 import { hasUntrustedMarkers, wrapUntrusted, wrapUntrustedOptional, wrapUntrustedStrings } from "@/lib/security/untrusted";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Website studio tools (group `site`, docs/WEBSITE-STUDIO.md): read and score the user's website, read its repository,
@@ -19,7 +20,7 @@ import { hasUntrustedMarkers, wrapUntrusted, wrapUntrustedOptional, wrapUntruste
  */
 
 function account(ctx: KnifeToolContext | undefined): string {
-  if (!ctx?.accountId) throw new Error("Website tools need an account context.");
+  if (!ctx?.accountId) throw new Error(msg("Website tools need an account context."));
   return ctx.accountId;
 }
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button, CopyButton, Field, Notice, Panel, Select, Stat, StatGrid, TextArea } from "@/components/ui";
 import { downloadText } from "@/lib/format";
+import { useT } from "@/lib/i18n/react";
 
 const SAMPLE = "A👩‍💻e\u0301\tline one\nline\u00a0two\u200b";
 const MAX_INPUT_LENGTH = 20_000;
@@ -104,6 +105,7 @@ function inspectCharacters(text: string): CharacterOccurrence[] {
 }
 
 export default function CharacterInspector() {
+  const { t } = useT();
   const [input, setInput] = useState("");
   const [normalization, setNormalization] = useState<"NFC" | "NFD" | "NFKC" | "NFKD">("NFC");
 
@@ -119,69 +121,69 @@ export default function CharacterInspector() {
   return (
     <div className="space-y-4">
       <Panel
-        title="Input"
+        title={t("Input")}
         right={
           <div className="flex flex-wrap gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => setInput("")}>Clear</Button>
-            <Button size="sm" variant="subtle" onClick={() => setInput(SAMPLE)}>Sample</Button>
+            <Button size="sm" variant="ghost" onClick={() => setInput("")}>{t("Clear")}</Button>
+            <Button size="sm" variant="subtle" onClick={() => setInput(SAMPLE)}>{t("Sample")}</Button>
           </div>
         }
       >
         <div className="space-y-3">
-          <Field label="Text to inspect" hint={`Analysis is capped at ${MAX_INPUT_LENGTH.toLocaleString("en-US")} UTF-16 units.`}>
+          <Field label={t("Text to inspect")} hint={t("Analysis is capped at {value} UTF-16 units.", { value: MAX_INPUT_LENGTH.toLocaleString("en-US") })}>
             <TextArea
               value={input}
               maxLength={MAX_INPUT_LENGTH}
               spellCheck={false}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="Paste text to inspect graphemes, whitespace, and invisible characters…"
+              placeholder={t("Paste text to inspect graphemes, whitespace, and invisible characters…")}
               rows={7}
             />
           </Field>
           <StatGrid>
-            <Stat label="Graphemes" value={clusters.length} />
-            <Stat label="Code points" value={Array.from(input).length} />
-            <Stat label="UTF-16 units" value={input.length} />
-            <Stat label="UTF-8 bytes" value={new TextEncoder().encode(input).length} />
+            <Stat label={t("Graphemes")} value={clusters.length} />
+            <Stat label={t("Code points")} value={Array.from(input).length} />
+            <Stat label={t("UTF-16 units")} value={input.length} />
+            <Stat label={t("UTF-8 bytes")} value={new TextEncoder().encode(input).length} />
           </StatGrid>
         </div>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Whitespace & invisible characters">
+        <Panel title={t("Whitespace & invisible characters")}>
           {input ? (
             <div className="space-y-3">
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-bg p-3 font-mono text-[13px] leading-relaxed text-ink">{visiblePreview}</pre>
-              {previewWasTruncated ? <p className="text-xs text-faint">Preview limited to {MAX_PREVIEW_GRAPHEMES.toLocaleString("en-US")} graphemes.</p> : null}
+              {previewWasTruncated ? <p className="text-xs text-faint">{t("Preview limited to {value} graphemes.", { value: MAX_PREVIEW_GRAPHEMES.toLocaleString("en-US") })}</p> : null}
               {unusual.length ? (
                 <div className="overflow-x-auto rounded-lg border border-line">
                   <table className="w-full min-w-[440px] text-left text-xs">
-                    <thead className="bg-raised text-faint"><tr><th className="px-3 py-2">Character</th><th className="px-3 py-2">Code point</th><th className="px-3 py-2">Count</th><th className="px-3 py-2">Positions</th></tr></thead>
+                    <thead className="bg-raised text-faint"><tr><th className="px-3 py-2">{t("Character")}</th><th className="px-3 py-2">{t("Code point")}</th><th className="px-3 py-2">{t("Count")}</th><th className="px-3 py-2">{t("Positions")}</th></tr></thead>
                     <tbody>{unusual.map((item) => <tr key={item.codePoint} className="border-t border-line">
-                      <td className="px-3 py-2 text-ink">{item.label}</td>
+                      <td className="px-3 py-2 text-ink">{t(item.label)}</td>
                       <td className="px-3 py-2 font-mono text-ink">{codePointLabel(item.codePoint)}</td>
                       <td className="px-3 py-2 font-mono text-ink">{item.count}</td>
                       <td className="px-3 py-2 font-mono text-muted">{item.positions.join(", ")}{item.count > item.positions.length ? ", …" : ""}</td>
                     </tr>)}</tbody>
                   </table>
                 </div>
-              ) : <Notice>No invisible or unusual spacing characters found.</Notice>}
-              <p className="text-xs text-faint">Positions count Unicode code points, starting at 1. Regular spaces appear as · and line breaks as ↵.</p>
+              ) : <Notice>{t("No invisible or unusual spacing characters found.")}</Notice>}
+              <p className="text-xs text-faint">{t("Positions count Unicode code points, starting at 1. Regular spaces appear as · and line breaks as ↵.")}</p>
             </div>
-          ) : <p className="text-sm text-faint">Spaces and line breaks become visible here. Hidden formatting characters are listed below the preview.</p>}
+          ) : <p className="text-sm text-faint">{t("Spaces and line breaks become visible here. Hidden formatting characters are listed below the preview.")}</p>}
         </Panel>
 
         <Panel
-          title="Unicode normalization"
+          title={t("Unicode normalization")}
           right={
             <div className="flex flex-wrap items-end gap-2">
-              <Field label="Form" className="w-24">
+              <Field label={t("Form")} className="w-24">
                 <Select value={normalization} onChange={(event) => setNormalization(event.target.value as typeof normalization)}>
                   <option>NFC</option><option>NFD</option><option>NFKC</option><option>NFKD</option>
                 </Select>
               </Field>
               <CopyButton text={output} />
-              <Button size="sm" variant="subtle" disabled={!input} onClick={() => downloadText(output, "normalized.txt")}>Save</Button>
+              <Button size="sm" variant="subtle" disabled={!input} onClick={() => downloadText(output, "normalized.txt")}>{t("Save")}</Button>
             </div>
           }
         >
@@ -189,12 +191,12 @@ export default function CharacterInspector() {
             <div className="space-y-3">
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-bg p-3 font-mono text-[13px] leading-relaxed text-ink">{output}</pre>
               <StatGrid>
-                <Stat label="Original code points" value={Array.from(input).length} />
-                <Stat label={`${normalization} code points`} value={Array.from(output).length} />
+                <Stat label={t("Original code points")} value={Array.from(input).length} />
+                <Stat label={t("{normalization} code points", { normalization })} value={Array.from(output).length} />
               </StatGrid>
-              <p className="text-xs text-faint">Normalization creates a copy; the input is left untouched.</p>
+              <p className="text-xs text-faint">{t("Normalization creates a copy; the input is left untouched.")}</p>
             </div>
-          ) : <p className="text-sm text-faint">Choose a normalization form to prepare a copy of your text.</p>}
+          ) : <p className="text-sm text-faint">{t("Choose a normalization form to prepare a copy of your text.")}</p>}
         </Panel>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { guard, json, jsonError, publicOnly } from "@/lib/accounts/http";
 import { clientIp } from "@/lib/accounts/network";
 import { isPowForm, issueChallenge } from "@/lib/accounts/pow";
+import { msg } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET(request: Request): Promise<Response> {
   const blocked = guard(request, false);
   if (blocked) return blocked;
   const form = new URL(request.url).searchParams.get("form");
-  if (!isPowForm(form)) return jsonError("Expected ?form=register|forgot|resend|reset|login.", 400);
+  if (!isPowForm(form)) return jsonError(msg("Expected ?form=register|forgot|resend|reset|login."), 400);
   const asked = Number(new URL(request.url).searchParams.get("bits") ?? "");
   return json(issueChallenge(form, clientIp(request), Number.isInteger(asked) && asked > 0 ? { atLeastBits: asked } : {}));
 }
