@@ -7,8 +7,9 @@ import { AI_NODES } from "./ai";
 import { DATA_NODES } from "./data";
 import { FLOW_NODES } from "./flow";
 import { NETWORK_NODES } from "./network";
+import { INTEGRATION_NODES } from "./integrations";
 
-export const NODE_CATALOG: readonly NodeMeta[] = [...FLOW_NODES, ...DATA_NODES, ...NETWORK_NODES, ...AI_NODES];
+export const NODE_CATALOG: readonly NodeMeta[] = [...FLOW_NODES, ...DATA_NODES, ...NETWORK_NODES, ...AI_NODES, ...INTEGRATION_NODES];
 
 const BY_TYPE = new Map(NODE_CATALOG.map((meta) => [meta.type, meta]));
 

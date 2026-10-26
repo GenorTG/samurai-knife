@@ -9,8 +9,9 @@ import { FILE_IMPLS } from "./files";
 import { FLOW_IMPLS } from "./flow";
 import { HTTP_IMPLS } from "./http";
 import { TRANSFORM_IMPLS } from "./transform";
+import { INTEGRATION_IMPLS } from "./integrations";
 
-export const NODE_IMPLS: readonly NodeImpl[] = [...FLOW_IMPLS, ...DATA_IMPLS, ...TRANSFORM_IMPLS, ...FILE_IMPLS, ...HTTP_IMPLS, ...AI_IMPLS];
+export const NODE_IMPLS: readonly NodeImpl[] = [...FLOW_IMPLS, ...DATA_IMPLS, ...TRANSFORM_IMPLS, ...FILE_IMPLS, ...HTTP_IMPLS, ...AI_IMPLS, ...INTEGRATION_IMPLS];
 
 const BY_TYPE = new Map(NODE_IMPLS.map((impl) => [impl.type, impl]));
 
