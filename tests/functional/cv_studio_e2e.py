@@ -190,6 +190,8 @@ def shot(name):
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, locale="pl-PL", timezone_id="Europe/Warsaw", accept_downloads=True)
+    # Polish dates and numbers, English interface: a pl-PL browser without a choice would get the Polish UI (docs/I18N.md).
+    ctx.add_cookies([{"name": "knife_lang", "value": "en", "url": BASE}])
     ctx.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
     page = ctx.new_page()
     page.set_default_timeout(15000)

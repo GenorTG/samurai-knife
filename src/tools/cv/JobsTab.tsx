@@ -17,7 +17,7 @@ import { cx } from "@/lib/format";
 import { CvFrame, externalUrl, LangToggle, NoProfileNotice, profileHref, profileIsEmpty, SafeLink, useLang } from "./shared";
 import { useCvData } from "./useCvData";
 import { useT } from "@/lib/i18n/react";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 const TAB = "jobs";
 
@@ -68,9 +68,9 @@ function AddOffer({ onAdded }: { onAdded: (job: Job, note: string) => void }) {
     setBusy(false);
     if (failed.length) {
       setSource(failed.map((f) => f.split(": ")[0]).join("\n"));
-      setError(`${links.length - failed.length} of ${links.length} saved. Not saved (left in the box):\n${failed.join("\n")}`);
+      setError(tr("{saved} of {total} saved. Not saved (left in the box):\n{failed}", { saved: links.length - failed.length, total: links.length, failed: failed.join("\n") }));
     } else setSource("");
-    if (last) onAdded(last, `${links.length - failed.length} of ${links.length} offers saved.`);
+    if (last) onAdded(last, tr("{saved} of {total} offers saved.", { saved: links.length - failed.length, total: links.length }));
   };
 
   const submit = async () => {
@@ -461,7 +461,7 @@ function VariantReview({ job, profile, draft, onClose, onSaved }: { job: Job; pr
 /** What "Tailor with the assistant" sends: the offer, the language, and the truthfulness rule. */
 export function tailorPrompt(job: Job, lang: "pl" | "en"): string {
   const what = [job.title || "this offer", job.company ? `at ${job.company}` : ""].filter(Boolean).join(" ");
-  return `Tailor my CV for the saved offer “${what}” (jobId: ${job.id}) in ${lang === "pl" ? msg("Polish (pl)") : msg("English (en)")}: create a CV version for it, reword the bullets for this offer, write the headline and summary, then run the ATS check and fix what it finds. Keep my pinned items, follow my tailoring notes, and do not add anything my profile does not show.`;
+  return msgf("Tailor my CV for the saved offer “{what}” (jobId: {id}) in {value}: create a CV version for it, reword the bullets for this offer, write the headline and summary, then run the ATS check and fix what it finds. Keep my pinned items, follow my tailoring notes, and do not add anything my profile does not show.", { what, id: job.id, value: lang === "pl" ? msg("Polish (pl)") : msg("English (en)") });
 }
 
 function Actions({ job, profile, versions, trackedStatus, onChanged }: { job: Job; profile: Profile; versions: Variant[]; trackedStatus: string; onChanged: () => void }) {

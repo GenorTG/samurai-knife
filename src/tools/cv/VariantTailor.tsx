@@ -20,7 +20,7 @@ type AtsState = { key: string; phase: "loading" | "ready" | "error"; result: Ats
 const LEVEL_TONE = { ok: "good", warn: "warn", fail: "danger", info: "neutral" } as const;
 
 export function AtsPanel({ variant, job, stateKey, dirty }: { variant: Variant; job: Job | null; stateKey: string; dirty: boolean }) {
-  const { t } = useT();
+  const { t, m } = useT();
   const [state, setState] = useState<AtsState>({ key: "", phase: "loading", result: null, error: "" });
   const [showText, setShowText] = useState(false);
   const key = `${variant.id}:${stateKey}`;
@@ -105,7 +105,7 @@ export function AtsPanel({ variant, job, stateKey, dirty }: { variant: Variant; 
                 {r.checks.map((c, i) => (
                   <li key={`${c.id}-${i}`} className="flex items-start gap-2 text-[13px] text-muted">
                     <Badge tone={LEVEL_TONE[c.level]}>{c.level}</Badge>
-                    <span className="min-w-0 wrap-anywhere">{c.message}</span>
+                    <span className="min-w-0 wrap-anywhere">{m(c.message)}</span>
                   </li>
                 ))}
               </ul>

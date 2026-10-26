@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import type { SidecarStatus } from "@/lib/services/manager";
 import type { OpView } from "@/lib/services/ops";
 import type { DocMeta, DocVersion } from "@/lib/office/store";
@@ -288,7 +289,7 @@ export async function craftFileBytes(id: string): Promise<{ bytes: ArrayBuffer; 
   const response = await fetch(`/api/craft/files/${encodeURIComponent(id)}`, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) {
     await response.text();
-    throw new ApiError(`Could not read the file (${response.status}).`, response.status);
+    throw new ApiError(msgf("Could not read the file ({status}).", { status: response.status }), response.status);
   }
   return { bytes: await response.arrayBuffer(), mime: response.headers.get("x-craft-type") ?? "" };
 }

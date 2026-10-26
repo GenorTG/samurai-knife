@@ -14,14 +14,14 @@ export const MAX_FILE_BYTES = 1_000_000;
 export function checkRepo(repo: string): string {
   const parts = repo.trim().split("/");
   if (parts.length !== 2 || !parts.every((p) => NAME.test(p) && p !== "." && p !== ".." && !p.endsWith(".git"))) {
-    throw new SiteError(`the repository must look like 'owner/name', got '${repo.slice(0, 100)}'`);
+    throw new SiteError(msgf("the repository must look like 'owner/name', got '{repo}'", { repo: repo.slice(0, 100) }));
   }
   return parts.join("/");
 }
 
 export function checkBranch(branch: string): string {
   if (!BRANCH.test(branch) || branch.includes("..") || branch.endsWith("/") || branch.endsWith(".lock") || branch.includes("//")) {
-    throw new SiteError(`'${branch.slice(0, 100)}' is not a usable branch name`);
+    throw new SiteError(msgf("'{branch}' is not a usable branch name", { branch: branch.slice(0, 100) }));
   }
   return branch;
 }
@@ -32,9 +32,9 @@ export function checkBranch(branch: string): string {
  */
 export function checkPath(path: string, forWrite = false): string {
   const p = path.trim().replace(/^\.\//, "");
-  if (!p || p.length > 400 || p.startsWith("/") || /[\u0000-\u001f\\]/.test(p)) throw new SiteError(`'${path.slice(0, 120)}' is not a repository path`);
+  if (!p || p.length > 400 || p.startsWith("/") || /[\u0000-\u001f\\]/.test(p)) throw new SiteError(msgf("'{path}' is not a repository path", { path: path.slice(0, 120) }));
   const parts = p.split("/");
-  if (parts.some((s) => s === "" || s === "." || s === "..")) throw new SiteError(`'${path.slice(0, 120)}' is not a repository path`);
+  if (parts.some((s) => s === "" || s === "." || s === "..")) throw new SiteError(msgf("'{path}' is not a repository path", { path: path.slice(0, 120) }));
   if (parts[0] === ".git") throw new SiteError("the .git directory is not part of the files");
   if (forWrite && parts[0] === ".github" && parts[1] === "workflows") throw new SiteError("CI workflow files are not edited from the studio (they run code in GitHub Actions)");
   const base = parts.at(-1)!;
@@ -152,7 +152,7 @@ export async function getFile(token: string, repo: string, path: string, ref: st
   if (Array.isArray(got)) throw new SiteError(msgf("{p} is a directory: list it with the file tree instead", { p }));
   const size = Number(got.size ?? 0);
   const sha = String(got.sha ?? "");
-  if (size > MAX_FILE_BYTES) return { path: p, ref, sha, size, text: null, note: `larger than ${MAX_FILE_BYTES / 1_000_000} MB: not read` };
+  if (size > MAX_FILE_BYTES) return { path: p, ref, sha, size, text: null, note: msgf("larger than {value} MB: not read", { value: MAX_FILE_BYTES / 1_000_000 }) };
   let raw: Buffer;
   if (typeof got.content === "string" && got.encoding === "base64" && got.content.length > 0) raw = Buffer.from(got.content, "base64");
   else {
@@ -200,7 +200,7 @@ export type FileChange = { path: string; content: string } | { path: string; del
 export async function commitFiles(token: string, repo: string, branch: string, message: string, changes: FileChange[], deps?: GitHubDeps): Promise<{ sha: string; htmlUrl: string }> {
   const r = checkRepo(repo);
   const head = await branchSha(token, r, branch, deps);
-  if (!head) throw new SiteError(`branch ${branch} does not exist`, 404);
+  if (!head) throw new SiteError(msgf("branch {branch} does not exist", { branch }), 404);
   const commit = await gh<Json>(token, "GET", `/repos/${r}/git/commits/${head}`, undefined, deps);
   const baseTree = String(((commit.tree ?? {}) as Json).sha ?? "");
   const tree = changes.map((change) =>

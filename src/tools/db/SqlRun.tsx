@@ -178,14 +178,14 @@ export default function SqlRun() {
   const handleFiles = async (files: File[]) => {
     for (const file of files) {
       if (file.size > MAX_DB_BYTES) {
-        setFlash({ tone: "error", text: `${file.name} is ${formatBytes(file.size)}; files over ${formatBytes(MAX_DB_BYTES)} are refused so the tab stays responsive.` });
+        setFlash({ tone: "error", text: t("{name} is {value}; files over {value2} are refused so the tab stays responsive.", { name: file.name, value: formatBytes(file.size), value2: formatBytes(MAX_DB_BYTES) }) });
         return;
       }
       const buffer = await file.arrayBuffer();
       const head = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 16));
       if (DB_EXTENSIONS.test(file.name) || looksLikeSqlite(head)) {
         const ok = await work("open", async (engine, signal) => {
-          if (!looksLikeSqlite(head)) throw new Error(`${file.name}: that file is not a SQLite database (missing the "SQLite format 3" header).`);
+          if (!looksLikeSqlite(head)) throw new Error(t("{name}: that file is not a SQLite database (missing the \"SQLite format 3\" header).", { name: file.name }));
           try {
             applyState(await engine.open(new Uint8Array(buffer), `opened file ${file.name}`, { signal }));
           } catch (e) {
@@ -423,7 +423,7 @@ export default function SqlRun() {
               <div role="alert">
                 <Notice tone="error">
                   {t("Statement {index} failed: {message}", { index: outcome.error.index, message: outcome.error.message })}
-                  {outcome.results.length ? ` ${outcome.results.length === 1 ? "Statement 1 ran" : `Statements 1–${outcome.results.length} ran`} before the error and stays applied (SQLite autocommit); later statements were skipped.` : ""}
+                  {outcome.results.length === 1 ? t(" Statement 1 ran before the error and stays applied (SQLite autocommit); later statements were skipped.") : outcome.results.length ? t(" Statements 1–{n} ran before the error and stay applied (SQLite autocommit); later statements were skipped.", { n: outcome.results.length }) : ""}
                 </Notice>
                 <pre className="mt-2 sk-input overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap">{outcome.error.sql}</pre>
               </div>

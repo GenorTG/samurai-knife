@@ -134,7 +134,7 @@ export function saveCraftFile(accountId: string, input: { app: string; name: str
   const name = cleanFileName(input.name);
   const files = readIndex(accountId);
   const existing = files.find((file) => file.app === input.app && file.name === name);
-  if (existing && input.replace === false) throw new CraftFileError(`A file named "${name}" from this app is already in your files (id ${existing.id}).`, 409, "file_exists");
+  if (existing && input.replace === false) throw new CraftFileError(msgf("A file named \"{name}\" from this app is already in your files (id {id}).", { name, id: existing.id }), 409, "file_exists");
   if (!existing && files.length >= MAX_CRAFT_FILES) throw new CraftFileError(msgf("You have {maxCraftFiles} Craft files; delete some first.", { maxCraftFiles: MAX_CRAFT_FILES }), 409);
   const at = now.toISOString();
   const file: CraftFile = existing

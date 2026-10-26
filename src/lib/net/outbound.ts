@@ -1,4 +1,5 @@
 // SERVER ONLY. Who may send outbound requests where, and how often (docs/ARCHITECTURE.md "Outbound requests").
+import { msgf } from "@/lib/i18n/msg";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { checkLimits, hitLimits, LIMITS, type Limit, type LimitCheck } from "@/lib/accounts/rate-limit";
 import type { ProviderNet } from "@/lib/accounts/provider";
@@ -217,7 +218,7 @@ export function providerUrlProblem(account: Pick<Account, "role"> & { approvedPr
   if (!host) return "baseUrl is not a valid URL.";
   if (isKnownProviderHost(host)) return null;
   if (account.approvedProviderUrl && account.approvedProviderUrl === baseUrl) return null;
-  return `${host} is not one of this server's known model providers; ask an administrator to approve this base URL for your account.`;
+  return msgf("{host} is not one of this server's known model providers; ask an administrator to approve this base URL for your account.", { host });
 }
 
 /** A provider round or Test: allow-list first, then purpose and destination-host budgets. */
@@ -278,5 +279,5 @@ export function mayUseAnonymousPageSpeed(account: Pick<Account, "role">): boolea
 }
 
 export function outboundLimitMessage(retryAfterSeconds: number): string {
-  return `Too many outbound requests from this account (or to this destination); try again in ${retryAfterSeconds} s.`;
+  return msgf("Too many outbound requests from this account (or to this destination); try again in {retryAfterSeconds} s.", { retryAfterSeconds });
 }

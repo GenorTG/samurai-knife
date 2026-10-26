@@ -377,7 +377,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     form.locator("input[autocomplete=new-password]").fill("alice password 2")
     shot(page_a, "account")
     form.get_by_role("button", name="Change password").click()
-    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other session\(s\) were signed out\."))).to_be_visible(timeout=15_000)
+    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other sessions? (was|were) signed out\."))).to_be_visible(timeout=15_000)
     check("change password in the UI", True)
     check("the other session is revoked", api.call("GET", "/api/account", cookie=cookie2)[0] == 401)
     status = ctx_a.request.get(base + "/api/account").status

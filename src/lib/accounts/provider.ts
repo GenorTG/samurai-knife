@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { estimateUsage, normalizeUsage, type Usage } from "@/lib/usage";
 import * as z from "zod/v4";
 import type { ProviderConfig } from "@/lib/accounts/store";
@@ -60,9 +61,9 @@ export function validateExtraHeaders(headers: Record<string, string>, strict = f
   for (const name of names) {
     if (!HEADER_NAME.test(name)) return `Invalid header name: ${name}`;
     const lower = name.toLowerCase();
-    if (FORBIDDEN_HEADERS.has(lower)) return `Header ${name} is managed by the server.`;
+    if (FORBIDDEN_HEADERS.has(lower)) return msgf("Header {name} is managed by the server.", { name });
     if (strict && (USER_FORBIDDEN_HEADERS.has(lower) || USER_FORBIDDEN_PREFIXES.some((prefix) => lower.startsWith(prefix)))) {
-      return `Header ${name} is not allowed.`;
+      return msgf("Header {name} is not allowed.", { name });
     }
     const value = headers[name];
     if (value.length > 1_024 || /[\r\n\0]/.test(value)) return `Invalid value for header ${name}.`;
@@ -150,7 +151,7 @@ async function upstreamFetch(
 function failureMessage(failure: UpstreamFailure): string {
   if (failure.kind === "timeout") return "The provider did not answer in time.";
   if (failure.kind === "too_large") return "The provider response was too large.";
-  if (failure.kind === "refused") return `The provider address is not allowed: ${failure.detail}`;
+  if (failure.kind === "refused") return msgf("The provider address is not allowed: {detail}", { detail: failure.detail });
   return "Could not reach the provider.";
 }
 

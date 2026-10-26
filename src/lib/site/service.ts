@@ -89,7 +89,7 @@ function dropAppConnection(accountId: string, why: string): never {
     s.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: why };
   });
   recordSecurityEvent({ kind: "github_app_access_lost", account: accountId, detail: { reason: why.slice(0, 120) } });
-  throw new SiteError(`the website connection was removed: ${why}. Connect again (Connect tab) if you still have access.`, 403);
+  throw new SiteError(msgf("the website connection was removed: {why}. Connect again (Connect tab) if you still have access.", { why }), 403);
 }
 
 /** May this account (still) use the app installation on `repo`? Throws (and drops the connection) when not. */
@@ -98,7 +98,7 @@ async function assertAppAccess(a: Account, installationId: number, repo: string,
   if (!github) dropAppConnection(a.id, "GitHub is no longer linked to this account");
   const site = loadSite(a.id);
   const listed = linkedRepo(site, installationId, repo);
-  if (!listed?.push) dropAppConnection(a.id, `your GitHub user @${github.login} has no push access to ${repo} in the linked installation`);
+  if (!listed?.push) dropAppConnection(a.id, msgf("your GitHub user @{login} has no push access to {repo} in the linked installation", { login: github.login, repo }));
   const key = `${a.id}|${installationId}|${repo.toLowerCase()}|${github.id}`;
   const cache = accessCache();
   const at = cache.get(key);
@@ -113,7 +113,7 @@ async function assertAppAccess(a: Account, installationId: number, repo: string,
   }
   if (access !== "push") {
     cache.delete(key);
-    dropAppConnection(a.id, `GitHub says @${github.login} can no longer push to ${repo}`);
+    dropAppConnection(a.id, msgf("GitHub says @{login} can no longer push to {repo}", { login: github.login, repo }));
   }
   if (cache.size >= MAX_ACCESS_CACHE) cache.delete(cache.keys().next().value as string);
   cache.set(key, Date.now());
@@ -135,7 +135,7 @@ export function checkUrl(value: string): string {
   try {
     u = new URL(v);
   } catch {
-    throw new SiteError(`'${v.slice(0, 200)}' is not a valid URL`);
+    throw new SiteError(msgf("'{v}' is not a valid URL", { v: v.slice(0, 200) }));
   }
   if (!/^https?:$/.test(u.protocol) || u.username || u.password) throw new SiteError("the site URL must be http(s) without credentials");
   return u.origin + (u.pathname === "/" ? "" : u.pathname.replace(/\/$/, ""));
@@ -160,7 +160,7 @@ export async function connect(accountId: string, input: ConnectInput) {
     // Only repositories GitHub listed for THIS user's own token, with push (never the installation's whole list).
     const access = linkedRepo(site, installationId, repo);
     if (!access) throw new SiteError(msgf("{repo} is not one of your repositories in that installation (or the app is not installed on it): add it on GitHub, then Connect with GitHub again", { repo }), 403);
-    if (!access.push) throw new SiteError(`your GitHub user has no write access to ${repo}: ask its owner for write access, then Connect with GitHub again`, 403);
+    if (!access.push) throw new SiteError(msgf("your GitHub user has no write access to {repo}: ask its owner for write access, then Connect with GitHub again", { repo }), 403);
     spend(a);
     await assertAppAccess(a, installationId, repo, true);
     token = await installationToken(installationId, repo);
@@ -179,7 +179,7 @@ export async function connect(accountId: string, input: ConnectInput) {
   if (stored.source !== "app") stored.login = (await github.getUser(token)).login;
   const info = await github.getRepo(token, repo);
   const baseBranch = github.checkBranch(input.baseBranch?.trim() || info.defaultBranch);
-  if (!(await github.branchSha(token, repo, baseBranch))) throw new SiteError(`branch ${baseBranch} does not exist in ${repo}`, 404);
+  if (!(await github.branchSha(token, repo, baseBranch))) throw new SiteError(msgf("branch {baseBranch} does not exist in {repo}", { baseBranch, repo }), 404);
   const productionUrl = checkUrl(input.productionUrl ?? current?.productionUrl ?? info.homepage ?? "");
   const pages = normalizePaths(input.pages ?? current?.pages ?? []);
   const psiKey = input.psiKey === undefined ? current?.psiKey ?? "" : input.psiKey.trim();
@@ -278,7 +278,7 @@ async function ensureWorkBranch(accountId: string, x: Ctx): Promise<string> {
   const work = loadSite(accountId).work;
   if (work && (await github.branchSha(x.token, x.c.repo, work.branch))) return work.branch;
   const baseSha = await github.branchSha(x.token, x.c.repo, x.c.baseBranch);
-  if (!baseSha) throw new SiteError(`the base branch ${x.c.baseBranch} is gone`, 404);
+  if (!baseSha) throw new SiteError(msgf("the base branch {baseBranch} is gone", { baseBranch: x.c.baseBranch }), 404);
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const branch = `knife/${stamp}-${randomBytes(3).toString("hex")}`;
   await github.createBranch(x.token, x.c.repo, branch, baseSha);
@@ -312,8 +312,8 @@ export async function replaceText(accountId: string, path: string, find: string,
   const file = await readFile(accountId, path);
   if (file.text === null) throw new SiteError(msgf("{path} cannot be edited as text ({note})", { path, note: file.note }));
   const count = file.text.split(find).length - 1;
-  if (count === 0) throw new SiteError(`the text to replace was not found in ${path} (read the file again: it may have changed)`, 409);
-  if (count > 1 && !all) throw new SiteError(`the text occurs ${count} times in ${path}: give a longer, unique snippet or set all=true`, 409);
+  if (count === 0) throw new SiteError(msgf("the text to replace was not found in {path} (read the file again: it may have changed)", { path }), 409);
+  if (count > 1 && !all) throw new SiteError(msgf("the text occurs {count} times in {path}: give a longer, unique snippet or set all=true", { count, path }), 409);
   const next = all ? file.text.split(find).join(replace) : file.text.replace(find, () => replace);
   const result = await writeFiles(accountId, message, [{ path: file.path, content: next }]);
   return { ...result, replaced: all ? count : 1 };
@@ -324,7 +324,7 @@ export async function openPull(accountId: string, title: string, body: string) {
   const work = loadSite(accountId).work;
   if (!work || !(await github.branchSha(x.token, x.c.repo, work.branch))) throw new SiteError("there are no changes yet: write files first (knife_site_write / knife_site_replace)", 409);
   const t = title.trim().slice(0, 250) || "Website update from Smart Knife";
-  const b = `${body.trim().slice(0, 20_000)}\n\n---\nPrepared in the Smart Knife website studio. Review the preview, then publish from the studio (or merge here).`;
+  const b = msgf("{value}\n\n---\nPrepared in the Smart Knife website studio. Review the preview, then publish from the studio (or merge here).", { value: body.trim().slice(0, 20_000) });
   let pull = await github.openPullFor(x.token, x.c.repo, work.branch);
   pull = pull ? await github.updatePull(x.token, x.c.repo, pull.number, { title: t, body: b }) : await github.createPull(x.token, x.c.repo, { title: t, body: b, head: work.branch, base: x.c.baseBranch });
   const number = pull.number;
@@ -346,7 +346,7 @@ export async function changes(accountId: string) {
     // Deleted on GitHub (merged and cleaned up there, or by hand): forget it.
     mutateSite(accountId, (s) => {
       s.work = null;
-      s.lastAction = { kind: "gone", at: new Date().toISOString(), detail: `branch ${work.branch} no longer exists on GitHub` };
+      s.lastAction = { kind: "gone", at: new Date().toISOString(), detail: msgf("branch {branch} no longer exists on GitHub", { branch: work.branch }) };
     });
     return { work: null, compare: null, pull: null, checks: null, lastAction: loadSite(accountId).lastAction };
   }
@@ -355,7 +355,7 @@ export async function changes(accountId: string) {
   if (pull?.merged) {
     mutateSite(accountId, (s) => {
       s.work = null;
-      s.lastAction = { kind: "published", at: new Date().toISOString(), detail: `pull request #${pull.number} was merged on GitHub` };
+      s.lastAction = { kind: "published", at: new Date().toISOString(), detail: msgf("pull request #{number} was merged on GitHub", { number: pull.number }) };
     });
   }
   const checks = await github.commitChecks(x.token, x.c.repo, head);
@@ -428,7 +428,7 @@ export async function linkInstallations(accountId: string, login: string, userTo
     if (c?.token.source === "app" && !linkedRepo(site, c.token.installationId, c.repo)?.push) {
       site.connection = null;
       site.work = null;
-      site.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: `GitHub no longer lists push access to ${c.repo} for @${login}` };
+      site.lastAction = { kind: "disconnected", at: new Date().toISOString(), detail: msgf("GitHub no longer lists push access to {repo} for @{login}", { repo: c.repo, login }) };
       dropped = true;
     }
   });

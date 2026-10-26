@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import pg from "pg";
 import { readSecret, readState } from "@/lib/services/state";
 import { COURSE_DATABASE, COURSE_SCHEMAS, LEARNER_ROLE, SEED_VERSION, seedScript } from "./seed";
@@ -91,7 +92,7 @@ function connectError(error: unknown): LearnDbError {
   if (err.code === "ECONNREFUSED" || err.code === "ECONNRESET" || err.code === "57P03" || /timeout/i.test(err.message ?? "")) {
     return new LearnDbError("not_running", "The course database is not running (or still starting). Start it and try again.");
   }
-  return new LearnDbError("connect_failed", `Could not connect to the course database: ${err.message}`, 502);
+  return new LearnDbError("connect_failed", msgf("Could not connect to the course database: {message}", { message: err.message }), 502);
 }
 
 async function withAdmin<T>(info: ConnectionInfo, fn: (c: pg.Client) => Promise<T>): Promise<T> {
@@ -144,7 +145,7 @@ async function seed(info: ConnectionInfo, force: boolean): Promise<SeedInfo> {
       await c.query("COMMIT");
     } catch (error) {
       await c.query("ROLLBACK").catch(() => {});
-      throw new LearnDbError("seed_failed", `Building the course data failed: ${(error as Error).message}`, 500);
+      throw new LearnDbError("seed_failed", msgf("Building the course data failed: {message}", { message: (error as Error).message }), 500);
     }
     return { version: SEED_VERSION, built: true, ms: Date.now() - t0 };
   });
@@ -277,7 +278,7 @@ export async function runLearnerSql(info: ConnectionInfo, sql: string, options: 
   const output: RunOutput = { results: [], notices: [], durationMs: 0, error: null, rolledBack: true };
   const done = () => ({ ...output, durationMs: Date.now() - started });
   if (sql.length > MAX_SQL_CHARS) {
-    output.error = { message: `The query is longer than ${MAX_SQL_CHARS} characters.`, statement: 0 };
+    output.error = { message: msgf("The query is longer than {MAX_SQL_CHARS} characters.", { MAX_SQL_CHARS }), statement: 0 };
     return done();
   }
   const statements = splitStatements(sql);

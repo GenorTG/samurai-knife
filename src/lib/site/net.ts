@@ -99,7 +99,7 @@ async function readBody(response: TransportResponse, maxBytes: number, signal: A
     for await (const chunk of response.body) {
       if (signal.aborted) throw new SiteError("the page timed out", 504);
       total += chunk.byteLength;
-      if (total > maxBytes) throw new SiteError(`the page is larger than ${maxBytes / 1_000_000} MB`, 413);
+      if (total > maxBytes) throw new SiteError(msgf("the page is larger than {value} MB", { value: maxBytes / 1_000_000 }), 413);
       chunks.push(chunk);
     }
   } finally {
@@ -127,7 +127,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
   try {
     current = new URL(input);
   } catch {
-    throw new SiteError(`'${input.slice(0, 200)}' is not a valid URL`);
+    throw new SiteError(msgf("'{input}' is not a valid URL", { input: input.slice(0, 200) }));
   }
   if (!/^https?:$/.test(current.protocol)) throw new SiteError("only http(s) pages can be audited");
   const started = Date.now();
@@ -151,7 +151,7 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
         });
       } catch (error) {
         if (signal.aborted) throw new SiteError(msgf("{host} did not answer within {value} s", { host: current.host, value: timeoutMs / 1000 }), 504);
-        throw new SiteError(`could not connect to ${current.host}: ${error instanceof Error ? error.message : String(error)}`, 502);
+        throw new SiteError(msgf("could not connect to {host}: {value}", { host: current.host, value: error instanceof Error ? error.message : String(error) }), 502);
       }
       const ttfbMs = Date.now() - sent;
       hops.push({ url: current.href, status: response.status });
@@ -235,7 +235,7 @@ async function rawRequest(url: string, method: string, headers: Record<string, s
   try {
     response = await (deps.transport ?? nodeTransport)({ url: target, ip: addresses[0], addresses, method, headers, body, signal });
   } catch (error) {
-    throw new OutboundError("network", `could not connect to ${target.host}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new OutboundError("network", msgf("could not connect to {host}: {value}", { host: target.host, value: error instanceof Error ? error.message : String(error) }));
   }
   const raw = await readBody(response, 8_000_000, signal);
   const out = new Headers();

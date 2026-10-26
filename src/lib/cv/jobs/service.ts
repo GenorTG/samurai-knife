@@ -1,4 +1,5 @@
 // SERVER ONLY. Shared by the `knife_cv_job_*` tools and the /api/cv/jobs|variants routes.
+import { msgf } from "@/lib/i18n/msg";
 import { CvCollectionError } from "../collections";
 import type { CvLang, Job, Profile } from "../schema";
 import { loadCv, mutateCv } from "../store";
@@ -73,10 +74,10 @@ function isUrlInput(urlOrText: string): boolean {
 async function companyContext(url: string, deps: FetchDeps): Promise<{ text?: string; note: string }> {
   try {
     const page = await fetchPageText(url, deps);
-    if (!page.text.trim()) return { text: "", note: `${page.url} has no readable text (a JavaScript-only site?).` };
+    if (!page.text.trim()) return { text: "", note: msgf("{url} has no readable text (a JavaScript-only site?).", { url: page.url }) };
     return { text: [page.title, page.text].filter(Boolean).join("\n\n"), note: "" };
   } catch (error) {
-    return { note: `could not read the company website: ${error instanceof Error ? error.message : String(error)}` };
+    return { note: msgf("could not read the company website: {value}", { value: error instanceof Error ? error.message : String(error) }) };
   }
 }
 
@@ -113,7 +114,7 @@ export async function fetchAndSaveJob(accountId: string, urlOrText: string, hint
 function jobAndProfile(accountId: string, jobId: string): { job: Job; profile: Profile } {
   const data = loadCv(accountId);
   const job = data.jobs.find((j) => j.id === jobId);
-  if (!job) throw new CvJobError(`no job '${jobId}' (have: ${data.jobs.map((j) => j.id).join(", ") || "none"})`, 404);
+  if (!job) throw new CvJobError(msgf("no job '{jobId}' (have: {value})", { jobId, value: data.jobs.map((j) => j.id).join(", ") || "none" }), 404);
   const p = data.profile;
   if (!(p.experience.length || p.projects.length || p.skills.length || p.summary.pl || p.summary.en)) {
     throw new CvJobError("the CV profile is empty: import it first (knife_cv_import).", 422);
@@ -152,7 +153,7 @@ export async function refreshCompany(accountId: string, jobId: string, url?: str
 export function atsForAccount(accountId: string, input: { variantId?: string; jobId?: string; lang?: CvLang }): AtsReport & { variantId: string | null; printed: string } {
   const data = loadCv(accountId);
   const variant = input.variantId ? data.variants.find((v) => v.id === input.variantId) : undefined;
-  if (input.variantId && !variant) throw new CvJobError(`no variant '${input.variantId}' (have: ${data.variants.map((v) => v.id).join(", ") || "none"})`, 404);
+  if (input.variantId && !variant) throw new CvJobError(msgf("no variant '{variantId}' (have: {value})", { variantId: input.variantId, value: data.variants.map((v) => v.id).join(", ") || "none" }), 404);
   const jobId = input.jobId ?? variant?.jobId ?? null;
   if (!jobId) throw new CvJobError("this version is not linked to an offer: pass jobId.", 422);
   const job = data.jobs.find((j) => j.id === jobId);

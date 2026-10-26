@@ -2,6 +2,7 @@
 import { useState, type ChangeEvent } from "react";
 import { Field, Notice, Panel, Stat, StatGrid } from "@/components/ui";
 import { useT } from "@/lib/i18n/react";
+import { formatInt } from "@/lib/format";
 const LIMIT = 8 * 1024 * 1024;
 export default function EncodingDetector() {
   const { t } = useT();
@@ -10,8 +11,8 @@ export default function EncodingDetector() {
     const starts = (prefix: number[]) => prefix.every((b, i) => bytes[i] === b);
     try { let encoding = "UTF-8", offset = 0; if (starts([0xef, 0xbb, 0xbf])) offset = 3; else if (starts([0xff, 0xfe])) { encoding = "UTF-16 LE"; offset = 2; } else if (starts([0xfe, 0xff])) { encoding = "UTF-16 BE"; offset = 2; }
       const decoder = new TextDecoder(encoding === "UTF-16 LE" ? "utf-16le" : encoding === "UTF-16 BE" ? "utf-16be" : "utf-8", { fatal: true }); const decoded = decoder.decode(bytes.slice(offset));
-      setResult({ label: hasNull && encoding === "UTF-8" ? t("Binary or UTF-16 candidate") : encoding, detail: `${bytes.length.toLocaleString("en-US")} bytes; ${controls} non-whitespace control bytes. Valid ${encoding} sequence${offset ? " with BOM" : " without BOM"}.`, sample: decoded.slice(0, 400) }); setError("");
-    } catch { setResult({ label: t("Not valid UTF-8 / UTF-16"), detail: `${bytes.length.toLocaleString("en-US")} bytes; ${Math.round(ratio * 100)}% control bytes. Could be a legacy code page or binary data.`, sample: "" }); setError(""); }
+      setResult({ label: hasNull && encoding === "UTF-8" ? t("Binary or UTF-16 candidate") : encoding, detail: offset ? t("{bytes} bytes; {controls} non-whitespace control bytes. Valid {encoding} sequence with BOM.", { bytes: formatInt(bytes.length), controls, encoding }) : t("{bytes} bytes; {controls} non-whitespace control bytes. Valid {encoding} sequence without BOM.", { bytes: formatInt(bytes.length), controls, encoding }), sample: decoded.slice(0, 400) }); setError("");
+    } catch { setResult({ label: t("Not valid UTF-8 / UTF-16"), detail: t("{bytes} bytes; {percent}% control bytes. Could be a legacy code page or binary data.", { bytes: formatInt(bytes.length), percent: Math.round(ratio * 100) }), sample: "" }); setError(""); }
   };
   return (
     <Panel title={t("Text file encoding detector")}>

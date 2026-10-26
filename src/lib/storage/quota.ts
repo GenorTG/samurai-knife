@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { isPublicMode } from "@/lib/accounts/mode";
@@ -55,8 +56,8 @@ export class QuotaExceededError extends Error {
   constructor(usedBytes: number, quotaBytes: number, neededBytes: number) {
     const free = Math.max(0, quotaBytes - usedBytes);
     super(
-      `Not enough storage: this needs ${formatBytes(neededBytes)} but only ${formatBytes(free)} of your ${formatBytes(quotaBytes)} is free ` +
-        `(${formatBytes(usedBytes)} used). Free space by deleting files, emptying the office trash or pruning old document versions.`,
+      msgf("Not enough storage: this needs {value} but only {value2} of your {value3} is free ", { value: formatBytes(neededBytes), value2: formatBytes(free), value3: formatBytes(quotaBytes) }) +
+        msgf("({value} used). Free space by deleting files, emptying the office trash or pruning old document versions.", { value: formatBytes(usedBytes) }),
     );
     this.name = "QuotaExceededError";
     this.usedBytes = usedBytes;

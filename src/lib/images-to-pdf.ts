@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { PDFDocument } from "pdf-lib";
 
 /**
@@ -36,7 +37,7 @@ async function encode(file: File): Promise<{ bytes: Uint8Array; jpeg: boolean; w
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
-    throw new Error(`This browser cannot read ${file.name}. Use PNG, JPEG or WebP.`);
+    throw new Error(msgf("This browser cannot read {name}. Use PNG, JPEG or WebP.", { name: file.name }));
   }
   try {
     const canvas = document.createElement("canvas");
@@ -53,7 +54,7 @@ async function encode(file: File): Promise<{ bytes: Uint8Array; jpeg: boolean; w
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, jpeg ? "image/jpeg" : "image/png", 0.95));
     canvas.width = 0;
     canvas.height = 0;
-    if (!blob) throw new Error(`Could not convert ${file.name}.`);
+    if (!blob) throw new Error(msgf("Could not convert {name}.", { name: file.name }));
     return { bytes: new Uint8Array(await blob.arrayBuffer()), jpeg, width: bitmap.width, height: bitmap.height };
   } finally {
     bitmap.close();

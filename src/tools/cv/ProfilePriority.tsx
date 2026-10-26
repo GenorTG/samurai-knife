@@ -56,7 +56,7 @@ export function SectionOrderEditor({ profile, order, isCustom, onChange, label, 
 }
 
 export function TailoringSection({ profile }: { profile: Profile }) {
-  const { t } = useT();
+  const { t, tn } = useT();
   const env = useProfileEnv();
   const order = effectiveSectionOrder(profile);
   const pinned = profile.experience.filter((e) => e.pinned).length + profile.projects.filter((p) => p.pinned).length + profile.skills.filter((s) => s.pinned).length
@@ -79,7 +79,7 @@ export function TailoringSection({ profile }: { profile: Profile }) {
           <div className="space-y-1">
             <span className="sk-label">{t("Priority items")}</span>
             <p className="px-2.5 text-sm text-muted">
-              {pinned ? `${pinned} pinned ${pinned === 1 ? "item" : "items"}: always kept and listed first in tailored versions.` : t("None yet. Use ☆ pin on a role, bullet, project, skill group or your own section to make it a priority.")}
+              {pinned ? tn("{n} pinned item: always kept and listed first in tailored versions.", "{n} pinned items: always kept and listed first in tailored versions.", pinned) : t("None yet. Use ☆ pin on a role, bullet, project, skill group or your own section to make it a priority.")}
             </p>
           </div>
           <div className="space-y-1">

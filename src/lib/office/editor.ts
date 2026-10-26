@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { randomBytes } from "node:crypto";
 import { signJwt } from "@/lib/jwt-hs256";
 import { appUrl, internalUrl, publicUrl } from "@/lib/services/urls";
@@ -103,11 +104,11 @@ export async function forceSave(meta: DocMeta): Promise<ForceSaveResult> {
       cache: "no-store",
     });
   } catch (error) {
-    throw new OfficeUnavailableError(`the office service did not answer: ${error instanceof Error ? error.message : String(error)}`);
+    throw new OfficeUnavailableError(msgf("the office service did not answer: {value}", { value: error instanceof Error ? error.message : String(error) }));
   }
   const answer = (await response.json().catch(() => ({}))) as { error?: unknown };
   if (answer.error === 0) return { status: "saving" };
   if (answer.error === 4) return { status: "unchanged" };
   if (answer.error === 1) return { status: "not_open" };
-  throw new OfficeUnavailableError(`the office service refused the save (command service error ${String(answer.error)})`);
+  throw new OfficeUnavailableError(msgf("the office service refused the save (command service error {value})", { value: String(answer.error) }));
 }

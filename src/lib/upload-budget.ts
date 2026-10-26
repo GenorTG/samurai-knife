@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import os from "node:os";
 
 import { isPublicMode } from "./accounts/mode";
@@ -118,7 +119,7 @@ export function reserveUpload(request: UploadRequest): UploadReservation {
   const privileged = request.privileged === true;
 
   if ((current.perOwner.get(request.owner) ?? 0) >= settings.perAccount) {
-    throw new UploadBudgetError(429, `You already have ${settings.perAccount} uploads in progress. Wait for one to finish, then try again.`, 10);
+    throw new UploadBudgetError(429, msgf("You already have {perAccount} uploads in progress. Wait for one to finish, then try again.", { perAccount: settings.perAccount }), 10);
   }
   if (current.total >= settings.max || (!privileged && current.ordinary >= settings.max - settings.reserved)) {
     throw new UploadBudgetError(503, BUSY, 10);

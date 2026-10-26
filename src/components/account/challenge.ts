@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { fetchSolution } from "@/lib/pow/client";
 import type { PowForm, PowSolution } from "@/lib/pow/types";
 import type { Reply } from "./api";
@@ -22,7 +23,7 @@ export async function withChallenge<T>(
       pow = await fetchSolution(form, undefined, bits);
       return null;
     } catch (error) {
-      return { ok: false, status: 0, code: "challenge_failed", message: `The browser check could not finish: ${error instanceof Error ? error.message : String(error)}. Try again.` };
+      return { ok: false, status: 0, code: "challenge_failed", message: msgf("The browser check could not finish: {value}. Try again.", { value: error instanceof Error ? error.message : String(error) }) };
     }
   };
   if (options.upfront) {

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { missingTranslations } from "../ops";
 import type { Bi, CvLang, Profile } from "../schema";
 import { effectiveSectionOrder } from "../variant";
@@ -156,7 +157,7 @@ function translationWarnings(profile: Profile, lang: CvLang): string[] {
   }
   return [...bySection].map(([section, paths]) => {
     const shown = paths.slice(0, 3).join(", ") + (paths.length > 3 ? `, +${paths.length - 3} more` : "");
-    return `${section}: ${paths.length} field${paths.length === 1 ? "" : "s"} written in ${LANG_NAME[other]} but empty in ${LANG_NAME[lang]} (${shown})`;
+    return paths.length === 1 ? msgf("{section}: 1 field written in {from} but empty in {to} ({shown})", { section, from: LANG_NAME[other], to: LANG_NAME[lang], shown }) : msgf("{section}: {count} fields written in {from} but empty in {to} ({shown})", { section, count: paths.length, from: LANG_NAME[other], to: LANG_NAME[lang], shown });
   });
 }
 

@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import type { OutboundPolicy } from "@/lib/net/safe-fetch";
 import { fetchPage, type FetchedPage, type NetDeps } from "../net";
 import type { Issue, SiteFacts } from "./types";
@@ -57,15 +58,15 @@ export async function checkSite(home: FetchedPage, policy: OutboundPolicy, deps:
 export function siteIssues(s: SiteFacts, auditedPaths: string[]): Issue[] {
   const out: Issue[] = [];
   const add = (id: string, severity: Issue["severity"], category: Issue["category"], title: string, detail: string, fix: string) => out.push({ id, severity, category, title, detail, page: "", fix });
-  if (s.robots.status !== 200) add("seo.robots.missing", "low", "seo", "No robots.txt", `${s.origin}/robots.txt answered ${s.robots.status || "nothing"}.`, "Serve a robots.txt that allows crawling and names the sitemap.");
-  if (s.robots.blocksAll) add("seo.robots.blocks", "high", "seo", "robots.txt blocks every crawler", "Disallow: / for User-agent: *", "Remove the blanket Disallow unless the site must stay out of search.");
-  if (s.sitemap.status !== 200 || !s.sitemap.urls) add("seo.sitemap", "medium", "seo", "No usable sitemap", `${s.sitemap.url} answered ${s.sitemap.status || "nothing"}${s.sitemap.status === 200 ? " without <loc> entries" : ""}.`, "Generate sitemap.xml with every public page and reference it from robots.txt.");
-  else if (s.sitemap.urls < auditedPaths.length) add("seo.sitemap.short", "low", "seo", `The sitemap lists ${s.sitemap.urls} URL(s) for ${auditedPaths.length} audited page(s)`, "", "List every public page in the sitemap.");
-  if (s.httpsRedirect === false) add("security.https-redirect", "high", "security", "http:// does not redirect to https://", "", "Redirect all plain-HTTP requests to HTTPS (permanent 308/301).");
-  if (s.notFoundStatus === 200) add("seo.soft-404", "medium", "seo", "Unknown URLs answer 200 (soft 404)", "Search engines index error pages as content.", "Return HTTP 404 for unknown paths.");
+  if (s.robots.status !== 200) add("seo.robots.missing", "low", "seo", msg("No robots.txt"), msgf("{origin}/robots.txt answered {value}.", { origin: s.origin, value: s.robots.status || "nothing" }), msg("Serve a robots.txt that allows crawling and names the sitemap."));
+  if (s.robots.blocksAll) add("seo.robots.blocks", "high", "seo", msg("robots.txt blocks every crawler"), msg("Disallow: / for User-agent: *"), msg("Remove the blanket Disallow unless the site must stay out of search."));
+  if (s.sitemap.status !== 200 || !s.sitemap.urls) add("seo.sitemap", "medium", "seo", msg("No usable sitemap"), msgf("{url} answered {value}{value2}.", { url: s.sitemap.url, value: s.sitemap.status || "nothing", value2: s.sitemap.status === 200 ? " without <loc> entries" : "" }), msg("Generate sitemap.xml with every public page and reference it from robots.txt."));
+  else if (s.sitemap.urls < auditedPaths.length) add("seo.sitemap.short", "low", "seo", msgf("The sitemap lists {urls} URL(s) for {length} audited page(s)", { urls: s.sitemap.urls, length: auditedPaths.length }), "", msg("List every public page in the sitemap."));
+  if (s.httpsRedirect === false) add("security.https-redirect", "high", "security", msg("http:// does not redirect to https://"), "", msg("Redirect all plain-HTTP requests to HTTPS (permanent 308/301)."));
+  if (s.notFoundStatus === 200) add("seo.soft-404", "medium", "seo", msg("Unknown URLs answer 200 (soft 404)"), msg("Search engines index error pages as content."), msg("Return HTTP 404 for unknown paths."));
   const lacking = Object.entries(s.securityHeaders).filter(([, ok]) => !ok).map(([h]) => h);
-  if (lacking.includes("strict-transport-security") && s.origin.startsWith("https://")) add("security.hsts", "medium", "security", "No HSTS header", "", "Send Strict-Transport-Security: max-age=31536000; includeSubDomains.");
+  if (lacking.includes("strict-transport-security") && s.origin.startsWith("https://")) add("security.hsts", "medium", "security", msg("No HSTS header"), "", msg("Send Strict-Transport-Security: max-age=31536000; includeSubDomains."));
   const others = lacking.filter((h) => h !== "strict-transport-security");
-  if (others.length) add("security.headers", others.includes("content-security-policy") ? "medium" : "low", "security", `Missing security headers: ${others.join(", ")}`, "", "Set them in the host config (vercel.json `headers`, next.config `headers()`, or the proxy).");
+  if (others.length) add("security.headers", others.includes("content-security-policy") ? "medium" : "low", "security", msgf("Missing security headers: {value}", { value: others.join(", ") }), "", msg("Set them in the host config (vercel.json `headers`, next.config `headers()`, or the proxy)."));
   return out;
 }

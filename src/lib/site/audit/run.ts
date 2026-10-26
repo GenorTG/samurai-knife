@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import { randomBytes } from "node:crypto";
 import { getAccount } from "@/lib/accounts/store";
 import { loadCv } from "@/lib/cv/store";
@@ -70,7 +71,7 @@ export function normalizePaths(paths: string[]): string[] {
   for (const raw of paths) {
     const p = raw.trim();
     if (!p) continue;
-    if (!p.startsWith("/") || p.startsWith("//") || /\s/.test(p) || p.length > 300) throw new SiteError(`'${p.slice(0, 80)}' is not a page path (start with /)`);
+    if (!p.startsWith("/") || p.startsWith("//") || /\s/.test(p) || p.length > 300) throw new SiteError(msgf("'{p}' is not a page path (start with /)", { p: p.slice(0, 80) }));
     if (!out.includes(p)) out.push(p);
   }
   if (out.length > MAX_PAGES) throw new SiteError(`at most ${MAX_PAGES} pages per audit`);
@@ -120,17 +121,17 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
   gc();
   const account = getAccount(accountId);
   if (!account) throw new SiteError("unknown account", 404);
-  if (currentAudit(accountId)) throw new SiteError("an audit is already running for this account; wait for it to finish", 409);
+  if (currentAudit(accountId)) throw new SiteError(msg("an audit is already running for this account; wait for it to finish"), 409);
   const site = loadSite(accountId);
   const base = (options.url ?? site.connection?.productionUrl ?? "").trim();
-  if (!base) throw new SiteError("no URL to audit: set the production URL in Connect, or pass one");
+  if (!base) throw new SiteError(msg("no URL to audit: set the production URL in Connect, or pass one"));
   let origin: URL;
   try {
     origin = new URL(base);
   } catch {
-    throw new SiteError(`'${base.slice(0, 200)}' is not a valid URL`);
+    throw new SiteError(msgf("'{base}' is not a valid URL", { base: base.slice(0, 200) }));
   }
-  if (!/^https?:$/.test(origin.protocol)) throw new SiteError("only http(s) sites can be audited");
+  if (!/^https?:$/.test(origin.protocol)) throw new SiteError(msg("only http(s) sites can be audited"));
   const paths = normalizePaths(options.pages ?? site.connection?.pages ?? []);
   const refused = siteTargetProblem(account, site.connection, origin.href);
   if (refused) throw new SiteError(refused, 403);
@@ -179,11 +180,11 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
         pages.push({ ...rest, textPreview: text.slice(0, 4000), copy });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        issues.push({ id: "page.unreachable", severity: "high", category: "seo", title: `Could not load ${p}`, detail: message, page: url, fix: "Check the URL and that the site is up." });
+        issues.push({ id: "page.unreachable", severity: "high", category: "seo", title: msgf("Could not load {p}", { p }), detail: message, page: url, fix: msg("Check the URL and that the site is up.") });
       }
       progress.done += 1;
     }
-    if (!home) throw new SiteError(`the home page of ${origin.origin} could not be loaded: ${issues.find((i) => i.id === "page.unreachable")?.detail ?? "no answer"}`, 502);
+    if (!home) throw new SiteError(msgf("the home page of {origin} could not be loaded: {value}", { origin: origin.origin, value: issues.find((i) => i.id === "page.unreachable")?.detail ?? "no answer" }), 502);
 
     progress.phase = "Checking robots.txt, sitemap, redirects and headers";
     const siteFacts = await checkSite(home, policy, deps);
@@ -196,7 +197,7 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
       // The server's PageSpeed key and its anonymous quota are the admin's; everyone else brings their own key.
       const psi = pageSpeedKey(account, site.connection?.psiKey ?? "");
       if (psi.source === "none" && !mayUseAnonymousPageSpeed(account)) {
-        notes.push("Lighthouse skipped: add your own PageSpeed Insights API key in Connect to get performance scores.");
+        notes.push(msg("Lighthouse skipped: add your own PageSpeed Insights API key in Connect to get performance scores."));
       } else {
         const homeUrl = home.finalUrl;
         const one = (strategy: LighthouseResult["strategy"]): Promise<LighthouseResult> => {
@@ -254,7 +255,7 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
 
 /** Start without waiting (the UI polls `auditProgress`); the run lands in the store when it finishes. */
 export async function startAudit(accountId: string, options: AuditOptions = {}): Promise<{ id: string }> {
-  if (currentAudit(accountId)) throw new SiteError("an audit is already running for this account; wait for it to finish", 409);
+  if (currentAudit(accountId)) throw new SiteError(msg("an audit is already running for this account; wait for it to finish"), 409);
   // runAudit registers its progress synchronously, before its first await; a check that fails first (no URL, budget)
   // rejects without registering: awaiting the promise then rethrows that real reason.
   const promise = runAudit(accountId, options);
@@ -262,7 +263,7 @@ export async function startAudit(accountId: string, options: AuditOptions = {}):
   const p = currentAudit(accountId);
   if (!p) {
     await promise;
-    throw new SiteError("the audit could not start", 500);
+    throw new SiteError(msg("the audit could not start"), 500);
   }
   return { id: p.id };
 }

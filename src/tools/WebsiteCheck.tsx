@@ -161,7 +161,7 @@ function seoChecks(result: CheckResult): { label: string; verdict: Verdict; deta
 }
 
 export default function WebsiteCheck() {
-  const { t } = useT();
+  const { t, m } = useT();
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +176,7 @@ export default function WebsiteCheck() {
       if (!/^https?:$/.test(url.protocol) || !url.hostname) throw new Error("bad");
     } catch {
       setResult(null);
-      setError(`'${typed.slice(0, 200)}' is not a valid address.`);
+      setError(t("'{typed}' is not a valid address.", { typed: typed.slice(0, 200) }));
       return;
     }
     setBusy(true);
@@ -284,8 +284,8 @@ export default function WebsiteCheck() {
                 <ul className="mt-2 space-y-1.5 text-[13px]">
                   {result.issues.map((issue) => (
                     <li key={issue.id + issue.title}>
-                      <span className={cx("font-medium", issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-warn" : "text-ink")}>{t(issue.title)}</span>
-                      <span className="block text-xs text-muted">{t(issue.detail)}</span>
+                      <span className={cx("font-medium", issue.severity === "error" ? "text-danger" : issue.severity === "warning" ? "text-warn" : "text-ink")}>{m(issue.title)}</span>
+                      <span className="block text-xs text-muted">{m(issue.detail)}</span>
                     </li>
                   ))}
                 </ul>
@@ -318,13 +318,13 @@ export default function WebsiteCheck() {
           <Panel title={t("robots.txt and sitemap")}>
             <ul className="divide-y divide-line rounded-lg border border-line">
               <Row label={t("robots.txt")} verdict={result.robots.status === 200 ? "good" : result.robots.status === 404 ? "info" : "warn"}>
-                {result.robots.status === 200 ? `found at ${result.robots.url}` : result.robots.error ?? `HTTP ${result.robots.status}`}
+                {result.robots.status === 200 ? t("found at {url}", { url: result.robots.url }) : result.robots.error ?? `HTTP ${result.robots.status}`}
                 {result.robots.status === 200 && /disallow:\s*\/\s*$/im.test(result.robots.text) ? <span className="block text-xs text-warn">{t("Contains “Disallow: /”: check that this is meant for every crawler.")}</span> : null}
               </Row>
               <Row label={t("Sitemap")} verdict={result.sitemap.status === 200 ? "good" : "info"}>
                 {result.sitemap.status === 200
                   ? `${result.sitemap.index ? "sitemap index" : `${result.sitemap.urls} URLs`} at ${result.sitemap.url}${result.sitemap.named ? " (named in robots.txt)" : ""}`
-                  : result.sitemap.error ?? `none at ${result.sitemap.url} (HTTP ${result.sitemap.status}); the Sitemap tab writes one.`}
+                  : result.sitemap.error ?? t("none at {url} (HTTP {status}); the Sitemap tab writes one.", { url: result.sitemap.url, status: result.sitemap.status })}
               </Row>
             </ul>
             {result.robots.status === 200 && result.robots.text ? (

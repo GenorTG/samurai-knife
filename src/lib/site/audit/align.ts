@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import type { CvData } from "@/lib/cv/schema";
 import type { Alignment, AlignmentItem, Issue } from "./types";
 
@@ -64,7 +65,7 @@ export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[
   const cvWords = fold([JSON.stringify(p.skills), JSON.stringify(p.projects.map((x) => x.tech)), p.summary.en, p.summary.pl].join(" "));
   const siteOnly = TECH_WORDS.filter((t) => ` ${hay} `.includes(` ${fold(t)} `) && !` ${cvWords} `.includes(` ${fold(t)} `));
 
-  if (!items.length) return { score: 0, items, siteOnly, note: "The CV studio profile is empty: fill it (or import your CV) to compare it with the site." };
+  if (!items.length) return { score: 0, items, siteOnly, note: msg("The CV studio profile is empty: fill it (or import your CV) to compare it with the site.") };
   // Weights: who you are and what you do now count most, then projects, then skills.
   const weight: Record<AlignmentItem["kind"], number> = { name: 3, headline: 3, role: 3, email: 1, link: 1, project: 2, skill: 0.5 };
   const total = items.reduce((n, i) => n + weight[i.kind], 0);
@@ -77,16 +78,16 @@ export function alignmentIssues(a: Alignment): Issue[] {
   const missing = (kind: AlignmentItem["kind"]) => a.items.filter((i) => i.kind === kind && !i.onSite).map((i) => i.label);
   const add = (id: string, severity: Issue["severity"], title: string, detail: string, fix: string) => out.push({ id, severity, category: "alignment", title, detail, page: "", fix });
   const roles = missing("role");
-  if (roles.length) add("align.role", "high", "The site does not show your current role", roles.join("; "), "Say what you do now (role and company or your own business) in the hero or About section.");
+  if (roles.length) add("align.role", "high", msg("The site does not show your current role"), roles.join("; "), msg("Say what you do now (role and company or your own business) in the hero or About section."));
   const heads = missing("headline");
-  if (heads.length && heads.length === a.items.filter((i) => i.kind === "headline").length) add("align.headline", "medium", "The CV headline is not reflected on the site", heads.join(" | "), "Use the same positioning line (or a sharper version) on the site so recruiters see one story.");
+  if (heads.length && heads.length === a.items.filter((i) => i.kind === "headline").length) add("align.headline", "medium", msg("The CV headline is not reflected on the site"), heads.join(" | "), msg("Use the same positioning line (or a sharper version) on the site so recruiters see one story."));
   const projects = missing("project");
-  if (projects.length) add("align.projects", projects.length > 2 ? "high" : "medium", `${projects.length} CV project(s) are not on the site`, projects.slice(0, 10).join(", "), "Showcase them: one card each with the problem, what you built, the result and a link.");
+  if (projects.length) add("align.projects", projects.length > 2 ? "high" : "medium", msgf("{length} CV project(s) are not on the site", { length: projects.length }), projects.slice(0, 10).join(", "), msg("Showcase them: one card each with the problem, what you built, the result and a link."));
   const skills = missing("skill");
   const skillCount = a.items.filter((i) => i.kind === "skill").length;
-  if (skillCount && skills.length / skillCount > 0.5) add("align.skills", "low", `${skills.length} of ${skillCount} CV skills are not mentioned`, skills.slice(0, 15).join(", "), "Name the key skills where you describe projects or services.");
+  if (skillCount && skills.length / skillCount > 0.5) add("align.skills", "low", msgf("{length} of {skillCount} CV skills are not mentioned", { length: skills.length, skillCount }), skills.slice(0, 15).join(", "), msg("Name the key skills where you describe projects or services."));
   const links = missing("link");
-  if (links.length) add("align.links", "medium", "Profile links from the CV are missing on the site", links.join(", "), "Link LinkedIn and GitHub (also in JSON-LD sameAs).");
-  if (a.siteOnly.length) add("align.site-only", "low", `The site names tech the CV does not list: ${a.siteOnly.slice(0, 8).join(", ")}`, "Either the CV misses current skills or the site shows old ones.", "Add them to the CV skills (CV studio) or update the site copy.");
+  if (links.length) add("align.links", "medium", msg("Profile links from the CV are missing on the site"), links.join(", "), msg("Link LinkedIn and GitHub (also in JSON-LD sameAs)."));
+  if (a.siteOnly.length) add("align.site-only", "low", msgf("The site names tech the CV does not list: {value}", { value: a.siteOnly.slice(0, 8).join(", ") }), msg("Either the CV misses current skills or the site shows old ones."), msg("Add them to the CV skills (CV studio) or update the site copy."));
   return out;
 }

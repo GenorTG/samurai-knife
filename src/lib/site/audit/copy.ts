@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import { detectLang } from "@/lib/cv/langdetect";
 import type { CopyMetrics, Issue, PageFacts } from "./types";
 
@@ -145,17 +146,17 @@ export function copyIssues(copy: CopyMetrics, page: string, now = new Date()): I
   const add = (id: string, severity: Issue["severity"], title: string, detail: string, fix: string) => out.push({ id, severity, category: "copy", title, detail, page, fix });
   if (copy.words < 30) return out; // nothing to judge (thin content is reported by the page checks)
   if (copy.scores.readability < 50) {
-    add("copy.readability", "medium", `Hard to read (${copy.readability.formula === "fog-pl" ? `FOG-PL ${copy.readability.value}` : `Flesch ${copy.readability.value}`}, ${copy.readability.label})`,
-      `${copy.avgSentenceWords} words per sentence on average.`, copy.lang === "pl" ? "Krótsze zdania, mniej długich słów; cel FOG-PL około 9-10." : "Shorter sentences and plainer words; aim for Flesch 60+.");
+    add("copy.readability", "medium", msgf("Hard to read ({value}, {label})", { value: copy.readability.formula === "fog-pl" ? `FOG-PL ${copy.readability.value}` : `Flesch ${copy.readability.value}`, label: copy.readability.label }),
+      msgf("{avgSentenceWords} words per sentence on average.", { avgSentenceWords: copy.avgSentenceWords }), copy.lang === "pl" ? "Krótsze zdania, mniej długich słów; cel FOG-PL około 9-10." : msg("Shorter sentences and plainer words; aim for Flesch 60+."));
   }
-  if (copy.longSentenceShare > 0.2) add("copy.long-sentences", "low", `${Math.round(copy.longSentenceShare * 100)}% of sentences are long`, `Over ${copy.lang === "pl" ? 20 : 25} words each.`, "Split long sentences; one idea per sentence.");
-  if (copy.scores.hero < 70) add("copy.hero", "high", "The first screen does not say clearly who you are and what you offer", "Missing or vague H1, or no supporting line right after it.", "State in one H1 (3-12 words) who you help and how, then one sentence of proof or detail under it.");
-  if (copy.ctaCount === 0) add("copy.cta", "high", "No call to action", "Nothing on the page asks the visitor to contact you, book, or see your work.", "Add one primary CTA (e.g. \"Napisz do mnie\" / \"Let's talk\" with mailto or a contact form) near the top and at the end.");
-  if (copy.scores.proof < 50) add("copy.proof", "medium", "Few concrete proofs", `${copy.proofSignals} numbers/results/project links found.`, "Back claims with numbers (years, projects shipped, users, % gains) and link real projects (GitHub, case studies).");
-  if (copy.buzzwords.length) add("copy.buzzwords", "low", `Empty buzzwords: ${copy.buzzwords.slice(0, 6).join(", ")}`, "", "Replace each with the concrete thing you did or deliver.");
-  if (copy.scores.focus < 55) add("copy.focus", "low", "The copy talks about you more than about the visitor", `${Math.round(copy.youShare * 100)}% "you" words.`, "Frame services as the visitor's outcome (\"you get...\", \"Twoja firma...\").");
+  if (copy.longSentenceShare > 0.2) add("copy.long-sentences", "low", msgf("{percent}% of sentences are long", { percent: Math.round(copy.longSentenceShare * 100) }), msgf("Over {value} words each.", { value: copy.lang === "pl" ? 20 : 25 }), msg("Split long sentences; one idea per sentence."));
+  if (copy.scores.hero < 70) add("copy.hero", "high", msg("The first screen does not say clearly who you are and what you offer"), msg("Missing or vague H1, or no supporting line right after it."), msg("State in one H1 (3-12 words) who you help and how, then one sentence of proof or detail under it."));
+  if (copy.ctaCount === 0) add("copy.cta", "high", msg("No call to action"), msg("Nothing on the page asks the visitor to contact you, book, or see your work."), msg("Add one primary CTA (e.g. \"Napisz do mnie\" / \"Let's talk\" with mailto or a contact form) near the top and at the end."));
+  if (copy.scores.proof < 50) add("copy.proof", "medium", msg("Few concrete proofs"), msgf("{proofSignals} numbers/results/project links found.", { proofSignals: copy.proofSignals }), msg("Back claims with numbers (years, projects shipped, users, % gains) and link real projects (GitHub, case studies)."));
+  if (copy.buzzwords.length) add("copy.buzzwords", "low", msgf("Empty buzzwords: {value}", { value: copy.buzzwords.slice(0, 6).join(", ") }), "", msg("Replace each with the concrete thing you did or deliver."));
+  if (copy.scores.focus < 55) add("copy.focus", "low", msg("The copy talks about you more than about the visitor"), msgf("{percent}% \"you\" words.", { percent: Math.round(copy.youShare * 100) }), msg("Frame services as the visitor's outcome (\"you get...\", \"Twoja firma...\")."));
   const year = now.getFullYear();
-  if (copy.copyrightYear && copy.copyrightYear < year) add("content.copyright-year", "low", `Footer says © ${copy.copyrightYear}`, "Visitors read an old year as an abandoned site.", "Render the current year (or a range ending with it).");
-  if (copy.newestYear && copy.newestYear < year - 1) add("content.stale", "medium", `The newest year mentioned is ${copy.newestYear}`, "The page may not show what you do now.", "Add your current work/projects and dates.");
+  if (copy.copyrightYear && copy.copyrightYear < year) add("content.copyright-year", "low", msgf("Footer says © {copyrightYear}", { copyrightYear: copy.copyrightYear }), msg("Visitors read an old year as an abandoned site."), msg("Render the current year (or a range ending with it)."));
+  if (copy.newestYear && copy.newestYear < year - 1) add("content.stale", "medium", msgf("The newest year mentioned is {newestYear}", { newestYear: copy.newestYear }), msg("The page may not show what you do now."), msg("Add your current work/projects and dates."));
   return out;
 }

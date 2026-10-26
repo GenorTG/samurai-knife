@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { createHash, randomBytes } from "node:crypto";
 import { openValue, sealValue } from "@/lib/accounts/auth-secret";
 import { isHttps } from "@/lib/accounts/session";
@@ -131,7 +132,7 @@ export async function exchangeCode(app: GithubAppConfig, code: string, flow: Pen
   });
   const body = (res.body ?? {}) as Record<string, unknown>;
   if (res.status !== 200 || typeof body.access_token !== "string") {
-    throw new GithubFlowError("exchange_failed", `GitHub did not accept the sign-in (${String(body.error_description ?? body.error ?? `HTTP ${res.status}`).slice(0, 200)})`);
+    throw new GithubFlowError("exchange_failed", msgf("GitHub did not accept the sign-in ({value})", { value: String(body.error_description ?? body.error ?? `HTTP ${res.status}`).slice(0, 200) }));
   }
   return body.access_token;
 }

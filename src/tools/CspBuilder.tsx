@@ -20,13 +20,13 @@ export default function CspBuilder() {
       const [rawName, ...tokens] = trimmed.split(/\s+/);
       const name = rawName.toLowerCase(); // directive names are case-insensitive
       if (!/^[a-z][a-z0-9-]*$/.test(name)) errors.push(`Line ${index + 1}: invalid directive name.`);
-      if (tokens.some((token) => /[;,]/.test(token))) errors.push(`Line ${index + 1}: ${name} contains ";" or ","; put each directive on its own line.`);
+      if (tokens.some((token) => /[;,]/.test(token))) errors.push(t("Line {value}: {name} contains \";\" or \",\"; put each directive on its own line.", { value: index + 1, name }));
       const bare = tokens.filter((token) => /^(self|none|unsafe-inline|unsafe-eval|strict-dynamic|unsafe-hashes|report-sample|wasm-unsafe-eval)$/i.test(token));
-      if (bare.length) errors.push(`Line ${index + 1}: ${bare.join(", ")} must be quoted, e.g. '${bare[0].toLowerCase()}'.`);
+      if (bare.length) errors.push(t("Line {value}: {bare} must be quoted, e.g. '{value2}'.", { value: index + 1, bare: bare.join(", "), value2: bare[0].toLowerCase() }));
       if (seen.has(name)) errors.push(`Line ${index + 1}: duplicate ${name} directive.`);
       seen.add(name);
       if (!DIRECTIVES.includes(name) && !/^[a-z][a-z0-9-]*$/.test(name)) return "";
-      if (!tokens.length && !VALUELESS.includes(name)) errors.push(`Line ${index + 1}: ${name} has no source values.`);
+      if (!tokens.length && !VALUELESS.includes(name)) errors.push(t("Line {value}: {name} has no source values.", { value: index + 1, name }));
       return [name, ...tokens].join(" ");
     }).filter(Boolean);
     return { errors, policy: lines.join("; ") };

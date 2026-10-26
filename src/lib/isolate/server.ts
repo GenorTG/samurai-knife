@@ -7,6 +7,7 @@
  * running regex), the worker heap is capped, the queue is bounded (503 + Retry-After) and one account's share too (429):
  * map QueueFullError with `queueFullOrNull` (`queue-http.ts`) in routes; tools surface its message.
  */
+import { msgf } from "@/lib/i18n/msg";
 import { Worker } from "node:worker_threads";
 import { IsolatePool, isIsolateCrash, isIsolateTimeout, type IsolateStats } from "./pool";
 import type { IsolateTasks } from "./tasks";
@@ -90,8 +91,8 @@ export class IsolateStoppedError extends Error {
     const hint = task === "validateJsonSchema" ? " A `pattern` with nested quantifiers such as (a+)+ can backtrack for hours; simplify it." : "";
     super(
       timeout
-        ? `${WHAT[task]} did not finish within ${(cause as { timeoutMs: number }).timeoutMs / 1000} s and was stopped.${hint}`
-        : `${WHAT[task]} was stopped: its background worker ran out of memory or failed.`,
+        ? msgf("{value} did not finish within {value2} s and was stopped.{hint}", { value: WHAT[task], value2: (cause as { timeoutMs: number }).timeoutMs / 1000, hint })
+        : msgf("{value} was stopped: its background worker ran out of memory or failed.", { value: WHAT[task] }),
       { cause },
     );
     this.name = "IsolateStoppedError";

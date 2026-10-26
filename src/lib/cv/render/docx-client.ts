@@ -1,6 +1,6 @@
 import type { CvLang } from "../schema";
 import type { CvLayout, PhotoShape } from "./layout";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Ask the server for a DOCX of the master profile (variantId = null) or a variant and trigger a browser download.
@@ -43,6 +43,6 @@ async function errorMessage(response: Response): Promise<string> {
     // not JSON
   }
   if (response.status === 401) return "Sign in to export the DOCX.";
-  if (response.status === 503) return `The export queue is busy${response.headers.get("retry-after") ? `, retry in ${response.headers.get("retry-after")} s` : ""}.`;
+  if (response.status === 503) return msgf("The export queue is busy{value}.", { value: response.headers.get("retry-after") ? `, retry in ${response.headers.get("retry-after")} s` : "" });
   return reason ? `DOCX export failed: ${reason}` : `DOCX export failed (HTTP ${response.status}).`;
 }

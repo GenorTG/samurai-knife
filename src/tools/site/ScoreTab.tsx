@@ -21,7 +21,7 @@ function delta(now: number | undefined, before: number | undefined): string {
 
 /** Score tab: run an audit, see scores (with the change since the previous run), issues, Lighthouse, history. */
 export default function ScoreTab() {
-  const { t } = useT();
+  const { t, m } = useT();
   const { view, error } = useSite();
   const [target, setTarget] = useState<"production" | "preview" | "custom">("production");
   const [customUrl, setCustomUrl] = useState("");
@@ -167,11 +167,11 @@ export default function ScoreTab() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={SEVERITY_TONE[i.severity]}>{i.severity}</Badge>
                       <Badge>{CATEGORY_LABEL[i.category]}</Badge>
-                      <span className="text-sm font-medium text-ink">{i.title}</span>
+                      <span className="text-sm font-medium text-ink">{m(i.title)}</span>
                     </div>
-                    {i.detail ? <p className="mt-1 text-xs text-muted wrap-anywhere">{i.detail}</p> : null}
+                    {i.detail ? <p className="mt-1 text-xs text-muted wrap-anywhere">{m(i.detail)}</p> : null}
                     <p className="mt-1 text-xs text-faint">
-                      {i.page ? <span className="font-mono">{i.page.replace(/^https?:\/\//, "")}</span> : t("whole site")} {" "}{t("· Fix:")}{" "} {i.fix}{" "}
+                      {i.page ? <span className="font-mono">{i.page.replace(/^https?:\/\//, "")}</span> : t("whole site")} {" "}{t("· Fix:")}{" "}{m(i.fix)}{" "}
                       <button type="button" className="text-accent underline" onClick={() => openAssistant(t("Fix this website issue on the work branch, then open or update the pull request: \"{title}\" ({value}). {detail} Suggested fix: {fix}", { title: i.title, value: i.page || "whole site", detail: i.detail, fix: i.fix }))}>
                         {t("Ask the assistant")}
                       </button>

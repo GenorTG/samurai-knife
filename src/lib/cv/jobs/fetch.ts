@@ -174,7 +174,7 @@ async function download(start: URL, deps: FetchDeps, signal: AbortSignal): Promi
       );
     } catch (error) {
       if (error instanceof FetchError) throw error;
-      throw new FetchError(`could not fetch ${current.host}: ${error instanceof Error ? error.message : String(error)}. ${PASTE_HINT}`);
+      throw new FetchError(msgf("could not fetch {host}: {value}. {PASTE_HINT}", { host: current.host, value: error instanceof Error ? error.message : String(error), PASTE_HINT }));
     }
     if (REDIRECTS.has(response.status)) {
       const location = response.headers.location;
@@ -215,7 +215,7 @@ export async function fetchPosting(urlOrText: string, deps: FetchDeps = {}): Pro
   try {
     start = new URL(input.url);
   } catch {
-    throw new FetchError(`'${input.url}' is not a valid URL. ${PASTE_HINT}`);
+    throw new FetchError(msgf("'{url}' is not a valid URL. {PASTE_HINT}", { url: input.url, PASTE_HINT }));
   }
   checkUrl(start);
   const controller = new AbortController();
@@ -256,7 +256,7 @@ export async function fetchPageText(url: string, deps: FetchDeps = {}): Promise<
   try {
     start = new URL(url.trim());
   } catch {
-    throw new FetchError(`'${url.slice(0, 200)}' is not a valid URL.`);
+    throw new FetchError(msgf("'{url}' is not a valid URL.", { url: url.slice(0, 200) }));
   }
   if (!/^https?:$/.test(start.protocol)) throw new FetchError("only http(s) pages are read.");
   checkUrl(start);

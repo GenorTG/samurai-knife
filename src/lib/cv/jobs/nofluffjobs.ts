@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { detectLang } from "../langdetect";
 import { parseHtml, readableText } from "./html";
 import { FetchError, MAX_TEXT_CHARS, PASTE_HINT, type FetchedPosting } from "./posting";
@@ -82,9 +83,9 @@ export function parseNofluffOffer(body: string, url: string): FetchedPosting {
   try {
     offer = JSON.parse(body);
   } catch {
-    throw new FetchError(`nofluffjobs.com answered something that is not an offer. ${PASTE_HINT}`);
+    throw new FetchError(msgf("nofluffjobs.com answered something that is not an offer. {PASTE_HINT}", { PASTE_HINT }));
   }
-  if (!isObj(offer) || !str(offer.title)) throw new FetchError(`nofluffjobs.com has no offer at ${url} (expired or removed?). ${PASTE_HINT}`);
+  if (!isObj(offer) || !str(offer.title)) throw new FetchError(msgf("nofluffjobs.com has no offer at {url} (expired or removed?). {PASTE_HINT}", { url, PASTE_HINT }));
   const req = isObj(offer.requirements) ? offer.requirements : {};
   const details = isObj(offer.details) ? offer.details : {};
   const specs = isObj(offer.specs) ? offer.specs : {};
@@ -101,7 +102,7 @@ export function parseNofluffOffer(body: string, url: string): FetchedPosting {
     requirementText ? `Wymagania:\n${requirementText}` : "",
     tasks.length ? `Zakres obowiązków:\n${tasks.map((t) => `- ${t}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n").slice(0, MAX_TEXT_CHARS);
-  if (!text) throw new FetchError(`the nofluffjobs.com offer at ${url} has no description. ${PASTE_HINT}`);
+  if (!text) throw new FetchError(msgf("the nofluffjobs.com offer at {url} has no description. {PASTE_HINT}", { url, PASTE_HINT }));
 
   const sections = postingSections(text);
   // a requirement description written as plain paragraphs (no list): every non-empty line is a requirement

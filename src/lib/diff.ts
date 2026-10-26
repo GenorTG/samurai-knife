@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /**
  * Line diff, shared by the Diff tool UI and the MCP surface.
  *
@@ -268,7 +269,7 @@ export function computeDiff(leftText: string, rightText: string, maxLines = MAX_
   if (a.length > maxLines || b.length > maxLines) {
     return {
       ok: false,
-      error: `Too many lines (${Math.max(a.length, b.length)}); the cap is ${maxLines} per side.`,
+      error: msgf("Too many lines ({lines}); the cap is {maxLines} per side.", { lines: Math.max(a.length, b.length), maxLines }),
       ops: [],
       rows: [],
       patch: "",

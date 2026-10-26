@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { consumeLimits, LIMITS } from "@/lib/accounts/rate-limit";
 import { RESERVED } from "@/lib/accounts/flows";
@@ -20,7 +21,7 @@ export type LinkResult = { ok: true } | { ok: false; code: "github_taken" | "unk
 export function linkGithub(accountId: string, who: GithubIdentity): LinkResult {
   return mutateStore((store): LinkResult => {
     const other = store.accounts.find((a) => a.github?.id === who.id && a.id !== accountId);
-    if (other) return { ok: false, code: "github_taken", message: `GitHub user @${who.login} is already linked to another account.` };
+    if (other) return { ok: false, code: "github_taken", message: msgf("GitHub user @{login} is already linked to another account.", { login: who.login }) };
     const account = store.accounts.find((a) => a.id === accountId);
     if (!account) return { ok: false, code: "unknown_account", message: "unknown account" };
     account.github = { id: who.id, login: who.login, linkedAt: new Date().toISOString() };
@@ -93,7 +94,7 @@ export function signInWithGithub(who: GithubIdentity, ip: string, acceptedTerms:
   if (!who.verifiedEmail) return { kind: "refused", code: "no_email", message: "GitHub has no verified primary email for this user: verify one on GitHub (Settings → Emails), then try again." };
   if (!checkEmailPolicySync(who.verifiedEmail).ok) return { kind: "refused", code: "email_refused", message: EMAIL_POLICY_MESSAGE };
   const blocked = consumeLimits([LIMITS.registerIp(ip), LIMITS.registerEmail(who.verifiedEmail)]);
-  if (!blocked.ok) return { kind: "refused", code: "rate_limited", message: `Too many sign-ups from here; try again in ${blocked.retryAfterSeconds} s.` };
+  if (!blocked.ok) return { kind: "refused", code: "rate_limited", message: msgf("Too many sign-ups from here; try again in {retryAfterSeconds} s.", { retryAfterSeconds: blocked.retryAfterSeconds }) };
   const result = mutateStore((store): GithubSignIn => {
     const email = who.verifiedEmail!;
     // GitHub has verified this address; claims nobody proved give way (audit M3: a squatter's pending sign-up, or another
@@ -102,7 +103,7 @@ export function signInWithGithub(who: GithubIdentity, ip: string, acceptedTerms:
     if (store.accounts.length > 0 && !store.accounts.some((a) => a.id === store.defaultAccountId)) store.defaultAccountId = store.accounts[0].id;
     for (const a of store.accounts) if (a.emailChange?.email === email) delete a.emailChange;
     if (store.accounts.some((a) => a.email === email)) {
-      return { kind: "refused", code: "email_in_use", message: `An account with ${email} already exists. Sign in with its password, then link GitHub in Account settings.` };
+      return { kind: "refused", code: "email_in_use", message: msgf("An account with {email} already exists. Sign in with its password, then link GitHub in Account settings.", { email }) };
     }
     const id = usernameFor(who.login, (candidate) => store.accounts.some((a) => a.id === candidate));
     const now = new Date().toISOString();

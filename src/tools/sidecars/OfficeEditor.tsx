@@ -252,7 +252,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
       {phase.kind === "error" ? (
         <Notice tone={phase.needsAdmin ? "info" : "error"}>
           {phase.needsAdmin
-            ? `${phase.message} The editor opens once it is running; until then the library still works (download, upload, organise).`
+            ? t("{message} The editor opens once it is running; until then the library still works (download, upload, organise).", { message: phase.message })
             : phase.message}
         </Notice>
       ) : null}

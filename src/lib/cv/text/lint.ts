@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import type { CvLang } from "../schema";
 import { finding, type Finding } from "./findings";
 import { pyRegex, startsLower } from "./regex";
@@ -99,8 +100,8 @@ function weakOpener(text: string, lang: CvLang): Finding[] {
         finding(
           "weak-opener",
           "warn",
-          `Vague opener '${m[0].trim()}' names a duty, not what was done.`,
-          "Open with a strong past-tense verb and the outcome (EN 'Built…', 'Cut…'; PL 'Zbudowałem…', 'Skróciłem…'). Keep only facts you can back up.",
+          msgf("Vague opener '{value}' names a duty, not what was done.", { value: m[0].trim() }),
+          msg("Open with a strong past-tense verb and the outcome (EN 'Built…', 'Cut…'; PL 'Zbudowałem…', 'Skróciłem…'). Keep only facts you can back up."),
           span(m),
         ),
       );
@@ -164,7 +165,7 @@ function buzzword(text: string, lang: CvLang): Finding[] {
       const start = m.index;
       const end = start + m[0].length;
       if (ignore?.test(text.slice(Math.max(0, start - 24), end + 24))) continue;
-      out.push(finding("buzzword", "warn", `Buzzword '${m[0]}' claims a trait without evidence.`, "Show the trait through a concrete result, or drop the word.", [start, end]));
+      out.push(finding("buzzword", "warn", `Buzzword '${m[0]}' claims a trait without evidence.`, msg("Show the trait through a concrete result, or drop the word."), [start, end]));
     }
   }
   return out;
@@ -182,7 +183,7 @@ function firstPerson(text: string, lang: CvLang, kind: TextKind): Finding[] {
   const hits = FIRST_PERSON.flatMap((p) => Array.from(text.matchAll(p))).sort((a, b) => a.index - b.index);
   if (hits.length === 0) return [];
   const words = Array.from(new Set(hits.map((m) => `'${m[0]}'`))).join(", ");
-  return [finding("first-person", "warn", `First-person ${words} in an English bullet.`, "CV bullets drop the subject: start with the verb ('Built…', not 'I built…').", span(hits[0]))];
+  return [finding("first-person", "warn", msgf("First-person {words} in an English bullet.", { words }), msg("CV bullets drop the subject: start with the verb ('Built…', not 'I built…')."), span(hits[0]))];
 }
 
 // --- length and substance (bullets) ----------------------------------------------------------------------------
@@ -195,8 +196,8 @@ function longBullet(text: string, _lang: CvLang, kind: TextKind): Finding[] {
     finding(
       "long-bullet",
       n > LONG_BULLET_WARN ? "warn" : "info",
-      `Bullet is ${n} words (aim for ≤${LONG_BULLET_INFO}).`,
-      "Split into two bullets or cut context the reader does not need.",
+      msgf("Bullet is {n} words (aim for ≤{LONG_BULLET_INFO}).", { n, LONG_BULLET_INFO }),
+      msg("Split into two bullets or cut context the reader does not need."),
     ),
   ];
 }
@@ -212,8 +213,8 @@ function noSignal(text: string, _lang: CvLang, kind: TextKind): Finding[] {
     finding(
       "no-signal",
       "info",
-      "No number, name or technology — the bullet is hard to verify or skim.",
-      "Add one real, checkable detail: scale, technology or result. Never a made-up number.",
+      msg("No number, name or technology — the bullet is hard to verify or skim."),
+      msg("Add one real, checkable detail: scale, technology or result. Never a made-up number."),
     ),
   ];
 }
@@ -240,7 +241,7 @@ function quoteMix(text: string, lang: CvLang): Finding[] {
   const has = (set: string): boolean => Array.from(set).some((c) => text.includes(c));
   if (!(has(STRAIGHT) && has(CURLY))) return [];
   const style = lang === "pl" ? "„…”" : "“…”";
-  return [finding("quote-mix", "warn", "Straight and curly quotes/apostrophes are mixed.", `Pick one style and use it throughout (typographic ${style} for ${lang.toUpperCase()}).`)];
+  return [finding("quote-mix", "warn", msg("Straight and curly quotes/apostrophes are mixed."), msgf("Pick one style and use it throughout (typographic {style} for {lang}).", { style, lang: lang.toUpperCase() }))];
 }
 
 // --- language-specific -----------------------------------------------------------------------------------------
@@ -281,7 +282,7 @@ function missingDiacritics(text: string, lang: CvLang): Finding[] {
       "missing-diacritics",
       "warn",
       `${body.length} characters of Polish text without a single ą/ć/ę/ł/ń/ó/ś/ź/ż.`,
-      "Likely stripped diacritics: restore them (check any word you are unsure of).",
+      msg("Likely stripped diacritics: restore them (check any word you are unsure of)."),
     ),
   ];
 }
@@ -298,7 +299,7 @@ function langMix(text: string, lang: CvLang): Finding[] {
       "lang-mix",
       hits.length > own ? "warn" : "info",
       `Looks like ${other} inside a ${lang.toUpperCase()} field: ${words}.`,
-      `Translate the ${other} fragment; tech terms and product names may stay.`,
+      msgf("Translate the {other} fragment; tech terms and product names may stay.", { other }),
       span(hits[0]),
     ),
   ];
@@ -315,8 +316,8 @@ function nbspOrphan(text: string, lang: CvLang): Finding[] {
     finding(
       "nbsp-orphan",
       "info",
-      `Single-letter word followed by a normal space can end a line${count}.`,
-      "Use a non-breaking space (U+00A0) after a/i/o/u/w/z. The renderer can do this automatically.",
+      msgf("Single-letter word followed by a normal space can end a line{count}.", { count }),
+      msg("Use a non-breaking space (U+00A0) after a/i/o/u/w/z. The renderer can do this automatically."),
       span(matches[0]),
     ),
   ];
@@ -353,7 +354,7 @@ function trailingPeriod(items: readonly string[]): Map<number, Finding> {
       ? [withPeriod, "ends with a period but most bullets have none"]
       : [without, "has no final period but most bullets end with one"];
   return new Map(
-    minority.map((i) => [i, finding("trailing-period", "warn", `Bullet ${label}.`, "Make the whole list consistent: all with or all without a final period.")]),
+    minority.map((i) => [i, finding("trailing-period", "warn", `Bullet ${label}.`, msg("Make the whole list consistent: all with or all without a final period."))]),
   );
 }
 
@@ -366,7 +367,7 @@ function duplicateOpeners(items: readonly string[]): Map<number, Finding> {
     while (j + 1 < heads.length && heads[j + 1] === heads[i] && heads[i]) j += 1;
     if (j - i + 1 >= 3) {
       for (let k = i + 1; k <= j; k++) {
-        out.set(k, finding("duplicate-opener", "warn", `Bullets ${i + 1}-${j + 1} all open with '${heads[i]}'.`, "Vary the opening verbs; keep every claim factual."));
+        out.set(k, finding("duplicate-opener", "warn", `Bullets ${i + 1}-${j + 1} all open with '${heads[i]}'.`, msg("Vary the opening verbs; keep every claim factual.")));
       }
     }
     i = j + 1;

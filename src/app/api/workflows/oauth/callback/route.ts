@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { authenticate } from "@/lib/accounts/http";
 import { finishAuthorization } from "@/lib/workflows/server/oauth";
 import { WorkflowStoreError } from "@/lib/workflows/server/store";
@@ -28,7 +29,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!code || !state) return page(false, "The provider did not send a code.");
   try {
     const name = await finishAuthorization(auth.account.id, state, code);
-    return page(true, `"${name}" is connected. You can close this window.`);
+    return page(true, msgf("\"{name}\" is connected. You can close this window.", { name }));
   } catch (caught) {
     if (caught instanceof WorkflowStoreError) return page(false, caught.message);
     return page(false, "The token exchange failed. Check the client secret and the token URL.");

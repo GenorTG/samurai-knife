@@ -54,7 +54,7 @@ export default function ConnectTab() {
 type Message = { tone: "good" | "error" | "warn"; text: string } | null;
 
 function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { view: ReturnType<typeof useSite>["view"]; error: string; reload: () => Promise<void>; stamp: string; message: Message; setMessage: (m: Message) => void; gh: GithubView | null }) {
-  const { t } = useT();
+  const { t, m } = useT();
   const admin = useIsAdmin();
   const c = view?.connection ?? null;
   const [repo, setRepo] = useState(c?.repo ?? "");
@@ -99,7 +99,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
       });
       setToken("");
       setPsiKey("");
-      setMessage(res.warning ? { tone: "warn", text: `Connected, but ${res.warning}.` } : { tone: "good", text: c ? t("Settings saved.") : "Connected. Next: run an audit in the Score tab." });
+      setMessage(res.warning ? { tone: "warn", text: t("Connected, but {warning}.", { warning: m(res.warning) }) } : { tone: "good", text: c ? t("Settings saved.") : t("Connected. Next: run an audit in the Score tab.") });
       await reload();
     } catch (e) {
       setMessage({ tone: "error", text: errorText(e) });

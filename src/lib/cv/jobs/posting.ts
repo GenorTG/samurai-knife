@@ -59,10 +59,10 @@ export function classifyInput(urlOrText: string): PostingInput {
   if (!raw) throw new FetchError("empty input. Give a posting URL or paste the posting text.");
   if (!/\s/.test(raw)) {
     if (SCHEME.test(raw)) {
-      if (!/^https?:\/\//i.test(raw)) throw new FetchError(`refusing '${raw.split(":", 1)[0]}:': only http(s) URLs are fetched. ${PASTE_HINT}`);
+      if (!/^https?:\/\//i.test(raw)) throw new FetchError(msgf("refusing '{value}:': only http(s) URLs are fetched. {PASTE_HINT}", { value: raw.split(":", 1)[0], PASTE_HINT }));
       return { kind: "url", url: raw };
     }
-    if (BARE_HOST.test(raw)) throw new FetchError(`'${raw}' has no scheme. Retry with the full URL (https://...).`);
+    if (BARE_HOST.test(raw)) throw new FetchError(msgf("'{raw}' has no scheme. Retry with the full URL (https://...).", { raw }));
   }
   return { kind: "text", text: raw.slice(0, MAX_TEXT_CHARS) };
 }

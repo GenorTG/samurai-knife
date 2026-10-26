@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /** JSONPath subset ($, .name, [index], ['key'], *) over a JSON document. Pure: inline for small documents, json-path.worker.ts for large ones. */
 
 type Segment = string | number | "*";
@@ -43,7 +44,7 @@ function parsePath(query: string): Segment[] {
       if (content === "*") segments.push("*");
       else if (/^(0|[1-9]\d*)$/.test(content)) segments.push(Number(content));
       else if (/^(['"]).*\1$/.test(content)) segments.push(content.slice(1, -1).replace(/\\(['"\\])/g, "$1"));
-      else throw new Error(`Unsupported bracket selector: [${content}]. Use an index, quoted key, or *.`);
+      else throw new Error(msgf("Unsupported bracket selector: [{content}]. Use an index, quoted key, or *.", { content }));
       index = end + 1;
     } else throw new Error(`Unexpected character at ${index + 1}.`);
   }

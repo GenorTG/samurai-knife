@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 export interface ParsedCronField {
   values: ReadonlySet<number>;
   any: boolean;
@@ -23,17 +24,17 @@ interface FieldSpec {
 }
 
 const FIELD_SPECS: readonly FieldSpec[] = [
-  { label: "minute", min: 0, max: 59 },
-  { label: "hour", min: 0, max: 23 },
-  { label: "day of month", min: 1, max: 31 },
-  { label: "month", min: 1, max: 12 },
-  { label: "day of week", min: 0, max: 7, sundayAlias: true },
+  { label: msg("minute"), min: 0, max: 59 },
+  { label: msg("hour"), min: 0, max: 23 },
+  { label: msg("day of month"), min: 1, max: 31 },
+  { label: msg("month"), min: 1, max: 12 },
+  { label: msg("day of week"), min: 0, max: 7, sundayAlias: true },
 ];
 
 function parseField(raw: string, spec: FieldSpec): ParsedCronField | string {
   const values = new Set<number>();
   const parts = raw.split(",");
-  if (parts.some((part) => !part)) return `Empty item in ${spec.label}.`;
+  if (parts.some((part) => !part)) return msgf("Empty item in {label}.", { label: spec.label });
 
   for (const part of parts) {
     const [range, stepText, ...extra] = part.split("/");
@@ -42,7 +43,7 @@ function parseField(raw: string, spec: FieldSpec): ParsedCronField | string {
     }
 
     const step = stepText === undefined ? 1 : Number(stepText);
-    if (step < 1) return `The ${spec.label} step must be at least 1.`;
+    if (step < 1) return msgf("The {label} step must be at least 1.", { label: spec.label });
 
     let start = spec.min;
     let end = spec.max;
@@ -52,9 +53,9 @@ function parseField(raw: string, spec: FieldSpec): ParsedCronField | string {
       start = Number(rangeMatch[1]);
       end = rangeMatch[2] === undefined ? (stepText === undefined ? start : spec.max) : Number(rangeMatch[2]);
       if (start < spec.min || start > spec.max || end < spec.min || end > spec.max) {
-        return `${spec.label} values must be between ${spec.min} and ${spec.max}${spec.sundayAlias ? " (7 also means Sunday)" : ""}.`;
+        return spec.sundayAlias ? msgf("{label} values must be between {min} and {max} (7 also means Sunday).", { label: msg(spec.label), min: spec.min, max: spec.max }) : msgf("{label} values must be between {min} and {max}.", { label: msg(spec.label), min: spec.min, max: spec.max });
       }
-      if (start > end) return `The ${spec.label} range must go from low to high.`;
+      if (start > end) return msgf("The {label} range must go from low to high.", { label: spec.label });
     }
 
     for (let value = start; value <= end; value += step) {

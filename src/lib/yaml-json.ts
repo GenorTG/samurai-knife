@@ -1,4 +1,5 @@
 /** YAML <-> JSON conversion with lint. Pure: runs inline for small input and in yaml-json.worker.ts for large input. */
+import { msgf } from "@/lib/i18n/msg";
 import { parseDocument, stringify } from "yaml";
 
 export type YamlJsonFormat = "yaml" | "json";
@@ -117,11 +118,13 @@ export function convertYamlJson({ text: input, inputFormat, outputFormat, sort }
       const scan = scanNumbers(value, "$", { unsafeInts: 0, firstUnsafe: null, nonFinite: 0, firstNonFinite: null });
       if (scan.unsafeInts) {
         warnings.push(
-          `${scan.unsafeInts} integer${scan.unsafeInts === 1 ? "" : "s"} beyond ±9007199254740991 (first at ${scan.firstUnsafe}) written with every digit; JavaScript and other double-based JSON readers will round ${scan.unsafeInts === 1 ? "it" : "them"}.`,
+          scan.unsafeInts === 1
+            ? msgf("1 integer beyond ±9007199254740991 (at {firstUnsafe}) written with every digit; JavaScript and other double-based JSON readers will round it.", { firstUnsafe: scan.firstUnsafe })
+            : msgf("{count} integers beyond ±9007199254740991 (first at {firstUnsafe}) written with every digit; JavaScript and other double-based JSON readers will round them.", { count: scan.unsafeInts, firstUnsafe: scan.firstUnsafe }),
         );
       }
       if (scan.nonFinite) {
-        warnings.push(`JSON has no infinity or NaN: ${scan.nonFinite} value${scan.nonFinite === 1 ? "" : "s"} written as null (first at ${scan.firstNonFinite}).`);
+        warnings.push(scan.nonFinite === 1 ? msgf("JSON has no infinity or NaN: 1 value written as null (first at {firstNonFinite}).", { firstNonFinite: scan.firstNonFinite }) : msgf("JSON has no infinity or NaN: {count} values written as null (first at {firstNonFinite}).", { count: scan.nonFinite, firstNonFinite: scan.firstNonFinite }));
       }
       return { output: stringifyJson(value), errors, warnings };
     }

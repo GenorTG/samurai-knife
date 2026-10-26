@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /**
  * Learner SQL, before it reaches the database: split into statements (Postgres lexical rules: '' strings, E'' escapes,
  * $tag$ dollar quotes, "identifiers", -- and nested block comments) and decide per statement whether the course runner
@@ -177,7 +178,7 @@ export function classifyStatement(statement: SqlStatement): StatementVerdict {
     if (second === "TRANSACTION" || second === "SESSION") return { ok: false, reason: "Use SET LOCAL name = value: it lasts until the end of this run." };
     return { ok: false, reason: "Use SET LOCAL name = value (for example SET LOCAL enable_seqscan = off): it lasts until the end of this run." };
   }
-  if (first in REFUSED) return { ok: false, reason: `${first} is not allowed here. ${REFUSED[first]}` };
+  if (first in REFUSED) return { ok: false, reason: msgf("{first} is not allowed here. {value}", { first, value: REFUSED[first] }) };
   switch (first) {
     case "SELECT":
     case "VALUES":
@@ -210,7 +211,7 @@ export function classifyStatement(statement: SqlStatement): StatementVerdict {
       if (second === "TABLE" || second === "INDEX") return { ok: true, kind: "ddl", cursor: false };
       return { ok: false, reason: "Only DROP TABLE / DROP INDEX on your own TEMP objects are available here." };
     default:
-      return { ok: false, reason: `${first || "This statement"} is not something the course runner accepts. Start with SELECT, WITH, EXPLAIN, INSERT, UPDATE or DELETE.` };
+      return { ok: false, reason: msgf("{value} is not something the course runner accepts. Start with SELECT, WITH, EXPLAIN, INSERT, UPDATE or DELETE.", { value: first || "This statement" }) };
   }
 }
 

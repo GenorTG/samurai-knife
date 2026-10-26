@@ -1,9 +1,10 @@
+import { msgf } from "@/lib/i18n/msg";
 export type JsonPointerResult =
   | { found: true; value: unknown; tokens: string[] }
   | { found: false; error: string; tokenIndex: number };
 
 function decodeToken(token: string, index: number): string {
-  if (/~(?![01])/.test(token)) throw new Error(`Invalid escape in pointer token ${index + 1}; only ~0 and ~1 are valid.`);
+  if (/~(?![01])/.test(token)) throw new Error(msgf("Invalid escape in pointer token {value}; only ~0 and ~1 are valid.", { value: index + 1 }));
   return token.replace(/~1/g, "/").replace(/~0/g, "~");
 }
 
@@ -24,11 +25,11 @@ export function resolveJsonPointer(document: unknown, pointer: string): JsonPoin
   for (const [index, token] of tokens.entries()) {
     if (Array.isArray(value)) {
       if (!/^(0|[1-9]\d*)$/.test(token)) {
-        return { found: false, error: `Array index '${token}' is not a canonical non-negative integer.`, tokenIndex: index };
+        return { found: false, error: msgf("Array index '{token}' is not a canonical non-negative integer.", { token }), tokenIndex: index };
       }
       const arrayIndex = Number(token);
       if (!Number.isSafeInteger(arrayIndex) || arrayIndex >= value.length) {
-        return { found: false, error: `Array index ${token} is out of range.`, tokenIndex: index };
+        return { found: false, error: msgf("Array index {token} is out of range.", { token }), tokenIndex: index };
       }
       value = value[arrayIndex];
       continue;
@@ -36,7 +37,7 @@ export function resolveJsonPointer(document: unknown, pointer: string): JsonPoin
 
     if (value !== null && typeof value === "object") {
       if (!Object.prototype.hasOwnProperty.call(value, token)) {
-        return { found: false, error: `Object property '${token}' does not exist.`, tokenIndex: index };
+        return { found: false, error: msgf("Object property '{token}' does not exist.", { token }), tokenIndex: index };
       }
       value = (value as Record<string, unknown>)[token];
       continue;

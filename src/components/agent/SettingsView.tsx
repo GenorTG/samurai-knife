@@ -224,7 +224,7 @@ function ProviderForm({
   setStatus,
 }: SettingsProps & { status: Status; setStatus: (status: Status) => void }) {
   const { t } = useT();
-  const { t: tr } = useT();
+  const { t: tr, m } = useT();
   const provider = account.provider;
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? PRESETS[0].baseUrl);
   const [model, setModel] = useState(provider?.model ?? PRESETS[0].model);
@@ -341,10 +341,12 @@ function ProviderForm({
     const saved = changed ? " Saved." : "";
     if (!tested.ok) {
       const f = tested.failure;
-      setStatus({ tone: "error", text: `${saved ? tr("Saved, but the") : "The"} test failed: ${f.kind === "error" ? f.message : "no answer."}` });
+      const why = f.kind === "error" ? m(f.message) : tr("no answer.");
+      setStatus({ tone: "error", text: saved ? tr("Saved, but the test failed: {why}", { why }) : tr("The test failed: {why}", { why }) });
     } else if (!tested.value.ok) {
-      const t = tested.value;
-      setStatus({ tone: "error", text: `${saved ? tr("Saved, but the") : "The"} provider did not answer${t.status ? ` (HTTP ${t.status})` : ""}${t.error ? `: ${t.error}` : "."}` });
+      const result = tested.value;
+      const why = `${result.status ? ` (HTTP ${result.status})` : ""}${result.error ? `: ${m(result.error)}` : "."}`;
+      setStatus({ tone: "error", text: saved ? tr("Saved, but the provider did not answer{why}", { why }) : tr("The provider did not answer{why}", { why }) });
     } else {
       const t = tested.value;
       if (t.models?.length) setModels(t.models);

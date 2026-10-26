@@ -68,7 +68,7 @@ export function pickRelease(app: SidecarSite, current: string, listing: unknown,
     const version = tag[1];
     if (compareVersions(version, current) <= 0) continue;
     if (app.knownBad?.includes(version)) {
-      skipped.push(`${version}: known not to start`);
+      skipped.push(msgf("{version}: known not to start", { version }));
       continue;
     }
     const name = `${app.id}-web-${version}.zip`;
@@ -224,7 +224,7 @@ export async function checkCraftUpdates(options: { apply: boolean; fetcher?: typ
           await switchTo(definition, app, available, "update", fetcher);
           applied.push(`${app.name} ${available.version}`);
         } catch (err) {
-          const message = `update to ${available.version} failed: ${err instanceof Error ? err.message : String(err)}`;
+          const message = msgf("update to {version} failed: {value}", { version: available.version, value: err instanceof Error ? err.message : String(err) });
           errors.push(`${app.name}: ${message}`);
           log(`${app.id}: ${message}`);
           patchChannel(ID, (channel) => {

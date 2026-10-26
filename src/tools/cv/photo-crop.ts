@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /**
  * Browser-only square crop for the CV photo. The picked file never leaves the browser as is: it is decoded, cropped,
  * scaled to `PHOTO_SIZE` and re-encoded as JPEG (which also drops EXIF, GPS included) before upload.
@@ -23,12 +24,12 @@ export interface Picture {
 
 /** Decode a picked file. Rejects with a readable message for formats the browser cannot decode (HEIC on most). */
 export async function decodePicture(file: File): Promise<Picture> {
-  if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(file.name)) throw new Error(`${file.name} is not an image.`);
+  if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(file.name)) throw new Error(msgf("{name} is not an image.", { name: file.name }));
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     return { source: bitmap, width: bitmap.width, height: bitmap.height };
   } catch {
-    throw new Error(`This browser cannot read ${file.name}. Use a JPEG, PNG or WebP.`);
+    throw new Error(msgf("This browser cannot read {name}. Use a JPEG, PNG or WebP.", { name: file.name }));
   }
 }
 

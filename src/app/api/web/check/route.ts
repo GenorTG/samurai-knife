@@ -7,7 +7,7 @@ import { siteTargetProblem } from "@/lib/site/audit/run";
 import { siteErrorResponse } from "@/lib/site/http";
 import { fetchPage, sitePolicy, SiteError, type FetchedPage } from "@/lib/site/net";
 import { loadSite } from "@/lib/site/store";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ function normalize(input: string): string {
   try {
     url = new URL(value);
   } catch {
-    throw new SiteError(`'${input.slice(0, 200)}' is not a valid address.`);
+    throw new SiteError(msgf("'{input}' is not a valid address.", { input: input.slice(0, 200) }));
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new SiteError(msg("Only http and https addresses can be checked."));
   if (url.username || url.password) throw new SiteError(msg("Remove the user name and password from the address."));

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
@@ -197,7 +198,7 @@ async function settleJob(
   }
   if (outcome.bytes > jobResultMaxBytes()) {
     return {
-      result: { kind: "error", error: `The result is ${Math.round(outcome.bytes / 1024 / 1024)} MB, over the async result cap.` },
+      result: { kind: "error", error: msgf("The result is {megabytes} MB, over the async result cap.", { megabytes: Math.round(outcome.bytes / 1024 / 1024) }) },
       resultBytes: 0,
     };
   }

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import type { SerializedError } from "./protocol";
 
 /** The task function itself threw inside the worker; `remoteName` is the original error class name. */
@@ -24,7 +25,7 @@ export class WorkerCrashError extends Error {
 export class WorkerTimeoutError extends Error {
   timeoutMs: number;
   constructor(timeoutMs: number) {
-    super(`The background task did not finish within ${timeoutMs} ms and was stopped.`);
+    super(msgf("The background task did not finish within {timeoutMs} ms and was stopped.", { timeoutMs }));
     this.name = "WorkerTimeoutError";
     this.timeoutMs = timeoutMs;
   }

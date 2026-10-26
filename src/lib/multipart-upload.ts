@@ -1,4 +1,5 @@
 // SERVER ONLY (node:fs). Streams a multipart/form-data request body to disk.
+import { msgf } from "@/lib/i18n/msg";
 import { createWriteStream, type WriteStream } from "node:fs";
 import path from "node:path";
 
@@ -144,7 +145,7 @@ export async function receiveMultipart(request: Request, dir: string, limits: Up
       part = { field, file: null, stream: null, text: [], size: 0 };
       return;
     }
-    if (form.files.length + 1 > limits.maxFiles) throw new UploadError(413, `Too many files; the cap is ${limits.maxFiles}.`);
+    if (form.files.length + 1 > limits.maxFiles) throw new UploadError(413, msgf("Too many files; the cap is {maxFiles}.", { maxFiles: limits.maxFiles }));
     const target = path.join(dir, safeFileName(filename, form.files.length));
     const stream = createWriteStream(target, { flags: "wx", mode: 0o600 });
     stream.on("error", () => undefined); // surfaced through `stream.errored` / write(); never an uncaught 'error' event

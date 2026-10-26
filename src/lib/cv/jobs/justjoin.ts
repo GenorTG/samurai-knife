@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { decodeEntities, parseHtml, readableText, tidyText } from "./html";
 import { detectLang } from "../langdetect";
 import { FetchError, MAX_TEXT_CHARS, PASTE_HINT, type FetchedPosting } from "./posting";
@@ -91,12 +92,12 @@ export function parseJustjoinOffer(body: string, url: string): FetchedPosting {
   try {
     offer = JSON.parse(body);
   } catch {
-    throw new FetchError(`justjoin.it answered something that is not an offer. ${PASTE_HINT}`);
+    throw new FetchError(msgf("justjoin.it answered something that is not an offer. {PASTE_HINT}", { PASTE_HINT }));
   }
-  if (!isObj(offer) || !str(offer.title)) throw new FetchError(`justjoin.it has no offer at ${url} (expired or removed?). ${PASTE_HINT}`);
+  if (!isObj(offer) || !str(offer.title)) throw new FetchError(msgf("justjoin.it has no offer at {url} (expired or removed?). {PASTE_HINT}", { url, PASTE_HINT }));
   const html = str(offer.body);
   const text = (html.includes("<") ? readableText(parseHtml(html)) : tidyText(decodeEntities(html))).slice(0, MAX_TEXT_CHARS);
-  if (!text) throw new FetchError(`the justjoin.it offer at ${url} has no description. ${PASTE_HINT}`);
+  if (!text) throw new FetchError(msgf("the justjoin.it offer at {url} has no description. {PASTE_HINT}", { url, PASTE_HINT }));
   const sections = postingSections(text);
   const languages = Array.isArray(offer.languages)
     ? offer.languages.flatMap((l) => (isObj(l) && str(l.code) ? [`${str(l.code)}${str(l.level) ? ` ${str(l.level)}` : ""}`] : []))

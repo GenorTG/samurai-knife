@@ -19,6 +19,7 @@
  * new account); who is privileged and which cap applies is decided by the caller (src/lib/python-admission.ts).
  */
 
+import { msgf } from "@/lib/i18n/msg";
 import { isPublicMode } from "./accounts/mode";
 
 export type JobState = "queued" | "running" | "done" | "failed" | "cancelled";
@@ -71,10 +72,10 @@ export class QueueFullError extends Error {
   readonly scope: "lane" | "owner" | "rate";
   constructor(lane: string, depth: number, retryAfterSec: number, scope: "lane" | "owner" | "rate" = "lane") {
     super(scope === "owner"
-      ? `You already have ${depth} jobs in the ${lane} work queue. Wait for one to finish, then try again.`
+      ? msgf("You already have {depth} jobs in the {lane} work queue. Wait for one to finish, then try again.", { depth, lane })
       : scope === "rate"
-        ? `You started ${depth} ${lane} jobs in the last 10 minutes, the most allowed. Try again in ${retryAfterSec} s.`
-        : `The ${lane} work queue is full (${depth} waiting). Try again shortly.`);
+        ? msgf("You started {depth} {lane} jobs in the last 10 minutes, the most allowed. Try again in {retryAfterSec} s.", { depth, lane, retryAfterSec })
+        : msgf("The {lane} work queue is full ({depth} waiting). Try again shortly.", { lane, depth }));
     this.name = "QueueFullError";
     this.lane = lane;
     this.depth = depth;
@@ -209,13 +210,13 @@ export class WorkQueue<L extends string = string> {
     this.now = options.now ?? Date.now;
     for (const [name, config] of Object.entries<LaneConfig>(lanes)) {
       if (!Number.isInteger(config.concurrency) || config.concurrency < 1) {
-        throw new RangeError(`Lane ${name}: concurrency must be an integer >= 1.`);
+        throw new RangeError(msgf("Lane {name}: concurrency must be an integer >= 1.", { name }));
       }
       if (!Number.isInteger(config.maxDepth) || config.maxDepth < 0) {
-        throw new RangeError(`Lane ${name}: maxDepth must be an integer >= 0.`);
+        throw new RangeError(msgf("Lane {name}: maxDepth must be an integer >= 0.", { name }));
       }
       if (config.reserved !== undefined && (!Number.isInteger(config.reserved) || config.reserved < 0 || config.reserved >= config.concurrency + config.maxDepth)) {
-        throw new RangeError(`Lane ${name}: reserved must be an integer >= 0 and below concurrency + maxDepth.`);
+        throw new RangeError(msgf("Lane {name}: reserved must be an integer >= 0 and below concurrency + maxDepth.", { name }));
       }
       this.lanes.set(name, {
         config: { ...config },

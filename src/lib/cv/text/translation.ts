@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import { finding, type Finding, type Severity } from "./findings";
 import { glossaryMismatches } from "./glossary";
 import { pyRegex, rstripChars } from "./regex";
@@ -146,7 +147,7 @@ function untranslated(pl: string, en: string): Finding[] {
     .filter((t) => /^\p{L}+$/u.test(t.text) && t.text.length >= 3 && !TECH_TERMS.has(t.text.toLowerCase()) && !tokens.isProperNoun(pl, t) && !tokens.isTech(t.text));
   if (prose.length < UNTRANSLATED_MIN_PROSE_WORDS) return []; // names, tech stacks and URLs legitimately read the same in both languages
   return [
-    finding("tr-untranslated", "warn", "PL and EN text are identical: one side looks like an untranslated copy.", "Translate the side that is in the wrong language."),
+    finding("tr-untranslated", "warn", msg("PL and EN text are identical: one side looks like an untranslated copy."), msg("Translate the side that is in the wrong language.")),
   ];
 }
 
@@ -161,8 +162,8 @@ function compareNumbers(pl: Facts, en: Facts): Finding[] {
       finding(
         "tr-number",
         soft ? "warn" : "error",
-        `Number(s) ${missing.join(", ")} in ${label} not found in ${otherSide(label)}.`,
-        "Numbers must match across languages. Check the source of truth with the user; never adjust a figure to make the sides agree.",
+        msgf("Number(s) {missing} in {label} not found in {value}.", { missing: missing.join(", "), label, value: otherSide(label) }),
+        msg("Numbers must match across languages. Check the source of truth with the user; never adjust a figure to make the sides agree."),
       ),
     );
   }
@@ -173,7 +174,10 @@ function compareSets(rule: string, noun: string, pl: Set<string>, en: Set<string
   const out: Finding[] = [];
   for (const [label, only] of [["PL", [...pl].filter((x) => !en.has(x))], ["EN", [...en].filter((x) => !pl.has(x))]] as const) {
     if (only.length) {
-      out.push(finding(rule, "error", `${noun} ${sortStrings(only).join(", ")} in ${label} but not in ${otherSide(label)}.`, `Copy the ${noun.toLowerCase()} to both sides verbatim.`));
+      const vars = { items: sortStrings(only).join(", "), label, other: otherSide(label) };
+      const message = noun === "URL" ? msgf("URLs in {label} but not in {other}: {items}.", vars) : noun === "Email" ? msgf("Email addresses in {label} but not in {other}: {items}.", vars) : msgf("Versions in {label} but not in {other}: {items}.", vars);
+      const fix = noun === "URL" ? msg("Copy the URLs to both sides verbatim.") : noun === "Email" ? msg("Copy the email addresses to both sides verbatim.") : msg("Copy the versions to both sides verbatim.");
+      out.push(finding(rule, "error", message, fix));
     }
   }
   return out;
@@ -192,8 +196,8 @@ function compareNames(pl: Facts, en: Facts): Finding[] {
           finding(
             "tr-name",
             severity,
-            `${isTech ? "Tech term(s)" : "Proper noun(s)"} ${group.join(", ")} in ${label} not found in ${otherSide(label)}.`,
-            "Names and tech terms normally appear on both sides. Translated institution names are fine; add the term if it was dropped.",
+            isTech ? msgf("Tech terms in {label} not found in {other}: {group}.", { group: group.join(", "), label, other: otherSide(label) }) : msgf("Proper nouns in {label} not found in {other}: {group}.", { group: group.join(", "), label, other: otherSide(label) }),
+            msg("Names and tech terms normally appear on both sides. Translated institution names are fine; add the term if it was dropped."),
           ),
         );
       }
@@ -217,7 +221,7 @@ export function checkPair(pl: string, en: string): Finding[] {
   if (plBlank && enBlank) return [];
   if (plBlank !== enBlank) {
     const [empty, full] = plBlank ? ["PL", "EN"] : ["EN", "PL"];
-    return [finding("tr-missing", "warn", `${empty} side is empty while ${full} has text.`, `Translate the ${full} text into ${empty}.`)];
+    return [finding("tr-missing", "warn", msgf("{empty} side is empty while {full} has text.", { empty, full }), `Translate the ${full} text into ${empty}.`)];
   }
 
   const pf = new Facts(pl, "pl");
@@ -240,7 +244,7 @@ export function checkPair(pl: string, en: string): Finding[] {
       finding(
         "tr-length",
         "warn",
-        `${lp > le ? "PL" : "EN"} is ${fixed1(longer / shorter)}x longer than the other side (${lp} vs ${le} chars): content may be missing or added.`,
+        msgf("{value} is {value2}x longer than the other side ({lp} vs {le} chars): content may be missing or added.", { value: lp > le ? "PL" : "EN", value2: fixed1(longer / shorter), lp, le }),
         "Compare both sides sentence by sentence.",
       ),
     );
@@ -251,8 +255,8 @@ export function checkPair(pl: string, en: string): Finding[] {
       finding(
         "tr-glossary",
         "info",
-        `PL '${entry.pl}' is usually '${entry.en}' in EN (accepted: ${entry.accept.join(", ")}); none found.`,
-        "Use the glossary rendering unless the sentence needs a different sense.",
+        msgf("PL '{pl}' is usually '{en}' in EN (accepted: {value}); none found.", { pl: entry.pl, en: entry.en, value: entry.accept.join(", ") }),
+        msg("Use the glossary rendering unless the sentence needs a different sense."),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,7 +70,7 @@ export function readPdfForm<U extends PdfUpload>(form: PdfFormSource<U>): PdfFor
     params = { language, deskew, rotatePages };
   }
   if (uploads.length > PDF_MAX_FILES) {
-    return { ok: false, status: 413, error: `Too many files (${uploads.length}); the cap is ${PDF_MAX_FILES}.` };
+    return { ok: false, status: 413, error: msgf("Too many files ({length}); the cap is {PDF_MAX_FILES}.", { length: uploads.length, PDF_MAX_FILES }) };
   }
   const oversized = uploads.find((file) => file.size > PDF_MAX_FILE_BYTES);
   if (oversized) {

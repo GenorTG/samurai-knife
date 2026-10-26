@@ -102,12 +102,13 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
 
         # ---------------------------------------------------------------- 1. connect
         go(page, "/tools/site-studio?tab=connect")
-        page.get_by_label("GitHub repository").fill("genor/website")
-        page.get_by_label("Production URL").fill(site_url)
-        # The scratch server can have a GitHub App configured; choose the PAT path this test exercises.
+        # The scratch server can have a GitHub App configured; choose the PAT path this test exercises first (switching
+        # the access type resets the repository field).
         access = page.get_by_role("radiogroup", name="GitHub access")
         if access.count():
             access.get_by_text("Personal token", exact=True).click()
+        page.get_by_label("GitHub repository").fill("genor/website")
+        page.get_by_label("Production URL").fill(site_url)
         page.get_by_label("GitHub token").fill(TOKEN)
         page.get_by_text("More settings").click()
         page.get_by_label("More pages to audit").fill("/projekty")

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { mutateStore, readStore, type AccountRole } from "@/lib/accounts/store";
 import { accountStorageBytes } from "@/lib/accounts/data";
 import { revokeAllSessions, sessionCount } from "@/lib/accounts/session";
@@ -65,8 +66,8 @@ export function adminAct(actorId: string, targetId: string, body: AdminAction): 
   const target = store.accounts.find((account) => account.id === targetId);
   if (!target) return { ok: false, status: 404, error: "unknown_user" };
   const selfOrLast = (verb: string): AdminResult | null => {
-    if (targetId === actorId) return { ok: false, status: 409, error: `You cannot ${verb} your own account here (use your account page).` };
-    if (isLastAdmin(targetId, store)) return { ok: false, status: 409, error: `Refusing to ${verb} the only active administrator.` };
+    if (targetId === actorId) return { ok: false, status: 409, error: msgf("You cannot {verb} your own account here (use your account page).", { verb }) };
+    if (isLastAdmin(targetId, store)) return { ok: false, status: 409, error: msgf("Refusing to {verb} the only active administrator.", { verb }) };
     return null;
   };
   switch (body.action) {
@@ -125,7 +126,7 @@ export function adminAct(actorId: string, targetId: string, body: AdminAction): 
         const account = s.accounts.find((a) => a.id === targetId);
         if (account) account.approvedProviderUrl = url;
       });
-      return { ok: true, detail: url ? `${targetId} may use ${url}` : `${targetId} may use the known providers only` };
+      return { ok: true, detail: url ? `${targetId} may use ${url}` : msgf("{targetId} may use the known providers only", { targetId }) };
     }
     case "site-url": {
       const url = body.url === null ? null : siteOrigin(body.url);

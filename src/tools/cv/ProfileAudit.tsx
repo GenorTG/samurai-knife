@@ -37,7 +37,7 @@ export function useAudit(lang: CvLang, revision: number | null): AuditState {
 const SHOWN = 10;
 
 export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; profile: Profile; lang: CvLang; onGo: (path: string) => void }) {
-  const { t } = useT();
+  const { t, m } = useT();
   const [all, setAll] = useState(false);
   const result = audit.result;
   const paths = result ? Object.keys(result.findings).filter((p) => result.findings[p].length > 0) : [];
@@ -76,7 +76,7 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
                       <li key={`${f.rule}-${i}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted">
                         <SeverityBadge severity={f.severity} />
                         <Badge>{f.rule}</Badge>
-                        <span className="min-w-0 flex-1 basis-40 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {f.fix}</> : null}</span>
+                        <span className="min-w-0 flex-1 basis-40 wrap-anywhere">{m(f.message)}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {m(f.fix)}</> : null}</span>
                       </li>
                     ))}
                   </ul>

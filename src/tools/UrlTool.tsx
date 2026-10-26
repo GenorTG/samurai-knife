@@ -139,7 +139,7 @@ export default function UrlTool() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!raw.trim()) setError(null);
-      else if (!parsed) setError(`"${raw.trim()}" is not a URL this browser can parse.`);
+      else if (!parsed) setError(t("\"{raw}\" is not a URL this browser can parse.", { raw: raw.trim() }));
       else setError(null);
     }, 140);
     return () => clearTimeout(timer);

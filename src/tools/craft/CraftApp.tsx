@@ -73,7 +73,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
         }
         const launch = await getCraftLaunch();
         const entry = launch.apps.find((candidate) => candidate.id === app.id);
-        if (!entry) throw new Error(`${app.name} is not served by this installation`);
+        if (!entry) throw new Error(t("{name} is not served by this installation", { name: app.name }));
         if (!cancelled) setStage({ kind: "ready", url: entry.url, origin: launch.origin, version: entry.version, bridgeUrl: entry.bridgeUrl, accountTag: launch.accountTag });
       } catch (err) {
         if (!cancelled) setStage({ kind: "failed", message: errorText(err), needsAdmin: isAdminRequired(err) });
@@ -112,7 +112,7 @@ export default function CraftApp({ app: appId }: { app: string }) {
     return (
       <div className="space-y-4">
         <Notice tone={stage.needsAdmin ? "info" : "error"}>
-          {stage.needsAdmin ? t("An administrator has to start the Craft apps before you can use {name}.", { name: app.name }) : `${app.name} could not start: ${stage.message}`}
+          {stage.needsAdmin ? t("An administrator has to start the Craft apps before you can use {name}.", { name: app.name }) : t("{name} could not start: {message}", { name: app.name, message: stage.message })}
         </Notice>
         <OpProgress op={op} />
       </div>
@@ -169,7 +169,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
         const { file } = await saveCraftFile(app.id, request.name, request.mime, request.bytes);
         setNote({ kind: "saved", file });
       } catch (err) {
-        setNote({ kind: "error", message: `${request.name} was not saved: ${errorText(err)}` });
+        setNote({ kind: "error", message: t("{name} was not saved: {value}", { name: request.name, value: errorText(err) }) });
       }
     },
     [app.id],
@@ -178,7 +178,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
     origin: stage.origin,
     accountTag: stage.accountTag,
     onSave: (request) => void onSave(request),
-    onTooBig: (name, size) => setNote({ kind: "error", message: `${name} (${formatBytes(size)}) is larger than your files take (50 MB): it was downloaded instead.` }),
+    onTooBig: (name, size) => setNote({ kind: "error", message: t("{name} ({value}) is larger than your files take (50 MB): it was downloaded instead.", { name, value: formatBytes(size) }) }),
     onOpen: (request) => setOpenRequest(request),
   });
   // The assistant (craft_* tools): once the app has loaded, ask the bridge whether it has an agent API. A wasm app
@@ -223,7 +223,7 @@ function CraftFrame({ app, stage, canManage }: { app: SidecarSite; stage: Extrac
   const src = app.webgpu && webgl ? withFlag(stage.url, "webgl") : stage.url;
   const secure = secureOrigin(stage.origin);
   const status =
-    bridgeState.kind === "connecting" ? t("Preparing {name}…", { name: app.name }) : bridgeState.kind === "failed" ? `${app.name} is not loaded.` : loadedSrc === src ? `${app.name} loaded from ${stage.origin}.` : t("Loading {name}…", { name: app.name });
+    bridgeState.kind === "connecting" ? t("Preparing {name}…", { name: app.name }) : bridgeState.kind === "failed" ? t("{name} is not loaded.", { name: app.name }) : loadedSrc === src ? `${app.name} loaded from ${stage.origin}.` : t("Loading {name}…", { name: app.name });
 
   // The workspace: toolbar + app, sized to the window. Full screen covers the page with it (in the page, so the file
   // chooser and My files keep working); `?full=1` (Open in new tab) starts that way.

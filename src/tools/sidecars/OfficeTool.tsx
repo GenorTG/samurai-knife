@@ -291,7 +291,7 @@ export default function OfficeTool() {
     try {
       for (const [index, file] of files.entries()) {
         if (file.size > room) {
-          throw new Error(`${file.name} (${formatBytes(file.size)}) does not fit: ${formatBytes(Math.max(0, room))} of your storage is free. Empty the trash or prune old versions to make room.`);
+          throw new Error(t("{name} ({value}) does not fit: {value2} of your storage is free. Empty the trash or prune old versions to make room.", { name: file.name, value: formatBytes(file.size), value2: formatBytes(Math.max(0, room)) }));
         }
         setProgress(t("Uploading {value} of {total}: {name} ({file})…", { value: index + 1, total, name: file.name, file: formatBytes(file.size) }));
         await uploadDoc(file.name, await fileToBase64(file), cwd);

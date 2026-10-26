@@ -71,7 +71,7 @@ interface FieldProps {
  * Escape cancels, the API's 422 reason stays visible under the field. Audit findings for the path render underneath.
  */
 export function EditableField({ path, value, label, placeholder, multiline = false, className, list = false, reference, biPath, keepInFilter = false, nullable = false }: FieldProps) {
-  const { t } = useT();
+  const { t, m } = useT();
   const env = useProfileEnv();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -199,7 +199,7 @@ export function EditableField({ path, value, label, placeholder, multiline = fal
           {found.map((f, i) => (
             <li key={`${f.rule}-${i}`} className="flex flex-wrap items-baseline gap-x-2 text-xs text-warn">
               <Badge tone="warn">{f.rule}</Badge>
-              <span className="min-w-0 wrap-anywhere">{f.message}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {f.fix}</> : null}</span>
+              <span className="min-w-0 wrap-anywhere">{m(f.message)}{f.fix ? <> <b className="font-semibold text-ink">{t("Tip:")}</b> {m(f.fix)}</> : null}</span>
             </li>
           ))}
         </ul>

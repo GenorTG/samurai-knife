@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import net from "node:net";
 import type { Cell } from "./compare";
 
@@ -77,7 +78,7 @@ export class WireGuard {
     if (this.tripped) return this.tripped;
     this.total += chunk.length;
     if (this.total > this.maxTotal) {
-      return this.trip(`The result is larger than ${mb(this.maxTotal)}, so the run was stopped. Return fewer rows (WHERE, LIMIT) or shorter values (left(column, 100)).`);
+      return this.trip(msgf("The result is larger than {value}, so the run was stopped. Return fewer rows (WHERE, LIMIT) or shorter values (left(column, 100)).", { value: mb(this.maxTotal) }));
     }
     let offset = 0;
     while (offset < chunk.length) {
@@ -96,7 +97,7 @@ export class WireGuard {
       const length = this.header.readUInt32BE(1);
       if (length < 4) return this.trip("The database sent a malformed message, so the run was stopped.");
       if (length + 1 > this.maxMessage) {
-        return this.trip(`One row or message of the result is larger than ${mb(this.maxMessage)}, so the run was stopped. Select shorter values, e.g. left(column, 100) or length(column).`);
+        return this.trip(msgf("One row or message of the result is larger than {value}, so the run was stopped. Select shorter values, e.g. left(column, 100) or length(column).", { value: mb(this.maxMessage) }));
       }
       this.remaining = length - 4;
     }

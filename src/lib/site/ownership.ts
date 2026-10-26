@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import type { Account } from "@/lib/accounts/store";
 import { outboundBudgeted } from "@/lib/net/outbound";
 import * as github from "./github";
@@ -77,13 +78,13 @@ export function siteTargetProblem(
   try {
     target = new URL(url);
   } catch {
-    return `'${url.slice(0, 200)}' is not a valid URL`;
+    return msgf("'{url}' is not a valid URL", { url: url.slice(0, 200) });
   }
   const production = connection?.productionUrl ? new URL(connection.productionUrl) : null;
   if (!production || !connection) return "connect your website first and set its production URL (Connect tab): audits run on your own site only";
-  if (target.origin !== production.origin) return `audits and page reads run on your connected production site only (${production.origin})`;
+  if (target.origin !== production.origin) return msgf("audits and page reads run on your connected production site only ({origin})", { origin: production.origin });
   if (!productionTrusted({ approvedSiteUrl: account.approvedSiteUrl ?? null }, { productionUrl: connection.productionUrl, verifiedOrigin: connection.verifiedOrigin ?? "" })) {
-    return `${production.host} is not verified as this repository's site: set it as the repository's Website (GitHub, About) or serve it from its GitHub Pages, then Connect again; or ask an administrator to approve it for your account`;
+    return msgf("{host} is not verified as this repository's site: set it as the repository's Website (GitHub, About) or serve it from its GitHub Pages, then Connect again; or ask an administrator to approve it for your account", { host: production.host });
   }
   return null;
 }

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /**
  * Browser side of `POST /api/pdf?async=1`: enqueue, poll with backoff, fetch the result, cancel.
  * No React in here so the state machine can be read (and tested) on its own.
@@ -60,7 +61,7 @@ async function errorFrom(response: Response, fallback: string): Promise<Error> {
     const body = (await response.json()) as { error?: string; retryAfterSec?: number };
     if (response.status === 503) {
       const wait = body.retryAfterSec ?? Number(response.headers.get("retry-after"));
-      message = `The PDF worker is busy${wait ? ` — try again in about ${wait} s` : ""}.`;
+      message = msgf("The PDF worker is busy{value}.", { value: wait ? ` — try again in about ${wait} s` : "" });
     } else if (response.status === 401) {
       message = "You are signed out — sign in again to process PDFs.";
     } else if (body.error) message = body.error;

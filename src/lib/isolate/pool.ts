@@ -11,7 +11,7 @@
  */
 import { QueueFullError } from "../work-queue";
 import type { RequestMessage, ResponseMessage, SerializedError, TaskMap } from "../workers/protocol";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
 
 /** The part of `worker_threads.Worker` the pool uses, so tests can pass an in-process fake. */
 export interface IsolateWorker {
@@ -83,7 +83,7 @@ export class IsolateTimeoutError extends Error {
   readonly code = "ISOLATE_TIMEOUT";
   readonly timeoutMs: number;
   constructor(timeoutMs: number, what = "The computation") {
-    super(`${what} did not finish within ${timeoutMs} ms and was stopped. Simplify the input and try again.`);
+    super(msgf("{what} did not finish within {timeoutMs} ms and was stopped. Simplify the input and try again.", { what, timeoutMs }));
     this.name = "IsolateTimeoutError";
     this.timeoutMs = timeoutMs;
   }

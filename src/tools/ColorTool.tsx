@@ -212,7 +212,7 @@ export default function ColorTool() {
         setError(null);
         return;
       }
-      if (!parsed) setError(`"${input.trim()}" is not hex, rgb(), hsl() or oklch().`);
+      if (!parsed) setError(tr("\"{input}\" is not hex, rgb(), hsl() or oklch().", { input: input.trim() }));
       else setError(null);
     }, 140);
     return () => clearTimeout(timer);

@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 export function parseHtmlFragment(source: string): DocumentFragment {
   const template = document.createElement("template");
   template.innerHTML = source;
@@ -19,8 +20,8 @@ export function auditHeadings(source: string) {
   const headings = [...root.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((el) => ({ level: Number(el.tagName.slice(1)), text: el.textContent?.trim() || "(empty heading)" }));
   const issues: string[] = [];
   if (!headings.length) issues.push("No headings found.");
-  if (headings.filter((item) => item.level === 1).length > 1) issues.push("More than one H1 heading was found.");
-  headings.forEach((heading, index) => { const previous = headings[index - 1]; if (previous && heading.level > previous.level + 1) issues.push(`Heading level jumps from H${previous.level} to H${heading.level}: ${heading.text}`); });
+  if (headings.filter((item) => item.level === 1).length > 1) issues.push(msg("More than one H1 heading was found."));
+  headings.forEach((heading, index) => { const previous = headings[index - 1]; if (previous && heading.level > previous.level + 1) issues.push(msgf("Heading level jumps from H{level} to H{level2}: {text}", { level: previous.level, level2: heading.level, text: heading.text })); });
   return { headings, issues };
 }
 
@@ -29,7 +30,7 @@ export function auditLinks(source: string) {
   const generic = new Set(["click here", "here", "read more", "learn more", "more", "link"]);
   return [...root.querySelectorAll("a")].map((el, index) => {
     const name = accessibleName(el, root) || [...el.querySelectorAll("img[alt]")].map((image) => image.getAttribute("alt")?.trim()).filter(Boolean).join(" ") || el.textContent?.trim() || "";
-    return { index: index + 1, href: el.getAttribute("href") ?? "(missing href)", name: name || "(empty)", issue: !name ? "No accessible link name" : generic.has(name.toLowerCase()) ? "Generic link text" : "" };
+    return { index: index + 1, href: el.getAttribute("href") ?? "(missing href)", name: name || "(empty)", issue: !name ? msg("No accessible link name") : generic.has(name.toLowerCase()) ? "Generic link text" : "" };
   });
 }
 

@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 import { existsSync, statSync } from "node:fs";
 import { plainSize, readAccountFile } from "@/lib/storage/sealed";
 import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
@@ -41,7 +42,7 @@ export function decodeJpegDataUrl(dataUrl: string): Buffer {
   if (!match) throw new CvPhotoError("photo: expected a base64 JPEG data URL (data:image/jpeg;base64,…).");
   const bytes = Buffer.from(match[1], "base64");
   if (!isJpeg(bytes)) throw new CvPhotoError("photo: the data is not a JPEG image.");
-  if (bytes.length > MAX_PHOTO_BYTES) throw new CvPhotoError(`photo: ${bytes.length} bytes, the limit is ${MAX_PHOTO_BYTES}.`);
+  if (bytes.length > MAX_PHOTO_BYTES) throw new CvPhotoError(msgf("photo: {length} bytes, the limit is {MAX_PHOTO_BYTES}.", { length: bytes.length, MAX_PHOTO_BYTES }));
   return bytes;
 }
 

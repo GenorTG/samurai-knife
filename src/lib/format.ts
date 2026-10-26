@@ -1,3 +1,4 @@
+import { msgf } from "@/lib/i18n/msg";
 /** Small shared helpers. Client-safe only — no Node imports in here. */
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
@@ -72,7 +73,7 @@ export function readAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.onerror = () => reject(new Error(msgf("Could not read {name}", { name: file.name })));
     reader.readAsDataURL(file);
   });
 }
@@ -81,7 +82,7 @@ export function readAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.onerror = () => reject(new Error(msgf("Could not read {name}", { name: file.name })));
     reader.readAsText(file);
   });
 }
