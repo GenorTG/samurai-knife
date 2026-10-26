@@ -144,6 +144,11 @@
     "{n} kolumny",
     "{n} kolumn"
   ],
+  "{n} day": [
+    "{n} dzień",
+    "{n} dni",
+    "{n} dni"
+  ],
   "{n} error": [
     "{n} błąd",
     "{n} błędy",
@@ -154,6 +159,11 @@
     "Brakuje {n} oczekiwanych wierszy.",
     "Brakuje {n} oczekiwanych wierszy."
   ],
+  "{n} field": [
+    "{n} pole",
+    "{n} pola",
+    "{n} pól"
+  ],
   "{n} file": [
     "{n} plik",
     "{n} pliki",
@@ -163,6 +173,11 @@
     "{n} nagłówek",
     "{n} nagłówki",
     "{n} nagłówków"
+  ],
+  "{n} hour": [
+    "{n} godzina",
+    "{n} godziny",
+    "{n} godzin"
   ],
   "{n} item": [
     "{n} element",
@@ -179,11 +194,31 @@
     "{n} znaczniki",
     "{n} znaczników"
   ],
+  "{n} match": [
+    "{n} dopasowanie",
+    "{n} dopasowania",
+    "{n} dopasowań"
+  ],
+  "{n} match.": [
+    "{n} dopasowanie.",
+    "{n} dopasowania.",
+    "{n} dopasowań."
+  ],
   "{n} matches": "dopasowania: {n}",
   "{n} MCP key was revoked: create a new one for your agents.": [
     "Unieważniono {n} klucz MCP: utwórz nowy dla swoich agentów.",
     "Unieważniono {n} klucze MCP: utwórz nowe dla swoich agentów.",
     "Unieważniono {n} kluczy MCP: utwórz nowe dla swoich agentów."
+  ],
+  "{n} minute": [
+    "{n} minuta",
+    "{n} minuty",
+    "{n} minut"
+  ],
+  "{n} month": [
+    "{n} miesiąc",
+    "{n} miesiące",
+    "{n} miesięcy"
   ],
   "{n} node": [
     "{n} węzeł",
@@ -235,6 +270,11 @@
     "{n} wierszy nie ma w oczekiwanym wyniku.",
     "{n} wierszy nie ma w oczekiwanym wyniku."
   ],
+  "{n} second": [
+    "{n} sekunda",
+    "{n} sekundy",
+    "{n} sekund"
+  ],
   "{n} signed-in session (browsers and devices), this one included.": [
     "{n} zalogowana sesja (przeglądarki i urządzenia), łącznie z tą.",
     "{n} zalogowane sesje (przeglądarki i urządzenia), łącznie z tą.",
@@ -269,6 +309,11 @@
     "{n} ostrzeżenie",
     "{n} ostrzeżenia",
     "{n} ostrzeżeń"
+  ],
+  "{n} week": [
+    "{n} tydzień",
+    "{n} tygodnie",
+    "{n} tygodni"
   ],
   "{n} word": [
     "{n} słowo",
@@ -1475,6 +1520,8 @@
   "Evaluates pasted rules only. Supports wildcard * and terminal $, group-specific and wildcard agents, and longest-rule precedence; it does not fetch robots.txt or implement every crawler-specific extension.": "Ocenia tylko wklejone reguły. Obsługuje symbol wieloznaczny * i końcowe $, grupy dla konkretnych i wieloznacznych agentów oraz pierwszeństwo najdłuższej reguły; nie pobiera robots.txt i nie implementuje każdego rozszerzenia konkretnych robotów.",
   "Event title": "Tytuł wydarzenia",
   "Every": "Co",
+  "every {span}": "co {span}",
+  "every 15 minutes": "co 15 minut",
   "Every 15 minutes": "Co 15 minut",
   "Every account on this server. Disabling or deleting an account ends its sessions at once.": "Wszystkie konta na tym serwerze. Wyłączenie lub usunięcie konta od razu kończy jego sesje.",
   "Every browser tool: PDF, images, JSON, CSV, text, dev helpers": "Wszystkie narzędzia w przeglądarce: PDF, obrazy, JSON, CSV, tekst, pomoce dla programistów",
@@ -1994,6 +2041,8 @@
   "JavaScript": "JavaScript",
   "JavaScript (sandboxed)": "JavaScript (w piaskownicy)",
   "JavaScript (the model's arguments are in `input`; return the answer)": "JavaScript (argumenty modelu są w `input`; zwróć odpowiedź)",
+  "JavaScript, all items": "JavaScript, wszystkie elementy",
+  "JavaScript, each item": "JavaScript, każdy element",
   "Job link or posting text": "Link do oferty albo treść ogłoszenia",
   "Job offers": "Oferty pracy",
   "Job title": "Stanowisko",
@@ -2221,7 +2270,6 @@
   "Markup": "Znaczniki",
   "Markup tools": "Narzędzia znaczników",
   "Master profile": "Profil główny",
-  "match": "dopasowanie",
   "Match": "Dopasowanie",
   "Match failed:": "Dopasowanie się nie udało:",
   "Match language": "Język dopasowania",
@@ -3969,6 +4017,8 @@
   "Unsupported BYDAY value: {day}": "Nieobsługiwana wartość BYDAY: {day}",
   "Unsupported file type: {name}. Supported: {value}.": "Nieobsługiwany typ pliku: {name}. Obsługiwane: {value}.",
   "Until": "Do",
+  "until a date": "do daty",
+  "until called": "do wywołania",
   "UNTIL is not a valid date.": "UNTIL nie jest poprawną datą.",
   "Untitled": "Bez tytułu",
   "Untitled offer": "Oferta bez tytułu",
@@ -4051,6 +4101,7 @@
   "UUID v4": "UUID v4",
   "UUID v7": "UUID v7",
   "v4 = random, v7 = time-ordered (better for indexes). All from": "v4 = losowe, v7 = uporządkowane w czasie (lepsze dla indeksów). Wszystkie z",
+  "Valid — expires {when}.": "Ważny — wygasa {when}.",
   "Valid — the JSON value matches the schema.": "Poprawne — wartość JSON pasuje do schematu.",
   "Valid {dialect} SQL: {statements}.": "Poprawny SQL {dialect}: {statements}.",
   "Valid {root} root, but it contains no entries.": "Poprawny korzeń {root}, ale bez wpisów.",

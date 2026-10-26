@@ -1,5 +1,6 @@
 "use client";
 
+import { INTL_LOCALE, type Locale } from "@/lib/i18n/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256, sha384, sha512 } from "@noble/hashes/sha2.js";
@@ -85,22 +86,21 @@ function humanDate(seconds: number): string {
   return `${local.format(stamp)} · ${utc.format(stamp)}`;
 }
 
-function relTime(seconds: number, now: number): string {
+function relTime(seconds: number, now: number, locale: Locale): string {
   const delta = seconds - now;
   const abs = Math.abs(delta);
-  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-  let text: string;
-  if (abs < 60) text = unit(Math.round(abs), "second");
-  else if (abs < 3600) text = unit(Math.round(abs / 60), "minute");
-  else if (abs < 86_400) text = unit(Math.round(abs / 3600), "hour");
-  else if (abs < 2_592_000) text = unit(Math.round(abs / 86_400), "day");
-  else if (abs < 31_536_000) text = unit(Math.round(abs / 2_592_000), "month");
-  else text = unit(Math.round(abs / 31_536_000), "year");
-  return delta >= 0 ? `in ${text}` : `${text} ago`;
+  const sign = delta >= 0 ? 1 : -1;
+  const format = new Intl.RelativeTimeFormat(INTL_LOCALE[locale], { numeric: "always" });
+  if (abs < 60) return format.format(sign * Math.round(abs), "second");
+  if (abs < 3600) return format.format(sign * Math.round(abs / 60), "minute");
+  if (abs < 86_400) return format.format(sign * Math.round(abs / 3600), "hour");
+  if (abs < 2_592_000) return format.format(sign * Math.round(abs / 86_400), "day");
+  if (abs < 31_536_000) return format.format(sign * Math.round(abs / 2_592_000), "month");
+  return format.format(sign * Math.round(abs / 31_536_000), "year");
 }
 
 export default function JwtTool() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [token, setToken] = useState("");
   const [secret, setSecret] = useState("samurai-knife");
   const [headerText, setHeaderText] = useState(JSON.stringify(SAMPLE_HEADER, null, 2));
@@ -237,7 +237,7 @@ export default function JwtTool() {
       const isTime = ["exp", "iat", "nbf"].includes(key);
       const rendered = typeof value === "number" ? String(value) : JSON.stringify(value);
       if (isTime && typeof value === "number") {
-        rows.push([`${label} — ${humanDate(value)}`, `${now === null ? "…" : relTime(value, now)} · ${rendered}`]);
+        rows.push([`${label} — ${humanDate(value)}`, `${now === null ? "…" : relTime(value, now, locale)} · ${rendered}`]);
       } else {
         rows.push([label, rendered]);
       }
@@ -253,8 +253,8 @@ export default function JwtTool() {
   const liveBadge = !Number.isFinite(expSeconds) || now === null
     ? null
     : expSeconds < now
-      ? { tone: "error" as const, text: t("Expired {expSeconds}.", { expSeconds: relTime(expSeconds, now) }) }
-      : { tone: "good" as const, text: `Valid — expires ${relTime(expSeconds, now)}.` };
+      ? { tone: "error" as const, text: t("Expired {expSeconds}.", { expSeconds: relTime(expSeconds, now, locale) }) }
+      : { tone: "good" as const, text: t("Valid — expires {when}.", { when: relTime(expSeconds, now, locale) }) };
 
   return (
     <div className="space-y-4">

@@ -1,6 +1,7 @@
 "use client";
 
 /** One node on the workflow canvas (React Flow custom node): inputs on the left, outputs on the right, run status. */
+import { translator, type Translator } from "@/lib/i18n/core";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { memo } from "react";
 import { cx } from "@/lib/format";
@@ -32,8 +33,21 @@ function hostOf(value: unknown): string {
   }
 }
 
+/** "5 minutes" with the reader's plural forms; an unknown unit is shown as stored. */
+function span(amount: number, unit: string, tn: Translator["tn"]): string {
+  switch (unit) {
+    case "seconds": return tn("{n} second", "{n} seconds", amount);
+    case "minutes": return tn("{n} minute", "{n} minutes", amount);
+    case "hours": return tn("{n} hour", "{n} hours", amount);
+    case "days": return tn("{n} day", "{n} days", amount);
+    case "weeks": return tn("{n} week", "{n} weeks", amount);
+    case "months": return tn("{n} month", "{n} months", amount);
+    default: return `${amount} ${unit}`;
+  }
+}
+
 /** One line under the node name: what it is set to do. */
-export function nodeSummary(node: WorkflowNode, meta: NodeMeta | undefined): string {
+export function nodeSummary(node: WorkflowNode, meta: NodeMeta | undefined, { t, tn }: Pick<Translator, "t" | "tn"> = translator("en")): string {
   const p = node.parameters;
   switch (node.type) {
     case "core.http-request":
@@ -42,21 +56,21 @@ export function nodeSummary(node: WorkflowNode, meta: NodeMeta | undefined): str
       return `${String(p.httpMethod ?? "POST")} /${String(p.path ?? "")}`;
     case "core.schedule-trigger": {
       const rule = Array.isArray(p.rules) ? (p.rules[0] as Record<string, unknown> | undefined) : undefined;
-      if (!rule) return "every 15 minutes";
-      return rule.every === "cron" ? `cron ${String(rule.cron ?? "")}` : `every ${String(rule.amount ?? 1)} ${String(rule.every ?? "minutes")}`;
+      if (!rule) return t("every 15 minutes");
+      return rule.every === "cron" ? `cron ${String(rule.cron ?? "")}` : t("every {span}", { span: span(Number(rule.amount ?? 1), String(rule.every ?? "minutes"), tn) });
     }
     case "core.code":
-      return p.mode === "runOnceForEachItem" ? "JavaScript, each item" : "JavaScript, all items";
+      return p.mode === "runOnceForEachItem" ? t("JavaScript, each item") : t("JavaScript, all items");
     case "core.set": {
       const count = Array.isArray(p.assignments) ? p.assignments.length : 0;
-      return p.mode === "raw" ? "JSON" : `${count} field${count === 1 ? "" : "s"}`;
+      return p.mode === "raw" ? "JSON" : tn("{n} field", "{n} fields", count);
     }
     case "core.wait":
-      return p.resume === "webhook" ? "until called" : p.resume === "specificTime" ? "until a date" : `${String(p.amount ?? 5)} ${String(p.unit ?? "seconds")}`;
+      return p.resume === "webhook" ? t("until called") : p.resume === "specificTime" ? t("until a date") : span(Number(p.amount ?? 5), String(p.unit ?? "seconds"), tn);
     case "core.merge":
       return String(p.mode ?? "append");
     default:
-      return meta?.label ?? node.type;
+      return meta?.label ? t(meta.label) : node.type;
   }
 }
 
@@ -65,7 +79,8 @@ function hueOf(meta: NodeMeta | undefined): number {
 }
 
 export const NodeCard = memo(function NodeCard({ data, selected }: NodeProps<CardNode>) {
-  const { t, tn } = useT();
+  const i18nT = useT();
+  const { t, tn } = i18nT;
   const { node, meta, status } = data;
   const inputs = meta?.inputs ?? 1;
   const outputs = meta ? outputLabels(meta, node.parameters) : ["main"];
@@ -101,8 +116,8 @@ export const NodeCard = memo(function NodeCard({ data, selected }: NodeProps<Car
           <p className={cx("truncate text-[13px] font-semibold text-ink", node.disabled && "line-through")} title={node.name}>
             {node.name}
           </p>
-          <p className="truncate text-[11px] text-muted" title={nodeSummary(node, meta)}>
-            {nodeSummary(node, meta)}
+          <p className="truncate text-[11px] text-muted" title={nodeSummary(node, meta, i18nT)}>
+            {nodeSummary(node, meta, i18nT)}
           </p>
         </div>
       </div>

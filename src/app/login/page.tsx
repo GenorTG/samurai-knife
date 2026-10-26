@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthFrame, LoginForm } from "@/components/account/AuthForms";
-import { GithubButton, githubErrorText } from "@/components/account/GithubButton";
+import { GithubButton } from "@/components/account/GithubButton";
+import { githubErrorText } from "@/components/account/github-errors";
 import { Notice } from "@/components/ui";
 import { isPublicMode } from "@/lib/accounts/mode";
 import { loadApp } from "@/lib/github-app/config";

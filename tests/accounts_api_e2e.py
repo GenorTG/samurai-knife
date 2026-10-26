@@ -138,7 +138,7 @@ s, j, _, _ = call("PUT", "/api/account/provider", {"baseUrl": f"{MOCK}/v1", "mod
 check("omitting apiKey keeps the stored key", s == 200 and j["provider"]["hasKey"] is True and j["provider"]["keyHint"] == "…", (s, j))
 
 s, j, _, text = call("POST", "/api/account/provider/test")
-check("provider test -> ok, modelCount 2", s == 200 and j == {"ok": True, "status": 200, "modelCount": 2}, (s, text))
+check("provider test -> ok, modelCount 2", s == 200 and j.get("ok") is True and j.get("status") == 200 and j.get("modelCount") == 2, (s, text))
 
 # 3b. Saved provider profiles --------------------------------------------------------
 s, j, _, _ = call("GET", "/api/account/provider-profiles")

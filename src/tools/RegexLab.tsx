@@ -79,7 +79,7 @@ interface RunResult {
 const NO_RESULT: RunResult = { matches: [], truncated: false, replaced: "" };
 
 export default function RegexLab() {
-  const { t, m } = useT();
+  const { t, tn, m } = useT();
   const [pattern, setPattern] = useState(SAMPLES[0].pattern);
   const [flags, setFlags] = useState(SAMPLES[0].flags);
   const [text, setText] = useState(SAMPLES[0].text);
@@ -373,7 +373,7 @@ export default function RegexLab() {
               </button>
             ))}
             <span className="ml-auto font-mono text-[11px] text-faint">
-              {compiled.ok ? `${matches.length} match${matches.length === 1 ? "" : "es"}` : "—"}
+              {compiled.ok ? tn("{n} match", "{n} matches", matches.length) : "—"}
             </span>
           </div>
 
