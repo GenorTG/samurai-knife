@@ -13,7 +13,7 @@ export const INTEGRATION_NODES: NodeMeta[] = INTEGRATIONS.map((spec) => {
   return {
     type: spec.type, label: spec.label, group: "apps", inputs: 1, outputs: ["main"], hue: 210, version: 1,
     description: spec.description, keywords: [spec.label, "integration", "app"],
-    credentials: [{ name: "auth", label: `${spec.label} connection`, required: true, types: [...spec.credentialTypes] }],
+    credentials: [{ name: "auth", label: "Service connection", required: true, types: [...spec.credentialTypes] }],
     params: [
       { name: "operation", label: "Operation", type: "options", default: spec.operations[0].id, options: spec.operations.map((operation) => ({ value: operation.id, label: operation.label })) },
       { name: "connectionHelp", label: spec.credentialHelp, type: "notice", noExpression: true },

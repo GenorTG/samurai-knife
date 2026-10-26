@@ -152,7 +152,7 @@ def run(page: Page, base: str, browser_name: str) -> None:
     gh_panel.get_by_label("Repository owner", exact=True).fill("octo")
     gh_panel.get_by_label("Repository", exact=True).fill("demo")
     check(f"{tag} createIssue shows its own fields", gh_panel.get_by_label("Title", exact=True).count() == 1)
-    check(f"{tag} the service node asks for its connection (credential slot)", gh_panel.get_by_text(re.compile(r"GitHub connection", re.I)).count() > 0)
+    check(f"{tag} the service node asks for its connection (credential slot)", gh_panel.get_by_text(re.compile(r"Service connection", re.I)).count() > 0)
     gh_panel.get_by_role("button", name="Close node panel").click()
     expect(page.get_by_text("Unsaved", exact=True)).to_be_visible()
     page.get_by_role("button", name="Save", exact=True).click()

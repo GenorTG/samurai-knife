@@ -22,6 +22,8 @@ const PLURAL = new Set(["tn", "ctn"]);
  */
 const META = [
   { files: /^src\/lib\/workflows\/catalog\/[^/]+\.ts$|^src\/lib\/workflows\/credential-types\.ts$/, keys: new Set(["label", "description", "alias", "defaultName", "hint", "placeholder", "title", "subtitle", "help"]) },
+  // Service node specs: field helpers take the label as their second argument (text/json/choice(name, label, …)).
+  { files: /^src\/lib\/workflows\/integrations\/[^/]+\.ts$/, keys: new Set(["label", "description", "credentialHelp"]), positional: new Map([["text", 1], ["json", 1], ["choice", 1]]) },
 ];
 const UI_TEXT = (s) => /[A-Za-z]{2}/.test(s) && !/^[a-z][a-zA-Z0-9]*$/.test(s) && !/^[a-z0-9_.:/-]+$/.test(s) && !/^https?:/.test(s);
 
@@ -48,6 +50,10 @@ export function extract() {
           const label = ts.isArrayLiteralExpression(row) ? literal(row.elements[0]) : null;
           if (label && UI_TEXT(label) && !keys.has(label)) keys.set(label, where(row));
         }
+      }
+      if (meta?.positional && ts.isCallExpression(node) && ts.isIdentifier(node.expression) && meta.positional.has(node.expression.text)) {
+        const value = literal(node.arguments[meta.positional.get(node.expression.text)]);
+        if (value !== null && UI_TEXT(value) && !keys.has(value)) keys.set(value, where(node));
       }
       if (ts.isCallExpression(node)) {
         const callee = ts.isIdentifier(node.expression) ? node.expression.text : ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.name) ? node.expression.name.text : null;
