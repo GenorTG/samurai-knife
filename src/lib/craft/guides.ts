@@ -19,7 +19,7 @@ export interface CraftGuide {
   text: string;
 }
 
-const COMMON = `How to work: read the state, act in small steps, read the result fields (ids, paths) and use them in the next call, check with a read (or craft_screenshot for a file the user can see), undo with edit.undo if it went wrong. Before a command you have not used yet, read its whole parameter doc with craft_commands {command:"<id>"}; a command that needs a selection says why it is disabled. Paths in parameters (exports, saves) are the app's own in-browser file table, never the user's disk: list it with craft_files and copy a file into your file chain with craft_export {path}.`;
+const COMMON = `How to work: read the state, act in small steps, read the result fields (ids, paths) and use them in the next call, check with a read (or craft_screenshot for a file the user can see), undo with edit.undo if it went wrong. Before a command you have not used yet, read its whole parameter doc with craft_commands {command:"<id>"}; a command that needs a selection says why it is disabled. Paths in parameters (exports, saves) are the app's own in-browser file table, never the user's disk: list it with craft_files and copy a file into your file chain with craft_export {path}. To keep a result for the user (it is lost when the tab closes otherwise), save the chain file to their own storage with craft_file_save {file:"f3", name}: it shows in My files and opens in any Craft app; an agent outside the app then reads it with knife_craft_file_read {id}. Never send the user a download.`;
 
 const VECTORCRAFT = `VectorCraft (vector illustration, Illustrator-like).
 
@@ -67,7 +67,7 @@ Clip settings (name the clips: a command that works on "the selection" runs on {
 
 Export (paths are the in-browser file table):
 - one frame: file.exportFrame {path:"/exports/frame.png"} (at the playhead; time:<ticks> for another)
-- video: file.exportMedia {path:"/exports/out.mp4", format:"h264", range:"custom", startSeconds, endSeconds} -> {job}; poll jobs.list until that job has finished:true (etaSeconds = time left; its result gives the bytes written), then craft_files and craft_export {path}. Encoding in the browser is slow (about 90 s for one second of 1080p H.264 without a GPU): export short ranges and tell the user it is running.
+- video: file.exportMedia {path:"/exports/out.mp4", format:"h264", range:"custom", startSeconds, endSeconds} -> {job}; poll jobs.list until that job has finished:true (etaSeconds = time left; its result gives the bytes written), then craft_files and craft_export {path}. Encoding runs in the browser: about 13 s per second of 1080p H.264 with a GPU, about 90 s on a machine without one; export short ranges first and tell the user it is running.
 Save the project: file.saveAs {path:"/name.fcproj"}.
 
 Pitfalls: timeline.place answers two clips (picture and its linked sound) and timeline.move moves both while Linked Selection is on (it answers {moved:[…]}; {linked:false} moves one); file.newSequence {fromItem} copies that clip's size and frame rate; an export of offline media renders placeholders (media.status).`;

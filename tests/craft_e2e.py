@@ -580,6 +580,7 @@ def wait_app(page, app: str, timeout_s: float = 180) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default=default_host())
+    parser.add_argument("--browser", choices=["firefox", "chromium-gpu"], default="firefox", help="chromium-gpu: Chromium on the host GPU (Vulkan), WebGPU on")
     parser.add_argument("--hold", action="store_true", help="before cleanup, keep server + sidecar up until Enter")
     parser.add_argument("--remove-image", action="store_true")
     parser.add_argument("--shots", default=str(ROOT / ".tmp" / "craft-e2e"))
@@ -619,7 +620,24 @@ def main() -> int:
         check("launch URLs before install: 409 not_installed", status == 409, str(body)[:200])
 
         with sync_playwright() as pw:
-            browser = pw.firefox.launch(headless=False)
+            if args.browser == "chromium-gpu":
+                # The host GPU through ANGLE's Vulkan backend (WebGL2 and WebGPU on the real card, not llvmpipe /
+                # SwiftShader). WebGPU needs a secure context: the scratch app and its craft origin (the first free
+                # port after the app's, urls.ts pickPort) are plain http, so they are listed as secure for this browser.
+                base_port = int(url.rsplit(":", 1)[1])
+                host = url.split("//", 1)[1].rsplit(":", 1)[0]
+                secure = ",".join(f"http://{host}:{p}" for p in range(base_port, base_port + 12))
+                browser = pw.chromium.launch(headless=False, args=[
+                    "--use-angle=vulkan", "--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan", "--ignore-gpu-blocklist",
+                    "--enable-unsafe-webgpu", "--enable-gpu-rasterization", f"--unsafely-treat-insecure-origin-as-secure={secure}",
+                ])
+                gpu = browser.new_page()
+                gpu.goto(url)
+                renderer = gpu.evaluate("() => { const gl = document.createElement('canvas').getContext('webgl2'); const e = gl && gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : null; }")
+                check("chromium-gpu: WebGL2 runs on the host GPU (not a software renderer)", bool(renderer) and not re.search(r"llvmpipe|swiftshader", renderer, re.I), renderer)
+                gpu.close()
+            else:
+                browser = pw.firefox.launch(headless=False)
             context = browser.new_context(viewport={"width": 1600, "height": 1300}, accept_downloads=True)
             page = context.new_page()
             console: list[str] = []
