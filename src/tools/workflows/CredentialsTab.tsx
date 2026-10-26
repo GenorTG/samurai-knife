@@ -10,6 +10,7 @@ import { Badge, Button, ButtonLink, EmptyState, Field, Notice, Panel, Select, Te
 import { workflowsApi, type PublicCredential } from "@/lib/workflows/client";
 import { CREDENTIAL_TYPES, credentialType, oauthPreset, type CredentialField } from "@/lib/workflows/credential-types";
 import { useT } from "@/lib/i18n/react";
+import { CREDENTIAL_RECIPES, credentialDefaults, credentialRecipe, recipeValues } from "@/lib/workflows/credential-recipes";
 
 function redirectUri(): string {
   return typeof window === "undefined" ? "" : `${window.location.origin}/api/workflows/oauth/callback`;
@@ -31,8 +32,9 @@ export function CredentialForm({
   const types = CREDENTIAL_TYPES.filter((type) => !allowedTypes || allowedTypes.includes(type.type));
   const [type, setType] = useState(initial?.type ?? types[0]?.type ?? "httpHeaderAuth");
   const [name, setName] = useState(initial?.name ?? "");
+  const [recipeId, setRecipeId] = useState("");
   const [values, setValues] = useState<Record<string, string | boolean>>(() => {
-    const out: Record<string, string | boolean> = {};
+    const out: Record<string, string | boolean> = credentialDefaults(initial?.type ?? types[0]?.type ?? "httpHeaderAuth");
     for (const [key, value] of Object.entries(initial?.fields ?? {})) if (typeof value === "string" || typeof value === "boolean") out[key] = value;
     return out;
   });
@@ -41,6 +43,8 @@ export function CredentialForm({
   const spec = credentialType(type);
   const preset = type === "oAuth2Api" ? oauthPreset(values.preset ?? "google") : undefined;
   const secretSet = (field: CredentialField) => initial?.fields[field.name] === true;
+  const recipe = credentialRecipe(recipeId);
+  const recipes = CREDENTIAL_RECIPES.filter((entry) => types.some((candidate) => candidate.type === entry.type));
 
   const setField = (field: string, value: string | boolean) => {
     setValues((current) => {
@@ -86,9 +90,34 @@ export function CredentialForm({
         void save();
       }}
     >
+      {!initial && recipes.length ? (
+        <Field label={t("Service setup")} hint={t("Choose a service for the right authentication defaults, or configure a generic credential below.")}>
+          <Select value={recipeId} onChange={(event) => {
+            const chosen = credentialRecipe(event.target.value);
+            setRecipeId(event.target.value);
+            setError(null);
+            if (chosen) {
+              setType(chosen.type);
+              setName(chosen.label);
+              setValues(recipeValues(chosen));
+            } else {
+              setValues(credentialDefaults(type));
+            }
+          }}>
+            <option value="">{t("Custom credential")}</option>
+            {recipes.map((entry) => <option key={entry.id} value={entry.id}>{t(entry.label)}</option>)}
+          </Select>
+        </Field>
+      ) : null}
+      {recipe ? <Notice>{t(recipe.instructions)}{" "}<a className="underline" href={recipe.docsUrl} target="_blank" rel="noreferrer noopener">{t("Setup guide")}</a></Notice> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t("Type")}>
-          <Select value={type} disabled={Boolean(initial)} onChange={(event) => setType(event.target.value)}>
+          <Select value={type} disabled={Boolean(initial)} onChange={(event) => {
+            setType(event.target.value);
+            setRecipeId("");
+            setValues(credentialDefaults(event.target.value));
+            setError(null);
+          }}>
             {types.map((entry) => (
               <option key={entry.type} value={entry.type}>
                 {t(entry.label)}

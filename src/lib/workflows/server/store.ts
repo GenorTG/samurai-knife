@@ -461,7 +461,7 @@ export function saveCredential(accountId: string, input: { id?: string; name: st
     if (current.type !== input.type) throw new WorkflowStoreError("A credential's type cannot change; create a new one.");
     // Changing where an OAuth app points drops the old token (it belongs to the old app).
     const data = cleanFields(type.fields, input.data, current.data);
-    if (type.oauth2 && (data.clientId !== current.data.clientId || data.tokenUrl !== current.data.tokenUrl || data.authUrl !== current.data.authUrl)) {
+    if (type.oauth2 && ["preset", "clientId", "clientSecret", "tokenUrl", "authUrl", "scope", "authentication"].some((key) => data[key] !== current.data[key])) {
       for (const key of ["accessToken", "refreshToken", "expiresAt", "connectedAt", "tokenType"]) delete data[key];
     }
     list[index] = { ...current, name, data, updatedAt: stamp };

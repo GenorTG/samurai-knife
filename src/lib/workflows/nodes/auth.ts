@@ -5,6 +5,7 @@
  */
 import { NodeError, type CredentialData, type ExecuteContext, type HttpRequest, type HttpResponse } from "../engine/node-api";
 import { isPlainObject, jsonParam } from "./util";
+import { oauthTokenRequest, oauthTokenUpdate } from "../oauth-protocol";
 
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$/;
 const MANAGED_HEADERS = new Set(["host", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer", "keep-alive", "proxy-connection"]);
@@ -64,30 +65,21 @@ export async function refreshOAuth2(ctx: ExecuteContext, credential: CredentialD
   const refreshToken = str(data.refreshToken);
   const tokenUrl = str(data.tokenUrl);
   if (!refreshToken || !tokenUrl) return false;
-  const form = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
-  const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
-  if (data.authentication === "body") {
-    form.set("client_id", str(data.clientId));
-    form.set("client_secret", str(data.clientSecret));
-  } else {
-    headers.authorization = `Basic ${Buffer.from(`${encodeURIComponent(str(data.clientId))}:${encodeURIComponent(str(data.clientSecret))}`).toString("base64")}`;
-  }
-  const response = await ctx.services.http({ url: tokenUrl, method: "POST", headers, body: form.toString(), timeoutMs: 30_000, maxBytes: 1024 * 1024 });
+  const request = oauthTokenRequest(data, { grant_type: "refresh_token", refresh_token: refreshToken });
+  const response = await ctx.services.http({ url: tokenUrl, method: "POST", ...request, followRedirects: false, timeoutMs: 30_000, maxBytes: 1024 * 1024 });
   let body: Record<string, unknown> = {};
   try {
     body = JSON.parse(new TextDecoder().decode(response.body)) as Record<string, unknown>;
   } catch {
     body = {};
   }
-  if (response.status >= 400 || typeof body.access_token !== "string") {
+  let update: Record<string, unknown>;
+  try {
+    if (response.status < 200 || response.status >= 300) throw new Error("OAuth refused");
+    update = oauthTokenUpdate(body, ctx.now(), credential.data.preset);
+  } catch {
     throw new NodeError(`Refreshing the "${credential.name}" connection failed (HTTP ${response.status}).`, { description: "Reconnect the credential in Credentials.", httpCode: response.status });
   }
-  const update: Record<string, unknown> = {
-    accessToken: body.access_token,
-    tokenType: typeof body.token_type === "string" ? body.token_type : "Bearer",
-    ...(typeof body.refresh_token === "string" ? { refreshToken: body.refresh_token } : {}),
-    ...(typeof body.expires_in === "number" ? { expiresAt: ctx.now() + body.expires_in * 1000 } : {}),
-  };
   Object.assign(credential.data, update);
   await ctx.services.updateCredential?.(credential.id, update);
   return true;
@@ -98,7 +90,7 @@ export async function sendAuthorized(ctx: ExecuteContext, build: () => HttpReque
   if (!credential) return ctx.services.http(build());
   if (credential.type === "oAuth2Api") {
     const expiresAt = Number(credential.data.expiresAt);
-    if (Number.isFinite(expiresAt) && expiresAt - 60_000 < ctx.now()) await refreshOAuth2(ctx, credential);
+    if (expiresAt > 0 && Number.isFinite(expiresAt) && expiresAt - 60_000 < ctx.now()) await refreshOAuth2(ctx, credential);
   }
   const first = build();
   applyCredential(first, credential);

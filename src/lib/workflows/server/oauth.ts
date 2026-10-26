@@ -7,6 +7,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readTextCapped, safeFetch } from "@/lib/net/safe-fetch";
 import { getAccount } from "@/lib/accounts/store";
 import { oauthPreset } from "../credential-types";
+import { oauthScope, oauthTokenRequest, oauthTokenUpdate } from "../oauth-protocol";
 import { toOutboundPolicy } from "../worker/http";
 import { appBaseUrl, workflowPolicy } from "./runner";
 import { getCredential, updateCredentialData, WorkflowStoreError } from "./store";
@@ -52,7 +53,7 @@ export function authorizationUrl(account: string, credentialId: string): string 
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", String(credential.data.clientId));
   url.searchParams.set("redirect_uri", redirectUri());
-  if (scope) url.searchParams.set("scope", scope.replace(/,\s*/g, preset?.id === "meta" ? "," : " ").trim());
+  if (scope) url.searchParams.set("scope", oauthScope(credential.data));
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
   url.searchParams.set("code_challenge_method", "S256");
@@ -70,15 +71,8 @@ export async function finishAuthorization(account: string, state: string, code: 
   if (!credential || !owner) throw new WorkflowStoreError("The credential no longer exists.", 404);
   const { tokenUrl } = endpoints(credential.data);
   if (!/^https:\/\//i.test(tokenUrl)) throw new WorkflowStoreError("Set an https token URL first.");
-  const form = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri(), code_verifier: entry.verifier });
-  const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
-  if (credential.data.authentication === "header") {
-    headers.authorization = `Basic ${Buffer.from(`${encodeURIComponent(String(credential.data.clientId))}:${encodeURIComponent(String(credential.data.clientSecret ?? ""))}`).toString("base64")}`;
-  } else {
-    form.set("client_id", String(credential.data.clientId));
-    form.set("client_secret", String(credential.data.clientSecret ?? ""));
-  }
-  const response = await safeFetch(tokenUrl, { method: "POST", headers, body: form.toString(), policy: toOutboundPolicy(workflowPolicy(owner)), signal: AbortSignal.timeout(30_000) });
+  const request = oauthTokenRequest(credential.data, { grant_type: "authorization_code", code, redirect_uri: redirectUri(), code_verifier: entry.verifier });
+  const response = await safeFetch(tokenUrl, { method: "POST", ...request, policy: toOutboundPolicy(workflowPolicy(owner)), signal: AbortSignal.timeout(30_000) });
   const text = (await readTextCapped(response, 256 * 1024)) ?? "";
   let body: Record<string, unknown> = {};
   try {
@@ -86,16 +80,16 @@ export async function finishAuthorization(account: string, state: string, code: 
   } catch {
     body = Object.fromEntries(new URLSearchParams(text));
   }
-  if (!response.ok || typeof body.access_token !== "string") {
-    const reason = typeof body.error_description === "string" ? body.error_description : typeof body.error === "string" ? body.error : `HTTP ${response.status}`;
-    throw new WorkflowStoreError(`The provider refused the sign-in: ${reason.slice(0, 200)}`, 502);
+  let update: Record<string, unknown>;
+  try {
+    if (!response.ok) throw new Error("OAuth refused");
+    update = oauthTokenUpdate(body, Date.now(), credential.data.preset);
+  } catch {
+    throw new WorkflowStoreError(`The provider refused the sign-in (HTTP ${response.status}). Check the app credentials and scopes, then reconnect.`, 502);
   }
-  const expiresIn = Number(body.expires_in);
   updateCredentialData(account, credential.id, {
-    accessToken: body.access_token,
-    tokenType: typeof body.token_type === "string" ? body.token_type : "Bearer",
-    ...(typeof body.refresh_token === "string" ? { refreshToken: body.refresh_token } : {}),
-    ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expiresAt: String(Date.now() + expiresIn * 1000) } : {}),
+    refreshToken: "",
+    ...update,
     connectedAt: new Date().toISOString(),
     // Fill the endpoints the preset chose, so a refresh during a run knows where to go.
     tokenUrl,

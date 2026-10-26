@@ -22,6 +22,13 @@ inventory and waves: [research/n8n-nodes.md](research/n8n-nodes.md).
 - **Credentials** are per account, sealed at rest, never sent to the browser after saving (hints only), and given only to
   the node that names them. OAuth2 uses the user's own app (client id + secret they registered); instance-approved apps
   come later.
+  The credential form has service setup recipes for scoped Google Sheets/Drive/Calendar, Microsoft Outlook/Teams,
+  GitHub, GitLab, Slack and Notion OAuth apps, plus personal/private tokens for GitHub, Slack, Notion, Airtable,
+  HubSpot and Stripe. Recipes populate actual saved defaults and link to provider setup instructions; they do not
+  create provider apps, bypass consent, or prove a connection works. Register the callback URI shown in the form,
+  save, then Connect. Grant any additional operation-specific scopes explicitly. Provider/endpoint/client/permission
+  changes disconnect the old grant; renaming a credential does not. Slack uses comma scopes and Bearer bot tokens;
+  Notion uses JSON token exchanges. Refresh and initial connection share the same protocol implementation.
 - **Limits** per run: wall clock, node executions, items per node output, output bytes, sub-workflow depth; per account:
   concurrent runs, runs per hour, active triggers, stored run history. A limit stops the run with a clear error.
 

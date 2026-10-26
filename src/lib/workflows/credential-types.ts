@@ -39,6 +39,10 @@ export interface OAuthPreset {
   consoleUrl: string;
   /** Client authentication at the token endpoint. */
   authentication?: "header" | "body";
+  /** Providers such as Slack require comma-separated scopes. */
+  scopeSeparator?: " " | ",";
+  /** Notion's token endpoint accepts JSON, unlike standard form endpoints. */
+  tokenBody?: "form" | "json";
 }
 
 export const OAUTH_PRESETS: OAuthPreset[] = [
@@ -71,9 +75,10 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     authentication: "body",
   },
   { id: "github", label: "GitHub", authUrl: "https://github.com/login/oauth/authorize", tokenUrl: "https://github.com/login/oauth/access_token", scope: "repo read:user", consoleUrl: "https://github.com/settings/developers", authentication: "body" },
-  { id: "slack", label: "Slack", authUrl: "https://slack.com/oauth/v2/authorize", tokenUrl: "https://slack.com/api/oauth.v2.access", scope: "chat:write channels:read", consoleUrl: "https://api.slack.com/apps", authentication: "body" },
+  { id: "slack", label: "Slack", authUrl: "https://slack.com/oauth/v2/authorize", tokenUrl: "https://slack.com/api/oauth.v2.access", scope: "chat:write,channels:read", consoleUrl: "https://api.slack.com/apps", authentication: "header", scopeSeparator: "," },
   { id: "discord", label: "Discord", authUrl: "https://discord.com/oauth2/authorize", tokenUrl: "https://discord.com/api/oauth2/token", scope: "identify guilds", consoleUrl: "https://discord.com/developers/applications" },
-  { id: "notion", label: "Notion", authUrl: "https://api.notion.com/v1/oauth/authorize", tokenUrl: "https://api.notion.com/v1/oauth/token", scope: "", authQuery: { owner: "user" }, consoleUrl: "https://www.notion.so/my-integrations" },
+  { id: "notion", label: "Notion", authUrl: "https://api.notion.com/v1/oauth/authorize", tokenUrl: "https://api.notion.com/v1/oauth/token", scope: "", authQuery: { owner: "user" }, consoleUrl: "https://www.notion.so/my-integrations", authentication: "header", tokenBody: "json" },
+  { id: "gitlab", label: "GitLab.com", authUrl: "https://gitlab.com/oauth/authorize", tokenUrl: "https://gitlab.com/oauth/token", scope: "api", consoleUrl: "https://gitlab.com/-/user_settings/applications", authentication: "body" },
   { id: "custom", label: "Other (enter the endpoints)", authUrl: "", tokenUrl: "", scope: "", consoleUrl: "" },
 ];
 
