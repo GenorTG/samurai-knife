@@ -165,7 +165,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
               value={source}
               onChange={setSource}
               options={[
-                ...(gh?.app ? [{ value: "app" as const, label: "GitHub App (no token)" }] : []),
+                ...(gh?.app ? [{ value: "app" as const, label: t("GitHub App (no token)") }] : []),
                 { value: "pat" as const, label: t("Personal token") },
                 ...(admin ? [{ value: "host-gh" as const, label: t("Server's gh login") }] : []),
               ]}

@@ -1902,6 +1902,7 @@
   "GitHub access": "Dostęp do GitHuba",
   "GitHub answered HTTP {status}: {message}": "GitHub odpowiedział HTTP {status}: {message}",
   "GitHub App": "Aplikacja GitHub",
+  "GitHub App (no token)": "Aplikacja GitHub (bez tokena)",
   "GitHub asked to wait until {retryAfter} before the next check.": "GitHub poprosił o czekanie do {retryAfter} przed następnym sprawdzeniem.",
   "GitHub cannot merge this pull request (conflicts with the base branch): resolve them on GitHub": "GitHub nie może scalić tego pull requesta (konflikty z gałęzią bazową): rozwiąż je na GitHubie",
   "GitHub did not accept the sign-in ({value})": "GitHub nie przyjął logowania ({value})",
