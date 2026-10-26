@@ -181,4 +181,4 @@ it. Each operation names its official API reference in the spec (`docs`).
 12 nodes, 26 operations. Covered by `tests/workflow_integrations.test.mjs` (full `runWorkflow` against fake provider
 HTTP: method, path, auth header, body and output of every operation, provider errors, malicious IDs, OAuth refresh,
 several items). **Provider-live unverified**: no operation has been run against the real service yet. The full list of
-documented n8n nodes and what is planned next: `docs/research/n8n-nodes.md`.
+documented n8n nodes: [research/n8n-nodes.md](research/n8n-nodes.md); what comes next and when a node counts as implemented: [research/workflow-integrations-roadmap.md](research/workflow-integrations-roadmap.md).
