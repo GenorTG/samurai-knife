@@ -619,7 +619,10 @@ test("lockout DoS (#9): strangers hammering an identifier cannot lock out its kn
   // The device cookie of another account, or from before a password change, vouches for nothing.
   assert.equal(device.knownDeviceFor(deviceCookie, "someone-else", session.passwordFingerprint(owner)), null);
   assert.equal(device.knownDeviceFor(deviceCookie, "target", "000000000000"), null);
-  assert.equal(device.knownDeviceFor(`${deviceCookie.slice(0, -2)}xx`, "target", session.passwordFingerprint(owner)), null);
+  // Tamper with a middle character: the last base64url character carries unused bits, so changing it may decode the same.
+  const mid = Math.floor(deviceCookie.length / 2);
+  const tampered = `${deviceCookie.slice(0, mid)}${deviceCookie[mid] === "A" ? "B" : "A"}${deviceCookie.slice(mid + 1)}`;
+  assert.equal(device.knownDeviceFor(tampered, "target", session.passwordFingerprint(owner)), null);
   // A known device has its own failure bucket.
   const codes = [];
   for (let i = 0; i < 11; i++) codes.push((await session.attemptLogin("target", "bad from device", `203.0.113.${210 + i}`, { deviceCookie })).reason);
