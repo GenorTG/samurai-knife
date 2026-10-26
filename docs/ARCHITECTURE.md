@@ -109,6 +109,7 @@ location always shown, submenus marked by a chevron and opened by click.
 - Every host/IP the app is opened from must be in `KNIFE_HOST` or `KNIFE_ALLOWED_HOSTS` (`.env.local`, read by `src/lib/hosts.ts` for `allowedDevOrigins` and the Host/Origin guard), or dev HTML renders but never hydrates and API calls get 403. Never hardcode hosts in the repo.
 - Next 16 deprecates middleware; don't add a proxy file unless request-level routing is truly needed.
 - Turbopack panics on a `node_modules` symlink pointing outside the project: in a worktree use `cp -al <main-checkout>/node_modules node_modules`, then `npx next typegen` once.
+- Keep `experimental.turbopackClientSideNestedAsyncChunking: true` (next.config.ts): with dev's default a next/dynamic component that has its own `import()` (CSS playground, workflow editor, PDF editor) gets a react-loadable-manifest entry for a chunk dev never emits, and every SSR of that page preloads a 404 (vercel/next.js#99149). `next build` already chunks this way.
 - tsc errors under `.next/types` for deleted routes: run `npx next typegen`.
 - npm ≥10 blocks postinstall scripts; after a fresh install run `npm install-scripts approve unrs-resolver`.
 - Lazy tool/tab chunks show a `role=status` "Loading tool…" line; UI automation must wait for it (`waitForToolPanel` in `dom-bridge.ts`).
