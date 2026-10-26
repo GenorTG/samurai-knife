@@ -103,3 +103,13 @@ test("the chooser's accept matching (extensions, type/*, exact types, empty = al
   assert.equal(accepts("application/pdf", png), false);
   assert.equal(accepts(".pdf, application/pdf", { name: "a.pdf", mime: "application/octet-stream" }), true);
 });
+
+test("a save without a type gets the type its extension names; a given type wins; unknown stays generic", async () => {
+  const { mimeFor } = await import("../src/lib/craft/files.ts");
+  assert.equal(mimeFor("speed.mp4", ""), "video/mp4");
+  assert.equal(mimeFor("speed.MP4", "application/octet-stream"), "video/mp4");
+  assert.equal(mimeFor("intro.webm", undefined), "video/webm");
+  assert.equal(mimeFor("a.png", "image/webp"), "image/webp", "the app's own type is kept");
+  assert.equal(mimeFor("project.fcproj", ""), "application/octet-stream");
+  assert.equal(mimeFor("a.png", "weird type!!"), "application/octet-stream", "an invalid type is not replaced by a guess");
+});

@@ -59,6 +59,21 @@ export function cleanMime(mime: string): string {
   return MIME.test(value) ? value : "application/octet-stream";
 }
 
+/** Common export types by extension, for saves that arrive without a type (an app's Blob of "" for an .mp4 export). */
+const BY_EXTENSION: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml",
+  pdf: "application/pdf", mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", wav: "audio/wav", mp3: "audio/mpeg",
+  json: "application/json", csv: "text/csv", txt: "text/plain",
+};
+
+/** The given type, or (when it is missing or generic) the type its extension names. */
+export function mimeFor(name: string, mime: string | undefined): string {
+  const raw = String(mime ?? "").trim().toLowerCase().split(";")[0];
+  // Only a missing or generic type is filled in; an invalid one stays generic (never guessed over what the app said).
+  if (raw && raw !== "application/octet-stream") return cleanMime(raw);
+  return BY_EXTENSION[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+}
+
 function dir(accountId: string): string {
   return ensurePrivateDir(accountScope(accountId).craftFiles);
 }
@@ -122,8 +137,8 @@ export function saveCraftFile(accountId: string, input: { app: string; name: str
   if (!existing && files.length >= MAX_CRAFT_FILES) throw new CraftFileError(`You have ${MAX_CRAFT_FILES} Craft files; delete some first.`, 409);
   const at = now.toISOString();
   const file: CraftFile = existing
-    ? { ...existing, mime: cleanMime(input.mime ?? existing.mime), size: input.bytes.byteLength, updatedAt: at }
-    : { id: randomBytes(10).toString("hex"), name, app: input.app, mime: cleanMime(input.mime ?? ""), size: input.bytes.byteLength, createdAt: at, updatedAt: at };
+    ? { ...existing, mime: mimeFor(name, input.mime ?? existing.mime), size: input.bytes.byteLength, updatedAt: at }
+    : { id: randomBytes(10).toString("hex"), name, app: input.app, mime: mimeFor(name, input.mime), size: input.bytes.byteLength, createdAt: at, updatedAt: at };
   // Quota first (writeAccountFile counts only the growth over the file it replaces), then the index.
   writeAccountFile(accountId, blobPath(accountId, file.id), input.bytes);
   writeIndex(accountId, [file, ...files.filter((candidate) => candidate.id !== file.id)]);
