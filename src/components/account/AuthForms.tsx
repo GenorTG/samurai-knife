@@ -177,17 +177,24 @@ export function RegisterChoices({ terms, github }: { terms: string; github: bool
 }
 
 export function RegisterForm({ terms, accepted }: { terms: string; accepted: boolean }) {
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [repeat, setRepeat] = useState("");
+  const [mismatch, setMismatch] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const { working, setWorking, note, setNote } = useSubmit();
-  const mismatch = repeat.length > 0 && repeat !== password;
 
-  async function submit(event: FormEvent) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (working || mismatch || !accepted) return;
+    if (working || !accepted) return;
+    // Password managers can fill without input/change events. Read the actual form, not cached React state.
+    const data = new FormData(event.currentTarget);
+    const username = String(data.get("username") ?? "").trim().toLowerCase();
+    const email = String(data.get("email") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+    const repeat = String(data.get("repeatPassword") ?? "");
+    if (password !== repeat) {
+      setMismatch(true);
+      return;
+    }
+    setMismatch(false);
     setWorking(true);
     setNote(null);
     const reply = await withChallenge("register", (pow) => call<{ message: string }>("POST", "/api/account/register", { username: username.trim(), email: email.trim(), password, acceptTerms: terms, pow }), {
@@ -213,22 +220,22 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
 
   return (
     <Panel>
-      <form onSubmit={submit} className="space-y-4" aria-label="Create account">
+      <form onSubmit={submit} onInput={() => setMismatch(false)} className="space-y-4" aria-label="Create account">
         <Field label="Username" hint="Lowercase letters, digits, - and _; up to 32 characters.">
-          <TextInput autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} required maxLength={32} />
+          <TextInput autoFocus name="username" autoComplete="username" required maxLength={32} />
         </Field>
         <Field label="Email" hint="You confirm it before the first login.">
-          <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <TextInput name="email" type="email" autoComplete="email" required />
         </Field>
         <Field label="Password" hint="At least 10 characters.">
-          <TextInput type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} />
+          <TextInput name="password" type="password" autoComplete="new-password" required minLength={10} />
         </Field>
         <Field label="Repeat password">
-          <TextInput type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required />
+          <TextInput name="repeatPassword" type="password" autoComplete="new-password" required />
         </Field>
         {mismatch ? <Notice tone="warn">The passwords do not match.</Notice> : null}
         <Status note={note} />
-        <Button type="submit" variant="primary" disabled={working || mismatch || !accepted || !username || !email || password.length < 10}>
+        <Button type="submit" variant="primary" disabled={working || !accepted}>
           {working ? "Creating…" : "Create account"}
         </Button>
         <p className="border-t border-line pt-4 text-sm text-muted">

@@ -95,6 +95,7 @@ SUITES: list[Suite] = [
     Suite("accounts", py("tests/accounts_api_e2e.py", "{url}", "{mock}"), mock=True, data_env=True),
     # Self-contained: starts its own public-mode scratch server (KNIFE_AUTH_MODE=public, outbox mail).
     Suite("accounts_public", py(f"{F}/accounts_public_e2e.py"), "static", timeout=1200),
+    Suite("signup_autofill", py(f"{F}/signup_autofill_e2e.py"), "static", timeout=300),
     Suite("safe_net", py(f"{F}/safe_net_e2e.py"), "static", timeout=900),
     Suite("load_budgets", venv(f"{F}/load_budgets_e2e.py"), "static", timeout=900),
     Suite("storage_privacy", py(f"{F}/storage_privacy_e2e.py"), "static", timeout=900),
