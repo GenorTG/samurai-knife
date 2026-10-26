@@ -1,15 +1,16 @@
 """Tool-output chaining: a file one tool produces is handed to the next tool by id, never as bytes through the model.
 
-QR (text -> Download PNG) -> File compressor (upload_file from_file -> Compress -> .gz). Independent oracles:
-the PNG Playwright really downloaded, the bytes the compressor's file input holds, and the gunzipped result.
+QR (text -> Download PNG) -> Image export (upload_file from_file -> width 128 -> Download). Independent oracles:
+the PNG Playwright really downloaded, the name and size the image tool's file input holds, and the dimensions read
+from the second download's PNG header (the file compressor this used to chain into was removed in the 2026-10-25 audit).
 Default trust mode (Risky) stays on, so the chain must also run without any approval prompt.
 
   node tests/mock_provider.mjs 3299
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3237 npm run dev
   python3 tests/agent_chain_e2e.py http://127.0.0.1:3237 http://127.0.0.1:3299
 """
-import gzip
 import json
+import struct
 import sys
 import urllib.request
 from pathlib import Path
@@ -120,33 +121,35 @@ with sync_playwright() as pw:
     r = tool_results(page, k, "read_text")[-1]
     check("read_text refuses a binary file and points at from_file", r.get("ok") is False and "from_file" in r.get("error", ""), r)
 
-    # 3) Chain: open the compressor (no approval: only the assistant's own input is on the QR page) and attach f1.
-    check("opening the next tool does not ask", run(page, k, 'CALL:open_tool:{"slug":"file-compressor"}') == "ran")
+    # 3) Chain: open Image export (no approval: only the assistant's own input is on the QR page) and attach f1.
+    check("opening the next tool does not ask", run(page, k, 'CALL:open_tool:{"slug":"image-resize","tab":"resize"}') == "ran")
     run(page, k, "CALL:page_snapshot:{}")
     snap = tool_results(page, k, "page_snapshot")[-1]
     check("snapshot lists the produced file", [f["id"] for f in snap.get("files", [])] == ["f1"], snap.get("files"))
     file_id = agent_id(page, "main input[type=file]")
-    check("compressor file input found", bool(file_id), file_id)
+    check("image tool file input found", bool(file_id), file_id)
     r = run(page, k, 'CALL:upload_file:{"id":"%s","from_file":"f1"}' % file_id)
     check("upload from_file ran", r == "ran", r)
     up = tool_results(page, k, "upload_file")[-1]
     check("upload result reports the original name and size", up.get("ok") is True and up.get("name") == produced[0]["name"] and up.get("bytes") == len(png), up)
-    check("the compressor shows the produced file as its input", produced[0]["name"] in page.locator("main").inner_text())
+    page.wait_for_selector("main label:has-text('Width') input")
+    check("the image tool shows the produced file as its source", produced[0]["name"] in page.locator("main").inner_text())
 
     # 4) Run the second tool; its output is chainable too.
     run(page, k, "CALL:page_snapshot:{}")
-    go_id = button_id(page, "Compress file")
-    check("click Compress file", run(page, k, 'CALL:click:{"id":"%s"}' % go_id) == "ran")
-    page.wait_for_selector("main button:has-text('Download')")
+    width_id = page.evaluate("() => [...document.querySelectorAll('main label')].find(l => l.textContent.trim().startsWith('Width'))?.querySelector('input')?.getAttribute('data-agent-id') ?? null")
+    check("fill Width 128", bool(width_id) and run(page, k, 'CALL:fill_field:{"id":"%s","value":"128"}' % width_id) == "ran", width_id)
+    page.wait_for_function("() => [...document.querySelectorAll('main')].some(m => m.innerText.includes('128×128'))", timeout=20_000)
     run(page, k, "CALL:page_snapshot:{}")
     save_id = button_id(page, "Download")
     with page.expect_download(timeout=20_000) as dl2:
-        check("click Download of the compressed file", run(page, k, 'CALL:click:{"id":"%s"}' % save_id) == "ran")
-    gz = Path(dl2.value.path()).read_bytes()
-    check("gunzipped output equals the original PNG", gzip.decompress(gz) == png)
+        check("click Download of the resized image", run(page, k, 'CALL:click:{"id":"%s"}' % save_id) == "ran")
+    out = Path(dl2.value.path()).read_bytes()
+    dims = struct.unpack(">II", out[16:24]) if out[:8] == b"\x89PNG\r\n\x1a\n" else None
+    check("the downloaded image is the QR PNG resized to 128x128", dims == (128, 128), dims)
     clicks = tool_results(page, k, "click")
     produced2 = (clicks[-1].get("new_files") or []) if clicks else []
-    check("second tool's output announced as f2", len(produced2) == 1 and produced2[0]["id"] == "f2" and produced2[0]["name"].endswith(".gz"), produced2)
+    check("second tool's output announced as f2", len(produced2) == 1 and produced2[0]["id"] == "f2" and produced2[0]["name"].endswith("-128x128.png") and produced2[0]["bytes"] == len(out), produced2)
 
     # 5) Downloads from a detached anchor (PdfTool's extracted.txt does this) are captured too, and text files can be read.
     page.evaluate("""() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['hello detached'], { type: 'text/plain' })); a.download = 'extracted.txt'; a.click(); }""")
@@ -157,7 +160,11 @@ with sync_playwright() as pw:
     txt = tool_results(page, k, "read_text")[-1]
     check("read_text returns a produced text file", txt.get("text") == "hello detached", txt)
 
-    # 6) Unknown ids fail cleanly.
+    # 6) Unknown ids fail cleanly. (Image export swaps its drop zone for the source panel, so bring the file input back.)
+    page.locator("main").get_by_role("button", name="Clear", exact=True).first.click()
+    page.wait_for_selector("main input[type=file]", state="attached")
+    run(page, k, "CALL:page_snapshot:{}")
+    file_id = agent_id(page, "main input[type=file]")
     r = run(page, k, 'CALL:upload_file:{"id":"%s","from_file":"f99"}' % file_id)
     bad = tool_results(page, k, "upload_file")[-1]
     check("unknown from_file is a clear error", bad.get("ok") is False and "f99" in bad.get("error", ""), bad)
