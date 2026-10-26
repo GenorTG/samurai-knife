@@ -19,7 +19,7 @@ Administratorem danych osobowych jest **{{operatorName}}**, {{postalAddress}} (�
 
 | Dane | Cel | Podstawa (RODO) | Okres przechowywania |
 |---|---|---|---|
-| Nazwa użytkownika, nazwa wyświetlana, adres e-mail, skrót hasła (scrypt), rola, status, daty utworzenia i ostatniego logowania, limit miejsca, data i wersja akceptacji Regulaminu | założenie i prowadzenie Konta | art. 6 ust. 1 lit. b (umowa) | do usunięcia Konta; rejestracja niepotwierdzona – 24 godziny |
+| Nazwa użytkownika, nazwa wyświetlana, adres e-mail, skrót hasła (scrypt), rola, status, daty utworzenia i ostatniego logowania, limit miejsca, data i wersja akceptacji Regulaminu, wybrany język interfejsu | założenie i prowadzenie Konta | art. 6 ust. 1 lit. b (umowa) | do usunięcia Konta; rejestracja niepotwierdzona – 24 godziny |
 | Sesje logowania (skrót tokenu, daty utworzenia, wygaśnięcia, ostatniego użycia), znacznik zaufanego urządzenia | utrzymanie zalogowania, ochrona przed przejęciem Konta | art. 6 ust. 1 lit. b i f | sesja do 30 dni lub do wylogowania; znacznik urządzenia do 180 dni |
 | Treści: profil i wersje CV (także zdjęcie), oferty pracy i aplikacje, dokumenty (z wersjami i koszem), pliki zapisane z aplikacji Craft, rozmowy z Asystentem AI, postępy w kursie, połączenie ze stroną/repozytorium (repozytorium, gałąź, token, historia audytów), szkice narzędzi | świadczenie usług, o które prosisz | art. 6 ust. 1 lit. b | do usunięcia przez Ciebie lub do usunięcia Konta; kosz dokumentów – 30 dni |
 | Przepływy pracy: ich węzły, ustawienia, wyzwalacze (harmonogramy, adresy webhook) i notatki; tabele danych i dane zachowywane przez przepływ między uruchomieniami (np. pamięć agenta AI, już widziane elementy); linki wznowienia oczekujących uruchomień | wykonywanie automatyzacji, które budujesz | art. 6 ust. 1 lit. b | do usunięcia przepływu lub Konta |
@@ -63,6 +63,7 @@ Serwis zapisuje na Twoim urządzeniu wyłącznie informacje **niezbędne do świ
 | `knife_gh_state` | cookie | zabezpieczenie logowania przez GitHub | 10 minut |
 | `knife_office` | cookie pod adresem edytora dokumentów (jeżeli jest udostępniany) | wczytanie edytora dla Twojego dokumentu | do 6 godzin |
 | `knife_craft` | cookie pod adresem aplikacji Craft (jeżeli są udostępniane) | wczytanie aplikacji Craft | do 12 godzin |
+| `knife_lang` | cookie | język interfejsu wybrany przełącznikiem (polski lub angielski) | 1 rok |
 | własna pamięć aplikacji Craft (ustawienia, biblioteki zdjęć, projekty i multimedia, kopie odzyskiwania otwartych dokumentów) | pamięć lokalna, IndexedDB, OPFS pod adresem aplikacji Craft | działanie aplikacji w Twojej przeglądarce | do usunięcia w przeglądarce; nigdy nie trafia na serwer |
 | `knife:account` | pamięć lokalna pod adresem aplikacji Craft | nieczytelny znacznik Konta, które ostatnio korzystało z aplikacji w tej przeglądarce, aby przed ich otwarciem usunąć lokalne dane innego Konta | do usunięcia w przeglądarce |
 | `sk-theme`, ustawienia narzędzi | pamięć lokalna | jasny lub ciemny motyw, Twoje ustawienia narzędzi | do usunięcia w przeglądarce |
@@ -118,8 +119,10 @@ Co dodały kolejne wersje serwisu {{siteName}}, istotne dla Twoich danych:
 | 0.7.0 | Przepływy pracy: automatyzacje z harmonogramami, adresami webhook, kodem i danymi uwierzytelniającymi | przepływy, historia uruchomień (100 uruchomień, 14 dni), zaszyfrowane dane uwierzytelniające, dane wysyłane na Twoje webhooki |
 | 0.7.1 | Węzły AI w przepływach; Asystent i MCP mogą budować i uruchamiać przepływy | dane przepływu trafiają do wybranego przez Ciebie Dostawcy AI; zużycie tokenów jest liczone |
 | 0.8.0 | Wersje Regulaminu i tej Polityki: wcześniejsze wersje pozostają dostępne | wersja zaakceptowana przez Ciebie jest widoczna na Koncie; bez nowych danych osobowych |
+| 0.10.0 | Interfejs po polsku i po angielsku | wybrany język jest zapisywany w cookie `knife_lang` i na Koncie; w tym języku przychodzą wiadomości e-mail |
 
 Zmiany:
 
+- **Wydanie 3** (26 października 2026, {{siteName}} 0.10.0): dodaje język interfejsu do danych Konta i cookie `knife_lang`.
 - **Wydanie 2** (22 października 2026, {{siteName}} 0.8.0): opisuje aplikacje Craft i pliki Craft, przepływy pracy (historia uruchomień, dane uwierzytelniające, webhooki, węzły AI), kilka profili Dostawcy AI, własne pliki dzienników serwera oraz pozycje `knife_office`, `knife_craft` i pamięć aplikacji Craft; dodaje ten punkt.
 - **Wydanie 1** (21 października 2026, {{siteName}} 0.1): pierwsza wersja.

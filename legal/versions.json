@@ -2,6 +2,12 @@
   "about": "Editions of the default legal texts (legal/*.md). Changing any of the four files is a new edition: copy the outgoing files to legal/editions/<old edition>/, add an entry on top (published = the day, app = the release it ships in, digest = what tests/legal.test.mjs prints), describe the change in the texts' change history (terms § 17 / privacy § 15), and update `covers`. docs/LEGAL.md 'Changing the texts'.",
   "editions": [
     {
+      "edition": 3,
+      "published": "2026-10-26",
+      "app": "0.10.0",
+      "digest": "45ef0409129442db"
+    },
+    {
       "edition": 2,
       "published": "2026-10-22",
       "app": "0.8.0",
@@ -16,7 +22,14 @@
   ],
   "covers": {
     "about": "What the current edition describes. A cookie the app sets, or a per-account storage area (src/lib/storage/quota.ts StorageArea), that is missing here fails tests/legal.test.mjs: describe it in the privacy notice first.",
-    "cookies": ["knife_session", "knife_device", "knife_gh_state", "knife_office", "knife_craft"],
+    "cookies": [
+      "knife_session",
+      "knife_device",
+      "knife_gh_state",
+      "knife_office",
+      "knife_craft",
+      "knife_lang"
+    ],
     "storageAreas": {
       "docs": "privacy § 3 Content: documents",
       "cv": "privacy § 3 Content: CV profile, versions, job offers, applications",

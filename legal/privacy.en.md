@@ -19,7 +19,7 @@ The controller of your personal data is **{{operatorName}}**, {{postalAddress}} 
 
 | Data | Purpose | Basis (GDPR) | Retention |
 |---|---|---|---|
-| Username, display name, e-mail address, password hash (scrypt), role, status, creation and last-login dates, storage limit, date and version of accepting the Terms | creating and running your Account | Art. 6(1)(b) (contract) | until the Account is deleted; an unconfirmed registration 24 hours |
+| Username, display name, e-mail address, password hash (scrypt), role, status, creation and last-login dates, storage limit, date and version of accepting the Terms, chosen interface language | creating and running your Account | Art. 6(1)(b) (contract) | until the Account is deleted; an unconfirmed registration 24 hours |
 | Login sessions (token hash, created, expiry and last-used times), a known-device marker | keeping you signed in, protecting the Account against takeover | Art. 6(1)(b) and (f) | session up to 30 days or until you log out; device marker up to 180 days |
 | Content: CV profile and versions (including a photo), job offers and applications, documents (with versions and trash), files you save from the Craft apps, AI assistant conversations, course progress, website/repository connection (repository, branch, token, audit history), tool drafts | providing the services you ask for | Art. 6(1)(b) | until you delete it or delete the Account; document trash 30 days |
 | Workflows: their nodes, settings, triggers (schedules, webhook addresses) and notes; data tables and the data a workflow keeps between runs (such as an AI agent's memory or items already seen); resume links of waiting runs | running the automations you build | Art. 6(1)(b) | until you delete the workflow or the Account |
@@ -63,6 +63,7 @@ The Service stores on your device only information that is **strictly necessary 
 | `knife_gh_state` | cookie | securing "Sign in with GitHub" | 10 minutes |
 | `knife_office` | cookie on the office editor's address (where offered) | letting your browser load the editor for your document | up to 6 hours |
 | `knife_craft` | cookie on the Craft apps' address (where offered) | letting your browser load the Craft apps | up to 12 hours |
+| `knife_lang` | cookie | the interface language you chose with the switch (Polish or English) | 1 year |
 | the Craft apps' own storage (preferences, photo libraries, projects and media, recovery copies of open documents) | local storage, IndexedDB, OPFS on the Craft apps' address | the apps working in your browser | until you clear it in the browser; never sent to the server |
 | `knife:account` | local storage on the Craft apps' address | an opaque marker of the Account that used the apps last in this browser, so another Account's local data is cleared before the apps open | until you clear it in the browser |
 | `sk-theme`, tool settings | local storage | light or dark theme, your tool settings | until you clear it in the browser |
@@ -118,8 +119,10 @@ What each version of {{siteName}} added that matters for your data:
 | 0.7.0 | Workflows: automations with schedules, webhook addresses, code and credentials | workflows, run history (100 runs, 14 days), encrypted credentials, data sent to your webhooks |
 | 0.7.1 | AI nodes in workflows; the assistant and MCP can build and run workflows | workflow data goes to the AI provider you chose; token use is counted |
 | 0.8.0 | Versions of the Terms and this notice: earlier versions stay readable | the version you accepted is shown in your Account; no new personal data |
+| 0.10.0 | The interface in Polish and English | the language you choose is kept in the `knife_lang` cookie and on your Account; e-mails come in that language |
 
 Changes:
 
+- **Edition 3** (26 October 2026, {{siteName}} 0.10.0): adds the interface language to the Account data and the `knife_lang` cookie.
 - **Edition 2** (22 October 2026, {{siteName}} 0.8.0): describes the Craft apps and Craft files, workflows (run history, credentials, webhooks, AI nodes), several AI provider profiles, the server's log files and the `knife_office`, `knife_craft` and Craft app storage entries; adds this section.
 - **Edition 1** (21 October 2026, {{siteName}} 0.1): first version.
