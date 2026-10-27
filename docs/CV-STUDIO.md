@@ -1,6 +1,6 @@
 # CV studio (suite `cv-studio`)
 
-Owner-only, per-account career workspace inside the knife: one bilingual (PL/EN) master CV profile, saved job offers (link or pasted text),
+Per-account career workspace: one or more CV projects (separate CVs, see "Projects"), each with a bilingual (PL/EN) master CV profile, saved job offers (link or pasted text),
 per-job CV versions ("variants"), tracked applications, project-showcase evidence. The widget agent drives it two ways: the live UI tools
 (fill_field/click on the tabs) and deterministic `knife_cv_*` tools (also on MCP). **Tools gather evidence and apply deterministic checks; the
 model (the widget's own provider) writes the prose. No CV code calls an LLM.**
@@ -17,7 +17,7 @@ Never commit personal CV data; fixtures are synthetic. Real data lives in `$KNIF
 - `src/lib/cv/import.ts` — `importProfile` (refuses to overwrite unless `overwrite`).
 - Routes (all via `authenticate`; mutating ones pass the Origin guard): `GET|POST|DELETE /api/cv/photo` (see "Photo and document layouts"), `POST /api/cv/export {variantId, lang, theme: ats|modern|sidebar|elegant, photo?, photoShape?}`, `GET /api/cv[?revision=N]` (`{changed:false}` when unchanged: cheap polling), `POST /api/cv/patch {ops}`, `POST /api/cv/undo`, `POST /api/cv/import {profile,overwrite?}`, `POST|DELETE /api/cv/jobs|variants|applications` (`{job|variant|application}` / `?id=`). Errors are real 4xx with a reason (422 invalid, 404 unknown id, 409 conflict).
 - Tools: `src/lib/mcp/tools-cv.ts` (core: get/patch/missing/import/undo + job/variant/application CRUD + `app_due`); lane files `tools-cv-text.ts`, `tools-cv-jobs.ts`, `tools-cv-showcase.ts` export `CV_*_TOOLS` arrays that `tools-cv.ts` already includes. Tool prefix `knife_cv_` is the on-demand tool group `cv` (`tool-groups.ts`, preloaded on `/tools/cv-studio`). `KnifeToolContext{accountId}` is passed by `/api/agent/tool`; MCP uses the default account.
-- Registry: suite `cv-studio`, tabs `profile`, `jobs`, `variants`, `applications`, `showcase` → components `cv-profile`, `cv-jobs`, `cv-variants`, `cv-applications`, `cv-showcase` in `src/tools/registry-client.tsx` (unregistered = placeholder).
+- Registry: suite `cv-studio`, tabs `profile`, `jobs`, `variants`, `applications`, `showcase`, `website` → components `cv-*` in `src/tools/registry-client.tsx`, all wrapped by `src/tools/cv/framed.tsx` (the project bar + "How this works" above every tab). The retired `site-studio` slug redirects to `?tab=website` (its old tab becomes `&step=`).
 
 ## Rules for CV code
 - Truthfulness: never fabricate employers, dates, numbers or achievements; a rewrite keeps every fact; tool descriptions say so.
@@ -59,3 +59,13 @@ Goal: dozens of applications, each with a version fitted to the offer and to ATS
 - Fact guard: dropping a claim the profile makes is flagged too (`promotion` added: "Awansowałem" -> "Rozwijałem się" warns). A rewrite identical to the profile text is not stored.
 - Job offers form: several links (one per line) are saved in one go, with progress; failures stay in the box with the reason.
 - Verified: unit 581 (`cv_tailor` 35), `f_cv_studio` 53/53; real model on a scratch copy: bulk-added a justjoin.it + a nofluffjobs.com link, "Tailor with the assistant" on the nofluffjobs offer: 7 rounds, 182k tokens, 85 s, pinned project first, 6 truthful rewrites, ATS once, gaps reported.
+
+## Projects (2026-10-27)
+One account holds several independent CVs ("CV projects": other people, or separate CVs of one person). Each has its own CV data and undo snapshots, photo and website connection; the GitHub App installations stay account-wide.
+- Storage (`src/lib/cv/projects.ts`): `cv/<account>.projects.json` = `{version:1, active, projects[{id,name,createdAt}]}`; absent = one project `main`. Project `main` IS the pre-project layout (`cv/<account>.json`, `.snapshots/`, `.photo.jpg`, `site/<account>.json`), so old accounts need no migration and nothing moves; other projects use `cv/<account>.p-<id>.{json,snapshots,photo.jpg,site.json}`. Everything is under `cv/<account>.` (quota, rename and account deletion cover it), sealed like every account file. Max 30 projects; the last one cannot be deleted.
+- Which project a call uses: the one bound for the request (`?project=` on every `/api/cv/*` and `/api/site/*` route, `bindRequestProject`; `projectId` on every `knife_cv_*` / `knife_site_*` tool, `withCvProject`, src/lib/mcp/project-scope.ts), else the account's ACTIVE project. The browser names the project it shows on every call except the polled `GET /api/cv` (`src/lib/cv/shown-project.ts`), which follows the active project, so a switch made by the assistant or another tab is followed within ~2 s and never redirects the page's edits.
+- API: `GET /api/cv` also returns `project`, `active`, `projects`; `?revision=N&shown=<project>` answers `{changed:false}` only for the same project. `GET|POST|DELETE /api/cv/projects` (`create` {name, duplicateOf?} -> becomes active; duplicate copies CV + photo, never the website; `rename`; `switch`; DELETE removes CV, snapshots, photo, website).
+- Tools: `knife_cv_project_list` (with the name on each CV), `knife_cv_project_create`, `knife_cv_project_switch`; deleting is UI-only.
+- UI: project bar (switcher, "Manage CV projects" drawer: create empty / as a copy, open, rename, delete with confirm) and a short "How this works" on every tab. An empty project shows "Start here" (`StartHere.tsx`): use an existing CV (`CvStartUpload`: paste the text for the assistant to structure, or a JSON profile), build from scratch (a short form written with `/api/cv/import`), or an assistant interview.
+- Website (`site-studio` folded in): the Website tab has steps Your website / Check it / Compare with your CV / Improve it (optional). Any user may connect a GitHub repository (App or own token; only the server's own `gh` login is admin-only) or just save the site's address (docs/WEBSITE-STUDIO.md "Without a repository").
+- Tests: `tests/cv_projects.test.mjs`, `tests/site_url_only.test.mjs`, `tests/functional/cv_projects_e2e.py`.

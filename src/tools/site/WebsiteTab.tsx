@@ -70,8 +70,11 @@ export default function WebsiteTab() {
 function ConnectStep() {
   const { t } = useT();
   const { view } = useSite();
+  const params = useSearchParams();
   const [way, setWay] = useState<"address" | "github" | null>(null);
-  const shown = way ?? (view?.connected ? "github" : "address");
+  // Back from GitHub (?github= / ?github_error=), already connected or already signed in with GitHub: the repository way.
+  const fromGithub = params.has("github") || params.has("github_error") || Boolean(view?.github);
+  const shown = way ?? (view?.connected || fromGithub ? "github" : "address");
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
