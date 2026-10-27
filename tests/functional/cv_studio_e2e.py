@@ -835,7 +835,8 @@ with sync_playwright() as pw:
         group = page.get_by_role("radiogroup", name="Document layout")
         group.get_by_role("radio", name="ATS layout").focus()
         page.keyboard.press("ArrowRight")
-        expect(group.get_by_role("radio", name="Modern layout")).to_have_attribute("aria-checked", "true")
+        expect(group.get_by_role("radio", name="Compact layout")).to_have_attribute("aria-checked", "true")
+        expect(group.get_by_role("radio", name="Compact layout")).to_be_focused()
         page.keyboard.press("ArrowLeft")
         expect(group.get_by_role("radio", name="ATS layout")).to_have_attribute("aria-checked", "true")
 
@@ -852,16 +853,17 @@ with sync_playwright() as pw:
         assert visible["doc"], visible
         assert not visible["chrome"], f"app chrome still printed: {visible}"
 
-    @check("DOCX download delivers a .docx (or a readable error when the export is unavailable)")
+    @check("exports: Word, PDF, HTML and text each deliver their file (or a readable error when unavailable)")
     def _():
-        try:
-            with page.expect_download(timeout=20000) as dl:
-                btn("Download DOCX").click()
-            name = dl.value.suggested_filename
-            assert name.lower().endswith(".docx"), name
-        except Exception:  # noqa: BLE001
-            alerts = [a for a in page.get_by_role("alert").all_inner_texts() if a.strip()]
-            assert alerts and len(alerts[0]) > 8, "neither a download nor a readable error"
+        for label, ext in (("Download Word (DOCX)", ".docx"), ("Download PDF", ".pdf"), ("Download HTML", ".html"), ("Download Text (ATS)", ".txt")):
+            try:
+                with page.expect_download(timeout=30000) as dl:
+                    btn(label).click()
+                name = dl.value.suggested_filename
+                assert name.lower().endswith(ext), name
+            except Exception:  # noqa: BLE001
+                alerts = [a for a in page.get_by_role("alert").all_inner_texts() if a.strip()]
+                assert alerts and len(alerts[0]) > 8, f"{label}: neither a download nor a readable error"
 
     @check("dangling ids: deleting a bullet the version uses raises a warning and Remove broken references fixes it")
     def _():

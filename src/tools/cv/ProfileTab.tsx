@@ -283,6 +283,21 @@ function ProjectCard({ project: p, lang, other, L }: { project: Profile["project
       ) : null}
       <EditableField path={`${base}/summary/${lang}`} biPath={`${base}/summary`} value={p.summary[lang]} reference={p.summary[other]} label={t("{name} summary ({l})", { name: p.name, l: L })} placeholder={t("Summary in {l}", { l: L })} multiline />
       <BulletList base={base} bullets={p.bullets} owner={p.name || p.id} />
+      {!env.onlyMissing ? (
+        <label className="mt-2 flex items-center gap-2 text-[13px] text-muted">
+          <input type="checkbox" checked={p.page} onChange={(event) => void env.save([{ op: "set", path: `${base}/page`, value: event.target.checked }])} />
+          {t("Showcase page: an extra page about this project after the CV (or exported on its own)")}
+        </label>
+      ) : null}
+      {p.page ? (
+        <div className="mt-1 space-y-1 rounded-lg border border-line bg-raised/40 p-2" data-cv-project-page={p.id}>
+          <EditableField path={`${base}/story/${lang}`} biPath={`${base}/story`} value={p.story[lang]} reference={p.story[other]} label={t("{name} story ({l})", { name: p.name, l: L })} placeholder={t("The story of the project in a few paragraphs (a blank line starts a new one): the problem, what you built, how")} multiline />
+          <div className="grid min-w-0 gap-x-3 @md:grid-cols-2">
+            <EditableField path={`${base}/role/${lang}`} biPath={`${base}/role`} value={p.role[lang]} reference={p.role[other]} label={t("{name} your role ({l})", { name: p.name, l: L })} placeholder={t("Your role, e.g. Author and maintainer")} />
+            <EditableField path={`${base}/outcome/${lang}`} biPath={`${base}/outcome`} value={p.outcome[lang]} reference={p.outcome[other]} label={t("{name} outcome ({l})", { name: p.name, l: L })} placeholder={t("The outcome, with real numbers if you have them")} />
+          </div>
+        </div>
+      ) : null}
     </ItemCard>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { SegmentedControl, Select } from "@/components/ui";
+import { radioGroupKeys, SegmentedControl, Select } from "@/components/ui";
 import {
   accentOf, CV_ACCENT_IDS, CV_ACCENTS, CV_DENSITIES, CV_FONT_LABELS, CV_FONTS, CV_LAYOUT_INFO, CV_LAYOUTS, CV_PAGE_MODES, CV_PAPERS, PHOTO_SHAPES, showsPhoto,
   type CvAccent, type CvDensity, type CvFonts, type CvLayout, type CvLook, type CvPageMode, type CvPaper, type PhotoShape,
@@ -127,7 +127,9 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
                     autoComplete="off"
                     role="radio"
                     aria-checked={selected}
-                    aria-label={`${t(l.label)} layout`}
+                    tabIndex={selected ? 0 : -1}
+                    onKeyDown={radioGroupKeys}
+                    aria-label={t("{name} layout", { name: t(l.label) })}
                     title={t(l.description)}
                     onClick={() => look.set({ layout: id })}
                     className={cx("group min-w-0 rounded-lg border p-1.5 text-left transition-colors", selected ? "border-accent bg-accent/10" : "border-line hover:border-line-strong")}
@@ -171,6 +173,8 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
                     autoComplete="off"
                     role="radio"
                     aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
+                    onKeyDown={radioGroupKeys}
                     aria-label={id === "auto" ? t("Layout's own colour") : t("Accent {name}", { name: id })}
                     title={id === "auto" ? t("Layout's own colour") : id}
                     onClick={() => look.set({ accent: id })}

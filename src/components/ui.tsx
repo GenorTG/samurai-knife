@@ -533,6 +533,25 @@ export function Badge({
 }
 
 /** Small exclusive choice (language PL | EN, theme…): a radiogroup of buttons with arrow-key movement. */
+/**
+ * Arrow keys for a hand-built radio group (role=radiogroup of role=radio buttons, e.g. a gallery of cards): moves the
+ * selection to the next/previous radio of the same group, wrapping, and focuses it. Pair with a roving tabIndex
+ * (0 on the checked radio, -1 on the others), as SegmentedControl does.
+ */
+export function radioGroupKeys(event: KeyboardEvent<HTMLElement>): void {
+  const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+  if (!step) return;
+  const group = event.currentTarget.closest('[role="radiogroup"]');
+  if (!group) return;
+  const radios = [...group.querySelectorAll<HTMLElement>('[role="radio"]')].filter((el) => el.closest('[role="radiogroup"]') === group);
+  const index = radios.indexOf(event.currentTarget);
+  if (index < 0 || radios.length < 2) return;
+  event.preventDefault();
+  const next = radios[(index + step + radios.length) % radios.length];
+  next.click();
+  next.focus();
+}
+
 export function SegmentedControl<T extends string>({
   label,
   value,

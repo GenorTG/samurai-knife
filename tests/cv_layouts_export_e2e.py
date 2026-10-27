@@ -166,6 +166,43 @@ def main() -> int:
             check("TXT export: the ATS text", status == 200 and txt.decode().startswith(PROFILE["contact"]["name"]) and "EXPERIENCE" in txt.decode(), txt[:200])
             status, _, _ = page.evaluate("""() => fetch('/api/cv/export', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({variantId:null, lang:'en', theme:'ats', format:'pdf', sheet:'<div>not a cv</div>'})}).then(r => [r.status, '', ''])""")
             check("a foreign sheet is refused", status == 422, status)
+
+            # Upload and read a CV file (Start here): text, DOCX and PDF come back as text; junk is refused readably.
+            import base64
+            status, docx, _ = export("docx", "en", "ats")
+            status_pdf, pdf, _ = export("pdf", "en", "ats", {"pageMode": "cv"})
+
+            def extract(name: str, data: bytes) -> tuple[int, dict]:
+                return tuple(page.evaluate("""([name, data]) => fetch('/api/cv/import/extract', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({name, data})}).then(async r => [r.status, await r.json()])""", [name, base64.b64encode(data).decode()]))
+
+            for name, data in (("cv.txt", b"Aleksandra Example\nBackend developer"), ("cv.docx", docx), ("cv.pdf", pdf)):
+                code, body = extract(name, data)
+                check(f"upload {name}: text read", code == 200 and "aleksandra" in body.get("text", "").lower(), (code, str(body)[:200]))
+            code, body = extract("cv.pdf", b"not a pdf at all")
+            check("upload: a fake PDF is refused readably", code in (400, 422) and body.get("error"), (code, body))
+            code, body = extract("cv.exe", b"MZ")
+            check("upload: an unknown type is refused", code in (400, 415, 422) and body.get("error"), (code, body))
+
+            # The same through the UI: a new, empty project opens on Start here; uploading fills the text box.
+            created = page.evaluate("""() => fetch('/api/cv/projects', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({action:'create', name:'Upload test'})}).then(r => r.status)""")
+            check("empty project for the upload created", created == 201, created)
+            page.goto("/tools/cv-studio?tab=profile", wait_until="networkidle")
+            page.locator("[data-cv-start=upload]").click()
+            page.locator("[data-cv-start-here] input[type=file]").set_input_files(files=[{"name": "cv.pdf", "mimeType": "application/pdf", "buffer": pdf}])
+            box = page.get_by_role("textbox", name="CV text")
+            try:
+                page.wait_for_function("() => (document.querySelector('[data-cv-start-here] textarea')?.value || '').toLowerCase().includes('aleksandra')", timeout=30_000)
+                check("UI upload: the file's text lands in the box", "aleksandra" in box.input_value().lower())
+            except Exception as exc:  # noqa: BLE001
+                check("UI upload: the file's text lands in the box", False, exc)
+            back = page.evaluate("""() => fetch('/api/cv/projects').then(r => r.json()).then(j => { const main = j.projects.find(p => p.id === 'main'); return fetch('/api/cv/projects', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({action:'switch', id: main.id})}).then(r => r.status); })""")
+            check("back on the main project", back == 200, back)
+
+            # The showcase page editor: the fixture's project has one; its story is editable in the Profile tab.
+            page.goto("/tools/cv-studio?tab=profile", wait_until="networkidle")
+            toggle = page.get_by_role("checkbox", name="Showcase page: an extra page about this project after the CV (or exported on its own)")
+            check("showcase page switch shown and on for queuectl", toggle.count() >= 1 and toggle.first.is_checked(), toggle.count())
+            check("story text in the editor", page.evaluate("() => { const box = document.querySelector('[data-cv-project-page=queuectl]'); return !!box && [...box.querySelectorAll('*')].some(el => (el.value || el.textContent || '').includes('Kafka')); }"))
             check("no console errors", not errors, errors[:3])
             browser.close()
 

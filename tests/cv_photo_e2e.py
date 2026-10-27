@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """CV photo + document layouts through the real UI (/tools/cv-studio): upload and crop a photo in the Profile tab, switch the
-four layouts in CV versions, print to PDF, export the DOCX, remove the photo.
+four of the layouts in CV versions, print to PDF, export the DOCX, remove the photo.
 
 Oracles are independent of the app: the stored photo is read back over HTTP and decoded with Pillow (square, JPEG, EXIF and
 GPS gone), the DOCX is opened as a zip, the printed PDF is parsed with pypdf when the venv has it. Synthetic data only.
@@ -127,6 +127,7 @@ def main() -> int:
         sheet = page.locator("[data-cv-document]")
         expect(sheet).to_be_visible(timeout=60_000)
         layouts = page.get_by_role("radiogroup", name="Document layout")
+        page.get_by_role("button", name="Show all 14 layouts").click()
         for layout, label in (("ats", "ATS layout"), ("modern", "Modern layout"), ("sidebar", "Sidebar layout"), ("elegant", "Elegant layout")):
             layouts.get_by_role("radio", name=label).click()
             expect(sheet).to_have_attribute("data-theme", layout)
@@ -175,17 +176,17 @@ def main() -> int:
 
         # ---- DOCX export uses the same layout + photo
         with page.expect_download() as dl:
-            page.get_by_role("button", name="Download DOCX").click()
+            page.get_by_role("button", name="Download Word (DOCX)").click()
         docx = tmp / "cv.docx"
         dl.value.save_as(str(docx))
         with zipfile.ZipFile(docx) as archive:
             media = [n for n in archive.namelist() if n.startswith("word/media/")]
             xml = archive.read("word/document.xml").decode("utf-8")
         check(len(media) == 1 and media[0].endswith(".png"), f"DOCX carries the round photo ({media})")
-        check(xml.count("<w:tbl>") == 1 and "EDF2F7" in xml, "DOCX sidebar = one shaded two-column table")
+        check(xml.count("<w:tbl>") == 1 and "w:fill=" in xml, "DOCX sidebar = one shaded two-column table")
         layouts.get_by_role("radio", name="ATS layout").click()
         with page.expect_download() as dl:
-            page.get_by_role("button", name="Download DOCX").click()
+            page.get_by_role("button", name="Download Word (DOCX)").click()
         dl.value.save_as(str(docx))
         with zipfile.ZipFile(docx) as archive:
             check(not [n for n in archive.namelist() if n.startswith("word/media/")], "ATS DOCX has no image")

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Notice, Panel, TextArea, TextInput } from "@/components/ui";
+import { Button, Dropzone, Field, Notice, Panel, TextArea, TextInput } from "@/components/ui";
+import { fileToBase64 } from "@/tools/sidecars/client";
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { errorText, importCv } from "@/lib/cv/client";
 import { cx } from "@/lib/format";
@@ -11,9 +12,10 @@ import { ProfileImport } from "./ProfileImport";
 type Way = "upload" | "scratch" | "assistant";
 
 /**
- * The first screen of an empty CV project (Profile tab): three ways in, explained in plain words. "Upload" is
- * `CvStartUpload` (the file upload + parsing step plugs in there); "From scratch" is a short form that writes a first
- * profile; "Interview" hands over to the assistant.
+ * The first screen of an empty CV project (Profile tab): three ways in, explained in plain words. "Use my existing CV"
+ * (`CvStartUpload`) reads the text of an uploaded PDF/DOCX/ODT/TXT on the server and hands it to the assistant to sort
+ * into the profile (or a structured JSON profile); "From scratch" is a short form that writes a first profile;
+ * "Interview" hands over to the assistant.
  */
 export function StartHere({ onDone }: { onDone: () => void }) {
   const { t } = useT();
@@ -50,14 +52,43 @@ export function StartHere({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Bring in an existing CV. Today: a structured (JSON) profile, or the assistant structures pasted CV text. */
+/** Bring in an existing CV: upload the file (its text is read server-side), or paste the text; the assistant structures it. */
 export function CvStartUpload({ onDone }: { onDone: () => void }) {
-  const { t } = useT();
+  const { t, m } = useT();
   const [text, setText] = useState("");
+  const [reading, setReading] = useState("");
+  const [fileNote, setFileNote] = useState<{ tone: "good" | "error"; text: string } | null>(null);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setFileNote(null);
+    setReading(file.name);
+    try {
+      const data = await fileToBase64(file);
+      const res = await fetch("/api/cv/import/extract", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ name: file.name, data }) });
+      const body = (await res.json().catch(() => ({}))) as { text?: string; truncated?: boolean; error?: string };
+      if (!res.ok || !body.text) throw new Error(body.error || t("The file could not be read."));
+      setText(body.text);
+      setFileNote({ tone: "good", text: body.truncated ? t("Read {name} (shortened: the file is very long). Check the text below, then sort it in.", { name: file.name }) : t("Read {name}. Check the text below, then sort it in with the assistant.", { name: file.name }) });
+    } catch (e) {
+      setFileNote({ tone: "error", text: m(e instanceof Error ? e.message : String(e)) });
+    } finally {
+      setReading("");
+    }
+  };
   return (
     <div className="space-y-4">
-      <Panel title={t("Paste your CV text")}>
-        <p className="mb-2 text-[13px] text-muted">{t("Copy the text of your CV (from Word, a PDF or LinkedIn) and paste it here. The assistant sorts it into the profile; nothing is invented, and anything unclear is asked.")}</p>
+      <Panel title={t("Upload your CV file")}>
+        <Dropzone
+          accept=".pdf,.docx,.odt,.txt,.md,application/pdf"
+          disabled={Boolean(reading)}
+          hint={reading ? t("Reading {name}…", { name: reading }) : t("PDF, Word (DOCX), OpenDocument (ODT) or text, up to 8 MB. Only its text is read; the file is not stored.")}
+          onFiles={(files) => void upload(files[0])}
+        />
+        {reading ? <p role="status" className="mt-2 text-[13px] text-muted">{t("Reading {name}…", { name: reading })}</p> : null}
+        {fileNote ? <div className="mt-2"><Notice tone={fileNote.tone}>{fileNote.text}</Notice></div> : null}
+      </Panel>
+      <Panel title={t("Your CV text")}>
+        <p className="mb-2 text-[13px] text-muted">{t("The text from your file appears here; you can also paste it (from Word, a PDF or LinkedIn). The assistant sorts it into the profile; nothing is invented, and anything unclear is asked.")}</p>
         <TextArea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder={t("Paste the whole CV here…")} aria-label={t("CV text")} />
         <div className="mt-2">
           <Button
