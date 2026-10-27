@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Badge, Button, EmptyState, Field, Notice, Panel, SegmentedControl, TextArea, TextInput } from "@/components/ui";
 import { deleteVariant, errorText, saveVariant } from "@/lib/cv/client";
 import { uniqueId } from "@/lib/cv/collections";
-import { downloadCvDocx } from "@/lib/cv/render/docx-client";
+import { downloadCvExport, type CvExportFormat } from "@/lib/cv/render/docx-client";
 import type { CvData, CvLang, Profile, Variant } from "@/lib/cv/schema";
 import { danglingIds, effectiveSectionOrder, resolveVariant } from "@/lib/cv/variant";
 import { SectionOrderEditor } from "./ProfilePriority";
@@ -40,9 +40,50 @@ function Preview({ profile, lang, look }: { profile: Profile; lang: CvLang; look
   return (
     <Panel title={t("Live preview")} right={<Button size="sm" onClick={print}>{t("Print / Save as PDF")}</Button>} bodyClassName="p-2 sm:p-3">
       <div ref={root} data-agent-region="cv-preview" className="max-h-[80vh] overflow-auto rounded-lg border border-line bg-raised/60 p-2 sm:p-3">
-        <CvDocument profile={profile} lang={lang} theme={look.options.layout} photoUrl={look.photoUrl} photoShape={look.options.shape} />
+        <CvDocument profile={profile} lang={lang} look={look.options} photoUrl={look.photoUrl} photoShape={look.options.shape} pageMode={look.options.pageMode} />
       </div>
     </Panel>
+  );
+}
+
+/* ---------------------------------------------------------------- export */
+
+const FORMATS: { id: CvExportFormat; label: string; hint: string }[] = [
+  { id: "pdf", label: "PDF", hint: "Exactly the preview, with clickable links" },
+  { id: "docx", label: "Word (DOCX)", hint: "Editable in Word or LibreOffice" },
+  { id: "html", label: "HTML", hint: "One file that opens in any browser" },
+  { id: "txt", label: "Text (ATS)", hint: "Plain text, what a portal parser reads" },
+];
+
+/** Download the shown CV (master or version) as PDF, DOCX, HTML or plain text. */
+function ExportButtons({ variantId, lang, look, blocked }: { variantId: string | null; lang: CvLang; look: DocLook; blocked: string }) {
+  const { t } = useT();
+  const [busy, setBusy] = useState<CvExportFormat | null>(null);
+  const [error, setError] = useState("");
+  const run = async (format: CvExportFormat) => {
+    setBusy(format);
+    setError("");
+    try {
+      await downloadCvExport({ variantId, lang, ...look.exportOptions, format, sheet: document.querySelector<HTMLElement>("[data-cv-document]") });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="space-y-2" data-cv-export>
+      <span className="sk-label block">{t("Download")}</span>
+      <div className="flex flex-wrap gap-2">
+        {FORMATS.map((f) => (
+          <Button key={f.id} size="sm" variant={f.id === "pdf" ? "primary" : "subtle"} disabled={busy !== null || Boolean(blocked)} title={blocked || t(f.hint)} aria-label={t("Download {format}", { format: t(f.label) })} onClick={() => void run(f.id)}>
+            {busy === f.id ? t("Preparing…") : t(f.label)}
+          </Button>
+        ))}
+      </div>
+      {blocked ? <p className="text-xs text-muted">{blocked}</p> : null}
+      {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
+    </div>
   );
 }
 
@@ -176,7 +217,6 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
   const [draft, setDraft] = useState<{ base: string; v: Variant }>({ base: baseKey, v: stored });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "good" | "error"; text: string } | null>(null);
-  const [docxBusy, setDocxBusy] = useState(false);
 
   // The stored version moved (assistant edit, another tab, our own save): adopt it unless the user has unsaved edits.
   const dirty = editorKey(draft.v) !== draft.base;
@@ -215,18 +255,6 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
     }
   };
 
-  const docx = async () => {
-    setDocxBusy(true);
-    setMessage(null);
-    try {
-      await downloadCvDocx({ variantId: v.id, lang: v.lang, ...look.exportOptions });
-    } catch (e) {
-      setMessage({ tone: "error", text: errorText(e) });
-    } finally {
-      setDocxBusy(false);
-    }
-  };
-
   const customHeadline = v.headline !== null;
   const customSummary = v.summary !== null;
 
@@ -248,7 +276,7 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
                 />
               </div>
             </div>
-            <DocumentOptions look={look} />
+            <DocumentOptions look={look} profile={resolved} lang={v.lang} />
             <p className="text-xs text-muted">{[tn("{n} role", "{n} roles", counts.roles), tn("{n} bullet", "{n} bullets", counts.bullets), tn("{n} project", "{n} projects", counts.projects), tn("{n} skill group", "{n} skill groups", counts.skills)].join(" · ")}</p>
             {dangling.length > 0 ? (
               <div className="space-y-2" role="alert">
@@ -260,9 +288,9 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || dangling.length > 0 || !v.name.trim()}>{t("Save version")}</Button>
               <Button onClick={() => setDraft({ base: baseKey, v: stored })} disabled={!dirty}>{t("Discard changes")}</Button>
-              <Button onClick={() => void docx()} disabled={docxBusy || dirty} title={dirty ? t("Save the version first") : undefined}>{docxBusy ? t("Preparing…") : t("Download DOCX")}</Button>
               <Button variant="danger" onClick={() => void remove()} disabled={busy} aria-label={t("Delete version {name}", { name: stored.name })}>{t("Delete version")}</Button>
             </div>
+            <ExportButtons variantId={v.id} lang={v.lang} look={look} blocked={dirty ? t("Save the version first: the files are made from the saved version.") : ""} />
           </div>
         </Panel>
 
@@ -373,8 +401,6 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
 
 function MasterView({ master, lang, look, onLang }: { master: Profile; lang: CvLang; look: DocLook; onLang: (l: CvLang) => void }) {
   const { t } = useT();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   return (
     <div className="grid min-w-0 gap-4 @5xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
       <Panel title={t("Master profile")}>
@@ -383,24 +409,8 @@ function MasterView({ master, lang, look, onLang }: { master: Profile; lang: CvL
           <div className="flex flex-wrap items-end gap-3">
             <SegmentedControl<CvLang> label={t("Document language")} value={lang} onChange={onLang} options={[{ value: "pl", label: "PL", ariaLabel: "Polish" }, { value: "en", label: "EN", ariaLabel: "English" }]} />
           </div>
-          <DocumentOptions look={look} />
-          {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                await downloadCvDocx({ variantId: null, lang, ...look.exportOptions });
-              } catch (e) {
-                setError(errorText(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? t("Preparing…") : t("Download DOCX")}
-          </Button>
+          <DocumentOptions look={look} profile={master} lang={lang} />
+          <ExportButtons variantId={null} lang={lang} look={look} blocked="" />
         </div>
       </Panel>
       <div className="min-w-0 @5xl:sticky @5xl:top-4 @5xl:self-start"><Preview profile={master} lang={lang} look={look} /></div>

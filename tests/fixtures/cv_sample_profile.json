@@ -1,0 +1,48 @@
+{
+  "contact": {
+    "name": "Aleksandra Wiśniewska-Kowalczyk",
+    "headline": {"pl": "Starsza inżynierka oprogramowania · systemy rozproszone", "en": "Senior software engineer · distributed systems"},
+    "location": {"pl": "Kraków, Polska", "en": "Kraków, Poland"},
+    "email": "ola.example@example.org",
+    "phone": "+48 600 100 200",
+    "links": [{"label": "LinkedIn", "url": "https://www.linkedin.com/in/ola-example"}, {"label": "GitHub", "url": "https://github.com/ola-example"}, {"label": "", "url": "https://ola.example.org"}]
+  },
+  "summary": {"pl": "Projektuję i utrzymuję systemy rozproszone o wysokiej dostępności. Prowadziłam zespół pięciu osób przy migracji platformy płatności do Kubernetesa, skracając czas wdrożeń z godzin do minut.", "en": "I design and run highly available distributed systems. Led a team of five through moving a payments platform to Kubernetes, cutting deploy time from hours to minutes."},
+  "experience": [
+    {"id": "paystream", "org": "PayStream Sp. z o.o.", "role": {"pl": "Starsza inżynierka backendu", "en": "Senior backend engineer"}, "start": "2021-03", "end": null, "location": "Kraków",
+     "bullets": [
+       {"id": "p1", "text": {"pl": "Przeniosłam 14 usług płatniczych na Kubernetesa bez przestojów (99,98% dostępności).", "en": "Moved 14 payment services to Kubernetes with zero downtime (99.98% availability)."}},
+       {"id": "p2", "text": {"pl": "Skróciłam czas wdrożenia z 3 godzin do 12 minut dzięki potokowi CI/CD w GitLabie.", "en": "Cut deploy time from 3 hours to 12 minutes with a GitLab CI/CD pipeline."}},
+       {"id": "p3", "text": {"pl": "Wprowadziłam śledzenie rozproszone (OpenTelemetry), co skróciło diagnozę incydentów o 40%.", "en": "Introduced distributed tracing (OpenTelemetry), cutting incident diagnosis time by 40%."}}
+     ]},
+    {"id": "datanest", "org": "DataNest", "role": {"pl": "Inżynierka oprogramowania", "en": "Software engineer"}, "start": "2018-06", "end": "2021-02", "location": "Warszawa",
+     "bullets": [
+       {"id": "d1", "text": {"pl": "Zbudowałam API w Go obsługujące 2 mln żądań dziennie.", "en": "Built a Go API serving 2M requests per day."}},
+       {"id": "d2", "text": {"pl": "Mentorowałam trzy osoby juniorskie; dwie awansowały w ciągu roku.", "en": "Mentored three juniors; two were promoted within a year."}}
+     ]},
+    {"id": "intern", "org": "Softwarehouse ABC", "role": {"pl": "Stażystka", "en": "Intern"}, "start": "2017-07", "end": "2018-05", "location": "Kraków",
+     "bullets": [{"id": "i1", "text": {"pl": "Pisałam testy integracyjne dla systemu rezerwacji.", "en": "Wrote integration tests for a booking system."}}]}
+  ],
+  "projects": [
+    {"id": "queuectl", "name": "queuectl", "url": "https://github.com/ola-example/queuectl", "summary": {"pl": "Narzędzie CLI do inspekcji kolejek Kafka.", "en": "A CLI to inspect Kafka queues."}, "tech": ["Go", "Kafka", "Cobra"],
+     "bullets": [{"id": "q1", "text": {"pl": "1,2 tys. gwiazdek na GitHubie, 30 kontrybutorów.", "en": "1.2k GitHub stars, 30 contributors."}}],
+     "page": true,
+     "story": {"pl": "queuectl powstał, bo przy każdym incydencie traciliśmy minuty na szukanie wiadomości w kolejkach. Zaczęłam od prostego skryptu, który z czasem urósł do pełnego narzędzia.\n\nDziś pozwala przeglądać, filtrować i odtwarzać wiadomości z dowolnego klastra Kafka jednym poleceniem, a jego wyjście da się podać dalej do jq.", "en": "queuectl started because every incident cost us minutes of digging through queues. It began as a small script and grew into a full tool.\n\nToday it browses, filters and replays messages from any Kafka cluster in one command, with output that pipes straight into jq."},
+     "role": {"pl": "Autorka i opiekunka projektu", "en": "Author and maintainer"},
+     "outcome": {"pl": "Używany w 3 firmach; czas diagnozy incydentów krótszy o połowę.", "en": "Used at 3 companies; incident triage time halved."}},
+    {"id": "notes", "name": "Field Notes", "url": "https://ola.example.org/notes", "summary": {"pl": "Blog techniczny o niezawodności systemów.", "en": "A technical blog about reliability."}, "tech": ["Astro"]}
+  ],
+  "skills": [
+    {"id": "langs", "name": {"pl": "Języki", "en": "Languages"}, "items": ["Go", "Python", "TypeScript", "SQL"]},
+    {"id": "infra", "name": {"pl": "Infrastruktura", "en": "Infrastructure"}, "items": ["Kubernetes", "Terraform", "AWS", "Kafka", "PostgreSQL"]},
+    {"id": "practice", "name": {"pl": "Praktyki", "en": "Practices"}, "items": ["SRE", "CI/CD", "Observability", "Code review"]}
+  ],
+  "education": [
+    {"id": "agh", "institution": "AGH w Krakowie", "detail": {"pl": "Magister, informatyka", "en": "MSc, Computer Science"}, "start": "2015-10", "end": "2018-06"}
+  ],
+  "languages": [
+    {"id": "pl", "name": {"pl": "polski", "en": "Polish"}, "level": {"pl": "ojczysty", "en": "native"}},
+    {"id": "en", "name": {"pl": "angielski", "en": "English"}, "level": {"pl": "C1", "en": "C1"}}
+  ],
+  "consent": {"pl": "Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z RODO.", "en": ""}
+}

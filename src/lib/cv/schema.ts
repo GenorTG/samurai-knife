@@ -16,6 +16,8 @@ const id = z.string().regex(ID_PATTERN, "id: lowercase letters, digits, '-' or '
 export const biSchema = z.object({ pl: z.string().max(4_000).default(""), en: z.string().max(4_000).default("") }).strict();
 export type Bi = z.infer<typeof biSchema>;
 const bi = () => biSchema.default({ pl: "", en: "" });
+/** Longer text (a showcase page's story). */
+const biLong = () => z.object({ pl: z.string().max(12000).default(""), en: z.string().max(12000).default("") }).strict().default({ pl: "", en: "" });
 
 export const bulletSchema = z.object({
   id,
@@ -61,6 +63,14 @@ export const projectSchema = z.object({
   pinned: z.boolean().default(false),
   /** Where the facts came from, e.g. "github:owner/name" (set by "Add from GitHub"). */
   source: z.string().max(200).default(""),
+  /**
+   * Showcase page: an extra page about this project printed after the CV (or exported on its own): the story in a few
+   * paragraphs (blank line = new paragraph), the role played, the outcome. `page: true` = the project has one.
+   */
+  page: z.boolean().default(false),
+  story: biLong(),
+  role: bi(),
+  outcome: bi(),
 }).strict();
 
 export const skillGroupSchema = z.object({ id, name: bi(), items: z.array(z.string().max(80)).max(80).default([]), pinned: z.boolean().default(false) }).strict();

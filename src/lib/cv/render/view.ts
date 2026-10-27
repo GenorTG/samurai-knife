@@ -28,10 +28,13 @@ const PRESENT: Record<CvLang, string> = { en: "present", pl: "obecnie" };
 const DATE_SEP = "—";
 const LANG_NAME: Record<CvLang, string> = { en: "English", pl: "Polish" };
 
+export type CvContactKind = "place" | "email" | "phone" | "linkedin" | "github" | "web";
 export interface CvContactItem {
   text: string;
   /** http(s), mailto: or tel: only; "" = plain text. */
   href: string;
+  /** What it is (icons, DOCX hyperlinks). */
+  kind: CvContactKind;
 }
 export interface CvExperienceView {
   /** "Role, Org" (or just Org / Role). */
@@ -49,6 +52,19 @@ export interface CvProjectView {
   urlText: string;
   summary: string;
   tech: string;
+  bullets: string[];
+}
+/** A project's showcase page (printed after the CV, or exported alone). */
+export interface CvProjectPageView {
+  name: string;
+  href: string;
+  urlText: string;
+  summary: string;
+  tech: string[];
+  role: string;
+  outcome: string;
+  /** The story, one string per paragraph. */
+  story: string[];
   bullets: string[];
 }
 export interface CvSkillView {
@@ -95,6 +111,10 @@ export interface CvView {
   order: CvOrderKey[];
   /** RODO / GDPR clause; "" unless written in `lang`. */
   consent: string;
+  /** Showcase pages of the projects this CV shows that have one (in project order). */
+  pages: CvProjectPageView[];
+  /** Labels the showcase pages print. */
+  pageTitles: { role: string; outcome: string; highlights: string; tech: string; heading: string };
   titles: CvTitles;
   /** Sections with text in the other language but nothing in `lang` (human-readable, one per section). */
   warnings: string[];
@@ -104,6 +124,23 @@ export interface CvView {
 export interface BuildCvViewOptions {
   /** false = plain spaces only (DOCX / ATS); dashes and quotes are still typeset. Default true. */
   nbsp?: boolean;
+  /** Print links as full addresses (https://github.com/x) instead of the short form (github.com/x). */
+  fullUrls?: boolean;
+}
+
+const PAGE_TITLES: Record<CvLang, CvView["pageTitles"]> = {
+  en: { role: "My role", outcome: "Outcome", highlights: "Highlights", tech: "Technology", heading: "Project" },
+  pl: { role: "Moja rola", outcome: "Efekt", highlights: "Najważniejsze", tech: "Technologie", heading: "Projekt" },
+};
+
+/** What a contact link is, from its address and label (icons, DOCX). */
+export function contactKind(url: string, label = ""): CvContactKind {
+  const u = url.toLowerCase();
+  if (u.startsWith("mailto:")) return "email";
+  if (u.startsWith("tel:")) return "phone";
+  if (/linkedin\.com/.test(u) || /linkedin/i.test(label)) return "linkedin";
+  if (/github\.com/.test(u) || /github/i.test(label)) return "github";
+  return "web";
 }
 
 const MONTH = /^(\d{4})-(\d{2})$/;
@@ -161,33 +198,35 @@ function translationWarnings(profile: Profile, lang: CvLang): string[] {
   });
 }
 
-function contactItems(profile: Profile, lang: CvLang, prose: (value: string) => string): CvContactItem[] {
+function contactItems(profile: Profile, lang: CvLang, prose: (value: string) => string, fullUrls: boolean): CvContactItem[] {
   const c = profile.contact;
   const items: CvContactItem[] = [];
   const seen = new Set<string>();
-  const push = (text: string, href: string, key: string) => {
+  const push = (text: string, href: string, key: string, kind: CvContactKind) => {
     if (!text || seen.has(key)) return;
     seen.add(key);
-    items.push({ text, href });
+    items.push({ text, href, kind });
   };
 
   const place = prose(c.location[lang].trim());
-  if (place) push(place, "", `text:${place.toLowerCase()}`);
+  if (place) push(place, "", `text:${place.toLowerCase()}`, "place");
   const email = c.email.trim();
-  if (email) push(email, `mailto:${email}`, `url:${email.toLowerCase()}`);
+  if (email) push(email, `mailto:${email}`, `url:${email.toLowerCase()}`, "email");
   const phone = c.phone.trim();
-  if (phone) push(phone, `tel:${phone.replace(/[^\d+]/g, "")}`, `url:${phone.replace(/[^\d+]/g, "")}`);
+  if (phone) push(phone, `tel:${phone.replace(/[^\d+]/g, "")}`, `url:${phone.replace(/[^\d+]/g, "")}`, "phone");
 
   for (const link of c.links) {
     const url = link.url.trim();
     if (!url) continue;
-    const shown = urlDisplay(url);
+    const short = urlDisplay(url);
+    const href = safeHref(url);
+    const shown = fullUrls && /^https?:/i.test(href) ? href : short;
     const label = link.label.trim();
     const lower = label.toLowerCase();
     // "label: label" / "GitHub: github.com/x" -> say it once.
-    const redundant = lower === shown.toLowerCase() || lower === url.toLowerCase() || shown.toLowerCase().includes(lower);
+    const redundant = lower === short.toLowerCase() || lower === url.toLowerCase() || short.toLowerCase().includes(lower);
     const text = label && !redundant ? `${label}: ${shown}` : shown || label;
-    push(text, safeHref(url), `url:${shown.toLowerCase().replace(/^mailto:/, "")}`);
+    push(text, href, `url:${short.toLowerCase().replace(/^mailto:/, "")}`, contactKind(href || url, label));
   }
   return items;
 }
@@ -195,6 +234,11 @@ function contactItems(profile: Profile, lang: CvLang, prose: (value: string) => 
 /** Resolve `profile` into printable, typeset strings for `lang`. Empty things are dropped. */
 export function buildCvView(profile: Profile, lang: CvLang, options: BuildCvViewOptions = {}): CvView {
   const nbsp = options.nbsp ?? true;
+  const fullUrls = options.fullUrls ?? false;
+  const shownUrl = (url: string): string => {
+    const href = url.trim() ? safeHref(url) : "";
+    return fullUrls && /^https?:/i.test(href) ? href : urlDisplay(url);
+  };
   const text = (raw: string): string => typeset(raw.trim(), lang, { nbsp });
   const prose = (value: Bi | string): string => text(typeof value === "string" ? value : value[lang]);
   const bullets = (items: Profile["experience"][number]["bullets"]): string[] => items.map((b) => prose(b.text)).filter(Boolean);
@@ -216,11 +260,31 @@ export function buildCvView(profile: Profile, lang: CvLang, options: BuildCvView
     projects.push({
       name,
       href: p.url.trim() ? safeHref(p.url) : "",
-      urlText: urlDisplay(p.url),
+      urlText: shownUrl(p.url),
       summary: prose(p.summary),
       tech: p.tech.map((t) => t.trim()).filter(Boolean).join(", "),
       bullets: bullets(p.bullets),
     });
+  }
+
+  const pages: CvProjectPageView[] = [];
+  for (const p of profile.projects) {
+    const name = p.name.trim();
+    if (!name || !p.page) continue;
+    const story = (p.story?.[lang] ?? "").split(/\n\s*\n/).map((para) => text(para.replace(/\s*\n\s*/g, " "))).filter(Boolean);
+    const page: CvProjectPageView = {
+      name,
+      href: p.url.trim() ? safeHref(p.url) : "",
+      urlText: shownUrl(p.url),
+      summary: prose(p.summary),
+      tech: p.tech.map((t) => t.trim()).filter(Boolean),
+      role: prose(p.role ?? { pl: "", en: "" }),
+      outcome: prose(p.outcome ?? { pl: "", en: "" }),
+      story,
+      bullets: bullets(p.bullets),
+    };
+    // A page with nothing written in this language is not printed (never borrowed from the other language).
+    if (page.summary || page.story.length || page.role || page.outcome || page.bullets.length) pages.push(page);
   }
 
   const skills: CvSkillView[] = [];
@@ -249,7 +313,7 @@ export function buildCvView(profile: Profile, lang: CvLang, options: BuildCvView
       const title = prose(item.title);
       const body = prose(item.text);
       if (!title && !body) continue;
-      items.push({ title, text: body, href: item.url.trim() ? safeHref(item.url) : "", urlText: urlDisplay(item.url), date: item.date.trim() });
+      items.push({ title, text: body, href: item.url.trim() ? safeHref(item.url) : "", urlText: shownUrl(item.url), date: item.date.trim() });
     }
     const title = prose(section.title);
     if (items.length && title) custom.push({ key: `custom:${section.id}`, title, items });
@@ -271,7 +335,7 @@ export function buildCvView(profile: Profile, lang: CvLang, options: BuildCvView
     lang,
     name: c.name.trim(),
     headline: prose(c.headline),
-    contact: contactItems(profile, lang, text),
+    contact: contactItems(profile, lang, text, fullUrls),
     summary: prose(profile.summary),
     experience,
     projects,
@@ -282,6 +346,8 @@ export function buildCvView(profile: Profile, lang: CvLang, options: BuildCvView
     custom,
     order,
     consent: prose(profile.consent),
+    pages,
+    pageTitles: PAGE_TITLES[lang],
     titles: Object.fromEntries(Object.entries(SECTION_TITLES).map(([key, names]) => [key, names[lang]])) as CvTitles,
     warnings: translationWarnings(profile, lang),
   };
