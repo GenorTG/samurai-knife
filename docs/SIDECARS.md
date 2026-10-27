@@ -69,7 +69,9 @@ known sidecar ids and lifecycle verbs, reads root-owned compose bundles, and rej
   after the app starts and then checks once a minute: a sidecar that is not running (crash, docker restart, host reboot)
   gets the ordinary start op, so the page shows its progress. The idle stop never stops it. An administrator's Stop (UI
   or CLI) sets `heldStopped`, which the next start/install/update clears: autostart leaves a held sidecar stopped. A
-  failed start waits 10 min before the next try (a helper bundle that needs `sudo knife-sidecar sync` must not loop).
+  failed start waits 10 min before the next try. A helper bundle that needs `sudo knife-sidecar sync` is not tried at
+  all: the "sync needed" check (`src/lib/services/sync-check.ts`, docs/DEPLOY.md "Sidecars without the docker group")
+  reports it once, and autostart starts the sidecar within a minute of the sync.
   Containers keep `restart: "no"`: the app owns the lifecycle, and systemd starts the app at boot. The idle reaper now
   also starts with the server, not with the first sidecar API call.
 - **Locking**: one op per service at a time, across the server and the CLI (`op.lock` with pid; a dead pid is stale).

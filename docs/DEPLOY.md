@@ -201,6 +201,45 @@ need no host command (docs/SIDECARS.md "Config vs content"). `sudo knife-sidecar
 The release that introduced this layout (0.4) changed the craft bundle once: re-run the installer (new helper), then
 `sudo knife-sidecar sync craft`.
 
+### Sidecars without the docker group
+
+The app user never talks to docker; root's helper runs only the bundle root installed under
+`/etc/samurai-knife/sidecars/<id>/` (`compose.yaml`, `secrets.env`, `assets/`). The app stages its own copy in
+`$KNIFE_DATA_DIR/services/<id>/` and refuses to start a sidecar while the two differ: the bundle hash (`bundleHash()` in
+`src/lib/services/helper-backend.ts` = `bundle_hash_of()` in the helper) covers `compose.yaml`, `secrets.env` and the
+asset folder names, which carry a content hash (the office editor plugin, the Craft nginx config). Only the owner
+installs a change, as root:
+
+```
+sudo knife-sidecar check <id>   # dry run: validates the staged bundle and prints what differs
+sudo knife-sidecar sync <id>    # the same validation, then installs it
+```
+
+`check` and `sync` name every difference: `compose.yaml` as a unified diff, `secrets.env` as changed (keys added or
+removed, never a value) and the asset folders added and removed. The app never runs either (the sync needs root on
+purpose; the sudoers rule for the operator's agent allows `check` and `hash`, not `sync`).
+
+A release can change what a bundle renders (a new image pin, a secret added to a definition, a new editor plugin, another
+nginx config) while the containers keep running on root's old copy, so nothing fails until the sidecar starts again,
+typically after a reboot. Three things say so before that:
+
+- **The app**, about 10 s after every start (so after every release switch) and then every 15 minutes
+  (`src/lib/services/sync-check.ts`): it re-stages each installed sidecar's bundle in the data dir (never root's copy),
+  compares, and for a difference logs one line per change (`[sidecars] sync needed: <id>: … Run as root: sudo
+  knife-sidecar check <id> …, then sudo knife-sidecar sync <id>.`) and shows admins a "Sync needed" notice with both
+  commands on the Sidecar services page and at the top of `/account/admin` (`GET /api/admin/sidecars`, admins only).
+  Autostart does not try to start a sidecar that needs a sync (it would only fail); it starts within a minute of the
+  sync, and the notice clears at the next check.
+- **knife-update**, after a switch, when the release changed `src/lib/services/`, `sidecars/` or
+  `deploy/sidecar-helper/`: one update-log line naming the changed files and `sudo knife-sidecar check <id>` for every
+  installed bundle (`SIDECAR_BUNDLES` in `update.conf`). It is a hint from the diff; the app's check is the answer.
+- **The release checklist** (section 6): after a release that touches those paths, run `sudo knife-sidecar check <id>`
+  for each installed sidecar and sync the ones that differ, the same day, not at the next reboot.
+
+Before 0.11.0.2 the Craft config folder of every earlier render stayed in the staging dir (only the current one was
+written), so its name list, and with it the hash, could differ from root's copy with nothing worth installing; the app now
+removes the old ones, which shows as "asset folders removed: conf-…" in the first `check` after the update.
+
 ### Moving an existing install
 
 Back up the data dir, the storage key and the GitHub App file first. Then:
@@ -417,6 +456,11 @@ build is shown next to the logo and at `GET /api/system/version`. On a merge con
 A release is the tag `v<VERSION>` on the commit whose VERSION file says exactly that (`v0.2.0.57`); a `-` suffix
 (`v0.2.0.57-rc.1`) marks a pre-release. To cut one: merge to `main`, then `git tag "v$(cat VERSION)" && git push origin
 main "v$(cat VERSION)"`.
+
+After the release is live (helper installs): if it changed `src/lib/services/`, `sidecars/` (the office plugin, Craft
+bridge) or `deploy/sidecar-helper/`, run `sudo knife-sidecar check <id>` for every installed sidecar and
+`sudo knife-sidecar sync <id>` for each that differs; a changed helper needs `deploy/install.sh` first. The update log
+says when this applies, and the app shows "Sync needed" (section "Sidecars without the docker group").
 
 With the install script (above) this is `knife-update` on a timer; the rest of this section describes the same flow
 for a PM2 setup. To keep a server on the newest release without touching the checkout it serves from, build every release in its own

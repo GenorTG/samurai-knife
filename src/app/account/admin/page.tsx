@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireSignIn } from "@/lib/accounts/viewer";
 import { AdminSecurity } from "@/components/account/AdminSecurity";
+import { AdminSidecarSync } from "@/components/account/AdminSidecarSync";
 import { AdminUsers } from "@/components/account/AdminUsers";
 import { GithubAppAdmin } from "@/components/account/GithubAppAdmin";
 import { getT } from "@/lib/i18n/server";
@@ -12,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 export const dynamic = "force-dynamic";
 
-/** User management, security (abuse-guard blocks and events) and the GitHub App (admins only: the APIs answer 403 to everyone else, the page shows that message). */
+/** Sidecars that need a root sync (only when some do), user management, security (abuse-guard blocks and events) and the GitHub App (admins only: the APIs answer 403 to everyone else, the page shows that message). */
 export default async function AdminPage({ searchParams }: PageProps<"/account/admin">) {
   const { t } = await getT();
   await requireSignIn("/account/admin");
@@ -25,6 +26,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/account/ad
           <h1 className="text-2xl font-semibold tracking-tight text-ink">{t("Users")}</h1>
           <p className="text-[15px] text-muted">{t("Every account on this server. Disabling or deleting an account ends its sessions at once.")}{" "} <Link className="text-accent-soft underline underline-offset-2" href="/account/admin/logs">{t("Server logs")}</Link></p>
         </header>
+        <AdminSidecarSync />
         <AdminUsers />
         <AdminSecurity />
         <GithubAppAdmin created={params.github === "created"} errorCode={one(params.github_error)} errorMessage={one(params.github_message)} />

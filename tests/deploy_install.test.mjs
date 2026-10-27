@@ -179,3 +179,47 @@ test("the repo: --repo, the checkout's origin, the installed update.conf, then p
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("knife-update: a release that touches sidecar bundle sources logs which installed sidecars to check, never syncs", () => {
+  const updater = read("deploy/bin/knife-update");
+  // It only names the commands in a log line; no line runs sudo or the helper.
+  assert.doesNotMatch(updater, /^\s*(?:sudo|knife-sidecar|\S*knife-sidecar-helper)\b/m, "knife-update must never run the root sync");
+  assert.match(INSTALL, /^SIDECAR_BUNDLES=\$ETC\/sidecars$/m);
+  assert.match(updater, /SIDECAR_BUNDLES="\$\(conf SIDECAR_BUNDLES\)"/);
+  // Run the real function from the script against a throwaway repo and bundle dir.
+  const body = updater.slice(updater.indexOf("sidecar_sync_hint() {"), updater.indexOf("\nsidecar_sync_hint\n") + 1);
+  assert.ok(body.startsWith("sidecar_sync_hint() {"), "function not found");
+  const tmp = mkdtempSync(join(tmpdir(), "knife-sync-hint-"));
+  try {
+    const git = (...args) => spawnSync("git", ["-C", join(tmp, "repo"), ...args], { encoding: "utf8" });
+    mkdirSync(join(tmp, "repo", "src", "lib", "services"), { recursive: true });
+    mkdirSync(join(tmp, "repo", "docs"), { recursive: true });
+    spawnSync("git", ["init", "-q", join(tmp, "repo")]);
+    const commit = (file, text) => {
+      writeFileSync(join(tmp, "repo", file), text);
+      git("add", "-A");
+      git("-c", "user.email=t@example.org", "-c", "user.name=t", "commit", "-q", "-m", file);
+      return git("rev-parse", "HEAD").stdout.trim();
+    };
+    const first = commit("docs/a.md", "1");
+    const docsOnly = commit("docs/a.md", "2");
+    const services = commit("src/lib/services/compose.ts", "x");
+    for (const id of ["office", "craft"]) {
+      mkdirSync(join(tmp, "bundles", id), { recursive: true });
+      writeFileSync(join(tmp, "bundles", id, "compose.yaml"), "name: x\n");
+    }
+    mkdirSync(join(tmp, "bundles", "craft-content"));
+    const run = (current, target) => spawnSync("bash", ["-c", `g() { git -C "$REPO" "$@"; }\nlog() { printf '%s\\n' "$*"; }\n${body}\nsidecar_sync_hint`], {
+      encoding: "utf8",
+      env: { ...process.env, REPO: join(tmp, "repo"), current, target, SIDECAR_BUNDLES: join(tmp, "bundles") },
+    });
+    assert.equal(run(first, docsOnly).stdout, "", "a release without sidecar changes logs nothing");
+    assert.equal(run(services, services).stdout, "", "the same commit logs nothing");
+    const out = run(docsOnly, services).stdout;
+    assert.match(out, /sidecar bundle sources changed \(src\/lib\/services\/compose\.ts\)/);
+    assert.match(out, /sudo knife-sidecar check craft; sudo knife-sidecar check office; then sudo knife-sidecar sync <id>/);
+    assert.doesNotMatch(out, /craft-content/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});

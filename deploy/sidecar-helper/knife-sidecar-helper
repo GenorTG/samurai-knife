@@ -13,7 +13,9 @@
 #   sync <id> [--yes] [--dry-run]
 #                         root CLI: validate the app's staged bundle ($STAGING_DIR/<id>/: compose.yaml, secrets.env,
 #                         assets/) and install it under $BUNDLE_ROOT/<id>/ (root-owned)
-#   check <id>            root CLI: sync --dry-run
+#   check <id>            root CLI: sync --dry-run; when the installed bundle differs, also prints WHAT differs
+#                         (compose.yaml as a unified diff, secrets.env as changed + key names, never values; asset
+#                         folders added/removed)
 #   uninstall <id> [--force]
 #                         root CLI: remove an installed bundle (refuses while its containers exist, unless --force)
 #   hash <id>             print the installed bundle hash (same value the app compares against)
@@ -31,6 +33,7 @@
 #
 # Contract: docs/DEPLOY.md "Sidecars without the docker group". Tests: tests/sidecar_helper.test.mjs.
 
+import difflib
 import errno
 import fcntl
 import hashlib
@@ -283,6 +286,71 @@ def bundle_hash_of(directory):
         folders = sorted(entry.name for entry in os.scandir(assets) if entry.is_dir(follow_symlinks=False))
     digest.update("\n".join(folders).encode("utf-8"))
     return digest.hexdigest()
+
+
+MAX_DIFF_LINES = 200
+
+
+def _bundle_file(directory, name, limit):
+    """Bytes of one bundle file, or None when it is missing (never follows a symlink)."""
+    try:
+        fd = os.open(os.path.join(directory, name), os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(fd, "rb") as handle:
+        return handle.read(limit)
+
+
+def _asset_folders(directory):
+    assets = os.path.join(directory, "assets")
+    if not os.path.isdir(assets) or os.path.islink(assets):
+        return set()
+    return {entry.name for entry in os.scandir(assets) if entry.is_dir(follow_symlinks=False)}
+
+
+def _secret_keys(data):
+    keys = set()
+    for line in (data or b"").decode("ascii", "replace").splitlines():
+        if "=" in line:
+            keys.add(line.split("=", 1)[0].strip())
+    return keys
+
+
+def bundle_diff(installed_dir, staged_dir):
+    """What differs between root's installed bundle and the staged one, over exactly the inputs of bundle_hash_of():
+    compose.yaml (unified diff, capped), secrets.env (changed + key names added/removed; values are never printed) and
+    the asset folder names. Empty when they are the same. Returns printable lines."""
+    lines = []
+    if not os.path.isfile(os.path.join(installed_dir, "compose.yaml")):
+        return ["nothing installed yet: the whole staged bundle is new"]
+    old_compose = _bundle_file(installed_dir, "compose.yaml", 1024 * 1024) or b""
+    new_compose = _bundle_file(staged_dir, "compose.yaml", 1024 * 1024) or b""
+    if old_compose != new_compose:
+        diff = list(difflib.unified_diff(
+            old_compose.decode("utf-8", "replace").splitlines(), new_compose.decode("utf-8", "replace").splitlines(),
+            "installed/compose.yaml", "staged/compose.yaml", lineterm="", n=2))
+        lines.append("compose.yaml differs:")
+        lines += ["  " + line for line in diff[:MAX_DIFF_LINES]]
+        if len(diff) > MAX_DIFF_LINES:
+            lines.append(f"  ... {len(diff) - MAX_DIFF_LINES} more diff lines")
+    old_secrets = _bundle_file(installed_dir, "secrets.env", 64 * 1024)
+    new_secrets = _bundle_file(staged_dir, "secrets.env", 64 * 1024)
+    if old_secrets != new_secrets:
+        old_keys, new_keys = _secret_keys(old_secrets), _secret_keys(new_secrets)
+        detail = []
+        if new_keys - old_keys:
+            detail.append("keys added: " + ", ".join(sorted(new_keys - old_keys)))
+        if old_keys - new_keys:
+            detail.append("keys removed: " + ", ".join(sorted(old_keys - new_keys)))
+        if not detail:
+            detail.append("a value changed")
+        lines.append("secrets.env changed (values not shown): " + "; ".join(detail))
+    old_assets, new_assets = _asset_folders(installed_dir), _asset_folders(staged_dir)
+    if new_assets - old_assets:
+        lines.append("asset folders added: " + ", ".join(sorted(new_assets - old_assets)))
+    if old_assets - new_assets:
+        lines.append("asset folders removed: " + ", ".join(sorted(old_assets - new_assets)))
+    return lines
 
 
 def installed_hash(conf, sidecar_id):
@@ -939,6 +1007,8 @@ def sync(conf, sidecar_id, assume_yes, dry_run):
             print(f"{sidecar_id}: already installed (bundle {new_hash[:12]})")
             return 0
         print(f"{sidecar_id}: bundle {old_hash[:12] if old_hash else 'absent'} -> {new_hash[:12]}")
+        for line in bundle_diff(final, fresh):
+            print(f"  {line}")
         if dry_run:
             print("dry run: nothing installed")
             return 0

@@ -649,7 +649,58 @@ export interface SidecarStatus {
   busy: OpLock | null;
   openSessions: number;
   memory?: { usedBytes: number; text: string } | null;
+  /** Helper backend: whether root's installed bundle matches what this release stages (null: nothing to compare). */
+  sync: SyncCheck | null;
   warnings: string[];
+}
+
+/**
+ * Helper backend only: does root's installed bundle match what this release renders? `needed` = the owner must run
+ * `sudo knife-sidecar sync <id>` (`sudo knife-sidecar check <id>` prints what differs). docs/DEPLOY.md "Sidecars
+ * without the docker group".
+ */
+export interface SyncCheck {
+  needed: boolean;
+  reason?: "absent" | "differs" | "unavailable";
+  message?: string;
+  hint?: string;
+  /** The root command that installs the staged bundle. */
+  command: string;
+  checkedAt: string;
+}
+
+const RESTAGED_KEY = Symbol.for("samurai-knife.sidecar-restaged");
+
+/** Sidecars whose bundle this process has re-staged (once per process: a new release is a new process). */
+function restaged(): Set<string> {
+  const holder = globalThis as unknown as Record<symbol, Set<string> | undefined>;
+  holder[RESTAGED_KEY] ??= new Set();
+  return holder[RESTAGED_KEY];
+}
+
+export function syncCommand(id: string): string {
+  return `sudo knife-sidecar sync ${id}`;
+}
+
+/**
+ * Compares the staged bundle with root's copy, re-staging it first (data dir only: compose.yaml, secrets, assets,
+ * nginx.conf) so a release that changed what it renders is noticed at startup, not at the next start of the container.
+ * null when there is nothing to compare: the docker backend, or the sidecar is not installed.
+ */
+export async function checkSync(id: string): Promise<SyncCheck | null> {
+  const def = definition(id);
+  const backend = sidecarBackend();
+  if (backend.kind !== "helper") return null;
+  const state = readState(id);
+  if (!state) return null;
+  if (!restaged().has(id) && !readLock(id)) {
+    writeCompose(def, state);
+    restaged().add(id);
+  }
+  const check = await backend.checkBundle(def);
+  const checkedAt = new Date().toISOString();
+  if (check.ok) return { needed: false, command: syncCommand(id), checkedAt };
+  return { needed: check.reason !== "unavailable", reason: check.reason, message: check.message, hint: check.hint, command: syncCommand(id), checkedAt };
 }
 
 function parseBytes(text: string): number {
@@ -676,12 +727,14 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
   let container: ContainerInfo = { state: "absent" };
   let ready = false;
   let memory: SidecarStatus["memory"];
+  let sync: SyncCheck | null = null;
   if (runtime.ok && state) {
     container = await containerInfo(backend, def);
     ready = container.state === "running" && (await probeHealth(def, state, 1500));
     if (options.memory && container.name && container.state === "running") memory = await containerMemory(backend, def, container.name);
-    const bundle = await backend.checkBundle(def);
-    if (!bundle.ok) warnings.push(`${bundle.message} ${bundle.hint}`);
+    sync = await checkSync(id);
+    // "Sync needed" has its own notice (SyncCheck); a helper that does not answer stays a plain warning.
+    if (sync?.reason === "unavailable") warnings.push(`${sync.message} ${sync.hint}`);
   }
   const app = appUrl(state);
   if (app.warning && def.callsBack) warnings.push(app.warning);
@@ -717,6 +770,7 @@ export async function status(id: string, options: { memory?: boolean } = {}): Pr
     busy: readLock(id),
     openSessions: sessions(id).size,
     memory,
+    sync,
     warnings,
   };
 }

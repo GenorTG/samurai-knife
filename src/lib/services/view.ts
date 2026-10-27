@@ -4,12 +4,13 @@ import type { OpView } from "./ops";
 
 /**
  * What an account may see of a sidecar. Admins (every account in private mode): everything. Others in public mode: whether
- * it is installed and running, nothing of its configuration (state with bind address and ports, memory, lock holder).
+ * it is installed and running, nothing of its configuration (state with bind address and ports, memory, lock holder,
+ * the root bundle sync check).
  * `canManage` tells the UI whether to show the lifecycle controls.
  */
-export function serviceViewFor<T extends { state: unknown; memory?: unknown; busy?: unknown; op?: OpView | null }>(account: Account, service: T): T & { canManage: boolean } {
+export function serviceViewFor<T extends { state: unknown; memory?: unknown; busy?: unknown; sync?: unknown; op?: OpView | null }>(account: Account, service: T): T & { canManage: boolean } {
   if (isAdmin(account)) return { ...service, canManage: true };
-  return { ...service, state: null, memory: null, busy: null, op: service.op ? opViewFor(account, service.op) : service.op, canManage: false };
+  return { ...service, state: null, memory: null, busy: null, sync: null, op: service.op ? opViewFor(account, service.op) : service.op, canManage: false };
 }
 
 /**

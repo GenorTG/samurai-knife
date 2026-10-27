@@ -7,6 +7,7 @@ import type { SidecarDefinition } from "./definitions";
 import type { RunOptions, RunResult, RuntimeInfo } from "./runtime";
 import { SECRETS_FILE, ASSETS_DIR } from "./compose";
 import { composeFile, serviceDir } from "./state";
+import { msgf } from "@/lib/i18n/msg";
 
 /**
  * Client of the root-owned knife-sidecar helper (deploy/sidecar-helper/knife-sidecar-helper), the sidecar backend for
@@ -115,7 +116,10 @@ export function bundleHash(dir: string): string | null {
 }
 
 const SYNC_HINT = (id: string) =>
-  `On the host, as root: sudo knife-sidecar sync ${id} (validates the bundle this app staged in its data dir and installs it; docs/DEPLOY.md "Sidecars without the docker group"). If the sync refuses something this release added (a new mount), re-run deploy/install.sh first: it installs the matching helper.`;
+  msgf(
+    "On the host, as root: sudo knife-sidecar check {id} shows what differs, then sudo knife-sidecar sync {id} validates the bundle this app staged in its data dir and installs it (docs/DEPLOY.md \"Sidecars without the docker group\"). If the sync refuses something this release added (a new mount), re-run deploy/install.sh first: it installs the matching helper.",
+    { id },
+  );
 
 let cached: { at: number; info: RuntimeInfo } | null = null;
 
@@ -166,17 +170,17 @@ export const helperBackend: SidecarBackend = {
     const staged = bundleHash(serviceDir(def.id));
     const result = await callHelper(`hash ${def.id}`, { timeoutMs: 15_000 });
     if (result.code !== 0) {
-      return { ok: false, reason: "unavailable", message: `The sidecar helper did not answer: ${result.stderr.trim().split("\n").pop() ?? ""}`, hint: SYNC_HINT(def.id) };
+      return { ok: false, reason: "unavailable", message: msgf("The sidecar helper did not answer: {detail}", { detail: result.stderr.trim().split("\n").pop() ?? "" }), hint: SYNC_HINT(def.id) };
     }
     const installed = result.stdout.trim().split("\n").pop() ?? "";
     if (installed === "absent") {
-      return { ok: false, reason: "absent", message: `${def.name} has no root-installed compose bundle on this host yet.`, hint: SYNC_HINT(def.id) };
+      return { ok: false, reason: "absent", message: msgf("Sync needed: {name} has no root-installed compose bundle on this host yet.", { name: def.name }), hint: SYNC_HINT(def.id) };
     }
     if (!staged || installed !== staged) {
       return {
         ok: false,
         reason: "differs",
-        message: `The host's installed bundle for ${def.name} differs from what this release renders (image, port, editor plugin or secret changed).`,
+        message: msgf("Sync needed: the host's installed bundle for {name} differs from what this release renders (image, port, editor plugin, generated config or secret changed).", { name: def.name }),
         hint: SYNC_HINT(def.id),
       };
     }

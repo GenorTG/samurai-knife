@@ -1,16 +1,17 @@
 import { sidecarBackend } from "./backend";
 import { SIDECARS } from "./definitions";
-import { containerInfo, ensureReaper, type ContainerState } from "./manager";
+import { checkSync, containerInfo, ensureReaper, type ContainerState } from "./manager";
 import { getOp, runningOp, startOp } from "./ops";
 import { readLock, readState, type SidecarState } from "./state";
+import { recordSync } from "./sync-check";
 
 /**
  * Autostart (docs/SIDECARS.md "Autostart"): a sidecar whose state has `autostart` is started when the app boots and
  * started again within a minute whenever it is not running (crash, docker restart, host reboot), unless an
  * administrator stopped it (`heldStopped`, cleared by the next start). It runs as the ordinary start op, so the
- * Sidecars page shows its progress. A failed start waits RETRY_MS before the next try, so a broken install (a helper
- * bundle that needs `sudo knife-sidecar sync`, a missing image) does not loop. The containers keep `restart: "no"`:
- * the app owns their lifecycle, and the app itself is started at boot by systemd.
+ * Sidecars page shows its progress. A failed start waits RETRY_MS before the next try, so a broken install (a missing
+ * image) does not loop; a helper bundle that needs `sudo knife-sidecar sync` is not tried at all until it is synced.
+ * The containers keep `restart: "no"`: the app owns their lifecycle, and the app itself is started at boot by systemd.
  */
 
 export const RETRY_MS = 10 * 60_000;
@@ -68,6 +69,11 @@ export async function autostartPass(now = Date.now()): Promise<string[]> {
     if (busy || state.heldStopped) continue;
     const info = await containerInfo(backend, def);
     if (!autostartDue(state, info.state, { busy, lastFailureAt: registry().failedAt.get(def.id), now })) continue;
+    // A bundle that needs `sudo knife-sidecar sync` cannot start: say so once (sync-check.ts) instead of a failed start
+    // op every RETRY_MS; checked again every pass, so the sidecar starts within a minute of the sync.
+    const sync = await checkSync(def.id);
+    recordSync(def.id, def.name, sync);
+    if (sync?.needed) continue;
     try {
       const op = startOp(def.id, { kind: "start" });
       registry().lastOp.set(def.id, op.opId);

@@ -312,6 +312,7 @@ CACHE_DIR=$CACHE
 KEEP=3
 LOG_DIR=$LOGS/update
 LOG_RETENTION_DAYS=$log_days
+SIDECAR_BUNDLES=$ETC/sidecars
 EOF
 install -o root -g knife-deploy -m 0640 "$ETC/update.conf.new" "$ETC/update.conf"; rm -f "$ETC/update.conf.new"
 sub() { sed -e "s|@NODE@|$NODE_BIN|g" -e "s|@NPM@|$(dirname "$NODE_BIN")/npm|g" -e "s|@APP_ROOT@|$APP_ROOT|g" -e "s|@UPDATER@|$LIBEXEC/knife-update|g" \

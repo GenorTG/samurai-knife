@@ -30,6 +30,8 @@ KEEP="$(conf KEEP)"; KEEP="${KEEP:-3}"
 NODE_BIN="$(conf NODE_BIN)"; NODE_BIN="${NODE_BIN:-/usr/bin/node}"
 PYTHON_BIN="$(conf PYTHON_BIN)"; PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
 CACHE_DIR="$(conf CACHE_DIR)"; CACHE_DIR="${CACHE_DIR:-/var/cache/samurai-knife}"
+# Root's installed sidecar bundles (knife-sidecar sync); only listed, to name the ids in the "sync may be needed" line.
+SIDECAR_BUNDLES="$(conf SIDECAR_BUNDLES)"; SIDECAR_BUNDLES="${SIDECAR_BUNDLES:-/etc/samurai-knife/sidecars}"
 STATE="${STATE_DIRECTORY:-${HOME:-/var/lib/knife-deploy}}"
 GIT_DIR="$APP_ROOT/repo.git"
 RELEASES="$APP_ROOT/releases"
@@ -212,6 +214,23 @@ else
   failed_dir=""; rm -f "$RELEASES/.failed/$safe"
   log "live now runs $name (${target:0:7}) at $LIVE_URL"
 fi
+
+# A release that changes what a sidecar bundle renders (compose, secrets, editor plugin, generated config) needs
+# `sudo knife-sidecar sync <id>` before that sidecar can start again; the containers keep running, so say it here. This
+# is a hint from the diff; the app checks every installed sidecar after its start and shows "Sync needed" to admins
+# (docs/DEPLOY.md "Sidecars without the docker group").
+sidecar_sync_hint() {
+  [[ -n "$current" && "$current" != "$target" ]] || return 0
+  local changed ids=() d
+  changed="$(g diff --name-only "$current" "$target" -- src/lib/services sidecars deploy/sidecar-helper 2>/dev/null | head -n 8 | paste -sd' ' -)" || return 0
+  [[ -n "$changed" ]] || return 0
+  for d in "$SIDECAR_BUNDLES"/*/; do
+    [[ -f "$d/compose.yaml" ]] && ids+=("$(basename -- "$d")")
+  done
+  (( ${#ids[@]} )) || return 0
+  log "sidecar bundle sources changed ($changed): a sync may be needed; the app shows \"Sync needed\" on the Sidecar services page and /account/admin within a minute. As root: $(printf 'sudo knife-sidecar check %s; ' "${ids[@]}")then sudo knife-sidecar sync <id> for each that differs"
+}
+sidecar_sync_hint
 
 # Retention: the current release and the one it replaced always stay; failed ones go (their marker stays);
 # other good ones up to KEEP dirs in total, newest first.

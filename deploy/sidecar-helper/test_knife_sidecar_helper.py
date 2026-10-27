@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import os
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -200,6 +201,71 @@ class Validate(unittest.TestCase):
         self.assertRefused("learn-db", self.mutate(lambda c, s: s["volumes"].append(
             {"type": "bind", "source": f"{DIR}/assets", "target": "/x", "read_only": True})), "bind mount")
 
+
+
+class BundleDiff(unittest.TestCase):
+    """`check`/`sync` explain a hash change over exactly the hashed inputs, and never print a secret value."""
+
+    def make(self, root, name, compose, secrets, folders):
+        directory = os.path.join(root, name)
+        os.makedirs(os.path.join(directory, "assets"))
+        with open(os.path.join(directory, "compose.yaml"), "w") as handle:
+            handle.write(compose)
+        with open(os.path.join(directory, "secrets.env"), "w") as handle:
+            handle.write(secrets)
+        for folder in folders:
+            os.makedirs(os.path.join(directory, "assets", folder))
+        return directory
+
+    def test_same_bundle_has_no_lines(self):
+        with tempfile.TemporaryDirectory() as root:
+            a = self.make(root, "a", "name: x\n", "K=v1\n", ["conf-1"])
+            b = self.make(root, "b", "name: x\n", "K=v1\n", ["conf-1"])
+            self.assertEqual(helper.bundle_diff(a, b), [])
+            self.assertEqual(helper.bundle_hash_of(a), helper.bundle_hash_of(b))
+
+    def test_each_input_is_named(self):
+        with tempfile.TemporaryDirectory() as root:
+            installed = self.make(root, "installed", "name: x\nimage: a:1\n", "JWT_SECRET=topsecret111\n", ["conf-old", "keep"])
+            staged = self.make(root, "staged", "name: x\nimage: a:2\n",
+                               "JWT_SECRET=topsecret222\nSECURE_LINK_SECRET=hidden333\n", ["conf-new", "keep"])
+            out = "\n".join(helper.bundle_diff(installed, staged))
+            self.assertIn("compose.yaml differs:", out)
+            self.assertIn("-image: a:1", out)
+            self.assertIn("+image: a:2", out)
+            self.assertIn("secrets.env changed (values not shown): keys added: SECURE_LINK_SECRET", out)
+            self.assertIn("asset folders added: conf-new", out)
+            self.assertIn("asset folders removed: conf-old", out)
+            self.assertNotIn("keep", out)
+            for value in ("topsecret111", "topsecret222", "hidden333"):
+                self.assertNotIn(value, out)
+
+    def test_changed_secret_value_only(self):
+        with tempfile.TemporaryDirectory() as root:
+            installed = self.make(root, "i", "name: x\n", "K=old\n", [])
+            staged = self.make(root, "s", "name: x\n", "K=new\n", [])
+            self.assertEqual(helper.bundle_diff(installed, staged), ["secrets.env changed (values not shown): a value changed"])
+
+    def test_only_folder_names_differ(self):
+        # The 2026-10-27 craft case: same compose and secret, an extra generated config folder staged.
+        with tempfile.TemporaryDirectory() as root:
+            installed = self.make(root, "i", "name: x\n", "K=v\n", ["conf-81536158cc00"])
+            staged = self.make(root, "s", "name: x\n", "K=v\n", ["conf-81536158cc00", "conf-7486cb2cf425"])
+            self.assertNotEqual(helper.bundle_hash_of(installed), helper.bundle_hash_of(staged))
+            self.assertEqual(helper.bundle_diff(installed, staged), ["asset folders added: conf-7486cb2cf425"])
+
+    def test_nothing_installed(self):
+        with tempfile.TemporaryDirectory() as root:
+            staged = self.make(root, "s", "name: x\n", "K=v\n", [])
+            self.assertEqual(helper.bundle_diff(os.path.join(root, "missing"), staged), ["nothing installed yet: the whole staged bundle is new"])
+
+    def test_long_compose_diff_is_capped(self):
+        with tempfile.TemporaryDirectory() as root:
+            installed = self.make(root, "i", "".join(f"a{i}: 1\n" for i in range(400)), "K=v\n", [])
+            staged = self.make(root, "s", "".join(f"a{i}: 2\n" for i in range(400)), "K=v\n", [])
+            out = helper.bundle_diff(installed, staged)
+            self.assertLessEqual(len(out), helper.MAX_DIFF_LINES + 2)
+            self.assertTrue(out[-1].startswith("  ... ") and out[-1].endswith("more diff lines"))
 
 if __name__ == "__main__":
     result = unittest.main(exit=False, verbosity=1).result

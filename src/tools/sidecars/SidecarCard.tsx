@@ -5,6 +5,7 @@ import { Badge, Button, Field, KeyValues, Meter, Notice, NumberField, Panel, Tex
 import { formatBytes } from "@/lib/format";
 import { configureService, errorText, type OpView, type ServiceView } from "./client";
 import type { useSidecar } from "./useSidecar";
+import { SyncNeededNotice } from "@/components/SyncNeededNotice";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
@@ -180,6 +181,7 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
             {service.runtime.message} {t(service.runtime.hint)}
           </Notice>
         ) : null}
+        {service.runtime.ok && service.sync?.needed ? <SyncNeededNotice id={service.id} name={service.name} message={service.sync.message} /> : null}
         {/* Without a runtime the warnings repeat the notice above. */}
         {(service.runtime.ok ? service.warnings : []).map((warning) => (
           <Notice key={warning} tone="warn">{warning}</Notice>

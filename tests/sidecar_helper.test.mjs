@@ -414,6 +414,26 @@ test("sync: the app's rendered compose files pass the helper's validator; tamper
     const again = spawnSync("python3", ["-I", HELPER, "sync", def.id, "--yes"], { env, encoding: "utf8" });
     assert.match(again.stdout, /already installed/);
   }
+  // `check` after a release changed the staged bundle: it names what differs (compose diff, secret keys, asset folders),
+  // never a secret value, and installs nothing.
+  {
+    const staging = join(dir, "staging", "office");
+    const before = readFileSync(join(staging, "compose.yaml"), "utf8");
+    writeFileSync(join(staging, "compose.yaml"), before.replace("mem_limit: 3g", "mem_limit: 2g"));
+    writeFileSync(join(staging, "secrets.env"), readFileSync(join(staging, "secrets.env"), "utf8") + `NEW_SECRET=${"cd".repeat(8)}\n`);
+    rmSync(join(staging, "assets", "knife-bridge-0123abcd"), { recursive: true });
+    mkdirSync(join(staging, "assets", "knife-bridge-4567ef01"));
+    const installedHash = spawnSync("python3", ["-I", HELPER, "hash", "office"], { env, encoding: "utf8" }).stdout.trim();
+    const check = spawnSync("python3", ["-I", HELPER, "check", "office"], { env, encoding: "utf8" });
+    assert.equal(check.status, 0, check.stderr);
+    assert.match(check.stdout, /compose\.yaml differs:\n(?:.*\n)*\s+-\s+mem_limit: 3g\n(?:.*\n)*\s+\+\s+mem_limit: 2g/);
+    assert.match(check.stdout, /secrets\.env changed \(values not shown\): keys added: NEW_SECRET/);
+    assert.match(check.stdout, /asset folders added: knife-bridge-4567ef01/);
+    assert.match(check.stdout, /asset folders removed: knife-bridge-0123abcd/);
+    assert.match(check.stdout, /dry run: nothing installed/);
+    assert.doesNotMatch(check.stdout, /abababab|cdcdcdcd/, "no secret value in the output");
+    assert.equal(spawnSync("python3", ["-I", HELPER, "hash", "office"], { env, encoding: "utf8" }).stdout.trim(), installedHash, "check installs nothing");
+  }
   const staging = join(dir, "staging", "learn-db");
   const good = readFileSync(join(staging, "compose.yaml"), "utf8");
   const tampered = [

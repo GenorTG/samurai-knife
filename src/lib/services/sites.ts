@@ -242,10 +242,25 @@ export function sitesConfig(def: SidecarDefinition, env: NodeJS.ProcessEnv = pro
   return { conf, folder, command: ["-c", `${def.sites.target}/${folder}/nginx.conf`] };
 }
 
-/** Writes `assets/conf-<hash>/nginx.conf` when missing (cheap; every compose write calls it). */
+const CONF_FOLDER = /^conf-[0-9a-f]{12}$/;
+
+/**
+ * Writes `assets/conf-<hash>/nginx.conf` when missing (cheap; every compose write calls it) and removes the configs of
+ * earlier renders: the helper's bundle hash covers the asset folder NAMES, so a stale config left behind would make the
+ * staged bundle differ from root's copy forever (a "sync needed" with nothing to sync).
+ */
 export function writeSitesConf(def: SidecarDefinition): void {
   const config = sitesConfig(def);
   if (!config) return;
+  writeCurrentConf(def, config);
+  for (const entry of readdirSync(assetsDir(def), { withFileTypes: true })) {
+    if (entry.isDirectory() && CONF_FOLDER.test(entry.name) && entry.name !== config.folder) {
+      rmSync(join(assetsDir(def), entry.name), { recursive: true, force: true });
+    }
+  }
+}
+
+function writeCurrentConf(def: SidecarDefinition, config: { conf: string; folder: string }): void {
   const dir = join(assetsDir(def), config.folder);
   if (existsSync(join(dir, "nginx.conf"))) return;
   const temp = join(assetsDir(def), `.tmp-${config.folder}-${process.pid}`);
