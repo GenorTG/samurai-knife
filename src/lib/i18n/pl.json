@@ -2336,7 +2336,7 @@
   "Language {id} name ({l})": "Nazwa języka {id} ({l})",
   "Language in {l}": "Język ({l})",
   "Language in {l}, e.g. English": "Język ({l}), np. angielski",
-  "Language: {current}. Switch to {next}": "Język: {current}. Przełącz na: {next}",
+  "Language: {current}": "Język: {current}",
   "Large inline payloads delay the first paint.": "Duże dane osadzone w stronie opóźniają pierwsze wyrenderowanie.",
   "Large inputs are not kept in drafts": "Duże dane wejściowe nie są zachowywane w wersjach roboczych",
   "larger than {value} MB: not read": "większy niż {value} MB: nie przeczytano",

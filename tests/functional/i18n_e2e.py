@@ -72,8 +72,16 @@ def main() -> int:
         page.goto(base + "/", wait_until="networkidle")
         check("english browser gets lang=en", page.evaluate("document.documentElement.lang") == "en")
         switch = page.locator("[data-language-switcher]")
-        check("switcher shows EN", switch.first.inner_text().strip().lower() == "en", switch.first.inner_text())
+        check("switcher names the current language", switch.first.get_attribute("data-language-switcher") == "en" and "English" in switch.first.inner_text(), switch.first.inner_text())
+        check("switcher is visible in the top bar", switch.first.is_visible())
         switch.first.click()
+        menu = page.get_by_role("menu", name="Interface language")
+        check("switcher opens a language menu", menu.is_visible())
+        check("menu lists every language in its own name", menu.get_by_role("menuitemradio").all_inner_texts() and ["English", "Polski"] == [x.split("\n")[0].strip() for x in menu.get_by_role("menuitemradio").all_inner_texts()], menu.inner_text())
+        page.keyboard.press("Escape")
+        check("Escape closes the menu", menu.count() == 0)
+        switch.first.click()
+        page.get_by_role("menuitemradio", name="Polski").click()
         page.wait_for_function("() => document.querySelector('[data-language-switcher]')?.dataset.languageSwitcher === 'pl'", timeout=20000)
         settle(page)
         check("html lang becomes pl", page.evaluate("document.documentElement.lang") == "pl")
@@ -82,6 +90,12 @@ def main() -> int:
         cookies = {c["name"]: c["value"] for c in ctx.cookies()}
         check("cookie knife_lang=pl", cookies.get("knife_lang") == "pl", cookies)
         shot(page, "home-pl")
+        for width in (1024, 390):
+            page.set_viewport_size({"width": width, "height": 800})
+            for path in ("/", "/tools/qr"):
+                page.goto(base + path, wait_until="networkidle")
+                check(f"switcher visible on {path} at {width}px", page.locator("[data-language-switcher]").first.is_visible())
+        page.set_viewport_size({"width": 1280, "height": 800})
 
         # 2. The choice survives a reload and is saved on the account.
         page.reload(wait_until="networkidle")
