@@ -77,7 +77,7 @@ export const NAV: readonly NavSection[] = [
       { slug: "dates" },
     ],
   },
-  { id: "career", label: msg("Career"), icon: "career", items: [{ slug: "cv-studio" }, { slug: "site-studio" }] },
+  { id: "career", label: msg("Career"), icon: "career", items: [{ slug: "cv-studio" }] },
   { id: "automate", label: msg("Automation"), icon: "automate", items: [{ slug: "workflows" }] },
   { id: "learn", label: msg("Learning"), icon: "learn", items: [{ slug: "db-course" }] },
 ];

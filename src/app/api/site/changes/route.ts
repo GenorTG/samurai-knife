@@ -2,6 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, parseBody } from "@/lib/accounts/http";
 import { siteErrorResponse } from "@/lib/site/http";
 import { changes, discard, openPull, publish } from "@/lib/site/service";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   try {
     return json(await changes(auth.account.id));
   } catch (error) {
@@ -28,6 +31,8 @@ const actionSchema = z.discriminatedUnion("action", [
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const parsed = await parseBody(request, actionSchema, '{ action: "pr", title, body } | { action: "publish", head } | { action: "discard" }', 32 * 1024);
   if ("response" in parsed) return parsed.response;
   try {

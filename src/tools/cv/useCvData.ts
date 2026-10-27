@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errorText, getCv, undoCv } from "@/lib/cv/client";
+import { errorText, getCv, undoCv, type CvProjectInfo } from "@/lib/cv/client";
+import { CV_PROJECT_EVENT, setShownProject } from "@/lib/cv/shown-project";
 import { diffCollections, diffCv, type FieldChange } from "@/lib/cv/diff";
 import type { CvData } from "@/lib/cv/schema";
 
@@ -24,10 +25,14 @@ export interface CvLive {
   batch: ChangeBatch | null;
   /** POST /api/cv/undo, then refetch. Resolves to an error text or "". */
   undo: () => Promise<string>;
+  /** The CV project shown (the account's active one; follows a switch made elsewhere on the next poll). */
+  project: string | null;
+  /** The account's CV projects. */
+  projects: CvProjectInfo[];
 }
 
 /**
- * Loads the CV data once, then polls `GET /api/cv?revision=N` every ~2 s while the page is visible (cheap: answers
+ * Loads the active CV project's data once, then polls `GET /api/cv?revision=N&shown=<project>` every ~2 s while the page is visible (cheap: answers
  * `{changed:false}`), pauses when hidden and refetches on focus. Every revision change is diffed against the previous
  * data, so any edit (assistant via knife_cv_* tools, the user, another tab) is reported as a `batch`.
  */
@@ -36,7 +41,10 @@ export function useCvData(): CvLive {
   const [status, setStatus] = useState<CvLive["status"]>("loading");
   const [error, setError] = useState("");
   const [batch, setBatch] = useState<ChangeBatch | null>(null);
+  const [project, setProject] = useState<string | null>(null);
+  const [projects, setProjects] = useState<CvProjectInfo[]>([]);
   const dataRef = useRef<CvData | null>(null);
+  const projectRef = useRef<string | null>(null);
   const inflight = useRef<Promise<void> | null>(null);
   const seq = useRef(0);
   const alive = useRef(true);
@@ -46,14 +54,21 @@ export function useCvData(): CvLive {
     const run = (async () => {
       try {
         const known = dataRef.current?.revision;
-        const res = await getCv(force || !known ? undefined : known);
+        const res = await getCv(force || !known || !projectRef.current ? undefined : { revision: known, project: projectRef.current });
         if (!alive.current) return;
         setError("");
         setStatus("ready");
         if (!res.changed) return;
-        const { changed, ...next } = res;
+        const { changed, project: nextProject, active, projects: list, ...next } = res;
         void changed;
-        const prev = dataRef.current;
+        void active;
+        setProjects(list);
+        // Another project became active (the switcher, the assistant, another tab): show it as it is, no change toast.
+        const switched = projectRef.current !== null && projectRef.current !== nextProject;
+        projectRef.current = nextProject;
+        setShownProject(nextProject);
+        setProject(nextProject);
+        const prev = switched ? null : dataRef.current;
         if (prev && prev.revision === next.revision) return;
         const changes = prev ? [...diffCv(prev.profile, next.profile), ...diffCollections(prev, next)] : [];
         dataRef.current = next;
@@ -88,13 +103,16 @@ export function useCvData(): CvLive {
     const wake = () => {
       if (document.visibilityState === "visible") void load(false);
     };
+    const switched = () => void load(true);
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
+    window.addEventListener(CV_PROJECT_EVENT, switched);
     return () => {
       alive.current = false;
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("focus", wake);
+      window.removeEventListener(CV_PROJECT_EVENT, switched);
     };
   }, [load]);
 
@@ -113,5 +131,5 @@ export function useCvData(): CvLive {
     }
   }, [load]);
 
-  return { data, status, error, reload, batch, undo };
+  return { data, status, error, reload, batch, undo, project, projects };
 }

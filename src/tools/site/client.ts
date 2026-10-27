@@ -1,10 +1,13 @@
 import type { AuditRun } from "@/lib/site/audit/types";
-import type { SiteView } from "@/lib/site/store";
+import type { SiteView as StoredSiteView } from "@/lib/site/store";
 import { cmsg } from "@/lib/i18n/client-locale";
+import { withProject } from "@/lib/cv/shown-project";
 
 /** Typed browser helpers for /api/site/*. Errors carry the API's own `error` text. */
 
-export type { AuditRun, SiteView };
+export type { AuditRun };
+/** GET /api/site: the project's website view, plus whether checks of a website without a repository need the ownership proof. */
+export type SiteView = StoredSiteView & { proofNeeded?: boolean };
 
 export class SiteApiError extends Error {
   status: number;
@@ -23,7 +26,7 @@ export function errorText(error: unknown): string {
 export async function siteRequest<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(withProject(path), {
       method,
       credentials: "same-origin",
       cache: "no-store",

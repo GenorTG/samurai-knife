@@ -5,9 +5,11 @@ import { readAccountText } from "@/lib/storage/sealed";
 import { accountScope, parentDir } from "@/lib/storage/scope";
 import type { AuditRun, Issue, ScoreKey } from "./audit/types";
 import { SiteError } from "./net";
+import { currentProjectId, projectPaths } from "@/lib/cv/projects";
 
 /**
- * Per-account website studio state: `site/<id>.json`, sealed at rest like every account file (src/lib/storage/sealed.ts),
+ * Website state per CV project (`site/<id>.json` for the first project, `cv/<id>.p-<project>.site.json` for the others;
+ * the GitHub App installations stay account-wide in `site/<id>.json`), sealed at rest like every account file (src/lib/storage/sealed.ts),
  * counted by the quota, removed with the account. The GitHub token and the PageSpeed key live only here and never leave
  * the server: `siteView` is what routes and tools answer. Synchronous read-modify-write on the single Node thread.
  */
@@ -56,10 +58,24 @@ const workSchema = z.object({
 });
 export type WorkBranch = z.infer<typeof workSchema>;
 
+/**
+ * A website without a repository (the CV check only): its address, the pages to read, and the ownership proof. In public
+ * mode a non-admin's address is read only once verified (ownership.ts `verifySiteUrl`: the site serves `token`).
+ */
+export const siteUrlSchema = z.object({
+  url: z.string().max(500),
+  pages: z.array(z.string().max(300)).max(10).default([]),
+  token: z.string().max(80),
+  verifiedOrigin: z.string().max(500).default(""),
+  setAt: z.string(),
+});
+export type SiteUrl = z.infer<typeof siteUrlSchema>;
+
 const fileSchema = z.object({
   version: z.literal(1),
   revision: z.number().int().min(0).default(0),
   connection: connectionSchema.nullable().default(null),
+  siteUrl: siteUrlSchema.nullable().default(null),
   work: workSchema.nullable().default(null),
   // Audit runs are produced by our own code; stored as they are (validated loosely).
   audits: z.array(z.record(z.string(), z.unknown())).max(KEEP_AUDITS).default([]),
@@ -70,15 +86,33 @@ const fileSchema = z.object({
 });
 export type SiteFile = Omit<z.infer<typeof fileSchema>, "audits"> & { audits: AuditRun[] };
 
-function path(accountId: string): string {
+/** The account file: the first CV project's website, and the GitHub App installations linked for the whole account. */
+function accountPath(accountId: string): string {
   const file = accountScope(accountId).siteFile;
   parentDir(file);
   return file;
 }
 
+/** The website file of the CV project this call works on (src/lib/cv/projects.ts). */
+function path(accountId: string): string {
+  const file = projectPaths(accountId, currentProjectId(accountId)).site;
+  parentDir(file);
+  return file;
+}
+
+const EMPTY: SiteFile = { version: 1, revision: 0, connection: null, siteUrl: null, work: null, audits: [], lastAction: null, github: null };
+
 export function loadSite(accountId: string): SiteFile {
   const file = path(accountId);
-  if (!existsSync(file)) return { version: 1, revision: 0, connection: null, work: null, audits: [], lastAction: null, github: null };
+  const site = readFile(accountId, file);
+  const shared = accountPath(accountId);
+  // The GitHub sign-in (linked installations) is the account's, whichever project shows it.
+  if (file !== shared) site.github = readFile(accountId, shared).github;
+  return site;
+}
+
+function readFile(accountId: string, file: string): SiteFile {
+  if (!existsSync(file)) return { ...EMPTY, audits: [] };
   let raw: unknown;
   try {
     raw = JSON.parse(readAccountText(accountId, file));
@@ -96,7 +130,19 @@ export function mutateSite<T>(accountId: string, fn: (site: SiteFile) => T): T {
   const result = fn(site);
   site.revision += 1;
   site.audits = site.audits.slice(0, KEEP_AUDITS);
-  writeAccountFile(accountId, path(accountId), JSON.stringify(site));
+  const file = path(accountId);
+  const shared = accountPath(accountId);
+  if (file === shared) {
+    writeAccountFile(accountId, file, JSON.stringify(site));
+  } else {
+    writeAccountFile(accountId, file, JSON.stringify({ ...site, github: null }));
+    const account = readFile(accountId, shared);
+    if (JSON.stringify(account.github) !== JSON.stringify(site.github)) {
+      account.github = site.github;
+      account.revision += 1;
+      writeAccountFile(accountId, shared, JSON.stringify(account));
+    }
+  }
   return result;
 }
 
@@ -135,6 +181,15 @@ export function siteView(site: SiteFile) {
           hasPsiKey: !!c.psiKey,
           productionVerified: !!c.productionUrl && c.verifiedOrigin === new URL(c.productionUrl).origin,
           connectedAt: c.connectedAt,
+        }
+      : null,
+    siteUrl: site.siteUrl
+      ? {
+          url: site.siteUrl.url,
+          pages: site.siteUrl.pages,
+          token: site.siteUrl.token,
+          verified: !!site.siteUrl.url && site.siteUrl.verifiedOrigin === new URL(site.siteUrl.url).origin,
+          setAt: site.siteUrl.setAt,
         }
       : null,
     work: site.work,

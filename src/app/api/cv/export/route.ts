@@ -13,6 +13,7 @@ import { loadCv } from "@/lib/cv/store";
 import { disposeDir, makeScratchDir, runPythonScript } from "@/lib/python";
 import { queueFullOrNull } from "@/lib/queue-http";
 import { msgf } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ const bodySchema = z
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const read = await readJsonBody(request, 16 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);

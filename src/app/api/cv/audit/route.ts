@@ -4,6 +4,7 @@ import { CvStoreError, loadCv } from "@/lib/cv/store";
 import { auditProfile } from "@/lib/cv/text/audit";
 import { ScopeError } from "@/lib/cv/text/walk";
 import { msg } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const params = new URL(request.url).searchParams;
   const lang = params.get("lang");
   if (!lang || !CV_LANGS.includes(lang as CvLang)) return jsonError(msg("Pass ?lang=pl or ?lang=en."), 422);

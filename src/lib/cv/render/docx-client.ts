@@ -1,6 +1,7 @@
 import type { CvLang } from "../schema";
 import type { CvLayout, PhotoShape } from "./layout";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { withProject } from "../shown-project";
 
 /**
  * Ask the server for a DOCX of the master profile (variantId = null) or a variant and trigger a browser download.
@@ -9,7 +10,7 @@ import { msg, msgf } from "@/lib/i18n/msg";
 export async function downloadCvDocx(options: { variantId: string | null; lang: CvLang; theme: CvLayout; photo: boolean; photoShape: PhotoShape }): Promise<void> {
   let response: Response;
   try {
-    response = await fetch("/api/cv/export", {
+    response = await fetch(withProject("/api/cv/export"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...options, format: "docx" }),

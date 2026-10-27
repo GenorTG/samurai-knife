@@ -99,9 +99,9 @@ export default function ScoreTab() {
   const issues = useMemo(() => (run ? run.issues.filter((i) => category === "all" || i.category === category) : []), [run, category]);
   const categories = useMemo(() => (run ? [...new Set(run.issues.map((i) => i.category))] : []), [run]);
 
-  if (view && !view.connected && !view.latest) {
+  if (view && !view.connected && !view.siteUrl && !view.latest) {
     return (
-      <EmptyState title={t("Connect your website first")} action={<Link className="text-accent underline" href="/tools/site-studio?tab=connect">{t("Open Connect")}</Link>}>
+      <EmptyState title={t("Connect your website first")} action={<Link className="text-accent underline" href="/tools/cv-studio?tab=website&step=connect">{t("Add your website")}</Link>}>
         {t("The studio needs the repository and the production URL. (A one-off audit of any URL works too once connected.)")}
       </EmptyState>
     );
@@ -114,7 +114,7 @@ export default function ScoreTab() {
         <div className="flex flex-wrap items-end gap-3">
           <Field label={t("What to audit")} className="w-56">
             <Select value={target} onChange={(e) => setTarget(e.target.value as typeof target)}>
-              <option value="production">{t("Production (")}{view?.connection?.productionUrl || t("not set")})</option>
+              <option value="production">{t("Your website")} ({view?.connection?.productionUrl || view?.siteUrl?.url || t("not set")})</option>
               <option value="preview" disabled={!previewUrl}>{t("Preview of the changes")}{previewUrl ? "" : t(" (none yet)")}</option>
               <option value="custom">{t("Another URL…")}</option>
             </Select>

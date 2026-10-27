@@ -79,7 +79,7 @@ export default function ChangesTab() {
   }
 
   if (view && !view.connected) {
-    return <EmptyState title={t("No repository connected")} action={<Link className="text-accent underline" href="/tools/site-studio?tab=connect">{t("Open Connect")}</Link>}>{t("Changes are prepared on a branch of your website's repository.")}</EmptyState>;
+    return <EmptyState title={t("No repository connected")} action={<Link className="text-accent underline" href="/tools/cv-studio?tab=website&step=connect">{t("Connect a repository")}</Link>}>{t("Changes are prepared on a branch of your website's repository.")}</EmptyState>;
   }
   const base = view?.connection?.baseBranch ?? "main";
   return (

@@ -12,6 +12,7 @@ import { lighthouseIssues, PSI_API, runLighthouse } from "./lighthouse";
 import { analyzePage } from "./page";
 import { checkSite, siteIssues, SECURITY_HEADERS } from "./site";
 import type { AuditRun, Issue, LighthouseResult, ScoreKey } from "./types";
+import { currentProjectId, withCvProject } from "@/lib/cv/projects";
 
 /**
  * One audit run: the configured pages of a base URL (production, the PR preview, or any URL) -> page + copy checks,
@@ -123,8 +124,8 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
   if (!account) throw new SiteError("unknown account", 404);
   if (currentAudit(accountId)) throw new SiteError(msg("an audit is already running for this account; wait for it to finish"), 409);
   const site = loadSite(accountId);
-  const base = (options.url ?? site.connection?.productionUrl ?? "").trim();
-  if (!base) throw new SiteError(msg("no URL to audit: set the production URL in Connect, or pass one"));
+  const base = (options.url ?? site.connection?.productionUrl ?? site.siteUrl?.url ?? "").trim();
+  if (!base) throw new SiteError(msg("no URL to check: add your website in the Website tab of the CV studio, or pass one"));
   let origin: URL;
   try {
     origin = new URL(base);
@@ -132,8 +133,8 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
     throw new SiteError(msgf("'{base}' is not a valid URL", { base: base.slice(0, 200) }));
   }
   if (!/^https?:$/.test(origin.protocol)) throw new SiteError(msg("only http(s) sites can be audited"));
-  const paths = normalizePaths(options.pages ?? site.connection?.pages ?? []);
-  const refused = siteTargetProblem(account, site.connection, origin.href);
+  const paths = normalizePaths(options.pages ?? site.connection?.pages ?? site.siteUrl?.pages ?? []);
+  const refused = siteTargetProblem(account, site.connection, origin.href, site.siteUrl);
   if (refused) throw new SiteError(refused, 403);
   const budget = admitOutbound(account, "audit", origin);
   if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);
@@ -258,7 +259,9 @@ export async function startAudit(accountId: string, options: AuditOptions = {}):
   if (currentAudit(accountId)) throw new SiteError(msg("an audit is already running for this account; wait for it to finish"), 409);
   // runAudit registers its progress synchronously, before its first await; a check that fails first (no URL, budget)
   // rejects without registering: awaiting the promise then rethrows that real reason.
-  const promise = runAudit(accountId, options);
+  // The run stores its result in the CV project it started in, even if the user switches projects while it runs.
+  const project = currentProjectId(accountId);
+  const promise = withCvProject(accountId, project, () => runAudit(accountId, options));
   promise.catch(() => undefined); // later failures are kept in the progress record
   const p = currentAudit(accountId);
   if (!p) {

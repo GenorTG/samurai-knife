@@ -61,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
     const account = getAccount(auth.account.id);
     if (!account) throw new SiteError("unknown account", 404);
     const url = normalize(parsed.data.url);
-    const refused = siteTargetProblem(account, loadSite(account.id).connection, url);
+    const refused = siteTargetProblem(account, loadSite(account.id).connection, url, loadSite(account.id).siteUrl);
     if (refused) throw new SiteError(refused, 403);
     const budget = admitOutbound(account, "page", url);
     if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);

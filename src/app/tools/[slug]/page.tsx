@@ -19,6 +19,9 @@ export async function generateMetadata({
 // Public mode decides per request whether the visitor may see a tool at all; a prerendered page would skip the gate.
 export const dynamic = "force-dynamic";
 
+/** Retired suites whose old tabs are steps inside the new tab (the tab shows `?step=`). */
+const RETIRED_STEPS: Record<string, true> = { "site-studio": true };
+
 export default async function ToolPage({ params, searchParams }: PageProps<"/tools/[slug]">) {
   const { slug } = await params;
   // Every tool needs a session in public mode (guests see the welcome page); the login round trip keeps ?tab= and friends.
@@ -27,7 +30,10 @@ export default async function ToolPage({ params, searchParams }: PageProps<"/too
   // them to the suite, on the tab that used to be the standalone tool.
   if (resolveAlias(slug)) {
     const tab = (await searchParams).tab;
-    permanentRedirect(toolHref(slug, typeof tab === "string" ? tab : null));
+    const target = toolHref(slug, typeof tab === "string" ? tab : null);
+    // A retired suite whose tabs became steps of one tab (site-studio -> cv-studio Website) keeps the old tab as `step`.
+    const step = typeof tab === "string" && /^[a-z-]{1,20}$/.test(tab) && !target.includes(`tab=${tab}`) && RETIRED_STEPS[slug] ? tab : null;
+    permanentRedirect(step ? `${target}&step=${step}` : target);
   }
   const tool = findTool(slug);
   if (!tool) notFound();

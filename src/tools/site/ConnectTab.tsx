@@ -178,7 +178,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
               ) : !gh.login ? (
                 <>
                   <p className="text-muted">{t("Sign in with GitHub once: the server then lists the repositories you install")}{" "} <b>{gh.app?.name}</b> {" "}{t("on. No token is created or stored; every change becomes a pull request you merge.")}</p>
-                  <a className="inline-flex h-9 items-center rounded-lg bg-accent px-3 font-semibold text-accent-fg" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">{t("Connect with GitHub")}</a>
+                  <a className="inline-flex h-9 items-center rounded-lg bg-accent px-3 font-semibold text-accent-fg" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fcv-studio%3Ftab%3Dwebsite%26step%3Dconnect">{t("Connect with GitHub")}</a>
                 </>
               ) : (
                 <>
@@ -188,7 +188,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
                   {gh.installations.filter((i) => i.error).map((i) => <Notice key={i.id} tone="warn">{i.account}: {i.error}</Notice>)}
                   <div className="flex flex-wrap gap-2">
                     <a className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-ink hover:bg-raised" href="/api/github/start?purpose=install">{appRepos.length ? t("Add or remove repositories") : t("Install on my repositories")}</a>
-                    <a className="inline-flex h-9 items-center rounded-lg px-3 text-muted hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fsite-studio%3Ftab%3Dconnect">{t("Refresh")}</a>
+                    <a className="inline-flex h-9 items-center rounded-lg px-3 text-muted hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Ftools%2Fcv-studio%3Ftab%3Dwebsite%26step%3Dconnect">{t("Refresh")}</a>
                   </div>
                 </>
               )}
@@ -256,7 +256,7 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
             ]}
           />
           <p className="mt-3 text-sm text-muted">
-            {t("Next:")}{" "} <Link className="text-accent underline" href="/tools/site-studio?tab=score">{t("score the site")}</Link>{t(", then ask the assistant, for example: “Make my website match my CV and add my newest projects”.")}
+            {t("Next:")}{" "} <Link className="text-accent underline" href="/tools/cv-studio?tab=website&step=score">{t("check the site")}</Link>{t(", then ask the assistant, for example: “Make my website match my CV and add my newest projects”.")}
           </p>
         </Panel>
       ) : null}

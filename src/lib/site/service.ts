@@ -4,10 +4,10 @@ import { getAccount, type Account } from "@/lib/accounts/store";
 import { getRunner, runOk } from "@/lib/cv/showcase/runner";
 import { installationToken, repoAccessOf, userInstallationRepos, type UserRepoAccess } from "@/lib/github-app/installations";
 import { recordSecurityEvent } from "@/lib/security/events";
-import { consumeOutbound, outboundLimitMessage } from "@/lib/net/outbound";
+import { admitOutbound, consumeOutbound, hostGate, outboundLimitMessage } from "@/lib/net/outbound";
 import * as github from "./github";
-import { verifyProductionUrl } from "./ownership";
-import { SiteError } from "./net";
+import { hasVerificationMeta, verifyProductionUrl, VERIFY_FILE } from "./ownership";
+import { fetchPage, SiteError, sitePolicy, type NetDeps } from "./net";
 import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
 import { msg, msgf } from "@/lib/i18n/msg";
@@ -201,6 +201,82 @@ export function disconnect(accountId: string) {
   mutateSite(accountId, (s) => {
     s.connection = null;
     s.work = null;
+  });
+  return siteView(loadSite(accountId));
+}
+
+/* ------------------------------------------------------------------ a website without a repository (CV check only) */
+
+/**
+ * Sets the website address of the current CV project, with no GitHub repository: enough for the CV check (audit).
+ * Keeps the verification token when the origin stays the same. Admins and private mode need no proof; in public mode a
+ * non-admin verifies ownership first (`verifySiteUrl`).
+ */
+export function setSiteUrl(accountId: string, input: { url: string; pages?: string[] }) {
+  account(accountId);
+  const url = checkUrl(input.url);
+  if (!url) throw new SiteError(msg("Enter your website's address, e.g. https://example.com"));
+  const pages = normalizePaths(input.pages ?? []);
+  mutateSite(accountId, (s) => {
+    const same = s.siteUrl && new URL(s.siteUrl.url).origin === new URL(url).origin;
+    s.siteUrl = {
+      url,
+      pages,
+      token: same && s.siteUrl ? s.siteUrl.token : `sk-${randomBytes(12).toString("hex")}`,
+      verifiedOrigin: same && s.siteUrl ? s.siteUrl.verifiedOrigin : "",
+      setAt: new Date().toISOString(),
+    };
+  });
+  return siteView(loadSite(accountId));
+}
+
+export function clearSiteUrl(accountId: string) {
+  mutateSite(accountId, (s) => {
+    s.siteUrl = null;
+  });
+  return siteView(loadSite(accountId));
+}
+
+/**
+ * Ownership proof for a website without a repository: one budgeted, SSRF-guarded read of the home page (the meta tag)
+ * and, if needed, of `/.well-known/smart-knife-verification.txt`. Records the origin as verified on success.
+ */
+export async function verifySiteUrl(accountId: string, deps: NetDeps = {}) {
+  const a = account(accountId);
+  const site = loadSite(accountId);
+  if (!site.siteUrl) throw new SiteError(msg("Add your website's address first."));
+  const { url, token } = site.siteUrl;
+  const origin = new URL(url).origin;
+  const budget = admitOutbound(a, "audit", origin);
+  if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);
+  const policy = sitePolicy(a);
+  const gated: NetDeps = { ...deps, admitHop: hostGate(a, "audit", origin) };
+  let found = false;
+  let reason = "";
+  try {
+    const home = await fetchPage(`${origin}/`, policy, gated);
+    found = new URL(home.finalUrl).origin === origin && hasVerificationMeta(home.body, token);
+  } catch (error) {
+    reason = error instanceof Error ? error.message : String(error);
+  }
+  if (!found) {
+    try {
+      const file = await fetchPage(`${origin}${VERIFY_FILE}`, policy, gated);
+      found = file.status === 200 && new URL(file.finalUrl).origin === origin && file.body.trim() === token;
+    } catch (error) {
+      reason ||= error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (!found) {
+    throw new SiteError(
+      reason
+        ? msgf("Could not verify {origin}: {reason}", { origin, reason })
+        : msgf("The verification tag was not found on {origin}: add it to the home page's <head> (or serve the file), publish, then press Verify again.", { origin }),
+      422,
+    );
+  }
+  mutateSite(accountId, (s) => {
+    if (s.siteUrl && new URL(s.siteUrl.url).origin === origin) s.siteUrl.verifiedOrigin = origin;
   });
   return siteView(loadSite(accountId));
 }

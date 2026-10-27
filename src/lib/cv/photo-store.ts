@@ -3,9 +3,11 @@ import { existsSync, statSync } from "node:fs";
 import { plainSize, readAccountFile } from "@/lib/storage/sealed";
 import { removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
+import { CvProjectError, currentProjectId, projectPaths } from "./projects";
 
 /**
- * Server-only: the CV photo, one JPEG per account at `$KNIFE_DATA_DIR/cv/<account id>.photo.jpg` (mode 600).
+ * Server-only: the CV photo, one JPEG per CV project (`cv/<account id>.photo.jpg` for the first, `.p-<id>.photo.jpg` for
+ * the others; projects.ts).
  * Kept outside the CV JSON on purpose: the JSON is polled, snapshotted 40 times and handed to the model, a photo is none
  * of those. The browser crops and re-encodes before upload (which also drops EXIF/GPS), so the server only accepts a
  * real JPEG of bounded size.
@@ -21,13 +23,14 @@ export interface CvPhotoMeta {
   updatedAt: string;
 }
 
+/** The photo of the project this call works on (projects.ts). */
 function photoPath(accountId: string): string {
   try {
-    const { cv } = accountScope(accountId);
-    ensurePrivateDir(cv.dir);
-    return cv.photo;
+    ensurePrivateDir(accountScope(accountId).cv.dir);
+    return projectPaths(accountId, currentProjectId(accountId)).photo;
   } catch (error) {
     if (error instanceof StorageScopeError) throw new CvPhotoError("invalid account id");
+    if (error instanceof CvProjectError) throw new CvPhotoError(error.message);
     throw error;
   }
 }

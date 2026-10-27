@@ -1,6 +1,7 @@
 import { authenticate, json } from "@/lib/accounts/http";
 import { siteErrorResponse } from "@/lib/site/http";
 import { listFiles, readFile } from "@/lib/site/service";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const params = new URL(request.url).searchParams;
   try {
     const file = params.get("file");

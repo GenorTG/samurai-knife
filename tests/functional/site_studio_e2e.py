@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Website studio end to end (docs/WEBSITE-STUDIO.md) against the fake world of tests/mock_site_world.mjs (in-memory
+"""Website (the CV studio's Website tab) end to end (docs/WEBSITE-STUDIO.md) against the fake world of tests/mock_site_world.mjs (in-memory
 GitHub API, a small Polish website, a PageSpeed endpoint), driven like a person in Chromium plus an agent over MCP:
 
 - Connect in the UI (repo, token, production URL, extra page) -> the repository panel shows write access and the repo's
@@ -101,7 +101,9 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         page.on("console", lambda m: CONSOLE.append(f"{page.url}: {m.text[:200]}") if m.type == "error" and "Failed to load resource" not in m.text else None)
 
         # ---------------------------------------------------------------- 1. connect
-        go(page, "/tools/site-studio?tab=connect")
+        go(page, "/tools/cv-studio?tab=website&step=connect")
+        # The website now lives in the CV studio: the repository path is the second way in (the address alone is the first).
+        page.get_by_role("button", name="Its GitHub repository").click()
         # The tab re-renders its form once the GitHub/connection status arrives: type only after that, or the input is reset.
         page.wait_for_load_state("networkidle")
         # The scratch server can have a GitHub App configured; choose the PAT path this test exercises first (switching
@@ -122,7 +124,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         check("GET /api/site carries no token", status == 200 and TOKEN not in json.dumps(view) and view["connection"]["token"]["login"] == "genor", view)
 
         # ---------------------------------------------------------------- 2. score
-        go(page, "/tools/site-studio?tab=score")
+        go(page, "/tools/cv-studio?tab=website&step=score")
         page.get_by_role("button", name="Run audit").click()
         expect(page.get_by_role("status").filter(has_text="Auditing")).to_be_visible(timeout=10_000)
         check("audit progress is shown as role=status", True)
@@ -142,17 +144,17 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         check("an agent seeds the CV over MCP (knife_cv_import)", ok, text[:300])
         ok, text = mcp.tool("knife_site_audit", {"lighthouse": False})
         check("knife_site_audit over MCP returns scores and CV gaps", ok and '"alignment"' in text and "Toberenamed RTS" in text, text[:400])
-        go(page, "/tools/site-studio?tab=copy")
+        go(page, "/tools/cv-studio?tab=website&step=copy")
         expect(page.get_by_text("CV fit ·")).to_be_visible(timeout=20_000)
         badges = page.locator("main").text_content() or ""
         check("Copy & CV: ✓ Samurai Knife, ✗ Toberenamed RTS, ✗ Kubernetes", "✓ Samurai Knife" in badges and "✗ Toberenamed RTS" in badges and "✗ Kubernetes" in badges, badges[:500])
         check("Copy & CV: per-page copy metrics (FOG-PL)", "FOG-PL" in badges and "Calls to action" in badges)
-        go(page, "/tools/cv-studio?tab=website")
+        page.goto(base + "/tools/site-studio?tab=copy", wait_until="networkidle")
+        check("the retired site-studio URL lands on the same step of the CV studio's Website tab", "/tools/cv-studio?tab=website&step=copy" in page.url, page.url)
         expect(page.get_by_text("CV fit ·")).to_be_visible(timeout=20_000)
-        check("the same view is the CV studio's Website tab, linking to the website studio", page.get_by_role("link", name="website studio").count() >= 1)
 
         # ---------------------------------------------------------------- 4. agent edits, the Changes tab follows
-        go(page, "/tools/site-studio?tab=changes")
+        go(page, "/tools/cv-studio?tab=website&step=changes")
         expect(page.get_by_text("No changes prepared")).to_be_visible(timeout=20_000)
         ok, text = mcp.tool("knife_site_status", {})
         check("knife_site_status gives the agent the repo's AGENTS.md", ok and "Copy lives in lib/site-data.ts" in text, text[:300])
@@ -199,9 +201,8 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         fpage = ff.new_page(base_url=base)
         errors: list[str] = []
         fpage.on("console", lambda m: errors.append(m.text[:200]) if m.type == "error" and "Failed to load resource" not in m.text else None)
-        for tab in ("connect", "score", "copy", "changes"):
-            go(fpage, f"/tools/site-studio?tab={tab}")
-        go(fpage, "/tools/cv-studio?tab=website")
+        for step in ("connect", "score", "copy", "changes"):
+            go(fpage, f"/tools/cv-studio?tab=website&step={step}")
         check("Firefox: all tabs hydrate without console errors", not errors, errors[:3])
         ff.close()
     check("Chromium: no console errors", not CONSOLE, CONSOLE[:3])

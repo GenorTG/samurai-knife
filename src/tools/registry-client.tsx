@@ -18,12 +18,8 @@ function ToolLoading() {
   );
 }
 
-const SiteConnect = dynamic(() => import("@/tools/site/ConnectTab"), { loading: ToolLoading });
 const WorkflowsEditor = dynamic(() => import("@/tools/workflows/WorkflowsTab"), { loading: ToolLoading });
 const WorkflowCredentials = dynamic(() => import("@/tools/workflows/CredentialsTab"), { loading: ToolLoading });
-const SiteScore = dynamic(() => import("@/tools/site/ScoreTab"), { loading: ToolLoading });
-const SiteCopy = dynamic(() => import("@/tools/site/CopyTab"), { loading: ToolLoading });
-const SiteChanges = dynamic(() => import("@/tools/site/ChangesTab"), { loading: ToolLoading });
 const ColorTool = dynamic(() => import("@/tools/ColorTool"), { loading: ToolLoading });
 const CharacterInspector = dynamic(() => import("@/tools/CharacterInspector"), { loading: ToolLoading });
 const CronExplorer = dynamic(() => import("@/tools/CronExplorer"), { loading: ToolLoading });
@@ -93,11 +89,12 @@ const SvgSanitizer = dynamic(() => import("@/tools/SvgSanitizer"), { loading: To
 const SvgOptimizer = dynamic(() => import("@/tools/SvgOptimizer"), { loading: ToolLoading });
 const SvgToPng = dynamic(() => import("@/tools/SvgToPng"), { loading: ToolLoading });
 const EncodingDetector = dynamic(() => import("@/tools/EncodingDetector"), { loading: ToolLoading });
-const CvProfile = dynamic(() => import("@/tools/cv/ProfileTab"), { loading: ToolLoading });
-const CvJobs = dynamic(() => import("@/tools/cv/JobsTab"), { loading: ToolLoading });
-const CvVariants = dynamic(() => import("@/tools/cv/VariantsTab"), { loading: ToolLoading });
-const CvShowcase = dynamic(() => import("@/tools/cv/ShowcaseTab"), { loading: ToolLoading });
-const CvApplications = dynamic(() => import("@/tools/cv/ApplicationsTab"), { loading: ToolLoading });
+const CvProfile = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvProfile), { loading: ToolLoading });
+const CvJobs = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvJobs), { loading: ToolLoading });
+const CvVariants = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvVariants), { loading: ToolLoading });
+const CvShowcase = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvShowcase), { loading: ToolLoading });
+const CvWebsite = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvWebsite), { loading: ToolLoading });
+const CvApplications = dynamic(() => import("@/tools/cv/framed").then((m) => m.CvApplications), { loading: ToolLoading });
 // The editor loads the sidecar's DocsAPI script into the page: browser-only.
 const OfficeTool = dynamic(() => import("@/tools/sidecars/OfficeTool"), { ssr: false, loading: ToolLoading });
 const SidecarsTool = dynamic(() => import("@/tools/sidecars/SidecarsTool"), { loading: ToolLoading });
@@ -140,6 +137,7 @@ const COMPONENTS: Record<string, ComponentType> = {
   "cv-variants": CvVariants,
   "cv-applications": CvApplications,
   "cv-showcase": CvShowcase,
+  "cv-website": CvWebsite,
   "csv-select-columns": CsvSelectColumns,
   "csv-pivot": CsvPivot,
   "csv-merge": CsvMerge,
@@ -188,12 +186,8 @@ const COMPONENTS: Record<string, ComponentType> = {
   "placeholder-text": PlaceholderText,
   cron: CronExplorer,
   office: OfficeTool,
-  "site-connect": SiteConnect,
   "wf-editor": WorkflowsEditor,
   "wf-credentials": WorkflowCredentials,
-  "site-score": SiteScore,
-  "site-copy": SiteCopy,
-  "site-changes": SiteChanges,
   sidecars: SidecarsTool,
   "learn-sql": SqlCourse,
   ...Object.fromEntries(ARTCRAFT_APPS.map((app) => [`craft-${app.id}`, craftTab(app.id)])),

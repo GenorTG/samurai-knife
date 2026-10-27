@@ -3,6 +3,7 @@ import { CvJobError, matchJob } from "@/lib/cv/jobs/service";
 import { CV_LANGS, type CvLang } from "@/lib/cv/schema";
 import { CvStoreError } from "@/lib/cv/store";
 import { msg } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const params = new URL(request.url).searchParams;
   const id = params.get("id") ?? "";
   const lang = params.get("lang") ?? "";

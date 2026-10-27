@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Badge, Button, EmptyState, Notice, Panel, Stat, StatGrid } from "@/components/ui";
+import { Badge, Button, Notice, Panel, Stat, StatGrid } from "@/components/ui";
 import { errorText, patchCv } from "@/lib/cv/client";
 import { uniqueId } from "@/lib/cv/collections";
 import type { CvOp } from "@/lib/cv/ops";
@@ -17,6 +17,7 @@ import { CustomSectionsSection, GithubProjectAdd, TailoringSection } from "./Pro
 import { CvFrame, flashElement, LangToggle, profileIsEmpty, useLang } from "./shared";
 import { useCvData } from "./useCvData";
 import { useT } from "@/lib/i18n/react";
+import { StartHere } from "./StartHere";
 
 const TAB = "profile";
 
@@ -486,12 +487,7 @@ export default function ProfileTab() {
     <CvFrame live={live}>
       {(cv) =>
         profileIsEmpty(cv) && !replacing ? (
-          <div className="space-y-4">
-            <EmptyState title={t("Your master profile starts here")}>
-              {t("One bilingual profile feeds every CV version, the audit and the offer matching. Paste it below, or ask the assistant to structure your CV text and import it.")}
-            </EmptyState>
-            <ProfileImport existing={null} onImported={() => void live.reload()} />
-          </div>
+          <StartHere onDone={() => void live.reload()} />
         ) : (
           <div className="@container space-y-4">
             <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Profile actions")}>

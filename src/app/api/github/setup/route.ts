@@ -16,5 +16,5 @@ export async function GET(request: Request): Promise<Response> {
   } catch {
     return new NextResponse("unknown host", { status: 400 });
   }
-  return back(base, "/api/github/start", { purpose: "link", returnTo: "/tools/site-studio?tab=connect" });
+  return back(base, "/api/github/start", { purpose: "link", returnTo: "/tools/cv-studio?tab=website&step=connect" });
 }

@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { quotaErrorResponse } from "@/lib/storage/http";
 import { CvPhotoError, decodeJpegDataUrl, deletePhoto, MAX_PHOTO_BYTES, photoMeta, readPhoto, savePhoto } from "@/lib/cv/photo-store";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ function photoError(error: unknown): Response {
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   try {
     if (new URL(request.url).searchParams.has("meta")) return json({ photo: photoMeta(auth.account.id) });
     const bytes = readPhoto(auth.account.id);
@@ -37,6 +40,8 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const read = await readJsonBody(request, Math.ceil((MAX_PHOTO_BYTES * 4) / 3) + 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
@@ -52,6 +57,8 @@ export async function POST(request: Request): Promise<Response> {
 export async function DELETE(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   try {
     return json({ removed: deletePhoto(auth.account.id) });
   } catch (error) {

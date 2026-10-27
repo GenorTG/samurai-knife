@@ -5,6 +5,7 @@ import { CvCollectionError } from "./collections";
 import { CvStoreError, mutateCv } from "./store";
 import type { CvData } from "./schema";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 /** A damaged stored file is a server-side condition with a readable reason, not an opaque 500: the UI can show it. */
 export function cvStoreErrorResponse(error: unknown): Response | null {
@@ -15,6 +16,8 @@ export function cvStoreErrorResponse(error: unknown): Response | null {
 export async function cvMutationRoute<T>(request: Request, bodySchema: ZodType<T>, apply: (data: CvData, body: T) => { data: CvData; result: unknown }): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const read = await readJsonBody(request, 1024 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
@@ -35,6 +38,8 @@ export async function cvDeleteRoute(request: Request, remove: (data: CvData, id:
   if (!id) return jsonError(msg("Pass ?id=<id>."), 422);
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   try {
     const { data } = mutateCv(auth.account.id, (current) => ({ data: remove(current, id), result: null }));
     return json({ revision: data.revision, removed: id });

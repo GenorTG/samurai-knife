@@ -14,6 +14,8 @@ import { rewriteWarningsFor } from "@/lib/cv/rewrites";
 import { priorityWarnings } from "@/lib/cv/priorities";
 import { CV_TAILOR_TOOLS } from "./tools-cv-tailor";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { withProjectArg } from "./project-scope";
+import { CV_PROJECT_TOOLS } from "./tools-cv-projects";
 
 /**
  * CV studio tools. Principle: tools gather evidence and apply deterministic checks; the model (the widget's own
@@ -288,4 +290,4 @@ function withData<T>(accountId: string, fn: (data: CvData) => { data: CvData; re
   }
 }
 
-export const CV_KNIFE_TOOLS: KnifeToolDefinition[] = [...CORE_CV_TOOLS, ...CV_TEXT_TOOLS, ...CV_JOBS_TOOLS, ...CV_SHOWCASE_TOOLS, ...CV_RENDER_TOOLS, ...CV_TAILOR_TOOLS];
+export const CV_KNIFE_TOOLS: KnifeToolDefinition[] = [...CV_PROJECT_TOOLS, ...withProjectArg([...CORE_CV_TOOLS, ...CV_TEXT_TOOLS, ...CV_JOBS_TOOLS, ...CV_SHOWCASE_TOOLS, ...CV_RENDER_TOOLS, ...CV_TAILOR_TOOLS])];
