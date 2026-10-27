@@ -1426,7 +1426,9 @@
     "Wycięto {n} węzłów."
   ],
   "Cut pages": "Wytnij strony",
+  "CV": "CV",
   "CV & career": "CV i kariera",
+  "CV + pages": "CV + strony",
   "CV + project pages": "CV + strony projektów",
   "CV bullets drop the subject: start with the verb ('Built…', not 'I built…').": "Punkty w CV pomijają podmiot: zacznij od czasownika („Zbudowałem…”, nie „Ja zbudowałem…”).",
   "CV fit{value}": "Zgodność z CV{value}",
@@ -3151,6 +3153,7 @@
   "Page size": "Rozmiar strony",
   "Pages": "Strony",
   "Pages · {availablePages}": "Strony · {availablePages}",
+  "Pages only": "Tylko strony",
   "Pages per file": "Stron na plik",
   "PageSpeed API key (optional)": "Klucz API PageSpeed (opcjonalnie)",
   "Palette from an image": "Paleta z obrazu",

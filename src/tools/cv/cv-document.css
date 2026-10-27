@@ -1058,24 +1058,25 @@
   }
 }
 
+/* narrow screens: the preview sheet folds to one column (a gallery thumbnail keeps the real layout) */
 @media screen and (max-width: 840px) {
-  .cvdoc {
+  .cvdoc:not([data-thumbnail]) {
     padding: 8mm 6mm;
     min-height: 0;
   }
-  .cvdoc .cv-cols,
-  .cvdoc .cv-cols.is-right,
-  .cvdoc .cv-page-grid {
+  .cvdoc:not([data-thumbnail]) .cv-cols,
+  .cvdoc:not([data-thumbnail]) .cv-cols.is-right,
+  .cvdoc:not([data-thumbnail]) .cv-page-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 6mm;
   }
-  .cvdoc[data-theme="europass"] .cv-section {
+  .cvdoc:not([data-thumbnail])[data-theme="europass"] .cv-section {
     grid-template-columns: minmax(0, 1fr);
   }
-  .cvdoc[data-theme="europass"] h2 {
+  .cvdoc:not([data-thumbnail])[data-theme="europass"] h2 {
     text-align: left;
   }
-  .cvdoc[data-theme="europass"] .cv-body {
+  .cvdoc:not([data-thumbnail])[data-theme="europass"] .cv-body {
     grid-column: 1;
     padding-left: 0;
     border-left: 0;

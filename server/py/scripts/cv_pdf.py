@@ -61,8 +61,11 @@ def render(req: dict[str, Any]) -> dict[str, Any]:
 
     import logging
 
-    from weasyprint import HTML
-    from weasyprint.text.fonts import FontConfiguration
+    try:
+        from weasyprint import HTML
+        from weasyprint.text.fonts import FontConfiguration
+    except (ImportError, OSError) as exc:  # no WeasyPrint in the venv, or no Pango on the host (docs/DEPLOY.md)
+        raise ToolError("The PDF renderer is not available on this server (WeasyPrint needs the Pango library): use the Word or HTML export, or ask the administrator.") from exc
 
     # A refused resource is logged by WeasyPrint as a warning; keep stderr quiet (the response says what matters).
     logging.getLogger("weasyprint").setLevel(logging.ERROR)

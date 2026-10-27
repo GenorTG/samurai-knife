@@ -105,12 +105,12 @@ test("knife-update never returns to the caller's directory (knife-deploy may not
 test("package names per package manager (checked against Debian 12, Fedora 44, Arch and openSUSE Tumbleweed)", () => {
   const fn = INSTALL.slice(INSTALL.indexOf("pkg_name() {"), INSTALL.indexOf("pkg_install() {"));
   const expected = {
-    "apt-get": "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-eng tesseract-ocr-pol tesseract-ocr-osd qpdf ghostscript polkitd python3-venv",
-    dnf: "git curl rsync util-linux bubblewrap tesseract tesseract-langpack-eng tesseract-langpack-pol tesseract-osd qpdf ghostscript polkit venv",
-    pacman: "git curl rsync util-linux bubblewrap tesseract tesseract-data-eng tesseract-data-pol tesseract-data-osd qpdf ghostscript polkit venv",
-    zypper: "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-traineddata-eng tesseract-ocr-traineddata-pol tesseract-ocr-traineddata-osd qpdf ghostscript polkit venv",
+    "apt-get": "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-eng tesseract-ocr-pol tesseract-ocr-osd qpdf ghostscript polkitd python3-venv libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0",
+    dnf: "git curl rsync util-linux bubblewrap tesseract tesseract-langpack-eng tesseract-langpack-pol tesseract-osd qpdf ghostscript polkit venv pango",
+    pacman: "git curl rsync util-linux bubblewrap tesseract tesseract-data-eng tesseract-data-pol tesseract-data-osd qpdf ghostscript polkit venv pango",
+    zypper: "git curl rsync util-linux bubblewrap tesseract-ocr tesseract-ocr-traineddata-eng tesseract-ocr-traineddata-pol tesseract-ocr-traineddata-osd qpdf ghostscript polkit venv libpango-1_0-0",
   };
-  const logical = "git curl rsync util-linux bubblewrap tesseract tess-eng tess-pol tess-osd qpdf ghostscript polkit venv";
+  const logical = "git curl rsync util-linux bubblewrap tesseract tess-eng tess-pol tess-osd qpdf ghostscript polkit venv pango";
   for (const [pm, names] of Object.entries(expected)) {
     const script = `${fn}\nPM=${pm}; for n in ${logical}; do pkg_name "$n"; done | paste -sd' '`;
     const out = spawnSync("bash", ["-c", script], { encoding: "utf8" });

@@ -475,6 +475,7 @@ export function CvDocument({ profile, lang, theme, look, photoUrl = null, photoS
     <article
       className="cvdoc"
       data-cv-document={thumbnail ? undefined : ""}
+      data-thumbnail={thumbnail ? "" : undefined}
       aria-hidden={thumbnail || undefined}
       data-lang={lang}
       data-theme={layout}

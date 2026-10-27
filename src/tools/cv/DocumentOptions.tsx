@@ -101,7 +101,8 @@ function Thumb({ profile, lang, layout, look, photoUrl, shape }: { profile: Prof
   );
 }
 
-const PAGE_LABELS: Record<CvPageMode, string> = { cv: msg("CV only"), "cv+pages": msg("CV + project pages"), pages: msg("Project pages only") };
+const PAGE_LABELS: Record<CvPageMode, string> = { cv: msg("CV"), "cv+pages": msg("CV + pages"), pages: msg("Pages only") };
+const PAGE_HINTS: Record<CvPageMode, string> = { cv: msg("CV only"), "cv+pages": msg("CV + project pages"), pages: msg("Project pages only") };
 
 export function DocumentOptions({ look, profile, lang }: { look: DocLook; profile?: Profile; lang?: CvLang }) {
   const { t } = useT();
@@ -270,7 +271,7 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
           label={t("Project showcase pages")}
           value={o.pageMode}
           onChange={(next) => look.set({ pageMode: next })}
-          options={CV_PAGE_MODES.map((id) => ({ value: id, label: t(PAGE_LABELS[id]) }))}
+          options={CV_PAGE_MODES.map((id) => ({ value: id, label: t(PAGE_LABELS[id]), ariaLabel: t(PAGE_HINTS[id]) }))}
         />
         {!hasPages ? <p className="text-xs text-muted">{t("No project has a showcase page yet: turn one on for a project in the Profile tab (Projects, “Showcase page”).")}</p> : null}
       </div>

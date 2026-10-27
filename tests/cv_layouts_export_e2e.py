@@ -16,10 +16,8 @@ from __future__ import annotations
 import io
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 
@@ -114,11 +112,11 @@ def main() -> int:
 
             for lang in ("pl", "en"):
                 for layout in layouts:
-                    prefs = {f"theme:variants": layout, f"lang:variants": lang, "pages:variants": "cv"}
+                    prefs = {"theme:variants": layout, "lang:variants": lang, "pages:variants": "cv"}
                     page.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify(v))", ["samurai-knife:cv-studio:v1", prefs])
                     page.goto("/tools/cv-studio?tab=variants", wait_until="networkidle")
                     page.wait_for_selector(f"[data-cv-document][data-theme={layout}][data-lang={lang}]", timeout=30_000)
-                    status, pdf, meta = export("pdf", lang, layout)
+                    status, pdf, _ = export("pdf", lang, layout)
                     if not check(f"{layout}/{lang}: PDF built", status == 200 and pdf[:4] == b"%PDF", (status, pdf[:300])):
                         continue
                     info = inspect_pdf(pdf)
@@ -170,7 +168,7 @@ def main() -> int:
             # Upload and read a CV file (Start here): text, DOCX and PDF come back as text; junk is refused readably.
             import base64
             status, docx, _ = export("docx", "en", "ats")
-            status_pdf, pdf, _ = export("pdf", "en", "ats", {"pageMode": "cv"})
+            _, pdf, _ = export("pdf", "en", "ats", {"pageMode": "cv"})
 
             def extract(name: str, data: bytes) -> tuple[int, dict]:
                 return tuple(page.evaluate("""([name, data]) => fetch('/api/cv/import/extract', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({name, data})}).then(async r => [r.status, await r.json()])""", [name, base64.b64encode(data).decode()]))
