@@ -191,6 +191,21 @@ class ScratchServer:
                     break
                 except subprocess.TimeoutExpired:
                     continue
+            # proc is npm; next-server in the same group can still be flushing files (security/blocks.json) after it
+            # exits, which would recreate the data dir after cleanup. Wait until the whole group is gone.
+            deadline = time.time() + 10
+            while True:
+                try:
+                    os.killpg(proc.pid, 0)
+                except ProcessLookupError:
+                    break
+                if time.time() > deadline:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    break
+                time.sleep(0.1)
         if self._log is not None:
             self._log.close()
             self._log = None
