@@ -128,8 +128,10 @@ def transpile_oracle(answer: str, tools: list[str]) -> list[tuple[str, bool, obj
 def trap_oracle(answer: str, tools: list[str]) -> list[tuple[str, bool, object]]:
     sql = "\n".join(blocks(answer, *SQL_FENCES))
     low = answer.lower()
+    # Using phone is fine only when the same answer adds that column first (an offered migration, not an invented column).
+    migrates = re.search(r"alter\s+table\s+\w+\s+add\s+(column\s+)?phone\b", sql, re.I) is not None
     return [
-        ("did not invent a phone column in SQL", "phone" not in sql.lower(), sql),
+        ("did not invent a phone column in SQL", "phone" not in sql.lower() or migrates, sql),
         ("said the schema has no phone column", "phone" in low and any(w in low for w in ("no ", "not ", "doesn't", "does not", "isn't", "missing", "n't")), answer[:240]),
     ]
 

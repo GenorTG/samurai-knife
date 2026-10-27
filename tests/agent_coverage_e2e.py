@@ -100,7 +100,7 @@ def main() -> int:
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--in-place", action="store_true", help="start the scratch server in this checkout instead of a throwaway worktree (only when nothing else runs from it)")
     ap.add_argument("--model", default="deepseek-v4.1-flash")
-    ap.add_argument("--concurrency", type=int, default=2)
+    ap.add_argument("--concurrency", type=int, default=1)
     ap.add_argument("--retry", type=int, default=1)
     ap.add_argument("--out", default="coverage_report.json")
     ap.add_argument("--list", action="store_true")

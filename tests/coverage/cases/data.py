@@ -8,7 +8,9 @@ import xml.etree.ElementTree as ET
 from tests.coverage.core import Case, Ctx, first_error, has, matches
 
 GROUP = "data"
-SKIPS: dict[tuple[str, str | None], str] = {}
+SKIPS: dict[tuple[str, str | None], str] = {
+    ("workflows", "credentials"): "secrets are typed by the user only, by design the assistant never handles credential values (docs/WORKFLOWS.md); covered by tests/workflow_credentials.test.mjs and workflows_e2e",
+}
 
 
 # ------------------------------------------------------------------ helpers
@@ -295,29 +297,56 @@ _RX_EXPECT = re.sub(r"(\d{4})-(\d{2})-(\d{2})", r"\3/\2/\1", _RX_TEXT)
 assert _RX_EXPECT != _RX_TEXT
 
 
+# ---------------------------------------------------------------- workflows (the account's saved workflow and its run)
+_WF_NAME = "Coverage greeting"
+_WF_VALUE = "hello-coverage-77"
+
+
+def _workflow(c: Ctx):
+    # Evidence is the account's stored workflow and run (GET /api/workflows...), whichever route the agent took
+    # (editor clicks or the knife_workflow_* tools), not what the page or the answer says.
+    data = c.page.evaluate("""async ([name]) => {
+        const all = await (await fetch('/api/workflows')).json();
+        const wf = (all.workflows || []).find(w => w.name === name);
+        if (!wf) return { names: (all.workflows || []).map(w => w.name) };
+        const runs = (await (await fetch(`/api/workflows/${wf.id}/runs`)).json()).runs || [];
+        const ok = runs.find(r => r.status === 'success');
+        const run = ok ? (await (await fetch(`/api/workflows/${wf.id}/runs/${ok.id}`)).json()).run : null;
+        return { found: true, statuses: runs.map(r => r.status), run };
+    }""", [_WF_NAME])
+    if not data.get("found"):
+        return f"no workflow named {_WF_NAME!r}; saved: {data.get('names')}"
+    if not data.get("run"):
+        return f"workflow saved but no successful run (runs: {data.get('statuses')})"
+    import json as _json
+    if _WF_VALUE not in _json.dumps(data["run"]):
+        return f"the successful run's output does not carry {_WF_VALUE!r}"
+    return matches(c.answer, re.escape(_WF_VALUE))
+
+
 CASES = [
     Case("csv", "convert",
          "I have a file people.csv with this content:\n\n" + _CSV + "\nConvert it to JSON for me and show the result.",
          lambda c: first_error(has(c.haystack(), "4172", "3318", "Oslo", "Lima"))),
 
-    Case("csv-profile", "profile",
+    Case("csv", "profile",
          "Here is a CSV export:\n\n" + _PROFILE + "\nProfile it for me: how many cells are missing in total, which column has the most missing "
          "values, and how many distinct non-empty cities are there? State the numbers in your reply.",
          _oracle_profile),
 
-    Case("csv-profile", "duplicates",
+    Case("csv", "duplicates",
          "Check this CSV for repeated rows, treating upper and lower case as the same:\n\n" + _DUP +
          "\nCount the header as line 1. Tell me how many rows are repeats of an earlier row and list their line numbers.",
          lambda c: first_error(_near(c.answer, r"repeat|duplicate", len(_dup_lines)), _has_nums(c.answer, _dup_lines))),
 
 
-    Case("csv-profile", "compare",
+    Case("csv", "compare",
          "Compare these two tables cell by cell, position by position, with the header row included. Table A:\n\n" + _LEFT +
          "\nTable B:\n\n" + _RIGHT + "\nA row that exists in only one table counts every one of its cells as different. "
          "How many cells differ in total, and which ones?",
          lambda c: first_error(_near(c.answer, r"differ|different|cells", _cmp_n), has(c.answer, "E5", "F6"))),
 
-    Case("sql-format", None,
+    Case("sql-lab", "format",
          "Please tidy up this SQL so each major clause starts on its own line, with keywords in UPPERCASE, and show me the formatted query:\n\n" + _SQL,
          _oracle_sql),
 
@@ -342,12 +371,12 @@ CASES = [
          _oracle_schema),
 
 
-    Case("yaml-json", "yaml",
+    Case("json", "yaml",
          "Convert this YAML to JSON, resolving the anchor/alias so the final JSON has no references. Show the JSON:\n\n" + _YAML,
          lambda c: _has_json(c.haystack(), _YAML_EXPECT)),
 
 
-    Case("yaml-json", "xml",
+    Case("json", "xml",
          "Run an XPath over this XML to get the total price of all items whose type attribute is \"tool\", and tell me the number:\n\n" + _XML,
          lambda c: matches(c.answer, r"(?<![\d.])55[.,]05(?!\d)")),
 
@@ -369,4 +398,7 @@ CASES = [
          "Apply this regex replacement to the text: pattern `(\\d{4})-(\\d{2})-(\\d{2})` with the global flag, replacement `$3/$2/$1`. "
          "Show the exact resulting text.\n\nText: " + _RX_TEXT,
          lambda c: has(" ".join(c.haystack().split()), _RX_EXPECT)),
+    Case("workflows", "editor",
+         f"Build me a workflow named \"{_WF_NAME}\": a manual trigger followed by a Set node that sets the field greeting "
+         f"to {_WF_VALUE}. Save it, run it once, and tell me what the greeting field came out as.", _workflow, timeout_ms=300_000),
 ]

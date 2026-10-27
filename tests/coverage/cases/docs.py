@@ -100,7 +100,7 @@ CASES = [
          "This file, notes.txt (base64), shows up as gibberish in my editor. What text encoding is it, and does it start with a byte order mark?\n\n" + b64(_ENC),
          lambda c: first_error(matches(c.answer, r"UTF-?16[\s-]*(LE|little)|little[\s-]*endian"),
                                matches(c.answer, r"BOM|byte[\s-]order"), None if used(c, "upload_file") else "never attached the file")),
-    Case("placeholder-text", None,
+    Case("text", "generate",
          "Generate 4 paragraphs of lorem ipsum filler text for a mockup, keep the generated text on screen so I can copy it, and tell me the total word count.",
          _ph_oracle),
 ]

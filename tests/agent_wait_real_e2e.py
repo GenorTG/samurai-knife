@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from playwright.sync_api import sync_playwright  # noqa: E402
-from real_provider import configure  # noqa: E402
+from real_provider import configure, reset_conversation  # noqa: E402
 
 PROMPTS = [
     "I want to compress my own PDF. Set up the right tool and let me pick the file.",
@@ -29,6 +29,7 @@ def main() -> int:
         for prompt in PROMPTS:
             page = browser.new_page(viewport={"width": 1280, "height": 800})
             page.goto(args.base + "/", wait_until="networkidle")
+            reset_conversation(page)
             page.keyboard.press("Control+j")
             box = page.locator("textarea[aria-label='Message the assistant']")
             box.wait_for()

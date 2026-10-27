@@ -124,3 +124,13 @@ def configure(app_url: str, model: str = "deepseek-v4.1-flash", reasoning_effort
             res.read()
     except urllib.error.HTTPError as exc:
         raise SystemExit(f"configure provider failed: HTTP {exc.code}") from None
+
+
+def reset_conversation(page) -> None:
+    """Empty the account's stored assistant transcript and reload, so a suite never reads an earlier run's messages
+    (the transcript lives on the server per account and is restored into every new browser context)."""
+    status = page.evaluate("fetch('/api/agent/conversation', { method: 'DELETE' }).then(r => r.status)")
+    if status != 200:
+        raise SystemExit(f"conversation reset answered {status}")
+    page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('sk.agent.chat.')).forEach(k => localStorage.removeItem(k))")
+    page.reload(wait_until="networkidle")

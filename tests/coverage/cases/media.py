@@ -229,7 +229,7 @@ CASES = [
              None if _word(c.answer, len(_QR_TEXT)) else f"answer lacks {len(_QR_TEXT)} characters"),
          note=f"{len(_QR_TEXT)} chars"),
 
-    Case("color", None,
+    Case("css", "colour",
          f"Convert the colour {_HEX} into its RGB, HSL and OKLCH forms and give me all three.",
          lambda c: first_error(_color_oracle(c), None if all(_word(c.answer, v) for v in _RGB) else "answer lacks rgb 58 123 213"),
          note="#3a7bd5 = rgb(58 123 213)"),

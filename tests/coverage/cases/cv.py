@@ -11,7 +11,10 @@ from tests.coverage.core import Case, Ctx, first_error, has, matches
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 GROUP = "cv"
-SKIPS: dict[tuple[str, str | None], str] = {}
+SKIPS: dict[tuple[str, str | None], str] = {
+    ("cv-studio", "website"): "needs a GitHub repository connected through the GitHub App and a live site to audit (real pushes and pull requests); the site tools run against a fake GitHub in tests/site_studio.test.mjs",
+    **{("site-studio", tab): "needs a GitHub repository connected through the GitHub App and a live site to audit (real pushes and pull requests); the site tools run against a fake GitHub in tests/site_studio.test.mjs" for tab in ("connect", "score", "copy", "changes")},
+}
 
 
 def _cv(c: Ctx) -> dict:
