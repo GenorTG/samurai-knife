@@ -111,7 +111,7 @@ def _provider_body(model: str) -> dict:
     }
 
 
-def configure(app_url: str, model: str = "deepseek-v4-flash", reasoning_effort: str | None = None) -> None:
+def configure(app_url: str, model: str = "deepseek-v4.1-flash", reasoning_effort: str | None = None) -> None:
     body = _provider_body(model)
     if reasoning_effort:
         body["reasoningEffort"] = reasoning_effort

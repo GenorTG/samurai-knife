@@ -2,7 +2,7 @@
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3239 npm run dev   # then:
-  python3 tests/agent_chain_real_e2e.py http://127.0.0.1:3239 [--model deepseek-v4-flash]
+  python3 tests/agent_chain_real_e2e.py http://127.0.0.1:3239 [--model deepseek-v4.1-flash]
 
 Oracles are independent of the model: the files Playwright really downloaded, and the page's own state.
 """
@@ -19,7 +19,7 @@ from real_provider import configure  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 args = ap.parse_args()
 BASE = args.base.rstrip("/")
 failures: list[str] = []

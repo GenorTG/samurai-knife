@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real provider: for the user's OWN file the agent opens the tool and waits instead of faking data.
 
-SCRATCH server only:  python3 tests/agent_wait_real_e2e.py http://127.0.0.1:3243 [--model deepseek-v4-flash]
+SCRATCH server only:  python3 tests/agent_wait_real_e2e.py http://127.0.0.1:3243 [--model deepseek-v4.1-flash]
 """
 import argparse
 import sys
@@ -20,7 +20,7 @@ PROMPTS = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
-    ap.add_argument("--model", default="deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek-v4.1-flash")
     args = ap.parse_args()
     configure(args.base, args.model)
     failed = 0

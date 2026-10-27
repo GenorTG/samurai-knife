@@ -2,7 +2,7 @@
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3303 npm run dev   # then:
-  python3 tests/agent_ocr_chain_real_e2e.py http://127.0.0.1:3303 [--model deepseek-v4-flash] [--runs 1]
+  python3 tests/agent_ocr_chain_real_e2e.py http://127.0.0.1:3303 [--model deepseek-v4.1-flash] [--runs 1]
 
 The harness plays the user: when the assistant parks on wait_for_user it chooses the scanned PDF on the
 pulsing file input, like a person picking a file. Oracles are independent of the model: the files Playwright
@@ -25,7 +25,7 @@ from real_provider import configure  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 ap.add_argument("--runs", type=int, default=1)
 ap.add_argument("--min-accuracy", type=float, default=0.90)
 ap.add_argument("--max-seconds", type=int, default=420)

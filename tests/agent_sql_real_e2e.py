@@ -2,7 +2,7 @@
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3245 npm run dev   # then:
-  python3 tests/agent_sql_real_e2e.py http://127.0.0.1:3245 [--cases pg_top3,tsql_monthly] [--model deepseek-v4-flash]
+  python3 tests/agent_sql_real_e2e.py http://127.0.0.1:3245 [--cases pg_top3,tsql_monthly] [--model deepseek-v4.1-flash]
 
 SQL answers: the last ```sql block of the reply is taken apart by the repo's own engine (server/py/scripts/sql_tool.py,
 called directly): it must validate in the asked dialect with zero errors, pass `check` against the schema, and, after being
@@ -27,7 +27,7 @@ from real_provider import configure  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 ap.add_argument("--cases", default="")
 args = ap.parse_args()
 BASE = args.base.rstrip("/")
