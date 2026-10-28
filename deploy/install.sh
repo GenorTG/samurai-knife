@@ -146,7 +146,7 @@ for pair in git:git curl:curl rsync:rsync flock:util-linux runuser:util-linux bw
   command -v "${pair%%:*}" >/dev/null 2>&1 || need+=("${pair#*:}")
 done
 # Pango for the CV PDF export (a shared library, not a command).
-if ! /sbin/ldconfig -p 2>/dev/null | grep -q 'libpangoft2-1\.0\.so\.0'; then need+=(pango); fi
+if ! /sbin/ldconfig -p 2>/dev/null | grep 'libpangoft2-1\.0\.so\.0' >/dev/null; then need+=(pango); fi  # no grep -q: an early exit SIGPIPEs ldconfig and pipefail reads that as missing
 if command -v tesseract >/dev/null 2>&1; then
   langs="$(tesseract --list-langs 2>/dev/null || true)"
   for l in eng pol osd; do grep -qx "$l" <<<"$langs" || need+=("tess-$l"); done
