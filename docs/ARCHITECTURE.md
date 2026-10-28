@@ -95,6 +95,7 @@ location always shown, submenus marked by a chevron and opened by click.
 - Tests use the mock provider by default. Never point tests at a shared model server.
 
 ## Gotchas
+- Large textareas: every `textarea` has `contain: paint` (globals.css). Without it Chromium lays an 8 MB textarea's text out again on every DOM change elsewhere on the page (a progress or status line): ~100 ms per change instead of one frame, which `tests/functional/offload_text_e2e.py` counts in its long-task sums. Do not remove it or override it on tool textareas.
 - Registration fields are browser-owned, named inputs read through `FormData` on submit; never disable signup from change-event field state. Password managers may fill without events, and a consent rerender must not erase those values (`tests/functional/signup_autofill_e2e.py`).
 
 - Workflows: code the worker imports (`src/lib/workflows/{types,catalog,engine,nodes,sandbox,worker}` and what they import) runs under Node's type stripping: erasable TypeScript only, directory imports as `…/index`. Start the worker with `spawn` + an IPC slot, never `fork(path)` (Next traces it into the bundle). Webhook routes are the only workflow routes without a session: never echo a caller's cookie into a run, never let a run set one.

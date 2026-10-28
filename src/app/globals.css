@@ -162,6 +162,13 @@ samp {
   }
 }
 
+/* A textarea holding megabytes of text (an 8 MB CSV paste) made Chromium lay that text out again on every DOM change
+   elsewhere on the page (a progress line, a status text): ~100 ms per change instead of one frame. Paint containment
+   isolates it; the textarea already clips its text, so nothing it draws changes. Not layered, so no utility undoes it. */
+textarea {
+  contain: paint;
+}
+
 button:not(:disabled),
 a[href],
 summary,
