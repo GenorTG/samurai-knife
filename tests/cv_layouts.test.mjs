@@ -122,6 +122,23 @@ test("cleanSheet keeps only the sheet and strips anything active or external", (
   assert.throws(() => cleanSheet("<div>no sheet</div>", null), SheetError);
 });
 
+test("cleanSheet: SVG links and images, xlink, obfuscated schemes, comments and split tags never survive", () => {
+  const hostile = `<article class="cvdoc" data-theme="modern"><svg viewBox="0 0 24 24"><path d="M1 2L3 4" fill="none"/><image href="http://x.test/a"/><image xlink:href="file:///etc/passwd"/><use href="#x"/><a xlink:href="javascript:alert(1)"><text>x</text></a><foreignObject><img src=x onerror=alert(1)></foreignObject><animate attributeName="href" to="javascript:alert(1)"/></svg>
+<a href="java&#x09;script:alert(1)">tab</a><a href=" javascript:alert(1)">space</a><a href="JaVaScRiPt:alert(1)">case</a><a href="data:text/html,x">data</a><a href="https://ok.test/p?a=1&amp;b=2" target="_top">ok</a>
+<!-- <script>alert(1)</script> --><scr<script>x</script>ipt>alert(2)</script><p title="x><script>alert(3)</script>">t</p>
+<style>@import url(http://x.test/i.css); @page { size: A4; }</style><p style="--cv-accent:url(http://x.test);color:red">s</p><p style="--cv-tint:#ffffff">tint</p>
+<math><mi xlink:href="javascript:alert(4)">m</mi></math><object data="x"></object><img src="http://x.test/t.png" alt="Me"></article>`;
+  const clean = cleanSheet(hostile, null);
+  for (const bad of ["<image", "<use", "<animate", "<foreignobject", "<math", "<object", "<script", "<text", "javascript", "JaVaScRiPt", "xlink", "file:", "x.test/a", "x.test/i.css", "x.test/t.png", "data:text", "onerror", "<img", "@import", "url(", "color:red", 'target="_top"', "<!--"]) {
+    assert.ok(!clean.toLowerCase().includes(bad.toLowerCase()), `${bad} survived: ${clean}`);
+  }
+  assert.match(clean, /<path d="M1 2L3 4" fill="none"\/>/);
+  assert.ok(clean.includes('href="https://ok.test/p?a=1&amp;b=2"'), clean);
+  assert.ok(clean.includes('style="--cv-tint:#ffffff"'), clean);
+  assert.ok(!/<scr|<\/?ipt/i.test(clean) && clean.includes("ipt&gt;"), "split tags cannot reassemble");
+  for (const name of ["tab", "space", "case", "data"]) assert.match(clean, new RegExp(`<a>${name}</a>`));
+});
+
 test("the PDF document loads fonts only from the renderer's base; the HTML file embeds them", () => {
   const doc = { sheetHtml: SHEET, lang: "en", title: "Jan <CV>", paper: "letter", fonts: "inter", photoDataUrl: null };
   const pdf = pdfHtml(doc);

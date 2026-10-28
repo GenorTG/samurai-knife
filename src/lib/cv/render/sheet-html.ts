@@ -16,32 +16,114 @@ const CSS_FILE = () => path.join(/*turbopackIgnore: true*/ process.cwd(), "src",
 
 export class SheetError extends Error {}
 
-/** Keeps only the sheet (`<article class="cvdoc" …>…</article>`) and strips anything active or external from it. */
+// What a CV sheet (CvDocument) is made of; everything else is dropped. Allowlists, not blocklists: anything the
+// renderer or a browser could fetch, run or navigate to is either not on these lists or filtered below.
+const KEEP_TAGS = new Set(["article", "header", "footer", "section", "aside", "div", "span", "p", "h1", "h2", "h3", "ul", "ol", "li", "a", "b", "strong", "em", "i", "small", "br", "img", "svg", "path", "style"]);
+// Dropped together with everything inside them (their content is code, a document or a form, never sheet text).
+const DROP_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "object", "embed", "noscript", "textarea", "select", "title", "head", "foreignobject", "math", "video", "audio", "canvas", "frameset", "noembed", "xmp", "plaintext"]);
+const KEEP_ATTRS = new Set(["class", "style", "href", "alt", "lang", "role", "viewbox", "width", "height", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "focusable", "rel", "target", "src"]);
+const SAFE_HREF = /^(https?:\/\/|mailto:|tel:)/i;
+const SAFE_STYLE_DECL = /^--cv-[a-z-]+\s*:\s*[#a-z0-9.() ,-]+$/i;
+const PAGE_STYLE = /^@page \{ size: (letter|A4); \}$/;
+
+function escapeText(text: string): string {
+  return text.replace(/&(?!(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);)/gi, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function escapeAttr(text: string): string {
+  return text.replace(/&(?!(#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);)/gi, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function decodeAttr(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);?/gi, (_m, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_m, dec: string) => String.fromCodePoint(Number(dec)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+/** One kept tag's attributes, filtered (null = the attribute is dropped). */
+function keepAttr(tag: string, name: string, value: string, photoDataUrl: string | null): string | null {
+  if (name.startsWith("data-") || name.startsWith("aria-")) return /^[a-z0-9-]+$/.test(name) ? value : null;
+  if (!KEEP_ATTRS.has(name)) return null;
+  // Control and whitespace characters hide schemes from a naive check ("java\tscript:").
+  const plain = value.replace(/[\u0000-\u0020\u007f-\u009f]/g, "");
+  if (name === "href") return tag === "a" && SAFE_HREF.test(plain) ? value : null;
+  if (name === "src") return tag === "img" && photoDataUrl ? photoDataUrl : null;
+  if (name === "style") {
+    const kept = value.split(";").map((d) => d.trim()).filter((d) => SAFE_STYLE_DECL.test(d) && !/url|expression|\\/i.test(d));
+    return kept.length ? kept.join(";") : null;
+  }
+  if (name === "target") return value === "_blank" ? value : null;
+  if (/[:(]|url/i.test(plain) && name !== "d" && name !== "viewbox") return null;
+  return value;
+}
+
+/**
+ * Keeps only the sheet (`<article class="cvdoc" …>…</article>`) and rebuilds it from allowlisted tags and attributes:
+ * no scripts, frames, forms, event handlers, external resources or links other than http(s)/mailto/tel survive, the
+ * only image is the account's own photo, the only <style> is the paper size. Text is re-escaped, so markup split
+ * around a removed tag ("<scr<script>ipt>") cannot reassemble.
+ */
 export function cleanSheet(html: string, photoDataUrl: string | null): string {
-  const start = html.search(/<article\b[^>]*\bclass="cvdoc"/);
+  const start = html.search(/<article\b[^>]*\bclass="cvdoc[ "]/);
   const end = html.lastIndexOf("</article>");
   if (start < 0 || end < start) throw new SheetError("not a CV sheet");
-  let sheet = html.slice(start, end + "</article>".length);
-  // Elements that run code, embed other documents or pull resources.
-  sheet = sheet.replace(/<(script|iframe|object|embed|link|meta|base|form|input|button|textarea|select|video|audio|source|template)\b[\s\S]*?(<\/\1\s*>|\/?>)/gi, "");
-  // Event handlers and inline styles that load URLs (style attributes keep only custom properties, e.g. --cv-accent).
-  sheet = sheet.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  sheet = sheet.replace(/\sstyle="([^"]*)"/gi, (_m, value: string) => {
-    const kept = value.split(";").map((d) => d.trim()).filter((d) => /^--cv-[a-z-]+\s*:\s*[#a-z0-9.() ,-]+$/i.test(d));
-    return kept.length ? ` style="${kept.join(";")}"` : "";
-  });
-  // The <style> the sheet itself carries is only the paper size: keep exactly that, nothing else.
-  sheet = sheet.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_m, css: string) => (/^@page \{ size: (letter|A4); \}$/.test(css.trim()) ? `<style>${css.trim()}</style>` : ""));
-  // Links: http(s), mailto and tel only.
-  sheet = sheet.replace(/\shref="([^"]*)"/gi, (_m, href: string) => (/^(https?:|mailto:|tel:)/i.test(href.trim()) ? ` href="${href}"` : ""));
-  // Images: the account's own photo, never a URL from the markup.
-  sheet = sheet.replace(/<img\b[^>]*>/gi, (tag) => {
-    if (!photoDataUrl) return "";
-    const cls = /\bclass="([^"]*)"/.exec(tag)?.[1] ?? "cv-photo";
-    const alt = /\balt="([^"]*)"/.exec(tag)?.[1] ?? "";
-    return `<img class="${cls}" src="${photoDataUrl}" alt="${alt}">`;
-  });
-  return sheet;
+  const source = html.slice(start, end + "</article>".length);
+  const token = /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<[!?][^>]*>|<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g;
+  const attrRe = /([^\s"'<>/=]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+  let out = "";
+  let last = 0;
+  let skip: string | null = null; // inside a dropped element: the tag whose end closes it
+  let styleOpen = false;
+  let styleText = "";
+  for (let m = token.exec(source); m; m = token.exec(source)) {
+    const text = source.slice(last, m.index);
+    last = token.lastIndex;
+    if (skip === null) {
+      if (styleOpen) styleText += text;
+      else out += escapeText(text);
+    }
+    const [, slash, rawTag, rawAttrs] = m;
+    if (!rawTag) continue; // comment, CDATA, doctype, processing instruction
+    const tag = rawTag.toLowerCase();
+    if (skip !== null) {
+      if (slash && tag === skip) skip = null;
+      continue;
+    }
+    if (tag === "style") {
+      // The sheet's own <style> holds exactly the paper size; anything else is dropped with its content.
+      if (!slash) {
+        styleOpen = true;
+        styleText = "";
+      } else if (styleOpen) {
+        styleOpen = false;
+        if (PAGE_STYLE.test(styleText.trim())) out += `<style>${styleText.trim()}</style>`;
+      }
+      continue;
+    }
+    if (styleOpen) continue;
+    if (DROP_WITH_CONTENT.has(tag)) {
+      if (!slash && !/\/\s*$/.test(rawAttrs)) skip = tag;
+      continue;
+    }
+    if (!KEEP_TAGS.has(tag)) continue;
+    if (slash) {
+      if (tag !== "img" && tag !== "br") out += `</${tag}>`;
+      continue;
+    }
+    const attrs: string[] = [];
+    for (const a of rawAttrs.matchAll(attrRe)) {
+      const name = a[1].toLowerCase();
+      const quoted = a[2] ?? "";
+      const value = decodeAttr(quoted.startsWith('"') || quoted.startsWith("'") ? quoted.slice(1, -1) : quoted);
+      const kept = keepAttr(tag, name, value, photoDataUrl);
+      if (kept !== null) attrs.push(`${name}="${escapeAttr(kept)}"`);
+    }
+    if (tag === "img" && !attrs.some((a) => a.startsWith("src="))) continue; // no photo: no image at all
+    if (tag === "img" && !attrs.some((a) => a.startsWith("class="))) attrs.unshift('class="cv-photo"');
+    const selfClosing = tag === "img" || tag === "br" || (tag === "path" && /\/\s*$/.test(rawAttrs));
+    out += `<${tag}${attrs.length ? " " + attrs.join(" ") : ""}${selfClosing && tag === "path" ? "/" : ""}>`;
+  }
+  if (skip === null && !styleOpen) out += escapeText(source.slice(last));
+  return out;
 }
 
 function escapeHtml(text: string): string {
