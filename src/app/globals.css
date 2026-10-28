@@ -13,70 +13,65 @@
 :root {
   color-scheme: dark;
 
-  /* Dark-first palette, matching smart-samurai.pl (:root HSL tokens):
-     background 230 25% 5%, card 230 25% 8%, muted 230 20% 14%,
-     border 230 20% 18%, foreground 210 40% 98%, muted-fg 215 20% 65%,
-     accent 187 100% 50% (cyan) on a dark accent-foreground. */
-  --c-bg: hsl(230 25% 5%);
-  --c-surface: hsl(230 25% 8%);
-  --c-raised: hsl(230 20% 14%);
-  --c-field: hsl(230 25% 6%);
-  --c-line: hsl(230 20% 18%);
-  --c-line-strong: hsl(230 18% 27%);
-  --c-ink: hsl(210 40% 98%);
-  --c-muted: hsl(215 20% 65%);
-  --c-faint: hsl(215 16% 57%);
+  /* Quiet graphite surfaces and one clear blue action colour. */
+  --c-bg: hsl(220 20% 7%);
+  --c-surface: hsl(220 19% 10%);
+  --c-raised: hsl(220 17% 14%);
+  --c-field: hsl(220 21% 8%);
+  --c-line: hsl(220 16% 19%);
+  --c-line-strong: hsl(220 14% 29%);
+  --c-ink: hsl(216 28% 94%);
+  --c-muted: hsl(216 15% 69%);
+  --c-faint: hsl(216 12% 56%);
 
-  /* Cyan primary: fills, rings, focus. Soft variant is the text-safe tint. */
-  --c-accent: hsl(187 100% 50%);
-  --c-accent-soft: hsl(187 100% 64%);
-  --c-accent-fg: hsl(230 25% 5%);
+  /* Blue carries interaction; violet is reserved for assistant identity. */
+  --c-accent: hsl(211 92% 67%);
+  --c-accent-soft: hsl(211 92% 77%);
+  --c-accent-fg: hsl(220 24% 9%);
 
   /* Semantic. */
-  --c-good: hsl(152 70% 55%);
-  --c-warn: hsl(40 95% 60%);
-  --c-danger: hsl(0 85% 66%);
+  --c-good: hsl(151 58% 54%);
+  --c-warn: hsl(35 88% 61%);
+  --c-danger: hsl(0 72% 65%);
 
-  /* The assistant's own colour, distinct from cyan: the hot pink of the
-     site's wordmark gradient (pink > orange > yellow). */
-  --c-ai: hsl(330 95% 68%);
+  --c-ai: hsl(258 82% 75%);
 
-  --shadow-color: hsl(230 40% 2% / 0.6);
-  --glow: hsl(187 100% 50% / 0.09);
-  --glow-ai: hsl(330 95% 65% / 0.07);
-  --glass: hsl(230 25% 8% / 0.72);
+  --shadow-color: hsl(225 35% 2% / 0.42);
+  --glow: hsl(211 92% 67% / 0.045);
+  --glow-ai: hsl(258 82% 75% / 0.035);
+  --glass: hsl(220 19% 10% / 0.86);
   --scrim: hsl(0 0% 0% / 0.55);
-  --ring-glow: hsl(187 100% 50% / 0.35);
+  --ring-glow: hsl(211 92% 67% / 0.24);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --c-bg: hsl(220 25% 96.5%);
+  --c-bg: hsl(216 24% 97%);
   --c-surface: hsl(0 0% 100%);
-  --c-raised: hsl(220 20% 94%);
-  --c-field: hsl(220 25% 98.5%);
-  --c-line: hsl(220 18% 88%);
-  --c-line-strong: hsl(220 14% 76%);
-  --c-ink: hsl(230 30% 10%);
-  --c-muted: hsl(225 15% 36%);
-  --c-faint: hsl(225 12% 42%);
+  --c-raised: hsl(216 20% 94%);
+  --c-field: hsl(0 0% 100%);
+  --c-line: hsl(216 17% 88%);
+  --c-line-strong: hsl(216 14% 77%);
+  --c-ink: hsl(222 24% 13%);
+  --c-muted: hsl(220 14% 38%);
+  --c-faint: hsl(220 12% 45%);
 
-  --c-accent: hsl(190 100% 27%);
-  --c-accent-soft: hsl(190 100% 22%);
+  --c-accent: hsl(211 78% 42%);
+  --c-accent-soft: hsl(211 78% 36%);
   --c-accent-fg: hsl(0 0% 100%);
 
   --c-good: hsl(152 70% 28%);
   --c-warn: hsl(32 90% 30%);
   --c-danger: hsl(0 72% 42%);
-  --c-ai: hsl(330 80% 40%);
+  --c-ai: hsl(258 62% 48%);
 
   --shadow-color: hsl(230 30% 20% / 0.14);
-  --glow: hsl(187 100% 40% / 0.08);
-  --glow-ai: hsl(330 95% 65% / 0.05);
+  --glow: hsl(211 92% 52% / 0.045);
+  --glow-ai: hsl(258 70% 55% / 0.035);
   /* Near-opaque so page text never bleeds through dialogs; light scrim stays soft. */
   --glass: hsl(0 0% 100% / 0.96);
   --scrim: hsl(0 0% 0% / 0.3);
-  --ring-glow: hsl(190 100% 35% / 0.28);
+  --ring-glow: hsl(211 78% 42% / 0.2);
 }
 
 @theme inline {
@@ -102,12 +97,12 @@
   --font-mono: var(--font-geist-mono), var(--font-geist-mono-ext), ui-monospace, "SF Mono", "Cascadia Code",
     "JetBrains Mono", Menlo, Consolas, monospace;
 
-  --radius-tool: 14px;
-  --radius-field: 10px;
+  --radius-tool: 16px;
+  --radius-field: 11px;
 
   --shadow-xs: 0 1px 1px var(--shadow-color);
-  --shadow-card: 0 1px 2px var(--shadow-color), 0 4px 14px -6px var(--shadow-color);
-  --shadow-pop: 0 2px 4px var(--shadow-color), 0 18px 44px -12px var(--shadow-color);
+  --shadow-card: 0 1px 2px var(--shadow-color), 0 8px 22px -12px var(--shadow-color);
+  --shadow-pop: 0 8px 28px -12px var(--shadow-color);
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -124,8 +119,8 @@ body {
 body {
   background: var(--c-bg);
   background-image:
-    radial-gradient(46rem 24rem at 12% -6rem, var(--glow-ai), transparent 70%),
-    radial-gradient(60rem 26rem at 88% -8rem, var(--glow), transparent 70%);
+    radial-gradient(54rem 28rem at 8% -12rem, var(--glow-ai), transparent 72%),
+    radial-gradient(62rem 30rem at 92% -14rem, var(--glow), transparent 72%);
   background-repeat: no-repeat;
   background-attachment: fixed;
   color: var(--c-ink);
@@ -232,17 +227,17 @@ input[type="range"] {
 @layer components {
   .sk-input {
     background: var(--c-field);
-    border: 1px solid var(--c-line-strong);
+    border: 1px solid var(--c-line);
     border-radius: var(--radius-field);
     color: var(--c-ink);
-    box-shadow: inset 0 1px 1px var(--shadow-color);
+    box-shadow: 0 1px 2px var(--shadow-color);
     transition:
       border-color 140ms var(--ease-out),
       box-shadow 140ms var(--ease-out);
   }
 
   .sk-input:hover {
-    border-color: color-mix(in oklab, var(--c-line-strong) 70%, var(--c-ink));
+    border-color: var(--c-line-strong);
   }
 
   .sk-input:focus,
@@ -397,7 +392,7 @@ select.sk-input {
     -webkit-backdrop-filter: blur(14px) saturate(1.2);
   }
 
-  /* Primary action: solid cyan with the site's double outline glow. */
+  /* Primary action: one clear accent edge, with a restrained focus lift. */
   .sk-btn-primary {
     box-shadow:
       0 0 0 2px var(--c-bg),
@@ -408,17 +403,17 @@ select.sk-input {
     box-shadow: none;
   }
 
-  /* Wordmark gradient from the site: pink > orange > yellow. */
+  /* Restrained blue-to-violet wordmark matching the shared interaction palette. */
   .sk-wordmark {
-    background: linear-gradient(90deg, hsl(330 95% 66%), hsl(24 100% 62%) 60%, hsl(45 100% 62%));
+    background: linear-gradient(100deg, var(--c-accent-soft), var(--c-ai));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
-  /* The bright stops vanish on the light page (yellow ~1.4:1); these stay >= 3:1 on --c-bg. */
+  /* Darker stops preserve readable contrast against the light surface. */
   :root[data-theme="light"] .sk-wordmark {
-    background-image: linear-gradient(90deg, hsl(330 80% 40%), hsl(20 90% 38%) 60%, hsl(38 90% 34%));
+    background-image: linear-gradient(100deg, hsl(211 78% 34%), hsl(258 62% 42%));
   }
 }
 

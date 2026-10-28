@@ -180,6 +180,7 @@ export function requestWait(
       el?.removeAttribute(AWAIT_ATTR);
       signal?.removeEventListener("abort", onAbort);
       waitResolves.delete(chatId);
+      pendingWaits.delete(chatId);
       runtime.leaveAwaiting("awaiting_user");
       resolve(r);
     };

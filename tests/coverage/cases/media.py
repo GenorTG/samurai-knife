@@ -3,8 +3,8 @@ import colorsys
 import io
 import re
 
-from tests.coverage.core import Case, Ctx, first_error, has, matches, used
-from tests.coverage.fixtures import b64, make_png
+from tests.coverage.core import Case, Ctx, UserFile, first_error, has, matches
+from tests.coverage.fixtures import make_png
 
 GROUP = "media"
 SKIPS: dict[tuple[str, str | None], str] = {}
@@ -40,10 +40,6 @@ def _pal_png(size, fn):
     buf = io.BytesIO()
     im.save(buf, "PNG", optimize=True)
     return buf.getvalue()
-
-
-def _attached(c: Ctx):
-    return None if used(c, "upload_file") else "never attached the file"
 
 
 def _readonly(c: Ctx) -> str:
@@ -157,47 +153,46 @@ _QR_TEXT = "WIFI:T:WPA;S:Dojo-7;P:kata#9141;;"
 
 CASES = [
     Case("image-crop", "crop",
-         "I have a 160 by 120 PNG image called photo.png (base64 below). Crop it to a 48 by 36 pixel region and tell me the output size you got.\n\n" + b64(_PNG),
-         lambda c: first_error(matches(c.haystack(), r"48\s*[x×]\s*36"), None if used(c, "upload_file") else "never attached the file")),
+         "I have the real PNG file photo.png. Crop it to a 48 by 36 pixel region and tell me the output size.",
+         lambda c: first_error(matches(c.haystack(), r"48\s*[x×]\s*36"), None if c.user_files_uploaded == 1 else "the harness did not supply the real image"),
+         user_files=(UserFile(0, "photo.png", "image/png", _PNG),)),
 
     Case("image-crop", "trim",
-         "The PNG logo.png (base64 below) has a big transparent border around the artwork. Trim away all the fully transparent margin so only the visible artwork is left, "
-         "and tell me the width and height before and after trimming.\n\n" + b64(_TRIM),
-         lambda c: first_error(_attached(c), matches(c.haystack(), r"90\s*[x×]\s*70"), matches(c.haystack(), r"38\s*[x×]\s*25"),
+         "The PNG logo.png has a big transparent border around the artwork. Trim away all the fully transparent margin so only the visible artwork is left, and tell me the width and height before and after trimming.",
+         lambda c: first_error(None if c.user_files_uploaded == 1 else "the harness did not supply the real image", matches(c.haystack(), r"90\s*[x×]\s*70"), matches(c.haystack(), r"38\s*[x×]\s*25"),
                                None if re.search(r"38\s*[x×]\s*25", c.answer) else "answer lacks the trimmed size 38x25"),
-         note="expected: 90x70 -> 38x25"),
+         note="expected: 90x70 -> 38x25", user_files=(UserFile(0, "logo.png", "image/png", _TRIM),)),
 
 
     Case("image-compare", None,
-         "I have two screenshots of the same 20x10 area, before.png and after.png (base64 below). What percentage of pixels changed noticeably "
-         "(treat a per-pixel average channel difference of up to 12 out of 255 as unchanged)? Give me the percentage with two decimals.\n\nbefore.png:\n"
-         + b64(_CA) + "\n\nafter.png:\n" + b64(_CB),
-         lambda c: first_error(_attached(c), matches(c.haystack(), r"(?<![\d.])15(\.0+)?\s*%"), None if re.search(r"(?<![\d.])15(\.0+)?\s*%", c.answer) else "answer lacks 15%"),
-         note="3 of 20 columns differ -> 15.00%"),
+         "I have two real screenshots of the same area, before.png and after.png. Compare them and tell me what percentage of pixels changed.",
+         lambda c: first_error(None if c.user_files_uploaded == 2 else "the harness did not supply both images", matches(c.haystack(), r"(?<![\d.])15(\.0+)?\s*%"), None if re.search(r"(?<![\d.])15(\.0+)?\s*%", c.answer) else "answer lacks 15%"),
+         note="3 of 20 columns differ -> 15.00%",
+         user_files=(UserFile(0, "before.png", "image/png", _CA), UserFile(1, "after.png", "image/png", _CB))),
 
 
     Case("image-resize", "resize",
-         f"Resize this image (banner.png, base64 below) to exactly {_RW} pixels wide while keeping its proportions. What are the new width and height?\n\n" + b64(_WIDE),
-         lambda c: first_error(_attached(c), matches(c.haystack(), rf"{_RW}\s*[x×]\s*{_RH}"), matches(c.answer, rf"{_RW}\s*[x×]\s*{_RH}")),
-         note="640x360 -> 224x126"),
+         f"Resize this real image file (banner.png) to exactly {_RW} pixels wide while keeping its proportions. What are the new width and height?",
+         lambda c: first_error(None if c.user_files_uploaded == 1 else "the harness did not supply the real image", matches(c.haystack(), rf"{_RW}\s*[x×]\s*{_RH}"), matches(c.answer, rf"{_RW}\s*[x×]\s*{_RH}")),
+         note="640x360 -> 224x126", user_files=(UserFile(0, "banner.png", "image/png", _WIDE),)),
 
     Case("image-resize", "scrub",
-         "This JPEG (holiday.jpg, base64 below) contains camera metadata I don't want to share. Strip all the metadata and give me a clean JPEG copy. Tell me what the app said when it was done.\n\n" + b64(_JPG),
-         lambda c: first_error(_attached(c), matches(c.page_only(), r"Saved JPG without embedded source metadata")),
-         note="status 'Saved JPG without embedded source metadata.'"),
+         "This real JPEG file (holiday.jpg) contains camera metadata I don't want to share. Strip all the metadata and give me a clean JPEG copy. Tell me what the app said when it was done.",
+         lambda c: first_error(None if c.user_files_uploaded == 1 else "the harness did not supply the real image", matches(c.page_only(), r"Saved JPG without embedded source metadata")),
+         note="status 'Saved JPG without embedded source metadata.'", user_files=(UserFile(0, "holiday.jpg", "image/jpeg", _JPG),)),
 
     Case("image-resize", "responsive",
-         "I have a 1000 pixel wide picture hero.png (base64 below). Make web-sized copies at widths 250, 480, 800 and 1400 for a responsive srcset, and tell me which widths you actually got.\n\n" + b64(_RESP),
-         lambda c: first_error(_attached(c), *[matches(c.page_only(), rf"\b{w}w\b") for w in (250, 480, 800)],
-                               "1400w produced (upscaled)" if re.search(r"\b1400w\b", c.page_only()) else None,
-                               None if all(_word(c.answer, w) for w in (250, 480, 800)) else "answer lacks the widths"),
-         note="1400 > source width must be skipped"),
+         "I have a real 1000 pixel wide picture file hero.png. Make web-sized copies at widths 250, 480, 800 and 1400 for a responsive srcset, and tell me which widths you actually got.",
+         lambda c: first_error(None if c.user_files_uploaded == 1 else "the harness did not supply the real image",
+                               *[matches(c.answer, rf"hero-{w}\.webp") for w in (250, 480, 800)],
+                               "1400px was produced despite the source-width cap" if re.search(r"hero-1400\.webp|1400w[^\n]{0,30}produced", c.answer, re.I) else None),
+         note="1400 > source width must be skipped", user_files=(UserFile(0, "hero.png", "image/png", _RESP),)),
 
     Case("image-resize", "favicon",
-         "Create the usual set of app-icon / favicon PNGs from this square logo (logo.png, base64 below) and list the pixel sizes you produced.\n\n" + b64(_ICON),
-         lambda c: first_error(_attached(c), *[matches(c.page_only(), rf"\b{s}\s*[x×]\s*{s}\b") for s in (16, 32, 48, 180, 512)],
+         "Create the usual set of app-icon / favicon PNGs from this real square logo file (logo.png) and list the pixel sizes you produced.",
+         lambda c: first_error(None if c.user_files_uploaded == 1 else "the harness did not supply the real image", *[matches(c.page_only(), rf"\b{s}\s*[x×]\s*{s}\b") for s in (16, 32, 48, 180, 512)],
                                None if all(_word(c.answer, s) for s in (16, 32, 48, 180, 512)) else "answer lacks sizes"),
-         note="16/32/48/180/512"),
+         note="16/32/48/180/512", user_files=(UserFile(0, "logo.png", "image/png", _ICON),)),
 
 
     Case("svg-optimize", "optimize",

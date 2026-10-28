@@ -92,5 +92,6 @@ test("approval and wait cards and answers are isolated by chat", async () => {
   answerWait("continue", undefined, "chat_two");
   answerWait("continue", undefined, "chat_one");
   assert.equal((await waiting).resumedBy, "continue");
+  assert.equal(getInteraction("chat_one").wait, null);
   runtime.end();
 });

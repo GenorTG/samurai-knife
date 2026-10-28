@@ -215,12 +215,14 @@ test("knife_doc_* tools: folders, move, versions, restore; scoped to the calling
   store.deleteDoc("alice", created.id);
 });
 
-test("retention: CV snapshots by count and bytes, 5 conversation files per account", () => {
+test("retention: CV snapshots by count and bytes, bounded conversation files per account", () => {
   addAccount("dave", "user", 50 * MB);
   let data_ = emptyCvData();
   for (let n = 0; n < 45; n += 1) data_ = cv.saveCv("dave", { ...data_, profile: { ...data_.profile } });
   assert.equal(readdirSync(join(dataDir, "cv", "dave.snapshots")).length, 40);
-  for (let n = 0; n < 8; n += 1) conversations.readConversation("dave", conversations.providerConversationId("http://x/v1", `model-${n}`));
+  for (let n = 0; n < conversations.KEEP_CONVERSATIONS + 3; n += 1) {
+    conversations.readConversation("dave", conversations.providerConversationId("http://x/v1", `model-${n}`));
+  }
   assert.equal(readdirSync(join(dataDir, "conversations", "dave")).length, conversations.KEEP_CONVERSATIONS);
   quota.invalidateUsage("dave");
   const walked = quota.storageUsage("dave");

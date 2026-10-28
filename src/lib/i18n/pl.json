@@ -971,7 +971,6 @@
   "Characters and encoding": "Znaki i kodowanie",
   "characters to leave literal": "znaki do zostawienia dosłownie",
   "Chars": "Znaki",
-  "Chat history is kept on this server per account and provider; the action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta i dostawcy; dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
   "Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta, dostawcy i rozmowy; dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
   "Chat {number}": "Czat {number}",
   "Chat with the assistant: it asks about your work and fills the profile in as you go.": "Porozmawiaj z asystentem: pyta o Twoją pracę i na bieżąco uzupełnia profil.",

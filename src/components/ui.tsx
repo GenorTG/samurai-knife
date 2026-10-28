@@ -44,7 +44,7 @@ function buttonClass(variant: NonNullable<ButtonProps["variant"]>, size: NonNull
     lg: "h-11 px-5 text-[15px]",
   };
   return cx(
-    "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg whitespace-nowrap transition-[background-color,border-color,color,filter] duration-150 select-none",
+    "inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl whitespace-nowrap transition-[background-color,border-color,color,filter,transform] duration-150 select-none active:scale-[0.985]",
     "disabled:cursor-not-allowed disabled:opacity-40",
     variants[variant],
     sizes[size],
