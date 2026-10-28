@@ -211,14 +211,20 @@ with sync_playwright() as pw:
         run(fresh, k2, "CALL:page_snapshot:{}")
 
     open_page("/tools/ids")
-    # a real file chooser: set_input_files dispatches untrusted events, which (rightly) do not count as the user's own pick
+    # a real file chooser: set_input_files dispatches untrusted events, which (rightly) do not count as the user's own pick.
+    # The open assistant panel covers the hash tab's drop zone at 1440x900, so close it for the user's click and reopen it.
+    fresh.locator("[role=dialog][aria-label='Toolbox assistant'] textarea").focus()
+    fresh.keyboard.press("Escape")
+    fresh.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']", state="detached")
     with fresh.expect_file_chooser() as chooser:
-        fresh.get_by_text("Choose file", exact=False).first.click()
+        fresh.locator("main").get_by_text("Choose file", exact=False).first.click()
     # (and only a file PATH makes Chromium fire the native, trusted change event; in-memory buffers are replayed synthetically)
     with tempfile.TemporaryDirectory() as tmp:
         mine = pathlib.Path(tmp) / "mine.txt"
         mine.write_text("my own file")
         chooser.value.set_files(str(mine))
+    fresh.keyboard.press("Control+j")
+    fresh.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     run(fresh, k2, "CALL:page_snapshot:{}")
     r = run(fresh, k2, 'CALL:upload_file:{"id":"%s","name":"other.txt","text":"the assistant file"}' % agent_id("main input[type=file]"))
     check("Risky: upload_file over a file I chose asks (destructive)", r.startswith("asked!:Replace your file"), r)

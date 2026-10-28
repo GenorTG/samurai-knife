@@ -3,8 +3,10 @@ import base64
 import datetime as dt
 import hashlib
 import hmac
+import http.server
 import json
 import re
+import threading
 from urllib.parse import urlparse
 
 from tests.coverage.core import Case, Ctx, first_error, has, matches
@@ -245,43 +247,93 @@ _IDN_ASCII = _IDN_ORIG.encode("idna").decode()
 assert _IDN_ASCII.encode().decode("idna") == _IDN_ORIG
 
 
+# ---------------------------------------------------------------- website check (a local fixture site)
+# The Website check fetches a live page on the server; outside public mode a loopback address is allowed, so each
+# process that loads these cases serves its own tiny site with known gaps (one redirect, a cookie without Secure and
+# SameSite, a skipped heading level, one image without alt). Answers come from this page, not from the model.
+_SITE_PAGE = (b"<!doctype html><html lang=\"en\"><head><title>Coverage fixture shop</title>"
+              b"<meta name=\"viewport\" content=\"width=device-width\"></head><body><main><h1>Fixture shop</h1>"
+              b"<h3>Skipped a level</h3><img src=\"a.png\"><img src=\"b.png\" alt=\"Logo\"></main></body></html>")
+
+
+class _SiteHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path == "/old":
+            self.send_response(301)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Set-Cookie", "session=abc123; Path=/; HttpOnly")
+            self.end_headers()
+            self.wfile.write(_SITE_PAGE)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+
+_SITE = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SiteHandler)
+threading.Thread(target=_SITE.serve_forever, daemon=True).start()
+_SITE_URL = f"http://127.0.0.1:{_SITE.server_address[1]}/old"
+
+
+def _site_check(c: Ctx):
+    low = c.answer.lower()
+    return first_error(
+        None if "/tools/web" in c.url() else f"the check did not run in the Web workbench (url {c.url()})",
+        has(c.page_only(), "Fixture shop"),
+        matches(c.answer, r"\b301\b"),
+        None if "secure" in low and "samesite" in low else "the cookie's missing Secure and SameSite flags are not both named",
+        matches(c.answer, r"\bh2\b|h1\s*(?:→|->|to)\s*h3|level\s*2"),
+        matches(c.answer, r"\b(?:1|one)\s+(?:image|img)|(?:image|img)s?\b[^.\n]{0,40}\b(?:1|one)\b"),
+    )
+
+
 CASES = [
-    Case("epoch", "epoch", "What calendar date and time in UTC is the Unix timestamp 1700000000?",
+    Case("dates", "epoch", "What calendar date and time in UTC is the Unix timestamp 1700000000?",
          lambda c: first_error(
              # any common spelling of 14 Nov 2023: ISO, "November 14, 2023", "14 Nov 2023", "Tuesday, 14 November 2023"
              matches(c.haystack(), r"2023-11-14|(?<!\d)14(?:th)?\s+(?:of\s+)?Nov(?:ember)?\.?,?\s+2023|Nov(?:ember)?\.?\s+14(?:th)?,?\s+2023"),
              has(c.haystack(), "22:13:20"))),
-    Case("http-headers", "csp",
+    Case("web", "csp",
          "Write me a report-only Content-Security-Policy header. Scripts only from our own origin and https://cdn.jsdelivr.net; images from our origin and data: URIs; "
          "connections (fetch/XHR/websocket) to our origin, https://api.stripe.com and wss://live.example.net; no plugins/objects at all; and nobody may frame the page. "
          "Give me the full header line.", _csp),
-    Case("http-headers", "curl",
+    Case("web", "curl",
          "Build me a curl command (properly quoted for a POSIX shell) that does a POST to https://api.example.com/v2/customers with the header "
          "'Content-Type: application/json', the header 'X-Request-Id: 7f3a-91' and the JSON body {\"name\":\"O'Brien\",\"tier\":3}.", _curl),
-    Case("robots-txt", "robots",
+    Case("web", "robots",
          "Here is our robots.txt:\n\n" + _ROBOTS + "\nMay Googlebot crawl /shop/cart/checkout? Tell me which rule decides it.", _robots),
-    Case("robots-txt", "sitemap",
+    Case("web", "sitemap",
          "Check this sitemap:\n\n" + _SM_XML + "\nHow many entries does it list, how many redundant duplicate entries (repeat appearances of an already listed URL) are there, "
          "and which entry has an invalid last-modified date?", _sitemap),
     Case("ids", "ids",
          f"Give me the SHA-256 hash (hex) of the exact text: {_HASH_TEXT}", _ids),
-    Case("jwt", "jwt",
+    Case("ids", "jwt",
          f"Decode this JWT:\n\n{_JWT}\n\nWho is the subject, what is the role, when does it expire (UTC)? Also check the signature against the secret tr1angle-pine-78 and tell me whether it verifies.",
          _jwt),
-    Case("jwt", "password",
+    Case("ids", "password",
          f"Rate this password: {_PW}. Estimate its entropy in bits, but don't give credit for the full character-class pool: "
          "a password of N characters that only uses U distinct characters is worth at most N*log2(U) bits. Give the bits as a whole number.",
          _password),
     Case("mcp-connect", None,
          "I want to connect an external agent (Cursor) to the same tool service you are running on. What exact URL do I put in its MCP config? Give me the JSON snippet too.",
          _mcp),
-    Case("epoch", "format",
+    Case("dates", "format",
          "Format the date and time 2031-03-09 17:45 using the pattern 'ddd D MMM YY, h:mm A' (day.js style tokens, UK English).",
          lambda c: has(_dash(c.haystack()), _FMT_OUT)),
-    Case("epoch", "duration",
+    Case("dates", "duration",
          "Add the two durations 37:48:09 and 15:20:55 (H:MM:SS, hours may pass 24). What is the total?",
          lambda c: has(c.haystack(), _DUR_OUT)),
-    Case("url", "url",
+    Case("web", "url",
          "Take this URL: https://auth.example.org/login?next=%2Fcart%3Fitem%3D42%26qty%3D3&lang=pl-PL&utm_id=x9 . "
          "What is the decoded value of the next parameter, and what is the lang value?", _url),
+    Case("web", "check",
+         f"Run a website check on {_SITE_URL} . What status does the first hop answer with, which flags is the session cookie "
+         "missing, which heading level does the page skip, and how many images have no alt text?", _site_check),
 ]

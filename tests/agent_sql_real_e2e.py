@@ -2,7 +2,7 @@
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3245 npm run dev   # then:
-  python3 tests/agent_sql_real_e2e.py http://127.0.0.1:3245 [--cases pg_top3,tsql_monthly] [--model deepseek-v4-flash]
+  python3 tests/agent_sql_real_e2e.py http://127.0.0.1:3245 [--cases pg_top3,tsql_monthly] [--model deepseek-v4.1-flash]
 
 SQL answers: the last ```sql block of the reply is taken apart by the repo's own engine (server/py/scripts/sql_tool.py,
 called directly): it must validate in the asked dialect with zero errors, pass `check` against the schema, and, after being
@@ -27,7 +27,7 @@ from real_provider import configure  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 ap.add_argument("--cases", default="")
 args = ap.parse_args()
 BASE = args.base.rstrip("/")
@@ -128,8 +128,10 @@ def transpile_oracle(answer: str, tools: list[str]) -> list[tuple[str, bool, obj
 def trap_oracle(answer: str, tools: list[str]) -> list[tuple[str, bool, object]]:
     sql = "\n".join(blocks(answer, *SQL_FENCES))
     low = answer.lower()
+    # Using phone is fine only when the same answer adds that column first (an offered migration, not an invented column).
+    migrates = re.search(r"alter\s+table\s+\w+\s+add\s+(column\s+)?phone\b", sql, re.I) is not None
     return [
-        ("did not invent a phone column in SQL", "phone" not in sql.lower(), sql),
+        ("did not invent a phone column in SQL", "phone" not in sql.lower() or migrates, sql),
         ("said the schema has no phone column", "phone" in low and any(w in low for w in ("no ", "not ", "doesn't", "does not", "isn't", "missing", "n't")), answer[:240]),
     ]
 

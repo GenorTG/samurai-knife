@@ -1,15 +1,15 @@
-"""Real model + real OCR engine: scanned PDF -> OCR text -> compressed .gz, all driven by the assistant.
+"""Real model + real OCR engine: scanned PDF -> searchable PDF (OCRmyPDF on the server) -> text extracted by the PDF
+toolkit, all driven by the assistant: two tools chained through the produced-file handle.
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3303 npm run dev   # then:
-  python3 tests/agent_ocr_chain_real_e2e.py http://127.0.0.1:3303 [--model deepseek-v4-flash] [--runs 1]
+  python3 tests/agent_ocr_chain_real_e2e.py http://127.0.0.1:3303 [--model deepseek-v4.1-flash] [--runs 1]
 
 The harness plays the user: when the assistant parks on wait_for_user it chooses the scanned PDF on the
 pulsing file input, like a person picking a file. Oracles are independent of the model: the files Playwright
-really downloaded, compared with the known text (word accuracy) and with gunzip.
+really downloaded, compared with the known text (word accuracy).
 """
 import argparse
-import gzip
 import json
 import re
 import sys
@@ -21,11 +21,11 @@ from playwright.sync_api import Page, sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ocr_fixtures import build  # noqa: E402
-from real_provider import configure  # noqa: E402
+from real_provider import configure, reset_conversation  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 ap.add_argument("--runs", type=int, default=1)
 ap.add_argument("--min-accuracy", type=float, default=0.90)
 ap.add_argument("--max-seconds", type=int, default=420)
@@ -34,9 +34,9 @@ args = ap.parse_args()
 BASE = args.base.rstrip("/")
 
 PROMPT = (
-    "OCR this scanned page, then compress the extracted text file and give me the .gz"
-    if args.pages == 1
-    else "OCR every page of this scanned document, then compress the extracted text file and give me the .gz"
+    ("Turn this scanned page into a searchable PDF and download it." if args.pages == 1
+     else "Turn every page of this scanned document into a searchable PDF and download it.")
+    + " Then switch to the Tools tab of the PDF toolkit, load that searchable PDF there, extract its text and download the .txt."
 )
 
 
@@ -97,6 +97,7 @@ def run_once(idx: int, pdf: Path, truth: str) -> dict:
         page.on("download", lambda d: downloads.append((d.suggested_filename, Path(d.path()).read_bytes())))
 
         page.goto(BASE + "/tools/qr", wait_until="networkidle")
+        reset_conversation(page)
         page.keyboard.press("Control+j")
         page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
         k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
@@ -149,18 +150,17 @@ def run_once(idx: int, pdf: Path, truth: str) -> dict:
         used = [c for c, _ in calls(page, k)]
         names = [n for n, _ in downloads]
         txt = next((b for n, b in downloads if n.endswith(".txt")), None)
-        gz = next((b for n, b in downloads if n.endswith(".gz")), None)
+        searchable = next((b for n, b in downloads if n.endswith(".pdf")), None)
         check("run finished inside the time budget", finished, f"{result['seconds']}s; last calls {used[-6:]}")
         check("assistant parked on wait_for_user and the harness chose the file", picked == 1 and "wait_for_user" in used, (picked, used))
-        check("OCR text really downloaded", txt is not None, names)
+        check("searchable PDF really downloaded", bool(searchable and searchable.startswith(b"%PDF")), names)
+        check("extracted text really downloaded", txt is not None, names)
         acc = accuracy(truth, txt.decode("utf-8", "replace")) if txt else 0.0
         result["accuracy"] = round(acc, 3)
         check(f"OCR word accuracy >= {args.min_accuracy:.0%} ({acc:.1%})", acc >= args.min_accuracy)
-        check(".gz really downloaded", gz is not None, names)
-        check("the .gz gunzips to exactly the extracted text", bool(gz and txt) and gzip.decompress(gz) == txt)
         uploads = [a for c, a in calls(page, k) if c == "upload_file"]
         check("every upload used from_file or the user's own pick, never model-sent bytes", all("base64" not in a and "text" not in a for a in uploads), uploads)
-        check("the compressor got the text via from_file", any("from_file" in a for a in uploads), uploads)
+        check("the PDF toolkit got the searchable PDF via from_file", any("from_file" in a for a in uploads), uploads)
         check("no approval prompt in Risky", not approvals, approvals)
 
         result["wait_for_calls"] = used.count("wait_for")

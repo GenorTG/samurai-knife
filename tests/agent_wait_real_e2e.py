@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real provider: for the user's OWN file the agent opens the tool and waits instead of faking data.
 
-SCRATCH server only:  python3 tests/agent_wait_real_e2e.py http://127.0.0.1:3243 [--model deepseek-v4-flash]
+SCRATCH server only:  python3 tests/agent_wait_real_e2e.py http://127.0.0.1:3243 [--model deepseek-v4.1-flash]
 """
 import argparse
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from playwright.sync_api import sync_playwright  # noqa: E402
-from real_provider import configure  # noqa: E402
+from real_provider import configure, reset_conversation  # noqa: E402
 
 PROMPTS = [
     "I want to compress my own PDF. Set up the right tool and let me pick the file.",
@@ -20,7 +20,7 @@ PROMPTS = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
-    ap.add_argument("--model", default="deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek-v4.1-flash")
     args = ap.parse_args()
     configure(args.base, args.model)
     failed = 0
@@ -29,6 +29,7 @@ def main() -> int:
         for prompt in PROMPTS:
             page = browser.new_page(viewport={"width": 1280, "height": 800})
             page.goto(args.base + "/", wait_until="networkidle")
+            reset_conversation(page)
             page.keyboard.press("Control+j")
             box = page.locator("textarea[aria-label='Message the assistant']")
             box.wait_for()

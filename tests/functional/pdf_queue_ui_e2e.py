@@ -6,6 +6,7 @@ Run it with the system python3 (playwright); fixtures and checks use the engine 
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -101,16 +102,24 @@ with sync_playwright() as pw:
         loc = page.locator("p[role=status]")
         return " | ".join(t.strip() for t in loc.all_inner_texts() if t.strip())
 
+    HYDRATED = "() => { const i = document.querySelector('main input[type=file]'); return !!i && Object.keys(i).some(k => k.startsWith('__reactProps')); }"
+    LISTED = re.compile(r"^\d+ files? ·")
+
     def attach(path):
-        """set_input_files, retried until the tool lists the file (a change event before hydration is lost)."""
-        for _ in range(6):
-            page.locator("input[type=file]").first.set_input_files(str(path))
+        """set_input_files once the tool has hydrated (a change event before hydration is lost; `p[role=status]` and the
+        tool body are already in the server HTML, so they do not prove it), retried until the tool lists the file. A retry
+        clears first, so a late first event cannot leave two files (the job would then run on both)."""
+        page.wait_for_function(HYDRATED, timeout=60000)
+        for _ in range(4):
+            page.locator("main input[type=file]").first.set_input_files(str(path))
             try:
-                page.get_by_text("1 file ·").wait_for(timeout=3000)
+                page.locator("main").get_by_text("1 file ·").wait_for(timeout=5000)
                 return
             except Exception:
+                if page.locator("main").get_by_text(LISTED).count():
+                    page.locator("main").get_by_role("button", name="Clear", exact=True).first.click()
                 page.wait_for_timeout(500)
-        raise AssertionError("tool never listed the attached file")
+        raise AssertionError("tool never listed the attached file: " + page.locator("main").inner_text()[:600].replace("\n", " | "))
 
     def open_tool():
         page.goto(URL)
@@ -123,8 +132,8 @@ with sync_playwright() as pw:
     open_tool()
     check("status region exists and is empty while idle", page.locator("p[role=status]").count() == 1 and pdf_status() == "", pdf_status())
     page.get_by_role("button", name="Inspect", exact=True).last.click()
-    check("small job completes with the unchanged result UI (document table shows 3 pages)",
-          wait(lambda: page.get_by_text("small.pdf").count() > 0 and page.get_by_text("3", exact=True).count() > 0, 20))
+    check("small job completes with the unchanged result UI (the document card shows 3 pages)",
+          wait(lambda: page.locator("main h3", has_text="small.pdf").count() > 0 and page.locator("main").get_by_text("3 pages ·").count() > 0, 20))
     check("status line is clear again after the job", wait(lambda: pdf_status() == ""), pdf_status())
 
     # 2. heavy lane busy -> honest Queued, then Cancel

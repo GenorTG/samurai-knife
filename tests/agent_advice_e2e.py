@@ -3,7 +3,7 @@
 
 Real provider, SCRATCH server only (same setup as agent_coverage_e2e.py):
   KNIFE_DATA_DIR=<throwaway> KNIFE_PORT=3243 npm run dev   # then:
-  python3 tests/agent_advice_e2e.py http://127.0.0.1:3243 [--model deepseek-v4-flash]
+  python3 tests/agent_advice_e2e.py http://127.0.0.1:3243 [--model deepseek-v4.1-flash]
 """
 import argparse
 import sys
@@ -55,7 +55,7 @@ CASES = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
-    ap.add_argument("--model", default="deepseek-v4-flash")
+    ap.add_argument("--model", default="deepseek-v4.1-flash")
     args = ap.parse_args()
     from real_provider import configure
     configure(args.base, args.model)

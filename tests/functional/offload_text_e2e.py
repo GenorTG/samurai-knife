@@ -44,6 +44,10 @@ INIT = """
   S.reset = () => { S.lt = []; S.gap = 0; lf = performance.now(); };
 })();
 """
+# Readiness probes for the long-task checks must not read the big input back: main.textContent includes every textarea's
+# text (React keeps a controlled textarea's defaultValue, i.e. its text content, in sync with its value), so polling it once
+# per frame copies the 8 MB paste on the main thread over and over and the probe's own work shows up as the tool's long tasks.
+STAT_IS = "([label, value]) => [...document.querySelectorAll('main .sk-label')].some(l => l.textContent.trim() === label && l.nextElementSibling?.textContent.trim() === value)"
 PUT_JS = "(el, t) => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, t); el.dispatchEvent(new Event('input', { bubbles: true })); }"
 FLOOR_JS = """async (texts) => {
   const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -435,7 +439,7 @@ def csv_profile():
     check("csv-profile: delimiter change re-profiles", semicolon)
 
     def long_task():
-        long_task_vs_floor("csv-profile", None, [big_csv(160_000)], ready=lambda pg: pg.wait_for_function("() => document.querySelector('table tbody tr td')?.textContent === 'id' && /Data rows\\s*160000/.test(document.querySelector('main').textContent)", timeout=120000))
+        long_task_vs_floor("csv-profile", None, [big_csv(160_000)], ready=lambda pg: pg.wait_for_function("(a) => document.querySelector('table tbody tr td')?.textContent === 'id' && (" + STAT_IS + ")(a)", arg=["Data rows", "160000"], timeout=120000))
 
     check("csv-profile: 8 MB CSV paste: max long task <= floor + 200 ms", long_task)
 
@@ -756,7 +760,7 @@ def csv_convert():
     check("csv: other tabs that import parseDelimited from CsvTool still work (TSV to Markdown)", parse_export)
 
     def long_task():
-        long_task_vs_floor("csv", "convert", [big_csv(160_000)], ready=lambda pg: pg.wait_for_function("() => document.querySelector('main').textContent.includes('Rows160000')", timeout=180000), settle_ms=3000)
+        long_task_vs_floor("csv", "convert", [big_csv(160_000)], ready=lambda pg: pg.wait_for_function(STAT_IS, arg=["Rows", "160000"], timeout=180000), settle_ms=3000)
 
     check("csv: 8 MB CSV paste: max long task <= floor + 200 ms", long_task)
 

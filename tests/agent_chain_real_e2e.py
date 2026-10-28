@@ -2,12 +2,12 @@
 
 SCRATCH server only (own KNIFE_DATA_DIR, own port); the key is read at runtime by tests/real_provider.py.
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3239 npm run dev   # then:
-  python3 tests/agent_chain_real_e2e.py http://127.0.0.1:3239 [--model deepseek-v4-flash]
+  python3 tests/agent_chain_real_e2e.py http://127.0.0.1:3239 [--model deepseek-v4.1-flash]
 
 Oracles are independent of the model: the files Playwright really downloaded, and the page's own state.
 """
 import argparse
-import gzip
+import io
 import json
 import sys
 from pathlib import Path
@@ -15,11 +15,12 @@ from pathlib import Path
 from playwright.sync_api import Page, sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from real_provider import configure  # noqa: E402
+from PIL import Image  # noqa: E402
+from real_provider import configure, reset_conversation  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base")
-ap.add_argument("--model", default="deepseek-v4-flash")
+ap.add_argument("--model", default="deepseek-v4.1-flash")
 args = ap.parse_args()
 BASE = args.base.rstrip("/")
 failures: list[str] = []
@@ -88,16 +89,27 @@ with sync_playwright() as pw:
     page.on("download", lambda d: (names.append(d.suggested_filename), downloads.append(Path(d.path()).read_bytes())))
 
     page.goto(BASE + "/tools/qr", wait_until="networkidle")
+    reset_conversation(page)
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     k = key(page)
     check("fresh profile is Risky", page.locator("[aria-label='Ask before acting'] [role=radio][aria-checked=true]").inner_text() == "Risky")
 
-    # ---- Chain: QR PNG -> compressor -------------------------------------------------------------
-    asks = ask(page, k, "Make a QR code for the text hello-chain-42 and download the PNG. Then open the file compressor tool, load that exact PNG you just downloaded into it, compress it, and download the compressed result.")
+    # ---- Chain: QR PNG -> image resize ----------------------------------------------------------
+    asks = ask(page, k, "Make a QR code for the text hello-chain-42 and download the PNG. Then open the image resize tool, load that exact PNG you just downloaded into it, resize it to 128 x 128 pixels as a PNG, and download the result.")
     used = [c for c, _ in calls(page, k)]
-    check("a PNG and a .gz were really downloaded", len(downloads) >= 2 and names[0].endswith(".png") and names[-1].endswith(".gz"), names)
-    check("compressed output decompresses to the exact PNG", len(downloads) >= 2 and gzip.decompress(downloads[-1]) == downloads[0])
+    check("two PNGs were really downloaded", len(downloads) >= 2 and names[0].endswith(".png") and names[-1].endswith(".png"), names)
+    resized_ok, detail = False, names
+    if len(downloads) >= 2:
+        src = Image.open(io.BytesIO(downloads[0])).convert("L")
+        out = Image.open(io.BytesIO(downloads[-1]))
+        # Independent oracle: the result is 128x128 and is the QR the first tool made (PIL's own downscale of the first
+        # download differs from it by little), not some other image.
+        ref = src.resize((128, 128), Image.Resampling.BOX)
+        got = out.convert("L")
+        diff = sum(abs(a - b) for a, b in zip(ref.getdata(), got.getdata())) / (128 * 128) if out.size == (128, 128) else 255
+        resized_ok, detail = out.size == (128, 128) and diff < 40, {"size": out.size, "mean_abs_diff": round(diff, 1), "names": names}
+    check("the second PNG is the first QR resized to 128x128", resized_ok, detail)
     uploads = [a for c, a in calls(page, k) if c == "upload_file"]
     check("the model chained with from_file, never raw bytes", bool(uploads) and all("from_file" in a and "base64" not in a and "text" not in a for a in uploads), uploads)
     check("no approval prompt interrupted the chain (Risky)", not asks, asks)

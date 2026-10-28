@@ -157,6 +157,16 @@ def run_case(browser, base: str, case: Case) -> dict:
         page.goto(base + "/", wait_until="domcontentloaded", timeout=60_000)
         page.wait_for_selector("button[aria-label='Open assistant']", timeout=60_000)
         key = _storage_key(page)
+        # The transcript is stored per account on the server and restored into a fresh browser context: without a
+        # reset the previous case's final answer already satisfies the "finished" check below. Start empty.
+        status = page.evaluate("fetch('/api/agent/conversation', { method: 'DELETE' }).then(r => r.status)")
+        if status != 200:
+            raise RuntimeError(f"conversation reset answered {status}")
+        page.evaluate("k => localStorage.removeItem(k)", key)
+        page.reload(wait_until="domcontentloaded", timeout=60_000)
+        page.wait_for_selector("button[aria-label='Open assistant']", timeout=60_000)
+        if _stored(page, key):
+            raise RuntimeError("conversation not empty after reset")
         page.locator("button[aria-label='Open assistant']").click()
         composer = page.locator("textarea[aria-label='Message the assistant']")
         composer.wait_for(timeout=30_000)

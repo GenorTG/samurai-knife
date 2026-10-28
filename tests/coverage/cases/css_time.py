@@ -266,46 +266,62 @@ def o_recurrence(c: Ctx):
     return first_error(*[has_date(h, d) for d in _RR])
 
 
+# ---------------------------------------------------------------- css playground (runs the code in its preview)
+_PG_TS = "const xs: number[] = [3, 9, 27];\nconsole.log(\"total\", xs.reduce((a, b) => a + b, 0) * 7);"
+
+
+def _playground(c: Ctx):
+    # 273 must come from the preview's console on the page (the code really ran as TypeScript), and reach the answer.
+    return first_error(
+        None if "/tools/css" in c.url() else f"not in the CSS workbench (url {c.url()})",
+        matches(c.page_only(), r"total\s*273\b"),
+        matches(c.answer, r"\b273\b"),
+    )
+
+
 CASES = [
-    Case("meeting-timezones", "cron",
+    Case("dates", "cron",
          "When does the cron schedule `30 9 * * 1-5` run? Explain it in plain English.",
          lambda c: first_error(matches(c.haystack(), r"9:30|09:30"), matches(c.haystack(), r"weekday|monday"))),
 
-    Case("box-shadow", "shadow",
+    Case("css", "shadow",
          "I need the CSS for a card shadow: an inset shadow shifted 7px to the right and 9px up, 13px blur, 3px spread, "
          "in colour #2a7f62 at 35% opacity. Give me the exact box-shadow declaration.",
          o_shadow),
-    Case("box-shadow", "radius",
+    Case("css", "radius",
          "Give me the CSS border-radius for a blob shape with elliptical corners, in percentages. Horizontal radii: top-left 12, "
          "top-right 34, bottom-right 56, bottom-left 78. Vertical radii in the same order: 15, 25, 45, 65.",
          lambda c: matches(c.haystack(), r"12%\s+34%\s+56%\s+78%\s*/\s*15%\s+25%\s+45%\s+65%")),
-    Case("box-shadow", "easing",
+    Case("css", "easing",
          "Build me a CSS cubic-bezier easing curve whose first control point is at (0.34, -0.45) and second control point at (0.28, 1.35), "
          "and give me the transition-timing-function line.",
          lambda c: matches(c.haystack(), r"cubic-bezier\(\s*0?\.34\s*,\s*-0?\.45\s*,\s*0?\.28\s*,\s*1\.35\s*\)")),
 
-    Case("css-grid", "grid",
+    Case("css", "grid",
          "Make me a CSS grid layout with 5 equal-width columns, 4 rows, an 18px gap and 11 items. I want the grid CSS.",
          lambda c: matches(c.haystack(), r"repeat\(\s*5\s*,.*repeat\(\s*4\s*,.*gap:\s*18px")),
-    Case("css-grid", "clamp",
+    Case("css", "clamp",
          "I want fluid typography: font-size that scales smoothly from 14px when the viewport is 375px wide up to 29px at a 1440px "
          "viewport, as a CSS clamp() expression in px and vw.",
          o_clamp),
-    Case("css-grid", "type-scale",
+    Case("css", "type-scale",
          "Generate a modular type scale for my design system: base size 17px, ratio 1.3, from two steps below the base up to five steps above. "
          "Give me every size in px (as CSS custom properties) and state them in your answer.",
          o_typescale),
 
 
-    Case("meeting-timezones", "meeting",
+    Case("dates", "meeting",
          "A call is fixed for 3 November 2026 at 13:15 UTC. What local time and date is that in Tokyo, New York, Los Angeles and Sydney?",
          o_meeting),
-    Case("meeting-timezones", "workdays",
+    Case("dates", "workdays",
          "How many working days (Monday to Friday) are there from 21 December 2026 to 8 January 2027, both days included, if these "
          "public holidays are not working days: 25 December 2026, 26 December 2026, 1 January 2027 and 6 January 2027?",
          o_workdays),
-    Case("meeting-timezones", "recurrence",
+    Case("dates", "recurrence",
          "A meeting starts on Monday 5 October 2026 and repeats every 2 weeks on Mondays and Fridays (RFC 5545 style rule, weeks start "
          "on Monday), 6 occurrences in total, the first being the start day. List the dates of all occurrences.",
          o_recurrence),
+    Case("css", "playground",
+         "In the CSS playground, switch the script to TypeScript and make it exactly this code:\n\n" + _PG_TS
+         + "\n\nRun it in the preview and tell me what the preview's console printed.", _playground),
 ]

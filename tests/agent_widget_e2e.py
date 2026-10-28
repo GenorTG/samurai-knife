@@ -332,10 +332,10 @@ with sync_playwright() as pw:
 
     # page switch cue: progress bar + toast naming the destination (leaving a page that holds input would ask under Risky; this is about cues)
     page.locator("[aria-label='Ask before acting']").get_by_role("radio", name="None", exact=True).click()
-    cues, _ = run_cues('CALL:open_tool:{"slug":"ids","tab":"snowflake"}', "document.querySelector('[data-agent-toast]')?.textContent || null")
+    cues, _ = run_cues('CALL:open_tool:{"slug":"ids","tab":"jwt"}', "document.querySelector('[data-agent-toast]')?.textContent || null")
     check("page switch shows the progress bar", "progress" in cues, cues)
     check("progress bar appears within 300ms of the step starting", under(cues, "progress", 300, "step"), cues)
-    check("toast names where the AI went", any("Snowflake" in t and "opened" in t for t in _) and any("opening" in t for t in _), _)
+    check("toast names where the AI went", any("JWT" in t and "opened" in t for t in _) and any("opening" in t for t in _), _)
     check("toast is exposed as data-agent-toast", page.evaluate("1") == 1 and "toast" in cues, cues)
 
     # Stop cancels at once with visible confirmation
@@ -385,7 +385,8 @@ with sync_playwright() as pw:
         check("upload_file attaches agent-made text", res.get("ok") is True and res.get("bytes") == 11, res)
         page.wait_for_timeout(500)
         dump = json.dumps(tool_result(send(page, key, "CALL:page_snapshot:{}"), "page_snapshot"))
-        check("the hex viewer rendered the uploaded bytes", "00000000" in dump and "hello.txt" in dump or "68 65 6c 6c 6f" in dump.lower(), dump[:400])
+        # The tab decodes the attached bytes (the hex viewer was folded into it in the 2026-10-25 audit): detection + decoded sample.
+        check("the encoding tab decoded the uploaded bytes", "hello agent" in dump and "UTF-8" in dump and "11 bytes" in dump, dump[:400])
         res = tool_result(send(page, key, "CALL:upload_file:" + json.dumps({"id": fid, "name": "x.bin", "base64": "!!notb64"})), "upload_file")
         check("upload_file rejects invalid base64", res.get("ok") is False, res)
         res = tool_result(send(page, key, "CALL:upload_file:" + json.dumps({"id": fid, "name": "x.bin"})), "upload_file")
