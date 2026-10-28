@@ -21,7 +21,7 @@ The controller of your personal data is **{{operatorName}}**, {{postalAddress}} 
 |---|---|---|---|
 | Username, display name, e-mail address, password hash (scrypt), role, status, creation and last-login dates, storage limit, date and version of accepting the Terms, chosen interface language | creating and running your Account | Art. 6(1)(b) (contract) | until the Account is deleted; an unconfirmed registration 24 hours |
 | Login sessions (token hash, created, expiry and last-used times), a known-device marker | keeping you signed in, protecting the Account against takeover | Art. 6(1)(b) and (f) | session up to 30 days or until you log out; device marker up to 180 days |
-| Content: CV profile and versions (including a photo), job offers and applications, documents (with versions and trash), files you save from the Craft apps, AI assistant conversations, course progress, website/repository connection (repository, branch, token, audit history), tool drafts | providing the services you ask for | Art. 6(1)(b) | until you delete it or delete the Account; document trash 30 days |
+| Content: CV profile and versions (including a photo), job offers and applications, documents (with versions and trash), files you save from the Craft apps, AI assistant conversations, course progress, website/repository connection (repository, branch, the GitHub token and, if you connect Vercel, the Vercel token and the project's preview bypass secret, audit history), tool drafts | providing the services you ask for | Art. 6(1)(b) | until you delete it or delete the Account; document trash 30 days |
 | Workflows: their nodes, settings, triggers (schedules, webhook addresses) and notes; data tables and the data a workflow keeps between runs (such as an AI agent's memory or items already seen); resume links of waiting runs | running the automations you build | Art. 6(1)(b) | until you delete the workflow or the Account |
 | Workflow run history: when and how a run started, each node's input and output data (shortened for large outputs), errors, duration | showing you what your workflows did, finding mistakes | Art. 6(1)(b) | the last 100 runs of each workflow, at most 14 days; you can delete runs earlier |
 | Workflow credentials: name, type and secrets (API keys, passwords, tokens, the client id and secret of OAuth apps you registered, the tokens those apps issue) | letting your workflows reach the services you chose | Art. 6(1)(b) | until you delete the credential or the Account; given to a run only for the nodes that use it |
@@ -43,6 +43,7 @@ The Operator does not use your data for marketing, profiling or training AI mode
 - **{{mailRelay}}**: the provider of a virtual server used only to relay outgoing Service e-mail. To deliver a message it receives the recipient address, the generated transactional message (which may contain an Account name or a one-time link), and technical delivery metadata. It does not receive other Account data such as CVs, documents or AI conversations. It acts as a processor for this limited purpose (Article 28 GDPR).
 - **The AI provider you chose**: when you use the AI assistant, the Service sends, at your request, the conversation and data from open tools to the address configured in your Account; when a workflow runs an AI node, the data that node is given goes to the provider of the profile or credential the node names. The provider processes it under **your contract with them** and their own privacy policy, not on the Operator's behalf. Do not send it other people's data you have no right to share.
 - **Addresses and services your workflows contact**: an HTTP request or integration node sends what the workflow gives it to the address in the node, with the credentials you saved; when you connect an OAuth app, the provider of that app (for example Google, Microsoft or GitHub) takes part in the sign-in. These recipients act under your relationship with them, not on the Operator's behalf. Whoever calls your webhook address receives the answer your workflow gives.
+- **Vercel Inc.** (USA): only if you connect Vercel in the website studio: with your token the server reads your Vercel project and its deployments and build logs, and starts preview builds of the work branch; Vercel acts as an independent controller for your Vercel account ([Vercel privacy policy](https://vercel.com/legal/privacy-policy)).
 - **GitHub, Inc.** (USA): when you sign in with GitHub and work with a repository; GitHub acts as an independent controller for your GitHub account ([GitHub privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). The Craft app update checks (section 2) also go to GitHub, without data about you.
 - **Google LLC** (USA): when you audit a site with PageSpeed Insights, the address of the audited site is sent there (from the Operator's server, without your IP address).
 - **Sites you point the Service at** (job offers, company sites, audited sites, addresses your workflows call): they see the IP address of the Operator's server, not yours.
@@ -50,7 +51,7 @@ The Operator does not use your data for marketing, profiling or training AI mode
 
 ## 5. Transfers outside the European Economic Area {#transfers}
 
-GitHub and Google are based in the USA. Transfers rely on the European Commission's Decision (EU) 2023/1795 on the EU–US Data Privacy Framework where the recipient is certified under it, and otherwise on standard contractual clauses. If the AI provider you chose, or a service your workflow contacts, is outside the EEA, sending data to it is necessary to provide the service you ask for (Article 49(1)(b) GDPR), and your contract with that provider governs what happens next.
+GitHub, Google and Vercel are based in the USA. Transfers rely on the European Commission's Decision (EU) 2023/1795 on the EU–US Data Privacy Framework where the recipient is certified under it, and otherwise on standard contractual clauses. If the AI provider you chose, or a service your workflow contacts, is outside the EEA, sending data to it is necessary to provide the service you ask for (Article 49(1)(b) GDPR), and your contract with that provider governs what happens next.
 
 ## 6. Cookies and browser storage {#cookies}
 
@@ -61,6 +62,7 @@ The Service stores on your device only information that is **strictly necessary 
 | `knife_session` | cookie | keeping you signed in | up to 30 days |
 | `knife_device` | cookie | recognising a device you signed in on before (protection against account takeover) | up to 180 days |
 | `knife_gh_state` | cookie | securing "Sign in with GitHub" | 10 minutes |
+| `knife_vercel_state` | cookie | securing "Connect with Vercel" in the website studio | 10 minutes |
 | `knife_office` | cookie on the office editor's address (where offered) | letting your browser load the editor for your document | up to 6 hours |
 | `knife_craft` | cookie on the Craft apps' address (where offered) | letting your browser load the Craft apps | up to 12 hours |
 | `knife_lang` | cookie | the interface language you chose with the switch (Polish or English) | 1 year |
@@ -120,9 +122,11 @@ What each version of {{siteName}} added that matters for your data:
 | 0.7.1 | AI nodes in workflows; the assistant and MCP can build and run workflows | workflow data goes to the AI provider you chose; token use is counted |
 | 0.8.0 | Versions of the Terms and this notice: earlier versions stay readable | the version you accepted is shown in your Account; no new personal data |
 | 0.10.0 | The interface in Polish and English | the language you choose is kept in the `knife_lang` cookie and on your Account; e-mails come in that language |
+| 0.13.0 | Optional Vercel connection of the website studio | your Vercel token and the project's bypass secret are stored encrypted; requests go to Vercel only after you connect it |
 
 Changes:
 
+- **Edition 4** (28 October 2026, {{siteName}} 0.13.0): adds the optional Vercel connection of the website studio (Vercel token and bypass secret, Vercel as a recipient) and the `knife_vercel_state` cookie.
 - **Edition 3** (26 October 2026, {{siteName}} 0.10.0): adds the interface language to the Account data and the `knife_lang` cookie.
 - **Edition 2** (22 October 2026, {{siteName}} 0.8.0): describes the Craft apps and Craft files, workflows (run history, credentials, webhooks, AI nodes), several AI provider profiles, the server's log files and the `knife_office`, `knife_craft` and Craft app storage entries; adds this section.
 - **Edition 1** (21 October 2026, {{siteName}} 0.1): first version.

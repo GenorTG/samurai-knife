@@ -124,6 +124,7 @@ In particular, you must not:
 
 ## 17. Change history {#history}
 
+- **Edition 4** (28 October 2026, {{siteName}} 0.13.0): no change of the provisions; the website studio can optionally work with the User's Vercel project, described in the privacy notice.
 - **Edition 3** (26 October 2026, {{siteName}} 0.10.0): no change of the provisions; the Service is available in Polish and English, and the privacy notice describes the stored language choice.
 - **Edition 2** (22 October 2026, {{siteName}} 0.8.0): adds workflows and the Craft apps (sections 2, 4.4–4.5), rules for workflows (7.9–7.10), AI nodes (8.5–8.6), extends the licence and the liability exclusions to workflows and the Craft apps (9.2, 12.1), and describes document versions (15.4).
 - **Edition 1** (21 October 2026, {{siteName}} 0.1): first version.

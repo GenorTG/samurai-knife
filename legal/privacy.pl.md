@@ -21,7 +21,7 @@ Administratorem danych osobowych jest **{{operatorName}}**, {{postalAddress}} (�
 |---|---|---|---|
 | Nazwa użytkownika, nazwa wyświetlana, adres e-mail, skrót hasła (scrypt), rola, status, daty utworzenia i ostatniego logowania, limit miejsca, data i wersja akceptacji Regulaminu, wybrany język interfejsu | założenie i prowadzenie Konta | art. 6 ust. 1 lit. b (umowa) | do usunięcia Konta; rejestracja niepotwierdzona – 24 godziny |
 | Sesje logowania (skrót tokenu, daty utworzenia, wygaśnięcia, ostatniego użycia), znacznik zaufanego urządzenia | utrzymanie zalogowania, ochrona przed przejęciem Konta | art. 6 ust. 1 lit. b i f | sesja do 30 dni lub do wylogowania; znacznik urządzenia do 180 dni |
-| Treści: profil i wersje CV (także zdjęcie), oferty pracy i aplikacje, dokumenty (z wersjami i koszem), pliki zapisane z aplikacji Craft, rozmowy z Asystentem AI, postępy w kursie, połączenie ze stroną/repozytorium (repozytorium, gałąź, token, historia audytów), szkice narzędzi | świadczenie usług, o które prosisz | art. 6 ust. 1 lit. b | do usunięcia przez Ciebie lub do usunięcia Konta; kosz dokumentów – 30 dni |
+| Treści: profil i wersje CV (także zdjęcie), oferty pracy i aplikacje, dokumenty (z wersjami i koszem), pliki zapisane z aplikacji Craft, rozmowy z Asystentem AI, postępy w kursie, połączenie ze stroną/repozytorium (repozytorium, gałąź, token GitHub oraz – jeżeli połączysz Vercel – token Vercel i sekret obejścia ochrony podglądów projektu, historia audytów), szkice narzędzi | świadczenie usług, o które prosisz | art. 6 ust. 1 lit. b | do usunięcia przez Ciebie lub do usunięcia Konta; kosz dokumentów – 30 dni |
 | Przepływy pracy: ich węzły, ustawienia, wyzwalacze (harmonogramy, adresy webhook) i notatki; tabele danych i dane zachowywane przez przepływ między uruchomieniami (np. pamięć agenta AI, już widziane elementy); linki wznowienia oczekujących uruchomień | wykonywanie automatyzacji, które budujesz | art. 6 ust. 1 lit. b | do usunięcia przepływu lub Konta |
 | Historia uruchomień przepływów: kiedy i jak uruchomienie się zaczęło, dane wejściowe i wyjściowe każdego węzła (skracane przy dużych wynikach), błędy, czas trwania | pokazanie Ci, co zrobiły Twoje przepływy, szukanie błędów | art. 6 ust. 1 lit. b | ostatnie 100 uruchomień każdego przepływu, najdłużej 14 dni; możesz usunąć je wcześniej |
 | Dane uwierzytelniające przepływów: nazwa, rodzaj i sekrety (klucze API, hasła, tokeny, identyfikator i sekret zarejestrowanych przez Ciebie aplikacji OAuth, tokeny wydane przez te aplikacje) | umożliwienie przepływom dostępu do wybranych przez Ciebie usług | art. 6 ust. 1 lit. b | do usunięcia danych uwierzytelniających lub Konta; przekazywane uruchomieniu tylko dla węzłów, które z nich korzystają |
@@ -43,6 +43,7 @@ Operator nie korzysta z Twoich danych do marketingu, profilowania ani trenowania
 - **{{mailRelay}}** – dostawca serwera wirtualnego używanego wyłącznie jako przekaźnik poczty wychodzącej. W celu doręczenia otrzymuje adres odbiorcy, wygenerowaną treść wiadomości transakcyjnej (która może zawierać nazwę Konta lub jednorazowy link) oraz metadane techniczne doręczenia. Nie otrzymuje pozostałych danych Konta, takich jak CV, dokumenty ani rozmowy z Asystentem. Działa w tym zakresie jako podmiot przetwarzający (art. 28 RODO).
 - **Dostawca AI, którego wybrałeś** – gdy korzystasz z Asystenta AI, Serwis przesyła na Twoje polecenie treść rozmowy i dane z otwartych narzędzi do adresu skonfigurowanego na Twoim Koncie; gdy przepływ uruchamia węzeł AI, dane przekazane temu węzłowi trafiają do Dostawcy z profilu lub danych uwierzytelniających wskazanych w węźle. Dostawca przetwarza je na podstawie **Twojej umowy z nim** i własnej polityki prywatności, a nie na zlecenie Operatora. Nie wysyłaj tam danych innych osób, do których udostępnienia nie masz prawa.
 - **Adresy i usługi, z którymi łączą się Twoje przepływy** – węzeł żądania HTTP lub integracji wysyła to, co przekaże mu przepływ, na adres wpisany w węźle, z zapisanymi przez Ciebie danymi uwierzytelniającymi; gdy łączysz aplikację OAuth, w logowaniu uczestniczy jej dostawca (np. Google, Microsoft lub GitHub). Ci odbiorcy działają w ramach Twojej relacji z nimi, a nie na zlecenie Operatora. Kto wywoła Twój adres webhook, otrzymuje odpowiedź, którą zwraca Twój przepływ.
+- **Vercel Inc.** (USA) – tylko jeżeli połączysz Vercel w studiu strony: serwer Twoim tokenem odczytuje projekt Vercel, jego wdrożenia i logi buildów oraz uruchamia buildy podglądu gałęzi roboczej; Vercel działa jako niezależny administrator danych w Twoim koncie Vercel ([polityka prywatności Vercel](https://vercel.com/legal/privacy-policy)).
 - **GitHub, Inc.** (USA) – przy logowaniu przez GitHub i pracy z repozytorium; GitHub działa jako niezależny administrator danych w Twoim koncie GitHub ([polityka prywatności GitHub](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)). Do GitHub trafiają też zapytania o aktualizacje aplikacji Craft (pkt 2), bez danych o Tobie.
 - **Google LLC** (USA) – przy audycie strony usługą PageSpeed Insights trafia tam adres audytowanej strony (z serwera Operatora, bez Twojego adresu IP).
 - **Strony, które wskazujesz** (oferty pracy, strony firm, audytowane witryny, adresy wywoływane przez Twoje przepływy) – widzą adres IP serwera Operatora, a nie Twój.
@@ -50,7 +51,7 @@ Operator nie korzysta z Twoich danych do marketingu, profilowania ani trenowania
 
 ## 5. Przekazywanie danych poza Europejski Obszar Gospodarczy {#transfer}
 
-GitHub i Google mają siedzibę w USA. Przekazywanie opiera się na decyzji Komisji Europejskiej (UE) 2023/1795 w sprawie ram ochrony danych UE–USA (Data Privacy Framework), jeżeli odbiorca jest nimi objęty, a w pozostałych przypadkach na standardowych klauzulach umownych. Jeżeli wybrany przez Ciebie Dostawca AI albo usługa, z którą łączy się Twój przepływ, ma siedzibę poza EOG, przesyłanie do niej jest niezbędne do wykonania usługi, o którą prosisz (art. 49 ust. 1 lit. b RODO), a dalsze przetwarzanie reguluje Twoja umowa z tym dostawcą.
+GitHub, Google i Vercel mają siedzibę w USA. Przekazywanie opiera się na decyzji Komisji Europejskiej (UE) 2023/1795 w sprawie ram ochrony danych UE–USA (Data Privacy Framework), jeżeli odbiorca jest nimi objęty, a w pozostałych przypadkach na standardowych klauzulach umownych. Jeżeli wybrany przez Ciebie Dostawca AI albo usługa, z którą łączy się Twój przepływ, ma siedzibę poza EOG, przesyłanie do niej jest niezbędne do wykonania usługi, o którą prosisz (art. 49 ust. 1 lit. b RODO), a dalsze przetwarzanie reguluje Twoja umowa z tym dostawcą.
 
 ## 6. Pliki cookie i pamięć przeglądarki {#cookies}
 
@@ -61,6 +62,7 @@ Serwis zapisuje na Twoim urządzeniu wyłącznie informacje **niezbędne do świ
 | `knife_session` | cookie | zalogowanie | do 30 dni |
 | `knife_device` | cookie | rozpoznanie urządzenia, na którym już się logowałeś (ochrona przed przejęciem Konta) | do 180 dni |
 | `knife_gh_state` | cookie | zabezpieczenie logowania przez GitHub | 10 minut |
+| `knife_vercel_state` | cookie | zabezpieczenie połączenia z Vercel w studiu strony | 10 minut |
 | `knife_office` | cookie pod adresem edytora dokumentów (jeżeli jest udostępniany) | wczytanie edytora dla Twojego dokumentu | do 6 godzin |
 | `knife_craft` | cookie pod adresem aplikacji Craft (jeżeli są udostępniane) | wczytanie aplikacji Craft | do 12 godzin |
 | `knife_lang` | cookie | język interfejsu wybrany przełącznikiem (polski lub angielski) | 1 rok |
@@ -120,9 +122,11 @@ Co dodały kolejne wersje serwisu {{siteName}}, istotne dla Twoich danych:
 | 0.7.1 | Węzły AI w przepływach; Asystent i MCP mogą budować i uruchamiać przepływy | dane przepływu trafiają do wybranego przez Ciebie Dostawcy AI; zużycie tokenów jest liczone |
 | 0.8.0 | Wersje Regulaminu i tej Polityki: wcześniejsze wersje pozostają dostępne | wersja zaakceptowana przez Ciebie jest widoczna na Koncie; bez nowych danych osobowych |
 | 0.10.0 | Interfejs po polsku i po angielsku | wybrany język jest zapisywany w cookie `knife_lang` i na Koncie; w tym języku przychodzą wiadomości e-mail |
+| 0.13.0 | Opcjonalne połączenie studia strony z Vercel | token Vercel i sekret obejścia projektu są przechowywane zaszyfrowane; zapytania do Vercel idą dopiero po połączeniu |
 
 Zmiany:
 
+- **Wydanie 4** (28 października 2026, {{siteName}} 0.13.0): dodaje opcjonalne połączenie studia strony z Vercel (token Vercel i sekret obejścia, Vercel jako odbiorca) oraz cookie `knife_vercel_state`.
 - **Wydanie 3** (26 października 2026, {{siteName}} 0.10.0): dodaje język interfejsu do danych Konta i cookie `knife_lang`.
 - **Wydanie 2** (22 października 2026, {{siteName}} 0.8.0): opisuje aplikacje Craft i pliki Craft, przepływy pracy (historia uruchomień, dane uwierzytelniające, webhooki, węzły AI), kilka profili Dostawcy AI, własne pliki dzienników serwera oraz pozycje `knife_office`, `knife_craft` i pamięć aplikacji Craft; dodaje ten punkt.
 - **Wydanie 1** (21 października 2026, {{siteName}} 0.1): pierwsza wersja.
