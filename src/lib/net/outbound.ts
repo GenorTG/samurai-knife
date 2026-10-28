@@ -33,9 +33,11 @@ export type OutboundPurpose =
   /** One PageSpeed Insights call (an audit makes two). */
   | "psi"
   /** One website-studio operation against the GitHub API with the account's own token or installation. */
-  | "github";
+  | "github"
+  /** One website-studio operation against the Vercel API with the account's own token. */
+  | "vercel";
 
-export const OUTBOUND_PURPOSES: readonly OutboundPurpose[] = ["provider", "provider-test", "page", "company", "audit", "psi", "github"];
+export const OUTBOUND_PURPOSES: readonly OutboundPurpose[] = ["provider", "provider-test", "page", "company", "audit", "psi", "github", "vercel"];
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -49,6 +51,7 @@ export const DEFAULT_BUDGETS: Record<OutboundPurpose | "host", Budget> = {
   audit: { max: 100, windowMs: HOUR },
   psi: { max: 400, windowMs: HOUR },
   github: { max: 10_000, windowMs: HOUR },
+  vercel: { max: 5_000, windowMs: HOUR },
   /** One destination host, across all non-admins: user-chosen pages, audited sites, admin-approved provider URLs. */
   host: { max: 60, windowMs: 10 * MINUTE },
 };
@@ -66,6 +69,7 @@ function accountLimit(account: Pick<Account, "id">, purpose: OutboundPurpose): L
     case "audit":
       return LIMITS.outboundAudit(account.id);
     case "github":
+    case "vercel":
       return LIMITS.outboundGithub(account.id);
     case "page":
     case "company":
@@ -104,6 +108,7 @@ function refuse(account: Pick<Account, "id">, purpose: OutboundPurpose, reason: 
 export function userChosenHost(purpose: OutboundPurpose, host: string): boolean {
   switch (purpose) {
     case "github":
+    case "vercel":
     case "psi":
       return false;
     case "provider":

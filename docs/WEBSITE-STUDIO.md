@@ -98,19 +98,57 @@ commits and audits show up by themselves.
 | `POST /api/site/audit` / `GET ?id=` / `GET ?run=<id or latest>` | start (202) / progress / a stored run |
 | `GET /api/site/changes` | work branch vs base, pull request, checks, preview URL |
 | `POST /api/site/changes` | `{action:"pr", title, body}` / `{action:"publish", head}` / `{action:"discard"}` |
+| `GET /api/site/vercel[?projects=1][&previews=1]` | the Vercel link (no secrets), whether "Connect with Vercel" is set up, the token's projects, the work branch's previews |
+| `PUT /api/site/vercel` | connect with a token / change `{token?, team?, projectId?, bypass?}` |
+| `DELETE /api/site/vercel` | forget the Vercel token and settings |
+| `POST /api/site/vercel` | `{action:"generate-bypass"}` / `{action:"deploy", force?}` (preview of the work branch) |
+| `GET /api/vercel/start` / `GET /api/vercel/callback` | "Connect with Vercel" (the server's Vercel integration, OAuth) |
 
 ## Tools (`src/lib/mcp/tools-site.ts`, group `site`, scope `account`)
 
 `knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
 `knife_site_page {url}`, `knife_site_files {path?, ref?}`, `knife_site_read {path, ref?}`, `knife_site_search {query}`,
 `knife_site_replace {path, find, replace, message, all?}`, `knife_site_write {message, files, delete?}`,
-`knife_site_pr {title, body}`, `knife_site_changes`. The assistant preloads the group on `site-studio` and
+`knife_site_pr {title, body}`, `knife_site_changes`, and with Vercel connected `knife_site_previews`,
+`knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. The assistant preloads the group on `site-studio` and
 `cv-studio`; its system prompt has the workflow (status -> audit -> read -> replace/write -> pr -> audit the preview;
 copy in the site's language, facts only from the CV). Its click guard treats buttons labelled publish/deploy as
 destructive (confirmed in every trust mode but None).
 
+## Vercel (optional, 2026-10-28)
+
+For a site hosted on Vercel the Website tab has a "Vercel (optional)" panel; the link belongs to the CV project's
+website like the GitHub connection (`vercel` in the site file, sealed; the view shows only the source, a token hint,
+the team, the project and `hasBypass`). Code: `src/lib/site/vercel.ts` (REST calls), `vercel-service.ts` (operations),
+`vercel-oauth.ts` (Connect with Vercel).
+
+- Access: a Vercel token (Account settings > Tokens, scoped to the site's team; `team` = `team_...` id or slug), or
+  "Connect with Vercel" when the server has a Vercel integration (`KNIFE_VERCEL_CLIENT_ID`,
+  `KNIFE_VERCEL_CLIENT_SECRET`, `KNIFE_VERCEL_INTEGRATION_SLUG`; redirect URL `<base>/api/vercel/callback` or
+  `KNIFE_VERCEL_REDIRECT_URI`; scopes: project read, deployment read/write). The OAuth flow is the external install
+  flow (`https://vercel.com/integrations/<slug>/new?state=`): the pending flow is a sealed HttpOnly cookie
+  (`knife_vercel_state`, path `/api/vercel`, 10 minutes, one-time) carrying the account, the CV project and the return
+  path; the callback must come back in the same browser and session and exchanges the code once
+  (`POST /v2/oauth/access_token`).
+- Project: chosen automatically when exactly one of the token's projects deploys the site's repository; a project
+  linked to another repository is refused.
+- Previews (`knife_site_previews`): the project's deployments of the work branch, the one built from its head commit
+  (state, URL, inspector link, error) and `next` (wait while it builds, read the log on ERROR, audit on READY).
+  `knife_site_deploy_logs` reads the build output of the linked project's deployments only.
+- Deploy (`knife_site_deploy`, also the Changes tab's "Build preview"): `POST /v13/deployments` with
+  `gitSource {type:"github", repoId, ref: work branch, sha: head}` and no `target`. Refused without a work branch and
+  when the work branch is the base or the project's production branch; a commit Vercel already has (not failed) is
+  returned instead unless `force`. Nothing is ever promoted: production only changes through Publish.
+- Deployment Protection: the project's Protection Bypass for Automation secret is adopted at connect, generated from
+  the panel (`PATCH /v1/projects/{id}/protection-bypass`) or pasted. It is sent as `x-vercel-protection-bypass` only to
+  the host of a deployment Vercel confirms belongs to the linked project (`GET /v13/deployments/<host>`), never across a
+  redirect to another host (`NetDeps.hostHeaders`), and never to PageSpeed: a protected preview is audited without
+  Lighthouse. A protected preview without a secret is refused with the fix, not audited as Vercel's login page.
+- Budget: outbound purpose `vercel` (same per-account limit as `github`).
+
 ## Tests
 
+`tests/site_vercel.test.mjs` (unit: the whole Vercel flow against a fake Vercel API and the mock GitHub).
 `tests/site_studio.test.mjs` (unit: analyzers, PageSpeed parsing, path rules, the whole GitHub flow and an audit
 against `tests/mock_site_world.mjs`), `tests/functional/site_studio_e2e.py` (Chromium + Firefox, the mock world as
 separate servers, an agent over MCP, publish).

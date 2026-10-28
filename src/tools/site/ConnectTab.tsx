@@ -7,6 +7,7 @@ import { Badge, Button, Field, KeyValues, Notice, Panel, SegmentedControl, Selec
 import { useIsAdmin } from "@/lib/use-is-admin";
 import { errorText, siteRequest, when } from "./client";
 import { useSite } from "./useSite";
+import VercelPanel from "./VercelPanel";
 import { useT } from "@/lib/i18n/react";
 
 interface GithubView {
@@ -242,6 +243,8 @@ function ConnectForm({ view, error, reload, stamp, message, setMessage, gh }: { 
           </ol>
         </Panel>
       ) : null}
+
+      {c ? <VercelPanel repo={c.repo} /> : null}
 
       {c && status?.repo ? (
         <Panel title={t("Repository")}>

@@ -295,6 +295,14 @@ async function ctx(accountId: string): Promise<Ctx> {
   return { a, c, token: await tokenOf(a, c) };
 }
 
+/** The connected repository and the work branch with its head commit (branch/head null when there is none). */
+export async function workHead(accountId: string): Promise<{ repo: string; baseBranch: string; branch: string | null; head: string | null }> {
+  const x = await ctx(accountId);
+  const work = loadSite(accountId).work;
+  const head = work ? await github.branchSha(x.token, x.c.repo, work.branch) : null;
+  return { repo: x.c.repo, baseBranch: x.c.baseBranch, branch: head && work ? work.branch : null, head };
+}
+
 /** The ref reads should use: the work branch when it exists (it has the newest edits), else the base branch. */
 async function readRef(accountId: string, x: Ctx): Promise<string> {
   const work = loadSite(accountId).work;

@@ -6,6 +6,7 @@ import { Badge, Button, EmptyState, Field, Notice, Panel, TextArea, TextInput } 
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { errorText, siteRequest, when, type ChangesView } from "./client";
 import { useSite } from "./useSite";
+import VercelPreviews from "./VercelPreviews";
 import { useT } from "@/lib/i18n/react";
 
 const POLL_MS = 15_000;
@@ -141,6 +142,8 @@ export default function ChangesTab() {
               ) : null}
             </div>
           </Panel>
+
+          {view?.vercel?.projectId ? <VercelPreviews revision={revision} onScore={(url) => void auditPreview(url)} /> : null}
 
           <Panel title={t("Commits")}>
             <ul className="space-y-1 text-sm">

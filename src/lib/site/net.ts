@@ -39,7 +39,7 @@ export function sitePolicy(account: Pick<Account, "role" | "privateNetwork">): O
 
 /**
  * The fixed JSON APIs (GitHub, PageSpeed): https only, public addresses. An operator override of their base URL
- * (KNIFE_GITHUB_API_URL / KNIFE_GITHUB_WEB_URL / KNIFE_PSI_API_URL: GitHub Enterprise on the LAN, test mocks) is server
+ * (KNIFE_GITHUB_API_URL / KNIFE_GITHUB_WEB_URL / KNIFE_PSI_API_URL / KNIFE_VERCEL_API_URL: GitHub Enterprise on the LAN, test mocks) is server
  * configuration, not a user-steered URL, so it may be private in any mode.
  */
 export function apiPolicy(url: string): OutboundPolicy {
@@ -49,7 +49,7 @@ export function apiPolicy(url: string): OutboundPolicy {
 }
 
 function isOperatorOverride(url: string): boolean {
-  return ["KNIFE_GITHUB_API_URL", "KNIFE_GITHUB_WEB_URL", "KNIFE_PSI_API_URL"].some((name) => {
+  return ["KNIFE_GITHUB_API_URL", "KNIFE_GITHUB_WEB_URL", "KNIFE_PSI_API_URL", "KNIFE_VERCEL_API_URL"].some((name) => {
     const base = process.env[name]?.trim().replace(/\/+$/, "");
     return !!base && (url === base || url.startsWith(`${base}/`) || url.startsWith(`${base}?`));
   });
@@ -60,6 +60,8 @@ export interface NetDeps {
   transport?: Transport;
   /** Called with every page URL before it is requested (each redirect hop): the per-host outbound budget. */
   admitHop?: (url: URL) => void;
+  /** Extra request headers sent only to this exact host (a Vercel protection bypass for the preview's own host). */
+  hostHeaders?: { host: string; headers: Record<string, string> };
 }
 
 export interface FetchedPage {
@@ -146,7 +148,13 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
           ip: addresses[0],
           addresses,
           method: "GET",
-          headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5", "accept-language": "pl,en;q=0.8" },
+          headers: {
+            "user-agent": UA,
+            accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5",
+            "accept-language": "pl,en;q=0.8",
+            // Never follows a redirect to another host: checked per hop.
+            ...(deps.hostHeaders && current.host.toLowerCase() === deps.hostHeaders.host.toLowerCase() ? deps.hostHeaders.headers : {}),
+          },
           signal,
         });
       } catch (error) {
@@ -193,14 +201,15 @@ export async function fetchPage(input: string, policy: OutboundPolicy, deps: Net
 /** JSON request to a fixed API (GitHub, PageSpeed). Non-2xx answers are returned (status + parsed body), not thrown. */
 export async function apiJson(
   url: string,
-  init: { method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; headers?: Record<string, string>; body?: unknown; timeoutMs?: number; maxBytes?: number },
+  init: { method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"; headers?: Record<string, string>; body?: unknown; rawBody?: string; timeoutMs?: number; maxBytes?: number },
   deps: NetDeps = {},
 ): Promise<{ status: number; body: unknown; headers: Headers }> {
   const method = init.method ?? "GET";
   // safeFetch speaks GET/POST only; PATCH/PUT/DELETE go through rawRequest (same checks, same pinned connection).
   const timeoutMs = init.timeoutMs ?? 30_000;
   const signal = AbortSignal.timeout(timeoutMs);
-  const body = init.body === undefined ? undefined : JSON.stringify(init.body);
+  // rawBody: an already encoded body (a form), sent with the caller's content-type.
+  const body = init.rawBody ?? (init.body === undefined ? undefined : JSON.stringify(init.body));
   const headers = { "user-agent": UA, accept: "application/json", ...(body ? { "content-type": "application/json" } : {}), ...init.headers };
   let response: Response;
   try {

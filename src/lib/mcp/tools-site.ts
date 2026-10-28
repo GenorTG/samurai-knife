@@ -9,6 +9,7 @@ import type { AuditRun } from "@/lib/site/audit/types";
 import { fetchPage, sitePolicy, SiteError } from "@/lib/site/net";
 import * as service from "@/lib/site/service";
 import { loadSite, siteView } from "@/lib/site/store";
+import * as vercelService from "@/lib/site/vercel-service";
 import { defineTool, type KnifeToolContext, type KnifeToolDefinition } from "./define";
 import { hasUntrustedMarkers, wrapUntrusted, wrapUntrustedOptional, wrapUntrustedStrings } from "@/lib/security/untrusted";
 import { msg } from "@/lib/i18n/msg";
@@ -96,7 +97,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     urlArgs: ["url"],
     untrustedOutput: true,
     description:
-      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend).",
+      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`; with Vercel connected that is the READY preview of the work branch's head commit, read through Deployment Protection with the stored bypass) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend).",
     schema: z.object({
       url: z.string().max(500).optional(),
       target: z.enum(["production", "preview"]).optional(),
@@ -107,13 +108,16 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
       return guarded(async () => {
         const acc = account(ctx);
         let base = url;
-        if (!base && target === "preview") {
+        const vercelLinked = !!loadSite(acc).vercel?.projectId;
+        if (!base && target === "preview" && !vercelLinked) {
           const ch = await service.changes(acc);
           base = ch.checks?.previewUrl || undefined;
           if (!base) throw new SiteError("there is no preview deployment yet (no pull request, or the host has not built it): try again in a minute or audit production");
         }
-        const run = await runAudit(acc, { url: base, target: target ?? (url ? "custom" : "production"), pages, lighthouse });
-        return auditDigest(run);
+        // With Vercel linked: the READY head preview of the work branch, read through Deployment Protection when needed.
+        const { options, note } = await vercelService.withVercelAudit(acc, { url: base, target: target ?? (url ? "custom" : "production"), pages, lighthouse });
+        const run = await runAudit(acc, options);
+        return note ? { ...auditDigest(run), vercel: note } : auditDigest(run);
       });
     },
   }),
@@ -145,7 +149,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     urlArgs: ["url"],
     untrustedOutput: true,
     description:
-      "Read ONE live page for copywriting: title, meta description, heading outline, calls to action, contact/profile links, the full visible text (up to 30k chars) and its copy metrics and issues. Use it to see the current wording before proposing new copy.",
+      "Read ONE live page for copywriting (a preview URL of the linked Vercel project is read through its Deployment Protection): title, meta description, heading outline, calls to action, contact/profile links, the full visible text (up to 30k chars) and its copy metrics and issues. Use it to see the current wording before proposing new copy.",
     schema: z.object({ url: z.string().min(1).max(500) }).strict(),
     run({ url }, ctx) {
       return guarded(async () => {
@@ -156,7 +160,8 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
         if (refused) throw new SiteError(refused, 403);
         const budget = admitOutbound(a, "page", url);
         if (!budget.ok) throw new SiteError(outboundLimitMessage(budget.retryAfterSeconds), 429);
-        const page = await fetchPage(url, sitePolicy(a), { admitHop: hostGate(a, "page", url) });
+        const hostHeaders = await vercelService.bypassFor(acc, url);
+        const page = await fetchPage(url, sitePolicy(a), { admitHop: hostGate(a, "page", url), hostHeaders });
         const { facts, issues } = analyzePage(page);
         const copy = analyzeCopy(facts);
         return { ...untrustedPage(facts), copy, issues: [...issues, ...copyIssues(copy, facts.finalUrl)] };
@@ -242,7 +247,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     effect: "write",
     publishes: true,
     description:
-      "Open (or update) the pull request from the work branch into the base branch with a title and a body that explains what changed and why (copy, SEO, projects added...). The host (e.g. Vercel) builds a preview of it: check knife_site_changes for the preview URL, then knife_site_audit target=preview. The USER publishes (merges) it from the Website studio's Changes tab; never ask them to merge elsewhere unless they want to.",
+      "Open (or update) the pull request from the work branch into the base branch with a title and a body that explains what changed and why (copy, SEO, projects added...). The host (e.g. Vercel) builds a preview of it: follow it with knife_site_previews (Vercel connected) or knife_site_changes, then knife_site_audit target=preview. The USER publishes (merges) it from the Website studio's Changes tab; never ask them to merge elsewhere unless they want to.",
     schema: z.object({ title: z.string().min(1).max(250), body: z.string().max(20_000).default("") }).strict(),
     run({ title, body }, ctx) {
       return guarded(() => {
@@ -259,6 +264,48 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     schema: z.object({}).strict(),
     run(_input, ctx) {
       return guarded(() => service.changes(account(ctx)));
+    },
+  }),
+  defineTool({
+    name: "knife_site_previews",
+    scope: "account",
+    effect: "read",
+    untrustedOutput: true,
+    description:
+      "Vercel previews of the work branch (needs Vercel connected in the Website tab; otherwise use knife_site_changes): the Vercel project, the work branch and its head commit, the deployment built from that exact commit (`headDeployment`: state QUEUED/BUILDING/READY/ERROR, URL, inspector link, error), the branch's recent deployments, whether previews are protected and readable, and `next` = what to do now. Use it after every push to the work branch: wait for READY (call again after 20-60 s while it builds), on ERROR read knife_site_deploy_logs, on READY check it with knife_site_audit {target:\"preview\"} or knife_site_page {url}. Report the exact state you saw, never assume READY.",
+    schema: z.object({}).strict(),
+    run(_input, ctx) {
+      return guarded(async () => {
+        const p = await vercelService.previews(account(ctx));
+        const wrapErr = <T extends { error: string }>(d: T) => ({ ...d, error: wrapUntrustedOptional("Vercel deployment error", d.error || null) });
+        return { ...p, headDeployment: p.headDeployment ? wrapErr(p.headDeployment) : null, deployments: p.deployments.map(wrapErr) };
+      });
+    },
+  }),
+  defineTool({
+    name: "knife_site_deploy_logs",
+    scope: "account",
+    effect: "read",
+    untrustedOutput: true,
+    description: "Build output of one Vercel deployment of the linked project (the last 200 lines: commands, stdout, stderr marked with !). Use it when knife_site_previews shows ERROR, find the failing file and line, fix it on the work branch, then follow the new preview.",
+    schema: z.object({ id: z.string().min(1).max(100).describe("Deployment id (dpl_...) from knife_site_previews") }).strict(),
+    run({ id }, ctx) {
+      return guarded(async () => {
+        const log = await vercelService.deployLog(account(ctx), id);
+        return { deployment: { ...log.deployment, error: wrapUntrustedOptional("Vercel deployment error", log.deployment.error || null) }, log: wrapUntrusted(`Vercel build log ${log.deployment.id}`, log.lines.join("\n")) };
+      });
+    },
+  }),
+  defineTool({
+    name: "knife_site_deploy",
+    scope: "account",
+    effect: "write",
+    publishes: true,
+    description:
+      "Start a Vercel PREVIEW deployment of the work branch's head commit (needs Vercel connected). Vercel normally builds every push by itself: call this only when knife_site_previews shows no deployment of the head commit after a minute or two, or to rebuild a failed one (`force: true`). Returns the existing deployment instead when Vercel already has that commit (unless force). Never deploys the production branch and never promotes to production: production changes only go through the user's Publish in the Changes tab. Then follow it with knife_site_previews.",
+    schema: z.object({ force: z.boolean().optional().describe("true = a new build even if Vercel already has this commit") }).strict(),
+    run({ force }, ctx) {
+      return guarded(() => vercelService.deployWorkBranch(account(ctx), force ?? false));
     },
   }),
 ];

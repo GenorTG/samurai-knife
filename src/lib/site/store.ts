@@ -71,11 +71,31 @@ export const siteUrlSchema = z.object({
 });
 export type SiteUrl = z.infer<typeof siteUrlSchema>;
 
+/**
+ * The optional Vercel link of a website (docs/WEBSITE-STUDIO.md "Vercel"): a token (pasted, or from the Smart Knife
+ * Vercel integration's OAuth install), the team it acts in, the project deploying the site's repository, and a
+ * Protection Bypass for Automation secret so protected previews can be read. Secrets never leave the server (`siteView`).
+ */
+export const vercelSchema = z.object({
+  token: z.discriminatedUnion("source", [
+    z.object({ source: z.literal("pat"), value: z.string().min(1).max(500) }),
+    z.object({ source: z.literal("oauth"), value: z.string().min(1).max(500), configurationId: z.string().max(100).default("") }),
+  ]),
+  team: z.string().max(100).default(""),
+  user: z.string().max(100).default(""),
+  projectId: z.string().max(100).default(""),
+  projectName: z.string().max(200).default(""),
+  bypass: z.string().max(200).default(""),
+  connectedAt: z.string(),
+});
+export type VercelLink = z.infer<typeof vercelSchema>;
+
 const fileSchema = z.object({
   version: z.literal(1),
   revision: z.number().int().min(0).default(0),
   connection: connectionSchema.nullable().default(null),
   siteUrl: siteUrlSchema.nullable().default(null),
+  vercel: vercelSchema.nullable().default(null),
   work: workSchema.nullable().default(null),
   // Audit runs are produced by our own code; stored as they are (validated loosely).
   audits: z.array(z.record(z.string(), z.unknown())).max(KEEP_AUDITS).default([]),
@@ -100,7 +120,7 @@ function path(accountId: string): string {
   return file;
 }
 
-const EMPTY: SiteFile = { version: 1, revision: 0, connection: null, siteUrl: null, work: null, audits: [], lastAction: null, github: null };
+const EMPTY: SiteFile = { version: 1, revision: 0, connection: null, siteUrl: null, vercel: null, work: null, audits: [], lastAction: null, github: null };
 
 export function loadSite(accountId: string): SiteFile {
   const file = path(accountId);
@@ -190,6 +210,18 @@ export function siteView(site: SiteFile) {
           token: site.siteUrl.token,
           verified: !!site.siteUrl.url && site.siteUrl.verifiedOrigin === new URL(site.siteUrl.url).origin,
           setAt: site.siteUrl.setAt,
+        }
+      : null,
+    vercel: site.vercel
+      ? {
+          source: site.vercel.token.source,
+          hint: hint(site.vercel.token.value),
+          team: site.vercel.team,
+          user: site.vercel.user,
+          projectId: site.vercel.projectId,
+          projectName: site.vercel.projectName,
+          hasBypass: !!site.vercel.bypass,
+          connectedAt: site.vercel.connectedAt,
         }
       : null,
     work: site.work,

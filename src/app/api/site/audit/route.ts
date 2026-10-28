@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, parseBody } from "@/lib/accounts/http";
 import { auditProgress, currentAudit, startAudit } from "@/lib/site/audit/run";
 import { siteErrorResponse } from "@/lib/site/http";
 import { loadSite } from "@/lib/site/store";
+import { withVercelAudit } from "@/lib/site/vercel-service";
 import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
@@ -24,7 +25,8 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = await parseBody(request, startSchema, "{ url?, target?, pages?, lighthouse? }");
   if ("response" in parsed) return parsed.response;
   try {
-    return json(await startAudit(auth.account.id, parsed.data), 202);
+    const { options } = await withVercelAudit(auth.account.id, parsed.data);
+    return json(await startAudit(auth.account.id, options), 202);
   } catch (error) {
     return siteErrorResponse(error);
   }

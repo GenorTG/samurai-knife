@@ -17,7 +17,7 @@ import { msgf } from "@/lib/i18n/msg";
 
 const KEY_NAME = "auth.key";
 
-export type AuthPurpose = "pow" | "device" | "github-state" | "ip-prefix" | "rate-limit" | "mail";
+export type AuthPurpose = "pow" | "device" | "github-state" | "vercel-state" | "ip-prefix" | "rate-limit" | "mail";
 
 let cached: { path: string; key: Buffer } | null = null;
 

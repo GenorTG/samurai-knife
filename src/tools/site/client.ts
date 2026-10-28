@@ -84,3 +84,40 @@ export const SCORE_LABELS: [keyof AuditRun["scores"], string][] = [
 export function when(iso: string): string {
   return iso ? iso.replace("T", " ").slice(0, 16) : "";
 }
+
+/** GET /api/site/vercel: the website's Vercel link (no secrets). */
+export type VercelView = NonNullable<StoredSiteView["vercel"]>;
+
+export interface VercelProjectView {
+  id: string;
+  name: string;
+  repo: string;
+  productionBranch: string;
+  framework: string;
+  protectedPreviews: boolean;
+  hasBypass: boolean;
+}
+
+export interface VercelDeploymentView {
+  id: string;
+  url: string;
+  state: string;
+  target: string;
+  branch: string;
+  sha: string;
+  isHead: boolean;
+  createdAt: string;
+  inspectorUrl: string;
+  error: string;
+}
+
+export interface VercelPreviewsView {
+  project: VercelProjectView;
+  branch: string | null;
+  head: string | null;
+  protectedPreviews: boolean;
+  canReadProtected: boolean;
+  headDeployment: VercelDeploymentView | null;
+  deployments: VercelDeploymentView[];
+  next: string;
+}
