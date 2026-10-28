@@ -259,8 +259,10 @@ export function TextArea({ className, ...rest }: TextareaHTMLAttributes<HTMLText
 }
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+  // autoComplete="off": Firefox restores a form control's dynamic state (disabled, the picked option) across reloads
+  // before React hydrates; off keeps the server's markup (docs/ARCHITECTURE.md, the Firefox reload rule).
   return (
-    <select className={cx("sk-input h-10 w-full px-3 text-sm", className)} {...rest}>
+    <select autoComplete="off" className={cx("sk-input h-10 w-full px-3 text-sm", className)} {...rest}>
       {children}
     </select>
   );
