@@ -4,7 +4,8 @@ CV projects (`?project=` isolation and path tricks), the CV file upload (`/api/c
 bomb files), the PDF/HTML export from a browser-sent sheet (`/api/cv/export`: local files, network fetches, script and
 links in the sheet), the export file name, and the website address (`/api/site` set-url/verify: loopback, metadata).
 
-Run: KNIFE_DATA_DIR=<the server's> python3 tests/cv_security_probe.py <app-url>   (the server as for security_probe.py)
+Run: KNIFE_DATA_DIR=<the server's> python3 tests/cv_security_probe.py <app-url>   (the server as for security_probe.py;
+the PDF checks run pypdf in the Python lane's venv, KNIFE_PYTHON or ../samurai-knife-py/venv)
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import base64
 import io
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -85,12 +87,27 @@ def register(api: Api, box: Outbox, name: str, ip: str) -> str:
     return cookie or ""
 
 
-def pdf_text(data: bytes) -> str:
-    try:
-        from pypdf import PdfReader
-    except ImportError:
-        return data.decode("latin1")
-    return "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages)
+VENV_PY = os.environ.get("KNIFE_PYTHON") or str(ROOT.parent / "samurai-knife-py" / "venv" / "bin" / "python")
+PDF_PARTS = r"""
+import io, json, sys
+from pypdf import PdfReader
+r = PdfReader(io.BytesIO(sys.stdin.buffer.read()))
+out = {"text": "", "images": 0, "links": []}
+for p in r.pages:
+    out["text"] += (p.extract_text() or "") + "\n"
+    out["images"] += len(p.images)
+    for a in p.get("/Annots", []) or []:
+        uri = (a.get_object().get("/A") or {}).get("/URI")
+        if uri:
+            out["links"].append(str(uri))
+print(json.dumps(out))
+"""
+
+
+def pdf_parts(data: bytes) -> dict:
+    """Text, image count and link targets of a PDF (compressed object streams hide them from a byte search)."""
+    done = subprocess.run([VENV_PY, "-I", "-c", PDF_PARTS], input=data, capture_output=True, check=True)
+    return json.loads(done.stdout)
 
 
 def main() -> int:
@@ -160,9 +177,10 @@ def main() -> int:
 <p style="background-image:url(file:///etc/shadow)">Body text</p></article>"""
     status, headers, pdf = raw("POST", "/api/cv/export", {"variantId": None, "lang": "en", "theme": "modern", "format": "pdf", "sheet": evil}, dave)
     if check("hostile sheet: PDF still built (the hostile parts dropped)", status == 200 and pdf[:4] == b"%PDF", (status, pdf[:200])):
-        text = pdf_text(pdf)
+        parts = pdf_parts(pdf)
+        text = parts["text"]
         check("PDF holds no local file contents", "root:" not in text and "/bin/" not in text, text[:200])
-        check("PDF has no javascript/file links", b"javascript:" not in pdf and b"file:///" not in pdf)
+        check("PDF has no javascript/file links", not [u for u in parts["links"] if not u.startswith(("https:", "http:", "mailto:", "tel:"))], parts["links"])
     status, _, html = raw("POST", "/api/cv/export", {"variantId": None, "lang": "en", "theme": "modern", "format": "html", "sheet": evil}, dave)
     page = html.decode("utf-8", "replace")
     check("hostile sheet: HTML built", status == 200 and "Dave Probe" in page, (status, page[:200]))
@@ -170,6 +188,22 @@ def main() -> int:
         check(f"HTML export drops {bad!r}", bad not in page, page[page.find(bad) - 80: page.find(bad) + 80] if bad in page else "")
     time.sleep(1)
     check("the server fetched nothing the sheet named", not HITS, HITS)
+    # The stricter cleaning keeps what a real sheet needs: the account's own photo and icons.
+    from PIL import Image
+
+    jpeg = io.BytesIO()
+    Image.new("RGB", (200, 200), (40, 90, 160)).save(jpeg, "JPEG")
+    status, _, _ = raw("POST", "/api/cv/photo", {"dataUrl": "data:image/jpeg;base64," + base64.b64encode(jpeg.getvalue()).decode()}, dave)
+    check("dave stores a photo", status == 200, status)
+    real = ('<article class="cvdoc" data-theme="sidebar" style="--cv-accent:#1f5f8b"><aside><img class="cv-photo round" src="/api/cv/photo" alt="Dave">'
+            '<svg class="cv-icon" viewBox="0 0 24 24" width="9" height="9" aria-hidden="true"><path d="M2 2h20v20H2z" fill="currentColor"></path></svg></aside>'
+            '<h1>Dave Probe</h1><p><a href="https://github.com/dave">github.com/dave</a></p></article>')
+    status, _, pdf = raw("POST", "/api/cv/export", {"variantId": None, "lang": "en", "theme": "sidebar", "photo": True, "format": "pdf", "sheet": real}, dave)
+    parts = pdf_parts(pdf) if status == 200 else {"images": 0, "links": []}
+    check("a real sheet keeps the photo and the link in the PDF", parts["images"] >= 1 and "https://github.com/dave" in parts["links"], (status, parts["images"], parts["links"]))
+    status, _, html = raw("POST", "/api/cv/export", {"variantId": None, "lang": "en", "theme": "sidebar", "photo": True, "format": "html", "sheet": real}, dave)
+    page = html.decode("utf-8", "replace")
+    check("…and in the HTML file (photo as a data URL, icon path kept)", 'src="data:image/jpeg;base64,' in page and '<path d="M2 2h20v20H2z"' in page, page[:300])
     status, _, _ = raw("POST", "/api/cv/export", {"variantId": None, "lang": "en", "theme": "modern", "format": "pdf", "sheet": "<article class=\"cvdoc\">" + "x" * (3 * 1024 * 1024) + "</article>"}, dave)
     check("a 3 MB sheet is refused (or the connection cut)", status in (0, 413, 422), status)
 
