@@ -17,8 +17,9 @@ import type { ScreenshotTarget } from "./targets";
  * overrides) driven by the Python `playwright` package (server/py/requirements.txt, installed into each release's venv
  * by knife-update; only its driver is used, no browser download) through the Python lane: heavy lane, the per-account
  * share of the work queue, and in public mode the bubblewrap sandbox with no network. The browser's only way out is the
- * SSRF-checked proxy (proxy.ts) on a unix socket in the job's scratch dir. The result lives in the in-memory image store
- * (images.ts), never in the data dir.
+ * SSRF-checked proxy (proxy.ts) on a unix socket in the job's scratch dir. PNG/JPEG output is held in that per-job OS
+ * scratch directory until the job finishes, then removed; the result lives in the in-memory image store (images.ts),
+ * never in account files.
  */
 
 export const VIEWPORTS = {
@@ -117,6 +118,7 @@ export async function takeScreenshot(accountId: string, target: ScreenshotTarget
     const request = {
       url: target.url,
       allowedOrigins: target.allowedOrigins,
+      ...(target.allowedPaths ? { allowedPaths: target.allowedPaths } : {}),
       viewport,
       fullPage: options.fullPage === true,
       maxHeight: limits.maxHeight,

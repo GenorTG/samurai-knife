@@ -17,9 +17,10 @@ Rules enforced here (the proxy enforces the network ones):
 """
 import asyncio
 import json
+import posixpath
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 class ToolError(Exception):
@@ -36,6 +37,18 @@ def origin_of(url: str) -> str:
     if ":" in host:
         host = f"[{host}]"
     return f"{parts.scheme}://{host}" + ("" if port == default else f":{port}")
+
+
+def path_under_allowed_prefix(url: str, prefixes: list[str]) -> bool:
+    path = unquote(urlsplit(url).path)
+    if "\\" in path or "\x00" in path:
+        return False
+    normalized = posixpath.normpath(path).casefold()
+    return any(
+        normalized == prefix.casefold()
+        or normalized.startswith(prefix.rstrip("/").casefold() + "/")
+        for prefix in prefixes
+    )
 
 
 async def relay(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, socket_path: str) -> None:
@@ -81,6 +94,23 @@ async def capture(req: dict) -> dict:
     allowed = {origin_of(o) for o in req.get("allowedOrigins") or [] if isinstance(o, str)} - {""}
     if origin_of(url) not in allowed:
         raise ToolError("request: url is not on an allowed origin.")
+    raw_paths = req.get("allowedPaths") or []
+    if not isinstance(raw_paths, list):
+        raise ToolError("request: allowedPaths must be a list.")
+    allowed_paths = []
+    for prefix in raw_paths:
+        if not isinstance(prefix, str) or not prefix.startswith("/") or prefix.startswith("//") or any(c in prefix for c in "?#\\\x00"):
+            raise ToolError("request: invalid allowed path prefix.")
+        decoded = unquote(prefix)
+        if decoded.startswith("//") or any(segment in (".", "..") for segment in decoded.split("/")):
+            raise ToolError("request: invalid allowed path prefix.")
+        normalized = posixpath.normpath(decoded)
+        if normalized == "/":
+            raise ToolError("request: invalid allowed path prefix.")
+        allowed_paths.append(normalized.rstrip("/"))
+
+    def navigation_allowed(target: str) -> bool:
+        return origin_of(target) in allowed and (not allowed_paths or path_under_allowed_prefix(target, allowed_paths))
     viewport = req.get("viewport") or {}
     width = int_field(viewport, "width", 320, 1920, 1280)
     height = int_field(viewport, "height", 320, 1600, 800)
@@ -149,7 +179,7 @@ async def capture(req: dict) -> dict:
                         counters["blocked"] += 1
                         await route_.abort()
                         return
-                    if request.is_navigation_request() and request.frame == page.main_frame and origin_of(target) not in allowed:
+                    if request.is_navigation_request() and request.frame == page.main_frame and not navigation_allowed(target):
                         counters["blocked"] += 1
                         await route_.abort()
                         return
@@ -174,7 +204,7 @@ async def capture(req: dict) -> dict:
                     pass
                 await page.wait_for_timeout(300)
                 final_url = page.url
-                if origin_of(final_url) not in allowed:
+                if not navigation_allowed(final_url):
                     raise ToolError("the page left the allowed site before the screenshot.")
                 title = (await page.title())[:300]
                 doc_height = await page.evaluate("() => Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)")

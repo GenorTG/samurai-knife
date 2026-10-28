@@ -124,6 +124,7 @@ Zabronione jest w szczególności:
 
 ## § 17. Historia zmian {#history}
 
+- **Wydanie 5** (28 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; Polityka prywatności opisuje zrzuty ekranu stron wysyłane do Dostawcy AI wybranego przez Użytkownika.
 - **Wydanie 4** (28 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; studio strony może opcjonalnie współpracować z projektem Vercel Użytkownika, co opisuje Polityka prywatności.
 - **Wydanie 3** (26 października 2026, {{siteName}} 0.10.0): bez zmian postanowień; Serwis jest dostępny po polsku i po angielsku, a Polityka prywatności opisuje zapisywany wybór języka.
 - **Wydanie 2** (22 października 2026, {{siteName}} 0.8.0): dodaje przepływy pracy i aplikacje Craft (§ 2, § 4 pkt 4–5), zasady korzystania z przepływów (§ 7 pkt 9–10), węzły AI (§ 8 ust. 5–6), rozszerza licencję i wyłączenia odpowiedzialności o przepływy i aplikacje Craft (§ 9 ust. 2, § 12 ust. 1) oraz opisuje wersje dokumentów (§ 15 ust. 4).

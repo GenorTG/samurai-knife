@@ -101,7 +101,15 @@ export interface ProviderTestResult {
   modelCount?: number;
   /** Model ids the provider lists (GET /models), sorted. */
   models?: string[];
+  modelDetails?: ProviderModelDetails[];
   error?: string;
+}
+
+export interface ProviderModelDetails {
+  id: string;
+  contextLength: number | null;
+  vision: boolean | null;
+  features: string[];
 }
 
 export interface ChatReply {

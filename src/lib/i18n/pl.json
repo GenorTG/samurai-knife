@@ -5083,5 +5083,17 @@
   "Zoom": "Powiększenie",
   "Zoom in": "Powiększ",
   "Zoom out": "Pomniejsz",
-  "Zoom to 100%": "Powiększenie 100%"
+  "Zoom to 100%": "Powiększenie 100%",
+  "Context: {value}": "Kontekst: {value}",
+  "Features": "Funkcje",
+  "This provider does not advertise model capabilities.": "Ten provider nie udostępnia informacji o możliwościach modeli.",
+  "Vision: {value}": "Obrazy: {value}",
+  "context unknown": "nieznany kontekst",
+  "no": "nie",
+  "not advertised": "brak danych",
+  "text only": "tylko tekst",
+  "unknown": "nieznane",
+  "vision": "obsługuje obrazy",
+  "vision unknown": "nieznane",
+  "yes": "tak"
 }

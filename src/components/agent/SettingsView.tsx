@@ -239,6 +239,7 @@ function ProviderForm({
   const helperChoices = account.providerProfiles.filter((profile) => profile.id !== activeProfileId);
   const [working, setWorking] = useState<"connect" | "models" | null>(null);
   const [models, setModels] = useState<string[]>([]);
+  const [modelDetails, setModelDetails] = useState<Record<string, { contextLength: number | null; vision: boolean | null; features: string[] }>>({});
 
   const preset = presetFor(baseUrl);
   const local = "local" in preset && preset.local;
@@ -309,6 +310,7 @@ function ProviderForm({
     }
     const list = t.models ?? [];
     setModels(list);
+    setModelDetails(Object.fromEntries((t.modelDetails ?? []).map((entry) => [entry.id, entry])));
     if (!list.length) {
       setStatus({ tone: "info", text: tr("The provider lists no models: type the model name.") });
       return false;
@@ -358,6 +360,7 @@ function ProviderForm({
     } else {
       const t = tested.value;
       if (t.models?.length) setModels(t.models);
+      if (t.modelDetails) setModelDetails(Object.fromEntries(t.modelDetails.map((entry) => [entry.id, entry])));
       const unknown = t.models?.length && !t.models.includes(model.trim()) ? tr(" The provider does not list {trim}: check the name.", { trim: model.trim() }) : "";
       setStatus({ tone: unknown ? "info" : "good", text: `Connected${t.modelCount !== undefined ? ` (${t.modelCount} models listed)` : ""}.${saved}${unknown}` });
       if (changed) await onSaved();
@@ -457,14 +460,30 @@ function ProviderForm({
                 <option key={id} value={id} />
               ))}
             </datalist>
-            <select aria-label={tr("Available models")} className="sk-input h-8 w-full px-2 text-xs" value={models.includes(model) ? model : ""} onChange={(e) => e.target.value && setModel(e.target.value)}>
+            <select aria-label={tr("Available models")} className="sk-input h-8 w-full px-2 text-xs" value={models.includes(model) ? model : ""} onChange={(e) => {
+              const id = e.target.value;
+              if (!id) return;
+              setModel(id);
+              const details = modelDetails[id];
+              if (details?.vision === true) setVision("native");
+              else if (details?.vision === false) setVision("none");
+            }}>
               <option value="">{models.length} {" "}{tr("models available: pick one…")}</option>
-              {models.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
+              {models.map((id) => {
+                const details = modelDetails[id];
+                const capabilities = details
+                  ? ` · ${details.contextLength ? `${details.contextLength.toLocaleString()} ctx` : tr("context unknown")} · ${details.vision === null ? tr("vision unknown") : details.vision ? tr("vision") : tr("text only")}${details.features.length ? ` · ${details.features.join(", ")}` : ""}`
+                  : "";
+                return <option key={id} value={id}>{id}{capabilities}</option>;
+              })}
             </select>
+            {modelDetails[model] ? (
+              <p className="text-[11px] text-faint" aria-live="polite">
+                {tr("Context: {value}", { value: modelDetails[model].contextLength?.toLocaleString() ?? tr("not advertised") })}
+                {" · "}{tr("Vision: {value}", { value: modelDetails[model].vision === null ? tr("unknown") : modelDetails[model].vision ? tr("yes") : tr("no") })}
+                {modelDetails[model].features.length ? ` · ${tr("Features")}: ${modelDetails[model].features.join(", ")}` : ""}
+              </p>
+            ) : models.includes(model) ? <p className="text-[11px] text-faint">{tr("This provider does not advertise model capabilities.")}</p> : null}
           </>
         ) : null}
       </div>
