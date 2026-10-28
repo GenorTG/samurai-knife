@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Badge, Button, EmptyState, Meter, Notice, Panel, Stat, StatGrid } from "@/components/ui";
 import { openAssistant } from "@/lib/agent-client/bridge";
@@ -24,13 +23,12 @@ const DIMENSIONS: [keyof AuditRun["pages"][number]["copy"]["scores"], string, st
 ];
 
 /**
- * Copy & CV: copywriting scores per page and how the site lines up with the CV studio profile. Also the "Website" tab
- * of the CV studio (the CV flow), so it links to the full website studio from there.
+ * Compare with your CV (a step of the CV studio's Website tab): how the site lines up with the CV project's profile, and
+ * copywriting scores per page.
  */
 export default function CopyTab() {
   const { t } = useT();
   const { view } = useSite();
-  const inCv = usePathname()?.startsWith("/tools/cv-studio") ?? false;
   const [fetched, setFetched] = useState<AuditRun | null>(null);
   const latestId = view?.latest?.id ?? "";
   // The run belongs to the newest id; an older fetched one is simply not shown.
@@ -45,16 +43,16 @@ export default function CopyTab() {
   }, [latestId]);
 
   if (!view) return <p className="text-sm text-muted">{t("Loading…")}</p>;
-  if (!view.connected && !view.latest) {
+  if (!view.connected && !view.siteUrl && !view.latest) {
     return (
-      <EmptyState title={t("Connect your website to compare it with your CV")} action={<Link className="text-accent underline" href="/tools/site-studio?tab=connect">{t("Open the website studio")}</Link>}>
+      <EmptyState title={t("Connect your website to compare it with your CV")} action={<Link className="text-accent underline" href="/tools/cv-studio?tab=website&step=connect">{t("Add your website")}</Link>}>
         {t("Your personal or company site should tell the same story as your CV: current role, best projects, the skills you want to be hired for.")}
       </EmptyState>
     );
   }
   if (!run) {
     return (
-      <EmptyState title={t("No audit yet")} action={<Link className="text-accent underline" href="/tools/site-studio?tab=score">{t("Run an audit")}</Link>}>
+      <EmptyState title={t("No audit yet")} action={<Link className="text-accent underline" href="/tools/cv-studio?tab=website&step=score">{t("Run a check")}</Link>}>
         {t("The copy and CV comparison come from the latest audit.")}
       </EmptyState>
     );
@@ -65,7 +63,7 @@ export default function CopyTab() {
 
   return (
     <div className="space-y-4">
-      {inCv ? <Notice tone="info">{t("From your website audit of {finishedAt}. Edit the site in the", { finishedAt: when(run.finishedAt) })}{" "} <Link className="underline" href="/tools/site-studio?tab=score">{t("website studio")}</Link>{t("; edit the CV in the other tabs here.")}</Notice> : null}
+      <Notice tone="info">{t("From your website check of {finishedAt}. Edit the CV in the other tabs; run the check again after you change the site.", { finishedAt: when(run.finishedAt) })}</Notice>
       <Panel title={t("CV fit{value}", { value: a ? ` · ${a.score}/100` : "" })}>
         {a && a.items.length ? (
           <div className="space-y-3">

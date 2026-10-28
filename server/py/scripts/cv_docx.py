@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """CV -> DOCX (python-docx). Usage: cv_docx.py request.json response.json
 
-Request  {"view": <CvView JSON from src/lib/cv/render/view.ts>, "theme": "ats|modern|sidebar|elegant",
+Request  {"view": <CvView JSON from src/lib/cv/render/view.ts>, "theme": <layout id, src/lib/cv/render/layout.ts>,
+          "look": {"accent": "#rrggbb", "fonts": "inter|serif|mixed|geist", "density": "comfortable|compact",
+                   "paper": "a4|letter", "icons": bool}, "page_mode": "cv|cv+pages|pages",
           "photo": "/abs/photo.jpg"|null, "photo_shape": "round|square", "out_dir": "/abs/scratch", "filename": "cv.docx"}
 Response {"ok": true, "file": "cv.docx", "mime": "...wordprocessingml.document", "bytes": N} | {"ok": false, "error": "..."}
 
 No profile logic lives here: the TypeScript side already decided what prints (titles, dates, empty-field skipping,
 consent rule), this script only lays the view out. Real Word styles everywhere (Title, Subtitle, Heading 1/2, List Bullet)
-and plain spaces (no U+00A0). ATS (and Modern/Elegant without a photo) = one linear flow: no tables, text boxes, columns
-or images. The photo layouts add one borderless layout table at most (Sidebar: two columns; Modern: name | photo).
+and plain spaces (no U+00A0); every link is a real hyperlink (w:hyperlink + an external relationship). The ATS-safe
+layouts (ATS, Compact, Minimal, Classic) are one linear flow: no tables, text boxes, columns or images. The others map to
+what Word does reliably: side-column layouts are one borderless two-column table, Banner a shaded header table, Timeline
+and Europass a label | content table per section; fonts become Word's own (Calibri / Georgia / Consolas: a DOCX does not
+carry the PDF's bundled fonts), icons are left out.
 """
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ from typing import Any
 from docx import Document
 from docx.document import Document as DocumentType
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
@@ -31,10 +36,13 @@ DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 FONT = "Calibri"
 INK = RGBColor(0x11, 0x11, 0x11)
 GREY = RGBColor(0x44, 0x44, 0x44)
-ACCENT = {"ats": INK, "modern": RGBColor(0x1F, 0x5F, 0x8B), "sidebar": RGBColor(0x22, 0x57, 0x7A), "elegant": RGBColor(0x7A, 0x5C, 0x35)}
-PHOTO_LAYOUTS = ("modern", "sidebar", "elegant")  # src/lib/cv/render/layout.ts: ATS never prints a photo
+LAYOUTS = ("ats", "compact", "minimal", "classic", "modern", "elegant", "executive", "technical", "timeline", "banner", "sidebar", "rightbar", "creative", "europass")
+# src/lib/cv/render/layout.ts (CV_LAYOUT_INFO.photo): the ATS-safe layouts and Technical never print a photo.
+PHOTO_LAYOUTS = ("modern", "elegant", "executive", "timeline", "banner", "sidebar", "rightbar", "creative", "europass")
+DEFAULT_ACCENT = {"ats": "#111111", "modern": "#1f5f8b", "sidebar": "#1f5f8b", "elegant": "#7a5c35"}
 SERIF = "Georgia"
-SIDEBAR_FILL = "EDF2F7"
+MONO = "Consolas"
+PAPER = {"a4": (210, 297), "letter": (215.9, 279.4)}
 LANG_TAG = {"pl": "pl-PL", "en": "en-GB"}
 NBSP = " "
 
@@ -60,24 +68,78 @@ def plain(value: str) -> str:
     return value.replace(NBSP, " ")
 
 
-def style_setup(doc: DocumentType, lang: str, accent: RGBColor, heading_font: str = FONT) -> None:
+def hex_rgb(value: str) -> RGBColor:
+    v = value.strip().lstrip("#")
+    if len(v) != 6 or any(c not in "0123456789abcdefABCDEF" for c in v):
+        raise ToolError("look.accent: expected #rrggbb.")
+    return RGBColor(int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+
+
+def tint_hex(colour: RGBColor, amount: float) -> str:
+    """The colour mixed with white (`amount` of white), as RRGGBB for cell shading."""
+    return "".join(f"{round(c + (255 - c) * amount):02X}" for c in colour)
+
+
+def fonts_for(pair: str) -> tuple[str, str]:
+    """(heading font, body font) for a font pair; Word's own families, the DOCX does not embed fonts."""
+    if pair == "serif":
+        return SERIF, SERIF
+    if pair == "mixed":
+        return SERIF, FONT
+    return FONT, FONT
+
+
+def add_link(paragraph: Paragraph, text: str, url: str, colour: RGBColor | None = None, size: float | None = None) -> None:
+    """A real hyperlink run (w:hyperlink with an external relationship); plain text when there is no safe URL."""
+    if not url or not url.lower().startswith(("http://", "https://", "mailto:", "tel:")):
+        run = paragraph.add_run(text)
+        if colour is not None:
+            run.font.color.rgb = colour
+        if size:
+            run.font.size = Pt(size)
+        return
+    rel = paragraph.part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), rel)
+    run = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    if colour is not None:
+        c = OxmlElement("w:color")
+        c.set(qn("w:val"), str(colour))
+        rpr.append(c)
+    if size:
+        sz = OxmlElement("w:sz")
+        sz.set(qn("w:val"), str(round(size * 2)))
+        rpr.append(sz)
+    run.append(rpr)
+    t = OxmlElement("w:t")
+    t.text = text
+    t.set(qn("xml:space"), "preserve")
+    run.append(t)
+    link.append(run)
+    paragraph._p.append(link)
+
+
+def style_setup(doc: DocumentType, lang: str, accent: RGBColor, heading_font: str = FONT, body_font: str = FONT, paper: str = "a4", compact: bool = False) -> None:
     section = doc.sections[0]
-    section.page_width, section.page_height = Mm(210), Mm(297)
-    section.left_margin = section.right_margin = Mm(18)
-    section.top_margin = section.bottom_margin = Mm(16)
+    width, height = PAPER.get(paper, PAPER["a4"])
+    section.page_width, section.page_height = Mm(width), Mm(height)
+    section.left_margin = section.right_margin = Mm(14 if compact else 18)
+    section.top_margin = section.bottom_margin = Mm(12 if compact else 16)
+    k = 0.92 if compact else 1.0
 
     # name: (size pt, bold, colour, space before pt, space after pt)
     spec = {
-        "Normal": (10, False, INK, 0, 3),
-        "Title": (22, True, INK, 0, 2),
-        "Subtitle": (11.5, False, accent, 0, 4),
-        "Heading 1": (11, True, accent, 12, 4),
-        "Heading 2": (10.5, True, INK, 6, 0),
-        "List Bullet": (10, False, INK, 0, 2),
+        "Normal": (10 * k, False, INK, 0, 3 * k),
+        "Title": (22 * k, True, INK, 0, 2),
+        "Subtitle": (11.5 * k, False, accent, 0, 4),
+        "Heading 1": (11 * k, True, accent, 12 * k, 4 * k),
+        "Heading 2": (10.5 * k, True, INK, 6 * k, 0),
+        "List Bullet": (10 * k, False, INK, 0, 2 * k),
     }
     for name, (size, bold, colour, before, after) in spec.items():
         style = doc.styles[name]
-        family = heading_font if name in ("Title", "Subtitle", "Heading 1") else FONT
+        family = heading_font if name in ("Title", "Subtitle", "Heading 1", "Heading 2") else body_font
         font = style.font
         font.name, font.size, font.bold, font.italic = family, Pt(size), bold, False
         font.color.rgb = colour
@@ -227,19 +289,34 @@ class View:
     def get(self, key: str) -> str:
         return text_of(self.v.get(key))
 
-    def contact(self) -> list[str]:
-        return [t for t in (text_of(c.get("text")) for c in list_of(self.v.get("contact")) if isinstance(c, dict)) if t]
+    def contact(self) -> list[dict[str, str]]:
+        return [{"text": text_of(c.get("text")), "href": text_of(c.get("href"))} for c in list_of(self.v.get("contact")) if isinstance(c, dict) and text_of(c.get("text"))]
 
     def items(self, key: str, required: str) -> list[dict[str, Any]]:
         return [e for e in list_of(self.v.get(key)) if isinstance(e, dict) and text_of(e.get(required))]
 
 
-def masthead(f: Flow, v: View, align: WD_ALIGN_PARAGRAPH | None = None, contact: bool = True) -> None:
+def contact_line(paragraph: Paragraph, items: list[dict[str, str]], colour: RGBColor | None = None) -> None:
+    for i, item in enumerate(items):
+        if i:
+            sep = paragraph.add_run("  |  ")
+            if colour is not None:
+                sep.font.color.rgb = colour
+        add_link(paragraph, item["text"], item["href"], colour)
+
+
+def masthead(f: Flow, v: View, align: WD_ALIGN_PARAGRAPH | None = None, contact: bool = True, colour: RGBColor | None = None) -> None:
     for text, style in ((v.get("name"), "Title"), (v.get("headline"), "Subtitle")):
         if text:
-            f.para(text, style=style).alignment = align
+            paragraph = f.para(text, style=style)
+            paragraph.alignment = align
+            if colour is not None:
+                for run in paragraph.runs:
+                    run.font.color.rgb = colour
     if contact and v.contact():
-        f.para("  |  ".join(v.contact())).alignment = align
+        paragraph = f.para()
+        paragraph.alignment = align
+        contact_line(paragraph, v.contact(), colour)
 
 
 def summary(f: Flow, v: View) -> None:
@@ -266,7 +343,10 @@ def projects(f: Flow, v: View) -> None:
     f.para(v.title("projects"), style="Heading 1")
     for p in items:
         f.para(text_of(p.get("name")), style="Heading 2")
-        meta_line(f, text_of(p.get("urlText")), keep_with_next=True)
+        if text_of(p.get("urlText")):
+            paragraph = f.para()
+            paragraph.paragraph_format.keep_with_next = True
+            add_link(paragraph, text_of(p.get("urlText")), text_of(p.get("href")), GREY, 9.5)
         if text_of(p.get("summary")):
             f.para(text_of(p.get("summary")))
         meta_line(f, text_of(p.get("tech")), keep_with_next=True)
@@ -337,9 +417,13 @@ def custom(f: Flow, v: View, key: str) -> None:
         return
     f.para(text_of(section.get("title")), style="Heading 1")
     for item in items:
-        head = " · ".join(p for p in (text_of(item.get("title")), text_of(item.get("urlText"))) if p)
-        if head:
-            f.para(head, style="Heading 2")
+        title, url_text = text_of(item.get("title")), text_of(item.get("urlText"))
+        if title or url_text:
+            paragraph = f.para(title, style="Heading 2")
+            if url_text:
+                if title:
+                    paragraph.add_run(" · ")
+                add_link(paragraph, url_text, text_of(item.get("href")))
         meta_line(f, text_of(item.get("date")), keep_with_next=bool(text_of(item.get("text"))))
         if text_of(item.get("text")):
             f.para(text_of(item.get("text")))
@@ -368,47 +452,194 @@ def body(f: Flow, v: View) -> None:
         section(f, v, key)
 
 
-def write_view(doc: DocumentType, view: dict[str, Any], layout: str = "ats", photo: Path | None = None) -> None:
-    """ATS (and Modern/Elegant without a photo): one linear flow, no tables. Photo layouts add exactly one layout table."""
+def shade_cell(cell: _Cell, fill: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+
+
+def recolour(cell: _Cell, colour: RGBColor) -> None:
+    """Every run in a cell in one colour (text on a dark fill)."""
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.color.rgb = colour
+        for link in paragraph._p.findall(qn("w:hyperlink")):
+            for rpr in link.iter(qn("w:rPr")):
+                for old in rpr.findall(qn("w:color")):
+                    rpr.remove(old)
+                c = OxmlElement("w:color")
+                c.set(qn("w:val"), str(colour))
+                rpr.append(c)
+
+
+def side_column(cell: _Cell, v: View, photo: Path | None) -> None:
+    side = Flow(cell, small=True)
+    if photo:
+        picture(side, photo, 36, WD_ALIGN_PARAGRAPH.CENTER)
+    for item in v.contact():
+        add_link(side.para(), item["text"], item["href"], size=9)
+    for key in order_of(v):
+        if key == "skills":
+            skills(side, v, stacked=True)
+        elif key == "languages":
+            languages(side, v, as_bullets=False)
+        elif key == "education":
+            education(side, v)
+
+
+def labelled_rows(doc: DocumentType, v: View, keys: list[str], width: float, accent: RGBColor) -> None:
+    """Europass / Timeline: one borderless table, a row per section: the title on the left, the content on the right."""
+    table = doc.add_table(rows=0, cols=2)
+    table.autofit = False
+    no_borders(table)
+    label_w = 38.0
+    for key in keys:
+        row = table.add_row()
+        left, right = row.cells
+        cell_setup(left, label_w, margins_mm=(0, 0, 0, 3))
+        cell_setup(right, width - label_w, margins_mm=(0, 4, 0, 0))
+        before = len(right.paragraphs)
+        section(Flow(right), v, key)
+        # The section wrote its own Heading 1 first: move its text to the label cell.
+        heading = next((pp for pp in right.paragraphs[max(0, before - 1):] if pp.style is not None and pp.style.name == "Heading 1"), None)
+        if heading is None:
+            row._tr.getparent().remove(row._tr)
+            continue
+        label = left.paragraphs[0]
+        run = label.add_run(heading.text)
+        run.bold = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = accent
+        label.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        heading._p.getparent().remove(heading._p)
+        if right.paragraphs and not right.paragraphs[0].text and len(right.paragraphs) > 1:
+            right.paragraphs[0]._p.getparent().remove(right.paragraphs[0]._p)
+
+
+def write_view(doc: DocumentType, view: dict[str, Any], layout: str = "ats", photo: Path | None = None, accent: RGBColor = INK, width: float = 174.0, show_cv: bool = True) -> None:
     v = View(view)
     f = Flow(doc)
-    text_width = 174.0
-    if layout == "sidebar":
-        left, right = two_cells(doc, (58.0, text_width - 58.0))
-        cell_setup(left, 58.0, fill=SIDEBAR_FILL, margins_mm=(4, 4, 4, 4))
-        cell_setup(right, text_width - 58.0, margins_mm=(0, 7, 0, 0))
-        side, main = Flow(left, small=True), Flow(right)
-        if photo:
-            picture(side, photo, 36, WD_ALIGN_PARAGRAPH.CENTER)
-        for item in v.contact():
-            side.para(item)
-        for key in order_of(v):
-            if key == "skills":
-                skills(side, v, stacked=True)
-            elif key == "languages":
-                languages(side, v, as_bullets=False)
-            elif key == "education":
-                education(side, v)
+    if not show_cv:
+        return
+    order = order_of(v)
+    if layout == "technical" and "skills" in order:
+        rest = [k for k in order if k != "skills"]
+        at = 1 if rest and rest[0] == "summary" else 0
+        order = [*rest[:at], "skills", *rest[at:]]
+
+    if layout in ("sidebar", "rightbar", "creative"):
+        side_w = 58.0 if layout != "rightbar" else 56.0
+        widths = (side_w, width - side_w) if layout != "rightbar" else (width - side_w, side_w)
+        a, b = two_cells(doc, widths)
+        side_cell, main_cell = (a, b) if layout != "rightbar" else (b, a)
+        fill = str(accent) if layout == "creative" else tint_hex(accent, 0.9)
+        cell_setup(side_cell, side_w, fill=fill, margins_mm=(4, 4, 4, 4))
+        cell_setup(main_cell, width - side_w, margins_mm=(0, 7, 0, 0) if layout != "rightbar" else (0, 0, 0, 7))
+        side_column(side_cell, v, photo)
+        if layout == "creative":
+            recolour(side_cell, RGBColor(0xFF, 0xFF, 0xFF))
+        main = Flow(main_cell)
         masthead(main, v, contact=False)
-        for key in order_of(v):
+        for key in order:
             if key not in SIDE_SECTIONS:
                 section(main, v, key)
         consent(f, v)
         return
-    if layout == "elegant":
+
+    if layout == "banner":
+        band_table = doc.add_table(rows=1, cols=1)
+        band_table.autofit = False
+        no_borders(band_table)
+        cell = band_table.rows[0].cells[0]
+        cell_setup(cell, width, fill=str(accent), margins_mm=(5, 6, 5, 6))
+        band = Flow(cell)
+        if photo:
+            picture(band, photo, 26, WD_ALIGN_PARAGRAPH.RIGHT)
+        masthead(band, v, colour=RGBColor(0xFF, 0xFF, 0xFF))
+        recolour(cell, RGBColor(0xFF, 0xFF, 0xFF))
+    elif layout in ("elegant", "classic"):
         if photo:
             picture(f, photo, 32, WD_ALIGN_PARAGRAPH.CENTER)
         masthead(f, v, align=WD_ALIGN_PARAGRAPH.CENTER)
-    elif layout == "modern" and photo:
-        left, right = two_cells(doc, (text_width - 34.0, 34.0))
-        cell_setup(left, text_width - 34.0)
+    elif layout in ("modern", "executive", "timeline", "europass") and photo:
+        left, right = two_cells(doc, (width - 34.0, 34.0))
+        cell_setup(left, width - 34.0)
         cell_setup(right, 34.0)
         masthead(Flow(left), v)
         picture(Flow(right), photo, 30, WD_ALIGN_PARAGRAPH.RIGHT)
     else:
         masthead(f, v)
-    body(f, v)
+
+    if layout == "europass":
+        labelled_rows(doc, v, order, width, accent)
+    elif layout == "timeline":
+        for key in order:
+            if key in ("experience", "education"):
+                labelled_timeline(doc, v, key, width, accent)
+            else:
+                section(f, v, key)
+    else:
+        for key in order:
+            section(f, v, key)
     consent(f, v)
+
+
+def labelled_timeline(doc: DocumentType, v: View, key: str, width: float, accent: RGBColor) -> None:
+    """Timeline: the section title, then a borderless table: dates on the left, the entry on the right."""
+    items = v.items("experience", "heading") if key == "experience" else v.items("education", "institution")
+    if not items:
+        return
+    Flow(doc).para(v.title(key), style="Heading 1")
+    table = doc.add_table(rows=0, cols=2)
+    table.autofit = False
+    no_borders(table)
+    for e in items:
+        left, right = table.add_row().cells
+        cell_setup(left, 30.0, margins_mm=(0, 0, 0, 3))
+        cell_setup(right, width - 30.0, margins_mm=(0, 3, 0, 0))
+        dates = left.paragraphs[0].add_run(text_of(e.get("dates")))
+        dates.bold, dates.font.size, dates.font.color.rgb = True, Pt(8.8), accent
+        left.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r = Flow(right)
+        r.para(text_of(e.get("heading")) or text_of(e.get("institution")), style="Heading 2")
+        meta_line(r, " · ".join(x for x in (text_of(e.get("place")), text_of(e.get("note")), text_of(e.get("detail"))) if x))
+        bullets(r, strings(e.get("bullets")))
+
+
+def project_pages(doc: DocumentType, view: dict[str, Any], accent: RGBColor, first_break: bool) -> None:
+    """Showcase pages: one page per project (name, link, lead, story, highlights, then role / outcome / technology)."""
+    pages = [pg for pg in list_of(view.get("pages")) if isinstance(pg, dict) and text_of(pg.get("name"))]
+    titles = view.get("pageTitles") if isinstance(view.get("pageTitles"), dict) else {}
+    label = lambda key, fallback: text_of(titles.get(key)) or fallback  # noqa: E731
+    f = Flow(doc)
+    for i, pg in enumerate(pages):
+        if first_break or i:
+            doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        kicker = f.para()
+        run = kicker.add_run(f"{label('heading', 'Project')}{' · ' + text_of(view.get('name')) if text_of(view.get('name')) else ''}".upper())
+        run.font.size, run.font.color.rgb = Pt(8.5), accent
+        f.para(text_of(pg.get("name")), style="Title")
+        if text_of(pg.get("urlText")):
+            add_link(f.para(), text_of(pg.get("urlText")), text_of(pg.get("href")), GREY, 9.5)
+        if text_of(pg.get("summary")):
+            lead = f.para(text_of(pg.get("summary")))
+            for r in lead.runs:
+                r.font.size = Pt(11.5)
+        for para in strings(pg.get("story")):
+            f.para(para)
+        if strings(pg.get("bullets")):
+            f.para(label("highlights", "Highlights"), style="Heading 1")
+            bullets(f, strings(pg.get("bullets")))
+        for key, fallback in (("role", "My role"), ("outcome", "Outcome")):
+            if text_of(pg.get(key)):
+                f.para(label(key, fallback), style="Heading 1")
+                f.para(text_of(pg.get(key)))
+        if strings(pg.get("tech")):
+            f.para(label("tech", "Technology"), style="Heading 1")
+            f.para(", ".join(strings(pg.get("tech"))))
 
 
 def scrub(value: Any) -> Any:
@@ -430,13 +661,21 @@ def render(req: dict[str, Any]) -> dict[str, Any]:
     if lang not in LANG_TAG:
         raise ToolError("view.lang: expected 'pl' or 'en'.")
     theme = req.get("theme", "ats")
-    if theme not in ACCENT:
-        raise ToolError(f"theme: expected one of {', '.join(ACCENT)}.")
+    if theme not in LAYOUTS:
+        raise ToolError(f"theme: expected one of {', '.join(LAYOUTS)}.")
+    look = req.get("look") if isinstance(req.get("look"), dict) else {}
+    accent = hex_rgb(text_of(look.get("accent")) or DEFAULT_ACCENT.get(theme, "#1f5f8b"))
+    pair = text_of(look.get("fonts")) or ("mixed" if theme == "elegant" else "inter")
+    page_mode = text_of(req.get("page_mode")) or "cv"
+    if page_mode not in ("cv", "cv+pages", "pages"):
+        raise ToolError("page_mode: expected cv, cv+pages or pages.")
     shape = req.get("photo_shape", "round")
     if shape not in ("round", "square"):
         raise ToolError("photo_shape: expected 'round' or 'square'.")
     view = scrub(view)
-    if not (text_of(view.get("name")) or text_of(view.get("summary")) or list_of(view.get("experience"))):
+    if page_mode == "pages" and not list_of(view.get("pages")):
+        raise ToolError("view: no project has a showcase page.")
+    if page_mode != "pages" and not (text_of(view.get("name")) or text_of(view.get("summary")) or list_of(view.get("experience"))):
         raise ToolError("view: nothing to print.")
 
     filename = Path(text_of(req.get("filename")) or "cv.docx").name
@@ -454,8 +693,17 @@ def render(req: dict[str, Any]) -> dict[str, Any]:
             photo = round_photo(photo, out_dir)
 
     doc = Document()
-    style_setup(doc, lang, ACCENT[theme], SERIF if theme == "elegant" else FONT)
-    write_view(doc, view, theme, photo)
+    head_font, body_font = fonts_for(pair)
+    if theme == "technical":
+        head_font = MONO
+    paper = text_of(look.get("paper")) or "a4"
+    compact = text_of(look.get("density")) == "compact" or theme == "compact"
+    style_setup(doc, lang, accent if theme != "ats" else INK, head_font, body_font, paper, compact)
+    width = PAPER.get(paper, PAPER["a4"])[0] - (28 if compact else 36)
+    show_cv = page_mode != "pages"
+    write_view(doc, view, theme, photo, accent, width, show_cv)
+    if page_mode != "cv":
+        project_pages(doc, view, accent, first_break=show_cv)
     name = text_of(view.get("name"))
     doc.core_properties.title = f"{name} - CV" if name else "CV"
     doc.core_properties.author = name

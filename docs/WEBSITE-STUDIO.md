@@ -1,6 +1,6 @@
-# Website studio
+# Website (CV studio)
 
-Suite `site-studio` (Connect, Score, Copy & CV, Changes) plus the **Website** tab of the CV studio (the Copy & CV view).
+The optional **Website** tab of the CV studio (steps: Your website, Check it, Compare with your CV, Improve it). It used to be the separate suite `site-studio`, which now redirects there (`/tools/site-studio?tab=X` -> `/tools/cv-studio?tab=website&step=X`). The website belongs to a CV project (docs/CV-STUDIO.md "Projects"); every signed-in user may use it.
 The point: keep a personal or company website in line with what you do now and with your CV, score it on the usual
 website benchmarks, and let the in-page assistant or any MCP agent improve it, without leaving the app. Nothing reaches
 production until the user clicks Publish.
@@ -108,3 +108,8 @@ destructive (confirmed in every trust mode but None).
 `tests/site_studio.test.mjs` (unit: analyzers, PageSpeed parsing, path rules, the whole GitHub flow and an audit
 against `tests/mock_site_world.mjs`), `tests/functional/site_studio_e2e.py` (Chromium + Firefox, the mock world as
 separate servers, an agent over MCP, publish).
+
+## Without a repository (2026-10-27)
+"Just its address" saves the site's URL (and extra paths) for the current CV project: enough for the check and the CV comparison; nothing is ever written to the site. `POST /api/site {action:"set-url", url, pages?}` / `{action:"verify-url"}` / `{action:"clear-url"}`; the view carries `siteUrl {url, pages, token, verified}` and `proofNeeded`.
+- Private mode and admins: checked right away. Public mode, other users: only after the owner proves the site is theirs, so the check is never a free crawler aimed at a third party: the home page carries `<meta name="smart-knife-verification" content="<token>">`, or `/.well-known/smart-knife-verification.txt` holds exactly the token. Verify is one budgeted, SSRF-guarded read (public mode never reads private addresses for users); an admin-approved site (`approvedSiteUrl`) counts too. After that, checks and `knife_site_page` reach only that origin (`siteTargetProblem`).
+- Tests: `tests/site_url_only.test.mjs`, `tests/functional/cv_projects_e2e.py`.

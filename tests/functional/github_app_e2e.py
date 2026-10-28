@@ -126,7 +126,8 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         alice_cookie = "knife_session=" + {c["name"]: c for c in ctx_a.cookies()}["knife_session"]["value"]
 
         # ------------------------------------------------------------------------- 3. Connect with the app
-        page_a.goto("/tools/site-studio?tab=connect", wait_until="networkidle")
+        page_a.goto("/tools/cv-studio?tab=website&step=connect", wait_until="networkidle")
+        page_a.get_by_role("button", name="Its GitHub repository").click()
         hydrated(page_a)
         expect(page_a.get_by_text("Signed in as @alice")).to_be_visible(timeout=20_000)
         check("Connect offers the GitHub App (no token) by default", page_a.get_by_role("radio", name="GitHub App (no token)").get_attribute("aria-checked") == "true" or page_a.get_by_role("button", name="GitHub App (no token)").count() > 0)
@@ -156,7 +157,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         page_m.get_by_role("link", name="Sign up with GitHub").click()
         page_m.wait_for_url("**/account?github=welcome**", timeout=30_000)
         page_m.goto("/api/github/setup?installation_id=7&setup_action=install")
-        page_m.wait_for_url("**/tools/site-studio?tab=connect**", timeout=30_000)
+        page_m.wait_for_url("**/tools/cv-studio?tab=website&step=connect**", timeout=30_000)
         hydrated(page_m)
         expect(page_m.get_by_text("Signed in as @mallory")).to_be_visible(timeout=20_000)
         check("mallory's setup URL with installation 7 links nothing", page_m.get_by_text("not installed on any repository you can write to yet").is_visible())

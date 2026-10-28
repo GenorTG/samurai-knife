@@ -5,6 +5,7 @@ import { cvStoreErrorResponse } from "@/lib/cv/http";
 import { mutateCv } from "@/lib/cv/store";
 import { factWarnings } from "@/lib/cv/text/guard";
 import { msgf } from "@/lib/i18n/msg";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ const bodySchema = z.object({ ops: z.array(opSchema).min(1).max(40) }).strict();
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const read = await readJsonBody(request, 512 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);

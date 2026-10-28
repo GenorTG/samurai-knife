@@ -43,10 +43,10 @@ test("save, read, meta and delete per account; the file is private", () => {
 });
 
 test("layouts: ATS never prints a photo; the others only when wanted and stored", () => {
-  assert.deepEqual([...CV_LAYOUTS], ["ats", "modern", "sidebar", "elegant"]);
+  for (const layout of ["ats", "modern", "sidebar", "elegant"]) assert.ok(CV_LAYOUTS.includes(layout), layout);
   assert.equal(CV_LAYOUT_INFO.ats.photo, false);
-  assert.equal(showsPhoto("ats", true, true), false);
-  for (const layout of ["modern", "sidebar", "elegant"]) {
+  for (const layout of CV_LAYOUTS.filter((id) => !CV_LAYOUT_INFO[id].photo)) assert.equal(showsPhoto(layout, true, true), false, layout);
+  for (const layout of CV_LAYOUTS.filter((id) => CV_LAYOUT_INFO[id].photo)) {
     assert.equal(showsPhoto(layout, true, true), true, layout);
     assert.equal(showsPhoto(layout, false, true), false, layout);
     assert.equal(showsPhoto(layout, true, false), false, layout);

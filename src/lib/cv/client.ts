@@ -2,6 +2,7 @@ import type { Application, CvData, CvLang, Job, Variant } from "./schema";
 import type { CvOp } from "./ops";
 import { msgf } from "@/lib/i18n/msg";
 import { cmsg } from "@/lib/i18n/client-locale";
+import { withProject } from "./shown-project";
 
 /**
  * Typed browser helpers for the CV routes. Same-origin relative URLs so the browser sends the Origin header the
@@ -29,7 +30,9 @@ export function errorText(error: unknown): string {
 async function request<T>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
+    // The polled GET /api/cv follows the account's active project; every other call names the project the page shows.
+    const scoped = path.startsWith("/api/cv?") || path === "/api/cv" || path.startsWith("/api/cv/projects") ? path : withProject(path);
+    response = await fetch(scoped, {
       method,
       credentials: "same-origin",
       cache: "no-store",
@@ -57,12 +60,26 @@ const q = encodeURIComponent;
 
 /* ------------------------------------------------------------- core data */
 
-export type CvSnapshot = CvData & { changed: true };
-export type CvPoll = CvSnapshot | { changed: false; revision: number };
-
-export function getCv(knownRevision?: number): Promise<CvPoll> {
-  return request("GET", knownRevision ? `/api/cv?revision=${knownRevision}` : "/api/cv");
+export interface CvProjectInfo {
+  id: string;
+  name: string;
+  createdAt: string;
 }
+/** What GET /api/cv answers: the active project's data, which project that is, and the account's projects. */
+export type CvSnapshot = CvData & { changed: true; project: string; active: string; projects: CvProjectInfo[] };
+export type CvPoll = CvSnapshot | { changed: false; revision: number; project: string };
+
+export function getCv(known?: { revision: number; project: string }): Promise<CvPoll> {
+  return request("GET", known ? `/api/cv?revision=${known.revision}&shown=${q(known.project)}` : "/api/cv");
+}
+
+/* ------------------------------------------------------------- projects */
+
+export const createProject = (name: string, duplicateOf?: string): Promise<{ project: CvProjectInfo; active: string }> =>
+  request("POST", "/api/cv/projects", { action: "create", name, ...(duplicateOf ? { duplicateOf } : {}) });
+export const renameProject = (id: string, name: string): Promise<{ project: CvProjectInfo }> => request("POST", "/api/cv/projects", { action: "rename", id, name });
+export const switchProject = (id: string): Promise<{ project: CvProjectInfo; active: string }> => request("POST", "/api/cv/projects", { action: "switch", id });
+export const deleteProject = (id: string): Promise<{ removed: string; active: string }> => request("DELETE", `/api/cv/projects?id=${q(id)}`);
 
 export interface PatchResult {
   revision: number;
@@ -93,7 +110,7 @@ export const getPhotoMeta = (): Promise<{ photo: CvPhotoMeta | null }> => reques
 export const uploadPhoto = (dataUrl: string): Promise<{ photo: CvPhotoMeta }> => request("POST", "/api/cv/photo", { dataUrl });
 export const removePhoto = (): Promise<{ removed: boolean }> => request("DELETE", "/api/cv/photo");
 /** Image URL for a stored photo; the timestamp busts the browser cache after a new upload. */
-export const photoUrl = (meta: CvPhotoMeta): string => `/api/cv/photo?v=${q(meta.updatedAt)}`;
+export const photoUrl = (meta: CvPhotoMeta): string => withProject(`/api/cv/photo?v=${q(meta.updatedAt)}`);
 
 /* ------------------------------------------------------------ lane routes */
 

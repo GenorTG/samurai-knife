@@ -65,9 +65,9 @@ const FEATURES: { icon: keyof typeof ICONS; hue: number; title: string; href: st
   {
     icon: "site",
     hue: 155,
-    title: msg("Website studio"),
-    href: "/tools/site-studio",
-    text: msg("Connect your site's GitHub repository, audit SEO, copy and Lighthouse scores, and ship the fixes as pull requests you review."),
+    title: msg("Your website and your CV"),
+    href: "/tools/cv-studio?tab=website",
+    text: msg("Optional in the CV studio: check that your own website tells the same story as your CV, score its SEO and copy, and (with its GitHub repository) ship fixes as pull requests you review."),
   },
   {
     icon: "learn",

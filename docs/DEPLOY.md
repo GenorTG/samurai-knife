@@ -142,7 +142,8 @@ sudo knife-admin accounts add owner --name "Owner" --password-prompt --email you
 
 Requirements: a systemd distribution, Node.js 22+ and Python 3.11+ installed system-wide (not under `/home`: the unit
 hides it), and unprivileged user namespaces for the parser sandbox. Missing tools (git, rsync, bubblewrap, Tesseract
-with eng/pol/osd, qpdf, ghostscript, polkit, python3-venv on Debian) are installed after a prompt (`--yes` skips it) with
+with eng/pol/osd, qpdf, ghostscript, polkit, python3-venv on Debian, and the Pango libraries WeasyPrint needs for the CV
+PDF export: `libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0` on Debian, `pango` on Fedora/Arch) are installed after a prompt (`--yes` skips it) with
 apt-get, dnf, pacman or zypper, using each distribution's package names; elsewhere the script lists what to install.
 Verified end to end (install, sandbox, login, SQL, OCR, polkit restart, updates) in systemd containers on Debian 12
 (systemd 252, bubblewrap 0.8, Python 3.11), Arch (systemd 262, bubblewrap 0.13, Python 3.14) and Fedora 44 (Node 24,

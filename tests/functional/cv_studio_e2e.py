@@ -205,7 +205,8 @@ with sync_playwright() as pw:
     @check("empty state offers the import panel on every tab that needs a profile")
     def _():
         go("profile")
-        has("Your master profile starts here")
+        has("Start here")
+        page.locator("[data-cv-start=upload]").click()
         expect(page.get_by_label("Profile JSON")).to_be_visible()
         go("variants")
         has("No profile yet")
@@ -213,6 +214,7 @@ with sync_playwright() as pw:
     @check("import shows JSON syntax errors and the API's validation reason")
     def _():
         go("profile")
+        page.locator("[data-cv-start=upload]").click()
         box = page.get_by_label("Profile JSON")
         box.fill("{ not json")
         btn("Import profile").click()
@@ -470,12 +472,12 @@ with sync_playwright() as pw:
 
     @check("Add from GitHub shows the server's reason when the repo cannot be read (mocked 502)")
     def _():
-        page.route("**/api/cv/showcase/project", lambda r: r.fulfill(status=502, content_type="application/json", body='{"error":"gh is not authenticated. Fix: run `gh auth login` on the host, then retry."}'))
+        page.route("**/api/cv/showcase/project*", lambda r: r.fulfill(status=502, content_type="application/json", body='{"error":"gh is not authenticated. Fix: run `gh auth login` on the host, then retry."}'))
         go("profile")
         page.get_by_label("GitHub repository link").fill("https://github.com/jan-test/toolbox")
         btn("Add from GitHub").click()
         expect(page.get_by_role("alert").filter(has_text="gh auth login")).to_be_visible()
-        page.unroute("**/api/cv/showcase/project")
+        page.unroute("**/api/cv/showcase/project*")
         assert len(cv()["profile"]["projects"]) == 1, "nothing added"
 
     # ---------------------------------------------------------------- job offers
@@ -635,7 +637,7 @@ with sync_playwright() as pw:
                 job = {"id": f"bulk-{len(calls)}", "url": body["urlOrText"], "title": "T", "company": "C", "requirements": [], "niceToHave": [], "text": "", "savedAt": ""}
                 route.fulfill(status=200, content_type="application/json", body=json.dumps({"revision": 1, "job": job}))
 
-        page.route("**/api/cv/jobs/fetch", fake)
+        page.route("**/api/cv/jobs/fetch*", fake)
         go("jobs")
         page.get_by_label("Job link or posting text").fill("https://x.example/a\nhttps://x.example/broken\n https://x.example/c https://x.example/a")
         expect(page.get_by_text("3 links: each is saved as its own offer")).to_be_visible()
@@ -646,7 +648,7 @@ with sync_playwright() as pw:
         expect(page.get_by_label("Job link or posting text")).to_have_value("https://x.example/broken")
         eq([c["urlOrText"] for c in calls], ["https://x.example/a", "https://x.example/broken", "https://x.example/c"])
         assert all(set(c) == {"urlOrText"} for c in calls), calls
-        page.unroute("**/api/cv/jobs/fetch")
+        page.unroute("**/api/cv/jobs/fetch*")
         page.get_by_label("Job link or posting text").fill("")
 
     @check("Tailor with the assistant opens the assistant with the offer and the language")
@@ -833,7 +835,8 @@ with sync_playwright() as pw:
         group = page.get_by_role("radiogroup", name="Document layout")
         group.get_by_role("radio", name="ATS layout").focus()
         page.keyboard.press("ArrowRight")
-        expect(group.get_by_role("radio", name="Modern layout")).to_have_attribute("aria-checked", "true")
+        expect(group.get_by_role("radio", name="Compact layout")).to_have_attribute("aria-checked", "true")
+        expect(group.get_by_role("radio", name="Compact layout")).to_be_focused()
         page.keyboard.press("ArrowLeft")
         expect(group.get_by_role("radio", name="ATS layout")).to_have_attribute("aria-checked", "true")
 
@@ -850,16 +853,17 @@ with sync_playwright() as pw:
         assert visible["doc"], visible
         assert not visible["chrome"], f"app chrome still printed: {visible}"
 
-    @check("DOCX download delivers a .docx (or a readable error when the export is unavailable)")
+    @check("exports: Word, PDF, HTML and text each deliver their file (or a readable error when unavailable)")
     def _():
-        try:
-            with page.expect_download(timeout=20000) as dl:
-                btn("Download DOCX").click()
-            name = dl.value.suggested_filename
-            assert name.lower().endswith(".docx"), name
-        except Exception:  # noqa: BLE001
-            alerts = [a for a in page.get_by_role("alert").all_inner_texts() if a.strip()]
-            assert alerts and len(alerts[0]) > 8, "neither a download nor a readable error"
+        for label, ext in (("Download Word (DOCX)", ".docx"), ("Download PDF", ".pdf"), ("Download HTML", ".html"), ("Download Text (ATS)", ".txt")):
+            try:
+                with page.expect_download(timeout=30000) as dl:
+                    btn(label).click()
+                name = dl.value.suggested_filename
+                assert name.lower().endswith(ext), name
+            except Exception:  # noqa: BLE001
+                alerts = [a for a in page.get_by_role("alert").all_inner_texts() if a.strip()]
+                assert alerts and len(alerts[0]) > 8, f"{label}: neither a download nor a readable error"
 
     @check("dangling ids: deleting a bullet the version uses raises a warning and Remove broken references fixes it")
     def _():

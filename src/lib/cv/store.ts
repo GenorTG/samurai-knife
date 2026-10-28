@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { assertCanStore, removeAccountPath, writeAccountFile } from "@/lib/storage/quota";
 import { accountScope, ensurePrivateDir, StorageScopeError } from "@/lib/storage/scope";
 import { cvDataSchema, emptyCvData, type CvData } from "./schema";
+import { CvProjectError, currentProjectId, projectPaths } from "./projects";
 
 /**
- * Server-only persistence: `$KNIFE_DATA_DIR/cv/<account id>.json` plus a rolling ring of snapshots for undo (paths from
- * `accountScope`). Retention: the newest KEEP_SNAPSHOTS snapshots and at most SNAPSHOT_BYTES of them; the CV file and its
+ * Server-only persistence of one CV project (projects.ts: `cv/<account id>.json` for the first project, `.p-<id>.json` for
+ * the others) plus a rolling ring of snapshots for undo. Retention: the newest KEEP_SNAPSHOTS snapshots and at most SNAPSHOT_BYTES of them; the CV file and its
  * snapshots count toward the account's storage quota (a save that would not fit is refused with QuotaExceededError).
  * Synchronous reads/writes on the single Node thread serialise concurrent requests (same model as the usage ledger).
  * Personal data: lives in the data dir, never in the repo.
@@ -18,13 +19,15 @@ const SNAPSHOT_BYTES = 20 * 1024 * 1024;
 
 export class CvStoreError extends Error {}
 
+/** The files of the project this call works on (projects.ts: the bound one, else the account's active project). */
 function dirs(accountId: string): { file: string; snaps: string } {
   try {
-    const { cv } = accountScope(accountId);
-    ensurePrivateDir(cv.dir);
-    return { file: cv.file, snaps: cv.snapshots };
+    ensurePrivateDir(accountScope(accountId).cv.dir);
+    const paths = projectPaths(accountId, currentProjectId(accountId));
+    return { file: paths.file, snaps: paths.snapshots };
   } catch (error) {
     if (error instanceof StorageScopeError) throw new CvStoreError("invalid account id");
+    if (error instanceof CvProjectError) throw new CvStoreError(error.message);
     throw error;
   }
 }

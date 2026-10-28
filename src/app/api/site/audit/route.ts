@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, parseBody } from "@/lib/accounts/http";
 import { auditProgress, currentAudit, startAudit } from "@/lib/site/audit/run";
 import { siteErrorResponse } from "@/lib/site/http";
 import { loadSite } from "@/lib/site/store";
+import { bindRequestProject } from "@/lib/cv/projects";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,8 @@ const startSchema = z.object({
 export async function POST(request: Request): Promise<Response> {
   const auth = authenticate(request, true);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const parsed = await parseBody(request, startSchema, "{ url?, target?, pages?, lighthouse? }");
   if ("response" in parsed) return parsed.response;
   try {
@@ -34,6 +37,8 @@ export async function POST(request: Request): Promise<Response> {
 export async function GET(request: Request): Promise<Response> {
   const auth = authenticate(request, false);
   if ("response" in auth) return auth.response;
+  const unknownProject = bindRequestProject(request, auth.account.id);
+  if (unknownProject) return unknownProject;
   const params = new URL(request.url).searchParams;
   try {
     const runId = params.get("run");

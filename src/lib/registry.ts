@@ -982,7 +982,7 @@ export const TOOLS: ToolMeta[] = [
   {
     slug: "cv-studio",
     name: msg("CV studio"),
-    tagline: msg("Keep one bilingual PL/EN CV profile, save job offers, tailor a CV per offer and track applications."),
+    tagline: msg("Build CVs in Polish and English (several people or CVs per account), tailor them to job offers, export them, track applications and check your website against them."),
     category: "documents",
     family: "career",
     kind: "server",
@@ -992,7 +992,7 @@ export const TOOLS: ToolMeta[] = [
       { id: "variants", label: msg("CV versions"), component: "cv-variants", wide: true },
       { id: "applications", label: msg("Applications"), component: "cv-applications", wide: true },
       { id: "showcase", label: msg("Showcase"), component: "cv-showcase" },
-      { id: "website", label: msg("Website"), component: "site-copy", wide: true },
+      { id: "website", label: msg("Website"), component: "cv-website", wide: true },
     ],
     keywords: ["cv", "resume", "curriculum vitae", "życiorys", "cv po polsku", "job", "job offer", "application", "recruitment", "linkedin", "tailor", "rodo", "career", "praca", "oferta pracy", "aplikacja"],
   },
@@ -1011,21 +1011,6 @@ export const TOOLS: ToolMeta[] = [
       { id: "credentials", label: msg("Credentials"), component: "wf-credentials" },
     ],
     keywords: ["workflow", "automation", "automate", "n8n", "zapier", "make", "integromat", "webhook", "cron", "schedule", "pipeline", "nodes", "flow", "integration", "oauth", "api", "etl", "trigger", "javascript", "code"],
-  },
-  {
-    slug: "site-studio",
-    name: msg("Website studio"),
-    tagline: msg("Connect your website's GitHub repo, score it (SEO, copy, CV fit, Lighthouse) and ship improvements as reviewed pull requests."),
-    category: "documents",
-    family: "career",
-    kind: "server",
-    tabs: [
-      { id: "connect", label: msg("Connect"), component: "site-connect" },
-      { id: "score", label: msg("Score"), component: "site-score", wide: true },
-      { id: "copy", label: msg("Copy & CV"), component: "site-copy", wide: true },
-      { id: "changes", label: msg("Changes"), component: "site-changes", wide: true },
-    ],
-    keywords: ["website", "strona", "strona www", "portfolio", "personal site", "seo", "lighthouse", "pagespeed", "copywriting", "audit", "github", "pull request", "vercel", "landing page", "personal brand", "cv"],
   },
   {
     slug: "office",
@@ -1187,6 +1172,8 @@ export const SLUG_ALIASES: Readonly<Record<string, SlugAlias>> = {
   "batch-rename": { slug: "text", tab: "kit" },
   "nosql-lab": { slug: "sql-lab", tab: "format" },
   "file-compressor": { slug: "pdf" },
+  // 0.12: the website studio is the optional Website tab of the CV studio (its old tabs are the tab's steps).
+  "site-studio": { slug: "cv-studio", tab: "website" },
 };
 
 export const TOOL_BY_SLUG: ReadonlyMap<string, ToolMeta> = new Map(

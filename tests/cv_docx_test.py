@@ -166,8 +166,55 @@ class CvDocxTest(unittest.TestCase):
         self.assertIn("Doświadczenie", main)
         self.assertNotIn("Doświadczenie", side)
 
+    def xml_and_rels(self, path: Path) -> tuple[str, str]:
+        with zipfile.ZipFile(path) as archive:
+            return archive.read("word/document.xml").decode("utf-8"), archive.read("word/_rels/document.xml.rels").decode("utf-8")
+
+    def test_every_layout_builds_with_everything_in_it(self):
+        """All 14 layouts (layout.ts CV_LAYOUTS) build; ATS-safe ones keep no tables; the text is all there."""
+        view = {**VIEW, "contact": [*VIEW["contact"], {"text": "github.com/jantest", "href": "https://github.com/jantest", "kind": "github"}]}
+        for theme in ("ats", "compact", "minimal", "classic", "modern", "elegant", "executive", "technical", "timeline", "banner", "sidebar", "rightbar", "creative", "europass"):
+            with self.subTest(theme=theme):
+                response, out = run_script({"view": view, "theme": theme, "look": {"accent": "#2f6b4f", "paper": "letter"}, "filename": "cv.docx"})
+                self.assertTrue(response["ok"], response)
+                doc = Document(out / response["file"])
+                text = "\n".join(self.all_text(doc))
+                for needed in ("Jan Testowy", "Skróciłem build o 40%.", "Politechnika Testowa", "Angielski", "Wyrażam zgodę"):
+                    self.assertIn(needed, text)
+                if theme in ("ats", "compact", "minimal", "classic"):
+                    self.assertEqual(len(doc.tables), 0)
+                xml, rels = self.xml_and_rels(out / response["file"])
+                self.assertIn("<w:hyperlink", xml, "contact links are real hyperlinks")
+                self.assertIn('Target="https://github.com/jantest"', rels)
+                self.assertIn('TargetMode="External"', rels)
+                width = doc.sections[0].page_width
+                self.assertAlmostEqual(width.inches, 8.5, places=1)
+
+    def test_project_pages(self):
+        page = {"name": "Knife", "href": "https://knife.example.test", "urlText": "knife.example.test", "summary": "Narzędzie w przeglądarce", "tech": ["TypeScript"], "role": "Autor", "outcome": "200 użytkowników", "story": ["Pierwszy akapit.", "Drugi akapit."], "bullets": ["Działa offline."]}
+        view = {**VIEW, "pages": [page], "pageTitles": {"role": "Moja rola", "outcome": "Efekt", "highlights": "Najważniejsze", "tech": "Technologie", "heading": "Projekt"}}
+        response, out = run_script({"view": view, "theme": "modern", "page_mode": "cv+pages", "filename": "cv.docx"})
+        self.assertTrue(response["ok"], response)
+        doc = Document(out / response["file"])
+        text = self.all_text(doc)
+        self.assertIn("Jan Testowy", text)
+        for needed in ("Pierwszy akapit.", "Drugi akapit.", "Moja rola", "200 użytkowników", "Efekt"):
+            self.assertIn(needed, text)
+        xml, rels = self.xml_and_rels(out / response["file"])
+        self.assertIn('w:type="page"', xml)
+        self.assertIn('Target="https://knife.example.test"', rels)
+        # Pages only: no CV body, just the showcase.
+        response, out = run_script({"view": view, "theme": "ats", "page_mode": "pages", "filename": "p.docx"})
+        self.assertTrue(response["ok"], response)
+        text = self.all_text(Document(out / response["file"]))
+        self.assertIn("Pierwszy akapit.", text)
+        self.assertNotIn("Skróciłem build o 40%.", text)
+        # Pages only, but no page: a readable refusal.
+        response, _ = run_script({"view": VIEW, "page_mode": "pages", "filename": "p.docx"})
+        self.assertFalse(response["ok"])
+
     def test_bad_requests_are_readable(self):
-        for request, fragment in (({"view": "x"}, "view"), ({"view": {**VIEW, "lang": "de"}}, "lang"), ({"view": VIEW, "theme": "neon"}, "theme"), ({"view": VIEW, "theme": "modern", "photo": "/nonexistent.jpg"}, "photo"), ({"view": VIEW, "photo_shape": "star"}, "photo_shape"), ({"view": {"lang": "en", "titles": {}}}, "nothing to print")):
+        for request, fragment in (({"view": "x"}, "view"), ({"view": {**VIEW, "lang": "de"}}, "lang"), ({"view": VIEW, "theme": "neon"}, "theme"), ({"view": VIEW, "theme": "modern", "photo": "/nonexistent.jpg"}, "photo"), ({"view": VIEW, "photo_shape": "star"}, "photo_shape"), ({"view": VIEW, "look": {"accent": "red"}}, "look.accent"), ({"view": VIEW, "page_mode": "x"}, "page_mode"), ({"view": {"lang": "en", "titles": {}}}, "nothing to print")):
             response, _ = run_script(request)
             self.assertFalse(response["ok"])
             self.assertIn(fragment, response["error"])

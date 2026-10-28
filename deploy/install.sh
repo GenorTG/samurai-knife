@@ -99,6 +99,9 @@ pkg_name() {
     apt-get:polkit) echo polkitd ;;
     *:polkit) echo polkit ;;
     apt-get:venv) echo python3-venv ;;
+    # WeasyPrint (the CV PDF export) loads Pango through cffi: the libraries its docs list per distribution (70.0).
+    apt-get:pango) printf '%s\n' libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 ;;
+    zypper:pango) echo libpango-1_0-0 ;;
     *) echo "$1" ;;
   esac
 }
@@ -142,6 +145,8 @@ fi
 for pair in git:git curl:curl rsync:rsync flock:util-linux runuser:util-linux bwrap:bubblewrap tesseract:tesseract qpdf:qpdf gs:ghostscript pkcheck:polkit; do
   command -v "${pair%%:*}" >/dev/null 2>&1 || need+=("${pair#*:}")
 done
+# Pango for the CV PDF export (a shared library, not a command).
+if ! /sbin/ldconfig -p 2>/dev/null | grep -q 'libpangoft2-1\.0\.so\.0'; then need+=(pango); fi
 if command -v tesseract >/dev/null 2>&1; then
   langs="$(tesseract --list-langs 2>/dev/null || true)"
   for l in eng pol osd; do grep -qx "$l" <<<"$langs" || need+=("tess-$l"); done
