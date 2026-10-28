@@ -23,7 +23,7 @@ import { InteractionCards, TrustModeSwitch } from "./InteractionCards";
 import { QueuePanel } from "./QueuePanel";
 import { LoginView } from "./LoginView";
 import { SettingsView } from "./SettingsView";
-import { MIN_HEIGHT, MIN_WIDTH, loadPrefs, savePrefs, type UiPrefs } from "./storage";
+import { MIN_HEIGHT, MIN_WIDTH, loadPrefs, savePrefs, subscribePrefs, type UiPrefs } from "./storage";
 import { formatTokens } from "@/lib/usage";
 import { starterPrompts } from "./starters";
 import { Transcript } from "./Transcript";
@@ -73,6 +73,7 @@ function IconButton({
 function WidgetShell() {
   const { t } = useT();
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs);
+  const [chatId, setChatId] = useState("default");
   const [settingsRequested, setSettingsRequested] = useState(false);
   const [draft, setDraft] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -80,10 +81,10 @@ function WidgetShell() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const wantFocus = useRef(false);
 
-  const agent = useAgent({ active: prefs.open, onNeedSettings: () => setSettingsRequested(true) });
-  const { account } = agent;
+  const agent = useAgent({ active: prefs.open, chatId, onNeedSettings: () => setSettingsRequested(true) });
+  const { account, switchChat } = agent;
   const pathname = usePathname();
-  const interaction = useInteraction();
+  const interaction = useInteraction(chatId);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
 
@@ -142,6 +143,28 @@ function WidgetShell() {
     savePrefs(prefs);
   }, [prefs]);
 
+  useEffect(() => subscribePrefs((updated) => {
+    setPrefs((current) => current.chatIds.length === updated.chatIds.length && current.chatIds.every((id, index) => id === updated.chatIds[index])
+      ? current
+      : { ...current, chatIds: updated.chatIds });
+  }), []);
+
+  const selectChat = useCallback((id: string) => {
+    if (agent.busy || !prefs.chatIds.includes(id)) return;
+    switchChat(id);
+    setChatId(id);
+    setDraft("");
+  }, [agent.busy, prefs.chatIds, switchChat]);
+
+  const createChat = useCallback(() => {
+    if (agent.busy || prefs.chatIds.length >= 50) return;
+    const id = crypto.randomUUID().replaceAll("-", "");
+    setPrefs((current) => ({ ...current, chatIds: [...current.chatIds, id] }));
+    switchChat(id);
+    setChatId(id);
+    setDraft("");
+  }, [agent.busy, prefs.chatIds.length, switchChat]);
+
   const firstRun = account.kind === "ready" && account.account.provider === null;
   const view: "chat" | "settings" | "login" | "loading" | "error" =
     account.kind === "ready" ? (firstRun || settingsRequested ? "settings" : "chat") : account.kind;
@@ -177,8 +200,8 @@ function WidgetShell() {
 
   function submit() {
     if (!draft.trim() || account.kind !== "ready") return;
-    if (isWaiting()) {
-      answerWait("message", draft.trim());
+    if (isWaiting(chatId)) {
+      answerWait("message", draft.trim(), chatId);
       setDraft("");
       return;
     }
@@ -289,6 +312,23 @@ function WidgetShell() {
             </div>
             {account.kind === "ready" ? (
               <>
+                <select
+                  aria-label={t("Assistant conversation")}
+                  value={chatId}
+                  disabled={agent.busy}
+                  onChange={(event) => selectChat(event.currentTarget.value)}
+                  className="sk-input max-w-28 px-2 py-1 text-xs"
+                >
+                  {prefs.chatIds.map((id, index) => <option key={id} value={id}>{t("Chat {number}", { number: index + 1 })}</option>)}
+                </select>
+                {chatId !== "default" ? (
+                  <IconButton label={t("Exit conversation")} onClick={() => selectChat("default")} disabled={agent.busy}>
+                    <span aria-hidden="true">↩</span>
+                  </IconButton>
+                ) : null}
+                <IconButton label={t("New conversation")} onClick={createChat} disabled={agent.busy || prefs.chatIds.length >= 50}>
+                  <span aria-hidden="true">＋</span>
+                </IconButton>
                 <IconButton
                   label={docked ? t("Float assistant over the page") : t("Dock assistant beside the page")}
                   onClick={() => setPrefs((p) => ({ ...p, dock: !p.dock }))}
@@ -343,7 +383,7 @@ function WidgetShell() {
           ) : null}
           {view === "chat" ? (
             <>
-              <TrustModeSwitch />
+              <TrustModeSwitch chatId={chatId} />
               <Transcript
                 messages={agent.messages}
                 activity={agent.activity}
@@ -351,8 +391,8 @@ function WidgetShell() {
                 suggestions={suggestions}
                 onPick={(text) => agent.send(text)}
               />
-              <InteractionCards onStop={agent.stop} />
-              <QueuePanel onSendNow={agent.sendNow} />
+              <InteractionCards onStop={agent.stop} chatId={chatId} />
+              <QueuePanel onSendNow={agent.sendNow} chatId={chatId} />
               <form
                 onSubmit={(e) => {
                   e.preventDefault();

@@ -16,6 +16,8 @@ const { writeAccountFile } = await import("../src/lib/storage/quota.ts");
 test("conversation state is scoped per account and provider, sealed at rest, and Clear empties it", () => {
   const providerId = providerConversationId("http://gateway/v1", "model-a");
   const otherProviderId = providerConversationId("http://gateway/v1", "model-b");
+  const otherChatId = providerConversationId("http://gateway/v1", "model-a", "chat_other");
+  assert.notEqual(providerId, otherChatId, "each chat has a distinct durable store and taint scope");
   const initial = readConversation("genor", providerId);
   writeConversation("genor", providerId, {
     ...initial,

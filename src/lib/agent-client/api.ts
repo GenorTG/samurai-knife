@@ -11,6 +11,7 @@ import type {
   FunctionToolDef,
   ProviderInfo,
   ProviderInput,
+  ProviderModelDetails,
   ProviderTestResult,
   ToolCall,
   ToolRunResult,
@@ -102,6 +103,8 @@ function parseProvider(value: unknown): ProviderInfo | null {
       value.reasoningEffort === "low" || value.reasoningEffort === "medium" || value.reasoningEffort === "high"
         ? value.reasoningEffort
         : null,
+    vision: value.vision === "native" ? "native" : "none",
+    visionHelper: str(value.visionHelper),
   };
 }
 
@@ -159,6 +162,24 @@ export async function saveProvider(input: ProviderInput): Promise<ApiResult<null
   return { ok: true, value: null };
 }
 
+function parseModelDetails(value: unknown): ProviderModelDetails[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ProviderModelDetails[] = [];
+  for (const entry of value.slice(0, 400)) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length > 200) continue;
+    const features = Array.isArray(entry.features)
+      ? entry.features.filter((feature): feature is string => typeof feature === "string").slice(0, 20)
+      : [];
+    out.push({
+      id: entry.id,
+      contextLength: typeof entry.contextLength === "number" && Number.isSafeInteger(entry.contextLength) ? entry.contextLength : null,
+      vision: typeof entry.vision === "boolean" ? entry.vision : null,
+      features,
+    });
+  }
+  return out;
+}
+
 function testResult(res: Response, body: unknown): ApiResult<ProviderTestResult> {
   if (!isRecord(body)) return { ok: false, failure: failureFrom(res, body) };
   if (!res.ok && body.ok === undefined) return { ok: false, failure: failureFrom(res, body) };
@@ -169,6 +190,7 @@ function testResult(res: Response, body: unknown): ApiResult<ProviderTestResult>
       status: typeof body.status === "number" ? body.status : undefined,
       modelCount: typeof body.modelCount === "number" ? body.modelCount : undefined,
       models: Array.isArray(body.models) ? body.models.filter((m): m is string => typeof m === "string") : undefined,
+      modelDetails: parseModelDetails(body.modelDetails),
       error: str(body.error) ?? undefined,
     },
   };
@@ -201,8 +223,8 @@ export async function logout(): Promise<ApiResult<null>> {
   return { ok: true, value: null };
 }
 
-export async function fetchConversation(): Promise<ApiResult<DurableConversation>> {
-  const r = await call("/api/agent/conversation");
+export async function fetchConversation(chatId = "default"): Promise<ApiResult<DurableConversation>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`);
   if ("failure" in r) return { ok: false, failure: r.failure };
   if (!r.res.ok || !isRecord(r.body) || !Array.isArray(r.body.messages) || !Array.isArray(r.body.actions)) {
     return { ok: false, failure: failureFrom(r.res, r.body) };
@@ -215,14 +237,14 @@ export async function fetchConversation(): Promise<ApiResult<DurableConversation
 }
 
 /** Saves the browser-owned part only; the taint flag is the server's (/api/agent/chat). */
-export async function saveConversation(content: ConversationContent): Promise<ApiResult<null>> {
-  const r = await call("/api/agent/conversation", { method: "PUT", body: content });
+export async function saveConversation(content: ConversationContent, chatId = "default"): Promise<ApiResult<null>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "PUT", body: content });
   if ("failure" in r) return { ok: false, failure: r.failure };
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
-export async function resetConversation(): Promise<ApiResult<null>> {
-  const r = await call("/api/agent/conversation", { method: "DELETE" });
+export async function resetConversation(chatId = "default"): Promise<ApiResult<null>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "DELETE" });
   if ("failure" in r) return { ok: false, failure: r.failure };
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
@@ -253,6 +275,7 @@ function untrustedHeader(res: Response): boolean {
 }
 
 export interface ChatRequest {
+  chatId?: string;
   messages: (WireMessage | { role: "system"; content: string })[];
   tools?: FunctionToolDef[];
   temperature?: number;

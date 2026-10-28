@@ -62,7 +62,26 @@ SHA-256 of the raw token only).
   active provider) and returns the model ids it lists. `POST /api/account/provider/models {baseUrl, apiKey?,
   extraHeaders?}` lists the models for fields not saved yet (the settings' "Load models"): the same checks as a save and
   the Test budget; without `apiKey` the stored key is used only when `baseUrl` is the stored one, so a newly typed
-  address never receives the old key. Workflow AI nodes pick any profile.
+  address never receives the old key. The returned ids and optional metadata from `/models` feed the picker: context
+  window (`context_length` / `context_window`), image-input support (`architecture.input_modalities` or equivalent), and
+  advertised `supported_parameters` such as tools, reasoning, JSON output, streaming or audio. A missing field is shown as
+  unknown; capabilities are never guessed from model names. Selecting an entry with explicit image modality updates the
+  profile's vision flag. Workflow AI nodes pick any profile.
+- Vision (`src/lib/vision/config.ts`): each profile's config may carry `vision` (`native` = the model accepts
+  OpenAI-style `image_url` parts; unset or `none` = text-only, which is what every profile saved before 2026-10-28 is,
+  so nothing changes for them) and `visionHelper` (the id of another saved profile, any OpenAI-compatible vision model:
+  a GPT, Gemini or Qwen-VL behind an API, or a local one). Set in the assistant's Provider settings ("Vision:
+  screenshots and images"); `PUT /api/account/provider` and the profile routes take `vision: ""|"native"|"none"` and
+  `visionHelper: ""|<id>` (omitted = keep, "" = clear; the helper must be another saved profile; deleting a profile
+  unlinks it wherever it was the helper). Routing (`visionRoute`): the in-page assistant's active model gets images as
+  image parts only when it is `native` (`/api/agent/chat` appends the screenshots named by the latest tool batch,
+  `src/lib/vision/inject.ts`, with a line saying they are third-party content); a text-only profile with a helper gets
+  the helper's text description in the tool result instead; without either it gets neither and the result says how to
+  set one up. An image never goes to a text-only model. On request (`describe:true`, a `question`,
+  `knife_vision_describe`) the describer is the active profile's helper, else the active model when it is `native`
+  (`describerFor`). The helper call goes through the same provider path as the assistant (host rules, provider budget,
+  SSRF-safe transport, usage ledger); its answer describes third-party pixels and is wrapped in the untrusted-content
+  envelope. The rendered file exists in a per-job temporary directory until the screenshot job finishes; the returned image is cached in server memory for 30 minutes, never in the account's files.
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.

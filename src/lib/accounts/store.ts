@@ -58,6 +58,10 @@ const providerSchema = z.object({
   model: z.string().min(1),
   extraHeaders: z.record(z.string(), z.string()).optional(),
   reasoningEffort: z.enum(["low", "medium", "high"]).optional(),
+  /** Vision (src/lib/vision/config.ts): `native` = the model accepts image parts; unset = text-only (older profiles). */
+  vision: z.enum(["native", "none"]).optional(),
+  /** A saved profile id whose (vision) model describes images for this one when it cannot see them. */
+  visionHelper: z.string().regex(/^[a-z0-9]{1,24}$/).optional(),
   // `openClawResponses` in accounts written before 2026-10-25 (the removed Responses continuation) is stripped on read.
 });
 
@@ -535,6 +539,9 @@ export function deleteProviderProfile(id: string, profileId: string): Account {
     const index = account.providerProfiles.findIndex((candidate) => candidate.id === profileId);
     if (index < 0) throw new ProfileError(msg("Unknown profile."), 404);
     account.providerProfiles.splice(index, 1);
+    // A profile that used the deleted one as its vision helper becomes text-only again (no dangling id).
+    for (const profile of account.providerProfiles) if (profile.config.visionHelper === profileId) delete profile.config.visionHelper;
+    if (account.provider?.visionHelper === profileId) delete account.provider.visionHelper;
     if (account.activeProviderProfile === profileId) {
       const next = account.providerProfiles[0];
       account.activeProviderProfile = next?.id ?? null;
@@ -564,6 +571,10 @@ export interface PublicProvider {
   keyHint: string | null;
   extraHeaderNames: string[];
   reasoningEffort: "low" | "medium" | "high" | null;
+  /** `native` = sees images; `none` = text-only (src/lib/vision/config.ts). */
+  vision: "native" | "none";
+  /** Profile id of the vision helper, or null. */
+  visionHelper: string | null;
 }
 
 export interface PublicProviderProfile extends PublicProvider {
@@ -606,6 +617,8 @@ export function toPublicProvider(provider: ProviderConfig): PublicProvider {
     keyHint: maskKey(provider.apiKey),
     extraHeaderNames: Object.keys(provider.extraHeaders ?? {}),
     reasoningEffort: provider.reasoningEffort ?? null,
+    vision: provider.vision === "native" ? "native" : "none",
+    visionHelper: provider.visionHelper ?? null,
   };
 }
 

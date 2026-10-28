@@ -1,6 +1,6 @@
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { providerFromInput, providerInputSchema } from "@/lib/accounts/provider-input";
-import { getAccount, setProvider, toPublicAccount } from "@/lib/accounts/store";
+import { activeProfileIdOf, getAccount, setProvider, toPublicAccount } from "@/lib/accounts/store";
 import { authMode } from "@/lib/accounts/mode";
 
 export const runtime = "nodejs";
@@ -17,8 +17,9 @@ export async function PUT(request: Request): Promise<Response> {
   if (!parsed.success) {
     return jsonError(parsed.error.issues.map((issue) => issue.message).join("; "), 400);
   }
-  const current = getAccount(auth.account.id)?.provider ?? null;
-  const result = await providerFromInput(auth.account, parsed.data, current);
+  const stored = getAccount(auth.account.id);
+  const current = stored?.provider ?? null;
+  const result = await providerFromInput(auth.account, parsed.data, current, stored ? activeProfileIdOf(stored) ?? undefined : undefined);
   if ("response" in result) return result.response;
   const saved = setProvider(auth.account.id, result.config);
   if (!saved) return jsonError("account_not_found", 404);

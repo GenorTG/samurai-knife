@@ -1,7 +1,8 @@
 import * as z from "zod/v4";
 import { jsonError } from "@/lib/accounts/http";
 import { baseUrlProblem, normalizeBaseUrl, validateExtraHeaders } from "@/lib/accounts/provider";
-import type { Account, ProviderConfig } from "@/lib/accounts/store";
+import { providerProfilesOf, PROFILE_ID, type Account, type ProviderConfig } from "@/lib/accounts/store";
+import { visionHelperProblem } from "@/lib/vision/config";
 import { providerPolicy, providerUrlProblem, strictHeaders } from "@/lib/net/outbound";
 
 /**
@@ -17,14 +18,20 @@ export const providerInputSchema = z.object({
   extraHeaders: z.record(z.string(), z.string()).optional(),
   // Omitted: keep stored value. "": clear (provider default).
   reasoningEffort: z.enum(["", "low", "medium", "high"]).optional(),
+  // Vision (src/lib/vision/config.ts). Omitted: keep stored value. "": clear (text-only / no helper).
+  vision: z.enum(["", "native", "none"]).optional(),
+  visionHelper: z.union([z.literal(""), z.string().regex(PROFILE_ID)]).optional(),
   // Sent by pages loaded before the Responses continuation was removed (2026-10-25): accepted and ignored.
   openClawResponses: z.boolean().optional(),
 }).strict();
 
 export type ProviderInput = z.infer<typeof providerInputSchema>;
 
-/** The config to store, or the refusal to send. `current` = what is stored now (kept fields come from it). */
-export async function providerFromInput(account: Account, input: ProviderInput, current: ProviderConfig | null): Promise<{ config: ProviderConfig } | { response: Response }> {
+/**
+ * The config to store, or the refusal to send. `current` = what is stored now (kept fields come from it); `selfId` = the
+ * profile being changed (a profile cannot be its own vision helper).
+ */
+export async function providerFromInput(account: Account, input: ProviderInput, current: ProviderConfig | null, selfId?: string): Promise<{ config: ProviderConfig } | { response: Response }> {
   const baseUrl = normalizeBaseUrl(input.baseUrl);
   if (!baseUrl) return { response: jsonError("baseUrl must be an http(s) URL without credentials, query or fragment.", 400) };
   if (input.extraHeaders) {
@@ -38,6 +45,12 @@ export async function providerFromInput(account: Account, input: ProviderInput, 
   const addressProblem = await baseUrlProblem(baseUrl, providerPolicy(account));
   if (addressProblem) return { response: jsonError(`baseUrl: ${addressProblem}`, 400, { code: "address_not_allowed" }) };
   const effortValue = input.reasoningEffort === undefined ? current?.reasoningEffort : input.reasoningEffort || undefined;
+  const visionValue = input.vision === undefined ? current?.vision : input.vision || undefined;
+  const helperValue = input.visionHelper === undefined ? current?.visionHelper : input.visionHelper || undefined;
+  if (input.visionHelper) {
+    const helperProblem = visionHelperProblem(input.visionHelper, providerProfilesOf(account), selfId);
+    if (helperProblem) return { response: jsonError(helperProblem, 400, { code: "vision_helper" }) };
+  }
   return {
     config: {
       baseUrl,
@@ -51,6 +64,8 @@ export async function providerFromInput(account: Account, input: ProviderInput, 
           ? { extraHeaders: current.extraHeaders }
           : {}),
       ...(effortValue ? { reasoningEffort: effortValue } : {}),
+      ...(visionValue ? { vision: visionValue } : {}),
+      ...(helperValue ? { visionHelper: helperValue } : {}),
     },
   };
 }

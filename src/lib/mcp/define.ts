@@ -50,6 +50,12 @@ export interface KnifeToolEffectInfo {
 export interface KnifeToolContext {
   accountId: string;
   admin: boolean;
+  /**
+   * Who called: the in-page assistant (`/api/agent/tool`, results go to the account's ACTIVE model) or an MCP client
+   * (its own model; image blocks allowed). Unset = MCP. Only tools whose answer depends on the reader look at it
+   * (knife_site_screenshot: an image for a model that sees, a description for one that does not).
+   */
+  surface?: "assistant" | "mcp";
 }
 
 export interface KnifeToolDefinition extends KnifeToolEffectInfo {

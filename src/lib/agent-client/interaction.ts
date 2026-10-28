@@ -46,7 +46,7 @@ export interface InteractionState {
   wait: PendingWait | null;
 }
 
-const MODE_KEY = "sk.agent.mode.v1";
+const modeKey = (chatId: string) => chatId === "default" ? "sk.agent.mode.v1" : `sk.agent.mode.v1.${chatId}`;
 const WAIT_TIMEOUT_MS = 30 * 60_000;
 const INPUT_SETTLE_MS = 1500;
 const FILE_SETTLE_MS = 350;
@@ -56,19 +56,21 @@ export const AWAIT_ATTR = "data-agent-await";
 export const DEFAULT_TRUST_MODE: TrustMode = "destructive";
 
 const SERVER: InteractionState = { mode: DEFAULT_TRUST_MODE, approval: null, wait: null };
-let mode: TrustMode = DEFAULT_TRUST_MODE;
-let hydratedMode = false;
+const modes = new Map<string, TrustMode>();
+const hydratedModes = new Set<string>();
 const modeListeners = new Set<() => void>();
-let snapshot: InteractionState = SERVER;
+const snapshots = new Map<string, InteractionState>();
+const pendingApprovals = new Map<string, PendingApproval>();
+const pendingWaits = new Map<string, PendingWait>();
 
-function ensureMode(): void {
-  if (hydratedMode || typeof window === "undefined") return;
-  hydratedMode = true;
+function ensureMode(chatId: string): void {
+  if (hydratedModes.has(chatId) || typeof window === "undefined") return;
+  hydratedModes.add(chatId);
   try {
-    const stored = window.localStorage.getItem(MODE_KEY);
+    const stored = window.localStorage.getItem(modeKey(chatId));
     // "ask" was the first two-mode version of Standard.
     const found = stored === "ask" ? "standard" : TRUST_MODES.find((m) => m.id === stored)?.id;
-    if (found) mode = found;
+    if (found) modes.set(chatId, found);
   } catch {
     /* storage blocked: stays on the default for this page */
   }
@@ -84,75 +86,86 @@ export function subscribeInteraction(l: () => void): () => void {
 }
 
 /** Memoised: the same object until the mode, the pending approval or the pending wait changes. */
-export function getInteraction(): InteractionState {
-  ensureMode();
-  const { approval, wait } = runtime.get();
-  if (snapshot.mode !== mode || snapshot.approval !== approval || snapshot.wait !== wait) snapshot = { mode, approval, wait };
-  return snapshot;
+export function getInteraction(chatId = "default"): InteractionState {
+  ensureMode(chatId);
+  const approval = pendingApprovals.get(chatId) ?? null;
+  const wait = pendingWaits.get(chatId) ?? null;
+  const mode = modes.get(chatId) ?? DEFAULT_TRUST_MODE;
+  const previous = snapshots.get(chatId);
+  if (previous && previous.mode === mode && previous.approval === approval && previous.wait === wait) return previous;
+  const next = { mode, approval, wait };
+  snapshots.set(chatId, next);
+  return next;
 }
 const getServerInteraction = (): InteractionState => SERVER;
 
-export function useInteraction(): InteractionState {
-  return useSyncExternalStore(subscribeInteraction, getInteraction, getServerInteraction);
+export function useInteraction(chatId = "default"): InteractionState {
+  return useSyncExternalStore(subscribeInteraction, () => getInteraction(chatId), getServerInteraction);
 }
 
-export function getTrustMode(): TrustMode {
-  return getInteraction().mode;
+export function getTrustMode(chatId = "default"): TrustMode {
+  return getInteraction(chatId).mode;
 }
 
-export function setTrustMode(next: TrustMode): void {
-  ensureMode();
+export function setTrustMode(next: TrustMode, chatId = "default"): void {
+  ensureMode(chatId);
   try {
-    window.localStorage.setItem(MODE_KEY, next);
+    window.localStorage.setItem(modeKey(chatId), next);
   } catch {
     /* ignore */
   }
-  mode = next;
+  modes.set(chatId, next);
   for (const l of modeListeners) l();
 }
 
 /* -------------------------------------------------------------- approvals */
 
-let approvalResolve: ((d: ApprovalDecision) => void) | null = null;
+const approvalResolves = new Map<string, (d: ApprovalDecision) => void>();
 /** "Allow for the rest of this run" was chosen: skips non-destructive prompts until the run ends. */
-let runAllowed = false;
+const runAllowed = new Set<string>();
 
-export function resetRunTrust(): void {
-  runAllowed = false;
+export function resetRunTrust(chatId = "default"): void {
+  runAllowed.delete(chatId);
 }
-export function isRunAllowed(): boolean {
-  return runAllowed;
+export function isRunAllowed(chatId = "default"): boolean {
+  return runAllowed.has(chatId);
 }
 
-export function requestApproval(req: PendingApproval, signal?: AbortSignal): Promise<ApprovalDecision> {
+export function requestApproval(req: PendingApproval, signal?: AbortSignal, chatId = "default"): Promise<ApprovalDecision> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve("deny");
     // Fail closed: if the run cannot park here (not a running tool step), the action is not allowed.
-    if (!runtime.enterAwaiting("awaiting_approval", req)) return resolve("deny");
+    pendingApprovals.set(chatId, req);
+    if (!runtime.enterAwaiting("awaiting_approval", req)) {
+      pendingApprovals.delete(chatId);
+      return resolve("deny");
+    }
     const finish = (d: ApprovalDecision) => {
-      approvalResolve = null;
+      approvalResolves.delete(chatId);
+      pendingApprovals.delete(chatId);
       signal?.removeEventListener("abort", onAbort);
       runtime.leaveAwaiting("awaiting_approval");
       resolve(d);
     };
     const onAbort = () => finish("deny");
     signal?.addEventListener("abort", onAbort, { once: true });
-    approvalResolve = finish;
+    approvalResolves.set(chatId, finish);
   });
 }
 
-export function answerApproval(decision: ApprovalDecision): void {
-  if (decision === "allow_run") runAllowed = true;
-  approvalResolve?.(decision);
+export function answerApproval(decision: ApprovalDecision, chatId = "default"): void {
+  if (decision === "allow_run") runAllowed.add(chatId);
+  approvalResolves.get(chatId)?.(decision);
 }
 
 /* ------------------------------------------------------------------ waits */
 
-let waitResolve: ((r: WaitResult) => void) | null = null;
+const waitResolves = new Map<string, (r: WaitResult) => void>();
 
 export function requestWait(
   req: { message: string; targetId: string | null },
   signal?: AbortSignal,
+  chatId = "default",
 ): Promise<WaitResult> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve({ resumedBy: "aborted" });
@@ -166,7 +179,8 @@ export function requestWait(
       cleanups.forEach((c) => c());
       el?.removeAttribute(AWAIT_ATTR);
       signal?.removeEventListener("abort", onAbort);
-      waitResolve = null;
+      waitResolves.delete(chatId);
+      pendingWaits.delete(chatId);
       runtime.leaveAwaiting("awaiting_user");
       resolve(r);
     };
@@ -195,21 +209,22 @@ export function requestWait(
       }
     }
 
-    waitResolve = finish;
+    waitResolves.set(chatId, finish);
     const pending: PendingWait = {
       message: req.message,
       targetId: req.targetId,
       targetLabel: el ? (el.getAttribute("aria-label") ?? el.getAttribute("name")) : null,
     };
+    pendingWaits.set(chatId, pending);
     if (!runtime.enterAwaiting("awaiting_user", pending)) finish({ resumedBy: "aborted" });
   });
 }
 
 /** Continue pressed, or the user typed a reply while the run was waiting. */
-export function answerWait(r: "continue" | "message", message?: string): void {
-  waitResolve?.({ resumedBy: r, message });
+export function answerWait(r: "continue" | "message", message?: string, chatId = "default"): void {
+  waitResolves.get(chatId)?.({ resumedBy: r, message });
 }
 
-export function isWaiting(): boolean {
-  return waitResolve !== null;
+export function isWaiting(chatId = "default"): boolean {
+  return waitResolves.has(chatId);
 }

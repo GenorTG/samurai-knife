@@ -266,18 +266,30 @@ function bypassHeaders(url: string, secret: string): NetDeps["hostHeaders"] {
 export async function bypassFor(accountId: string, url: string, deps?: NetDeps): Promise<NetDeps["hostHeaders"] | undefined> {
   const v = loadSite(accountId).vercel;
   if (!v?.bypass || !v.projectId) return undefined;
+  return (await linkedDeployment(accountId, url, deps))?.hostHeaders;
+}
+
+/**
+ * Is `url` on a deployment of the linked Vercel project (Vercel says so for its host)? null = no (not linked, another
+ * project, unknown host, Vercel unreachable). `hostHeaders` = the bypass for that host when a secret is stored. Used by
+ * screenshots (src/lib/vision/targets.ts): the user's own Vercel token vouching for the host is the ownership proof.
+ */
+export async function linkedDeployment(accountId: string, url: string, deps?: NetDeps): Promise<{ hostHeaders?: NetDeps["hostHeaders"] } | null> {
+  const v = loadSite(accountId).vercel;
+  if (!v?.projectId) return null;
   let host: string;
   try {
     host = new URL(url).host;
   } catch {
-    return undefined;
+    return null;
   }
   try {
     spend(account(accountId));
     const d = await vercel.getDeployment(scopeOf(v), host, deps);
-    return d.projectId === v.projectId ? bypassHeaders(url, v.bypass) : undefined;
+    if (d.projectId !== v.projectId) return null;
+    return v.bypass ? { hostHeaders: bypassHeaders(url, v.bypass) } : {};
   } catch {
-    return undefined;
+    return null;
   }
 }
 

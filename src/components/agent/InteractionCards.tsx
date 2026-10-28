@@ -12,9 +12,9 @@ import {
 import { useT } from "@/lib/i18n/react";
 
 /** Four-level trust switch: how much the assistant must ask before it acts. */
-export function TrustModeSwitch() {
+export function TrustModeSwitch({ chatId = "default" }: { chatId?: string }) {
   const { t } = useT();
-  const { mode } = useInteraction();
+  const { mode } = useInteraction(chatId);
   const current = TRUST_MODES.find((m) => m.id === mode) ?? TRUST_MODES[2];
   return (
     <div className="border-b border-line bg-surface px-3 py-1.5">
@@ -28,7 +28,7 @@ export function TrustModeSwitch() {
             role="radio"
             aria-checked={mode === o.id}
             title={t(o.hint)}
-            onClick={() => setTrustMode(o.id)}
+            onClick={() => setTrustMode(o.id, chatId)}
             className={cx(
               "rounded-md px-2 py-1 text-xs font-medium transition-colors",
               mode === o.id ? "bg-ai/15 text-ink ring-1 ring-ai/40" : "text-muted hover:bg-raised hover:text-ink",
@@ -44,9 +44,9 @@ export function TrustModeSwitch() {
 }
 
 /** Approval and waiting prompts, pinned above the composer so they are never scrolled away. */
-export function InteractionCards({ onStop }: { onStop: () => void }) {
+export function InteractionCards({ onStop, chatId = "default" }: { onStop: () => void; chatId?: string }) {
   const { t } = useT();
-  const { approval, wait } = useInteraction();
+  const { approval, wait } = useInteraction(chatId);
   const allowRef = useRef<HTMLButtonElement>(null);
   const hasApproval = approval !== null;
 
@@ -75,7 +75,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             autoComplete="off"
             ref={allowRef}
             type="button"
-            onClick={() => answerApproval("allow")}
+            onClick={() => answerApproval("allow", chatId)}
             className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110"
           >
             {t("Allow")}
@@ -83,7 +83,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
           <button
             autoComplete="off"
             type="button"
-            onClick={() => answerApproval("deny")}
+            onClick={() => answerApproval("deny", chatId)}
             className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-xs text-ink hover:bg-raised"
           >
             {t("Deny")}
@@ -92,7 +92,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
             <button
               autoComplete="off"
               type="button"
-              onClick={() => answerApproval("allow_run")}
+              onClick={() => answerApproval("allow_run", chatId)}
               className="ml-auto rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-raised hover:text-ink"
               title={t("Stop asking for the rest of this run. Destructive steps still ask.")}
             >
@@ -123,7 +123,7 @@ export function InteractionCards({ onStop }: { onStop: () => void }) {
           <button
             autoComplete="off"
             type="button"
-            onClick={() => answerWait("continue")}
+            onClick={() => answerWait("continue", undefined, chatId)}
             className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110"
           >
             {t("Continue")}

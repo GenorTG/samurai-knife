@@ -6,7 +6,7 @@ import { installationToken, repoAccessOf, userInstallationRepos, type UserRepoAc
 import { recordSecurityEvent } from "@/lib/security/events";
 import { admitOutbound, consumeOutbound, hostGate, outboundLimitMessage } from "@/lib/net/outbound";
 import * as github from "./github";
-import { hasVerificationMeta, verifyProductionUrl, VERIFY_FILE } from "./ownership";
+import { hasVerificationMeta, pagesHost, verifyProductionUrl, VERIFY_FILE } from "./ownership";
 import { fetchPage, SiteError, sitePolicy, type NetDeps } from "./net";
 import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
@@ -293,6 +293,20 @@ async function ctx(accountId: string): Promise<Ctx> {
   if (!c) throw new SiteError("no repository connected: connect one in the website studio (Connect tab) first", 409);
   spend(a);
   return { a, c, token: await tokenOf(a, c) };
+}
+
+/**
+ * The connected repository's GitHub Pages host (custom domain or `<owner>.github.io`), asked with the user's own token or
+ * installation; null when there is no repository, no Pages site or no access. Screenshots accept it as the user's site.
+ */
+export async function repoPagesHost(accountId: string, deps?: github.GitHubDeps): Promise<string | null> {
+  if (!loadSite(accountId).connection) return null;
+  try {
+    const x = await ctx(accountId);
+    return await pagesHost(x.token, x.c.repo, deps);
+  } catch {
+    return null;
+  }
 }
 
 /** The connected repository and the work branch with its head commit (branch/head null when there is none). */

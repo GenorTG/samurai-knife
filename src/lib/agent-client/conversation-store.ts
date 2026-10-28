@@ -51,16 +51,17 @@ export function emptyConversation(): DurableConversation {
   return { version: 1, messages: [], actions: [], untrusted: false };
 }
 
-export function providerConversationId(baseUrl: string, model: string): string {
-  return createHash("sha256").update(baseUrl).update("\0").update(model).digest("hex").slice(0, 32);
+export function providerConversationId(baseUrl: string, model: string, chatId = "default"): string {
+  const hash = createHash("sha256").update(baseUrl).update("\0").update(model);
+  if (chatId !== "default") hash.update("\0").update(chatId);
+  return hash.digest("hex").slice(0, 32);
 }
 
 /**
- * One file per provider (baseUrl + model) under `conversations/<account>/` (path from `accountScope`). Retention: a new
- * provider file evicts all but the KEEP_CONVERSATIONS most recently written ones, so switching models cannot grow the
- * directory without bound.
+ * One file per provider/chat under `conversations/<account>/` (path from `accountScope`). Retention is bounded to the
+ * widget's 50-chat limit; creating a new chat evicts only the least recently used files beyond that bound.
  */
-export const KEEP_CONVERSATIONS = 5;
+export const KEEP_CONVERSATIONS = 50;
 const PROVIDER_ID = /^[a-f0-9]{32}$/;
 
 function conversationPath(accountId: string, providerId: string): string {

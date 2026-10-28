@@ -93,6 +93,8 @@ export interface RuntimeState {
   wait: PendingWait | null;
   /** Account whose queue / lock this tab is looking at. */
   accountId: string | null;
+  /** Conversation whose queue / lock this tab is looking at. */
+  chatId: string;
   queue: QueuedMessage[];
   paused: PauseReason | null;
   /** Queued messages the user chose to "send now": the loop delivers them at the next model-round boundary. */
@@ -112,6 +114,7 @@ export const IDLE_RUNTIME: RuntimeState = {
   approval: null,
   wait: null,
   accountId: null,
+  chatId: "default",
   queue: [],
   paused: null,
   steering: [],
@@ -148,7 +151,7 @@ export interface RuntimeStore {
   stepFinished: (id: string, ok: boolean) => void;
   clearSteps: () => void;
 
-  setAccount: (accountId: string | null) => void;
+  setAccount: (accountId: string | null, chatId?: string) => void;
   setQueue: (queue: QueuedMessage[], paused: PauseReason | null) => void;
   setSteering: (steering: QueuedMessage[]) => void;
   setLock: (lock: LockState, remoteActivity?: string | null) => void;
@@ -265,7 +268,7 @@ export function createRuntimeStore(options: RuntimeOptions = {}): RuntimeStore {
       if (state.steps.length > 0) set({ steps: [] });
     },
 
-    setAccount: (accountId) => set({ accountId }),
+    setAccount: (accountId, chatId = "default") => set({ accountId, chatId }),
     setQueue: (queue, paused) => set({ queue, paused }),
     setSteering: (steering) => set({ steering }),
     setLock: (lock, remoteActivity = null) => set({ lock, remoteActivity: lock === "other" ? remoteActivity : null }),

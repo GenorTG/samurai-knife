@@ -233,8 +233,13 @@ function ProviderForm({
   const [headersText, setHeadersText] = useState("");
   const [clearHeaders, setClearHeaders] = useState(false);
   const [effort, setEffort] = useState<"" | "low" | "medium" | "high">(provider?.reasoningEffort ?? "");
+  const [vision, setVision] = useState<"native" | "none">(provider?.vision ?? "none");
+  const [visionHelper, setVisionHelper] = useState(provider?.visionHelper ?? "");
+  const activeProfileId = account.providerProfiles.find((profile) => profile.active)?.id ?? null;
+  const helperChoices = account.providerProfiles.filter((profile) => profile.id !== activeProfileId);
   const [working, setWorking] = useState<"connect" | "models" | null>(null);
   const [models, setModels] = useState<string[]>([]);
+  const [modelDetails, setModelDetails] = useState<Record<string, { contextLength: number | null; vision: boolean | null; features: string[] }>>({});
 
   const preset = presetFor(baseUrl);
   const local = "local" in preset && preset.local;
@@ -246,7 +251,9 @@ function ProviderForm({
     clearKey ||
     headersText.trim() !== "" ||
     clearHeaders ||
-    effort !== (provider?.reasoningEffort ?? "");
+    effort !== (provider?.reasoningEffort ?? "") ||
+    vision !== (provider?.vision ?? "none") ||
+    visionHelper !== (provider?.visionHelper ?? "");
 
   function choosePreset(id: string) {
     const p = PRESETS.find((x) => x.id === id);
@@ -271,6 +278,8 @@ function ProviderForm({
     if (Object.keys(parsed.headers).length > 0) input.extraHeaders = parsed.headers;
     else if (clearHeaders) input.extraHeaders = {};
     input.reasoningEffort = effort;
+    input.vision = vision;
+    input.visionHelper = visionHelper;
     return input;
   }
 
@@ -301,6 +310,7 @@ function ProviderForm({
     }
     const list = t.models ?? [];
     setModels(list);
+    setModelDetails(Object.fromEntries((t.modelDetails ?? []).map((entry) => [entry.id, entry])));
     if (!list.length) {
       setStatus({ tone: "info", text: tr("The provider lists no models: type the model name.") });
       return false;
@@ -350,6 +360,7 @@ function ProviderForm({
     } else {
       const t = tested.value;
       if (t.models?.length) setModels(t.models);
+      if (t.modelDetails) setModelDetails(Object.fromEntries(t.modelDetails.map((entry) => [entry.id, entry])));
       const unknown = t.models?.length && !t.models.includes(model.trim()) ? tr(" The provider does not list {trim}: check the name.", { trim: model.trim() }) : "";
       setStatus({ tone: unknown ? "info" : "good", text: `Connected${t.modelCount !== undefined ? ` (${t.modelCount} models listed)` : ""}.${saved}${unknown}` });
       if (changed) await onSaved();
@@ -449,14 +460,30 @@ function ProviderForm({
                 <option key={id} value={id} />
               ))}
             </datalist>
-            <select aria-label={tr("Available models")} className="sk-input h-8 w-full px-2 text-xs" value={models.includes(model) ? model : ""} onChange={(e) => e.target.value && setModel(e.target.value)}>
+            <select aria-label={tr("Available models")} className="sk-input h-8 w-full px-2 text-xs" value={models.includes(model) ? model : ""} onChange={(e) => {
+              const id = e.target.value;
+              if (!id) return;
+              setModel(id);
+              const details = modelDetails[id];
+              if (details?.vision === true) setVision("native");
+              else if (details?.vision === false) setVision("none");
+            }}>
               <option value="">{models.length} {" "}{tr("models available: pick one…")}</option>
-              {models.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
+              {models.map((id) => {
+                const details = modelDetails[id];
+                const capabilities = details
+                  ? ` · ${details.contextLength ? `${details.contextLength.toLocaleString()} ctx` : tr("context unknown")} · ${details.vision === null ? tr("vision unknown") : details.vision ? tr("vision") : tr("text only")}${details.features.length ? ` · ${details.features.join(", ")}` : ""}`
+                  : "";
+                return <option key={id} value={id}>{id}{capabilities}</option>;
+              })}
             </select>
+            {modelDetails[model] ? (
+              <p className="text-[11px] text-faint" aria-live="polite">
+                {tr("Context: {value}", { value: modelDetails[model].contextLength?.toLocaleString() ?? tr("not advertised") })}
+                {" · "}{tr("Vision: {value}", { value: modelDetails[model].vision === null ? tr("unknown") : modelDetails[model].vision ? tr("yes") : tr("no") })}
+                {modelDetails[model].features.length ? ` · ${tr("Features")}: ${modelDetails[model].features.join(", ")}` : ""}
+              </p>
+            ) : models.includes(model) ? <p className="text-[11px] text-faint">{tr("This provider does not advertise model capabilities.")}</p> : null}
           </>
         ) : null}
       </div>
@@ -507,6 +534,37 @@ function ProviderForm({
         </div>
       </details>
 
+      <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.vision === "native" || provider?.visionHelper)} data-provider-vision>
+        <summary className="cursor-pointer text-xs text-muted select-none">{tr("Vision: screenshots and images")}</summary>
+        <div className="mt-3 space-y-3">
+          <label className="flex items-center justify-between gap-3 text-xs text-muted">
+            <span className="min-w-0">
+              {tr("This model")}
+              <span className="block text-[11px] text-faint">{tr("Only a model that sees images is sent pictures; a text-only one never is.")}</span>
+            </span>
+            <select className="sk-input h-8 shrink-0 px-2 text-xs" value={vision} onChange={(e) => setVision(e.target.value === "native" ? "native" : "none")} aria-label={tr("Does this model see images?")}>
+              <option value="none">{tr("Text only")}</option>
+              <option value="native">{tr("Sees images")}</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-3 text-xs text-muted">
+            <span className="min-w-0">
+              {tr("Vision helper")}
+              <span className="block text-[11px] text-faint">{tr("Another saved profile with a vision model: it describes screenshots in words for this one.")}</span>
+            </span>
+            <select className="sk-input h-8 max-w-[11rem] shrink-0 px-2 text-xs" value={visionHelper} onChange={(e) => setVisionHelper(e.target.value)} aria-label={tr("Vision helper")} disabled={helperChoices.length === 0 && !visionHelper}>
+              <option value="">{tr("None")}</option>
+              {helperChoices.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name} · {profile.model}
+                </option>
+              ))}
+            </select>
+          </label>
+          {helperChoices.length === 0 ? <p className="text-[11px] text-faint">{tr("To use a helper, save a second profile with a vision model (for example a GPT, Gemini or Qwen-VL model) first.")}</p> : null}
+        </div>
+      </details>
+
       {status ? (
         <div role="status">
           <Notice tone={status.tone}>{status.text}</Notice>
@@ -518,7 +576,7 @@ function ProviderForm({
       </Button>
 
       <p className="text-[11px] leading-snug text-faint">
-        {tr("Chat history is kept on this server per account and provider; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
+        {tr("Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
       </p>
 
       {!firstRun ? (

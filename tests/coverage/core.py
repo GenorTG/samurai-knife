@@ -54,9 +54,10 @@ def all_targets() -> list[tuple[str, str | None]]:
 class Ctx:
     """What an oracle sees after the agent finished: the live page, the answer and the transcript."""
 
-    def __init__(self, page, messages: list[dict]):
+    def __init__(self, page, messages: list[dict], user_files_uploaded: int = 0):
         self.page = page
         self.messages = messages
+        self.user_files_uploaded = user_files_uploaded
         last = next((m for m in reversed(messages) if m["role"] == "assistant" and not m.get("tool_calls")), None)
         self.answer: str = (last or {}).get("content") or ""
 
@@ -80,6 +81,14 @@ class Ctx:
         return self.page.url
 
 
+@dataclass(frozen=True)
+class UserFile:
+    input_index: int
+    name: str
+    mime_type: str
+    content: bytes
+
+
 @dataclass
 class Case:
     slug: str
@@ -91,6 +100,8 @@ class Case:
     timeout_ms: int = TURN_TIMEOUT_MS
     # If True the oracle only checks the final answer text, not the page (output-only math, etc.).
     answer_only: bool = False
+    # Real fixture bytes supplied only when wait_for_user highlights their file input.
+    user_files: tuple[UserFile, ...] = ()
 
     @property
     def key(self) -> str:
@@ -173,14 +184,50 @@ def run_case(browser, base: str, case: Case) -> dict:
         composer.fill(case.prompt)
         composer.press("Enter")
         try:
-            page.wait_for_function(
-                """k => { const m = JSON.parse(localStorage.getItem(k) || '[]');
-                   if (!m.some(x => x.role === 'user')) return false;
-                   const l = m[m.length - 1];
-                   return (l.role === 'assistant' && !l.tool_calls) || l.role === 'notice'; }""",
-                arg=key, timeout=case.timeout_ms)
-        except Exception:
-            rec["reason"] = f"timeout after {case.timeout_ms // 1000}s without a final answer"
+            if case.user_files:
+                deadline = time.monotonic() + case.timeout_ms / 1000
+                supplied: set[int] = set()
+                resupplied: dict[int, int] = {}
+                while True:
+                    remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                    state = page.wait_for_function(
+                        """k => {
+                            const m = JSON.parse(localStorage.getItem(k) || '[]');
+                            const l = m[m.length - 1];
+                            if (m.some(x => x.role === 'user') && l && ((l.role === 'assistant' && !l.tool_calls) || l.role === 'notice')) return 'done';
+                            return document.querySelector('main input[type=file][data-agent-await]') ? 'user_file' : false;
+                        }""",
+                        arg=key, timeout=remaining_ms).json_value()
+                    if state == "done":
+                        break
+                    target = page.locator("main input[type=file][data-agent-await]").first
+                    input_index = target.evaluate("el => Array.from(document.querySelectorAll('main input[type=file]')).indexOf(el)")
+                    fixture = next((f for f in case.user_files if f.input_index == input_index), None)
+                    if fixture is None:
+                        raise RuntimeError(f"no unused user-file fixture for highlighted input {input_index!r} ({type(input_index).__name__}); fixture indexes {[f.input_index for f in case.user_files]}, supplied {sorted(supplied)}")
+                    retries = resupplied.get(input_index, 0)
+                    if input_index in supplied and retries >= 2:
+                        raise RuntimeError(f"agent waited {retries + 1} times for already supplied file input {input_index}")
+                    target.set_input_files({"name": fixture.name, "mimeType": fixture.mime_type, "buffer": fixture.content})
+                    resupplied[input_index] = retries + 1
+                    supplied.add(input_index)
+                    rec["user_files_uploaded"] = len(supplied)
+                    page.wait_for_function(
+                        "() => !document.querySelector('main input[type=file][data-agent-await]')",
+                        timeout=10_000)
+                rec["user_files_uploaded"] = len(supplied)
+            else:
+                page.wait_for_function(
+                    """k => { const m = JSON.parse(localStorage.getItem(k) || '[]');
+                       if (!m.some(x => x.role === 'user')) return false;
+                       const l = m[m.length - 1];
+                       return (l.role === 'assistant' && !l.tool_calls) || l.role === 'notice'; }""",
+                    arg=key, timeout=case.timeout_ms)
+        except Exception as exc:
+            if case.user_files and isinstance(exc, RuntimeError):
+                rec["reason"] = f"coverage file-wait error: {type(exc).__name__}: {_clip(str(exc), 160)}"
+            else:
+                rec["reason"] = f"timeout after {case.timeout_ms // 1000}s without a final answer"
         msgs = _stored(page, key)
         names = {c["id"]: c["function"]["name"] for m in msgs if m["role"] == "assistant" for c in m.get("tool_calls", [])}
         rec["rounds"] = sum(1 for m in msgs if m["role"] == "assistant")
@@ -199,7 +246,7 @@ def run_case(browser, base: str, case: Case) -> dict:
         notices = [m["content"] for m in msgs if m["role"] == "notice" and m.get("level") == "error"]
         if notices:
             rec["reason"] = rec["reason"] or _clip(notices[-1], 200)
-        c = Ctx(page, msgs)
+        c = Ctx(page, msgs, rec.get("user_files_uploaded", 0))
         rec["trace"] = [
             {"role": m["role"], "text": _clip(m.get("content") or json.dumps([(x["function"]["name"], x["function"]["arguments"]) for x in m.get("tool_calls", [])]), 500)}
             for m in msgs

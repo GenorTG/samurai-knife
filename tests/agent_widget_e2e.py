@@ -140,7 +140,8 @@ with sync_playwright() as pw:
     page.get_by_role("button", name="Load models").click()
     models = page.get_by_label("Available models")
     models.wait_for()
-    check("Load models lists the provider's models before saving", "mock-model" in models.locator("option").all_inner_texts(), models.locator("option").all_inner_texts())
+    model_options = models.locator("option").all_inner_texts()
+    check("Load models lists the provider's models before saving", any(option.startswith("mock-model ·") for option in model_options), model_options)
     page.get_by_role("button", name="Connect", exact=True).click()
     # The first connection saves, tests and goes straight to the chat.
     page.wait_for_selector("textarea[aria-label='Message the assistant']")

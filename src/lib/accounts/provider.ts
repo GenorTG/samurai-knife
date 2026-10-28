@@ -181,7 +181,16 @@ export interface ProviderTestResult {
   modelCount?: number;
   /** Model ids from GET /models (sorted, at most MAX_LISTED_MODELS), for the settings' model picker. */
   models?: string[];
+  /** Capabilities advertised by GET /models. Missing metadata is deliberately represented as unknown. */
+  modelDetails?: ProviderModelDetails[];
   error?: string;
+}
+
+export interface ProviderModelDetails {
+  id: string;
+  contextLength: number | null;
+  vision: boolean | null;
+  features: string[];
 }
 
 const modelListSchema = z.object({ data: z.array(z.unknown()) }).passthrough();
@@ -194,6 +203,56 @@ function modelIds(entries: unknown[]): string[] {
     if (typeof id === "string" && id.length > 0 && id.length <= 200 && !/[\u0000-\u001f]/.test(id)) ids.add(id);
   }
   return [...ids].sort((a, b) => a.localeCompare(b)).slice(0, MAX_LISTED_MODELS);
+}
+
+const FEATURE_LABELS: Readonly<Record<string, string>> = {
+  tools: "tools", tool_call: "tools", function_call: "tools", functions: "tools",
+  reasoning: "reasoning", json_mode: "JSON output", response_format: "JSON output",
+  streaming: "streaming", audio: "audio", image: "vision", vision: "vision",
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function modelDetails(entries: unknown[]): ProviderModelDetails[] {
+  const byId = new Map<string, ProviderModelDetails>();
+  for (const raw of entries) {
+    if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id || raw.id.length > 200 || /[\u0000-\u001f]/.test(raw.id)) continue;
+    const architecture = isRecord(raw.architecture) ? raw.architecture : null;
+    const modalityList = architecture?.input_modalities ?? raw.input_modalities ?? raw.modalities;
+    const modalities = Array.isArray(modalityList)
+      ? modalityList.filter((value): value is string => typeof value === "string").map((value) => value.toLowerCase())
+      : null;
+    const capabilities = isRecord(raw.capabilities) ? raw.capabilities : null;
+    const explicitVision = typeof raw.vision === "boolean"
+      ? raw.vision
+      : capabilities && typeof capabilities.vision === "boolean"
+        ? capabilities.vision
+        : null;
+    const topProvider = isRecord(raw.top_provider) ? raw.top_provider : null;
+    const context = [raw.context_length, raw.context_window, raw.max_input_tokens, topProvider?.context_length]
+      .find((value) => typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 10_000_000);
+    const advertised = Array.isArray(raw.supported_parameters) ? raw.supported_parameters : [];
+    const featureSet = new Set<string>();
+    for (const value of advertised) {
+      if (typeof value !== "string") continue;
+      const normalized = value.toLowerCase();
+      const feature = FEATURE_LABELS[normalized];
+      if (feature) featureSet.add(feature);
+      else if (/^[a-z][a-z0-9_:-]{0,39}$/.test(normalized)) featureSet.add(normalized);
+      if (featureSet.size >= 20) break;
+    }
+    if (modalities?.includes("audio")) featureSet.add("audio");
+    if (modalities?.includes("image")) featureSet.add("vision");
+    byId.set(raw.id, {
+      id: raw.id,
+      contextLength: typeof context === "number" ? context : null,
+      vision: modalities ? modalities.includes("image") : explicitVision,
+      features: [...featureSet].sort(),
+    });
+  }
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_LISTED_MODELS);
 }
 
 export async function testProvider(provider: ProviderConfig, net: ProviderNet): Promise<ProviderTestResult> {
@@ -210,7 +269,7 @@ export async function testProvider(provider: ProviderConfig, net: ProviderNet): 
     }
     const models = modelListSchema.safeParse(parsedJson);
     return models.success
-      ? { ok: true, status, modelCount: models.data.data.length, models: modelIds(models.data.data) }
+      ? { ok: true, status, modelCount: models.data.data.length, models: modelIds(models.data.data), modelDetails: modelDetails(models.data.data) }
       : { ok: true, status };
   } catch (error) {
     if (error instanceof UpstreamFailure) return { ok: false, status: null, error: failureMessage(error) };

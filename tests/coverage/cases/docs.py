@@ -4,8 +4,8 @@ import io
 import re
 import unicodedata
 
-from tests.coverage.core import Case, Ctx, first_error, has, matches, used
-from tests.coverage.fixtures import b64, make_pdf
+from tests.coverage.core import Case, Ctx, UserFile, first_error, has, matches
+from tests.coverage.fixtures import make_pdf
 
 GROUP = "docs"
 SKIPS: dict[tuple[str, str | None], str] = {
@@ -92,13 +92,15 @@ CASES = [
          lambda c: first_error(matches(c.answer, r"3[^.\n]{0,40}add|add[^.\n]{0,40}3|\+\s*3"),
                                matches(c.answer, r"2[^.\n]{0,40}remov|remov[^.\n]{0,40}2|-\s*2"))),
     Case("pdf", "tools",
-         "I have a PDF called report.pdf (base64 below). How many pages does it have?\n\n" + b64(_PDF),
-         lambda c: first_error(matches(c.answer, r"\b7\b|seven"), None if used(c, "upload_file") else "never attached the file")),
+          "I have the real PDF file report.pdf. How many pages does it have?",
+          lambda c: first_error(matches(c.answer, r"\b7\b|seven"), None if c.user_files_uploaded == 1 else "the harness did not supply the real PDF"),
+          user_files=(UserFile(0, "report.pdf", "application/pdf", _PDF),)),
 
     Case("pdf", "editor",
-         "The attached scan.pdf is a scanned page (just a picture, no text layer). Read what it says and tell me the text.\n\nscan.pdf (base64):\n" + b64(_SCAN),
-         lambda c: first_error(matches(c.answer, r"SAMURAI\W+SWORD"), None if used(c, "upload_file") else "never attached the file"),
-         timeout_ms=360000),
+         "I have the real file scan.pdf, a scanned page with no text layer. Please read it and tell me what it says.",
+         lambda c: first_error(matches(c.answer, r"SAMURAI\W+SWORD"), None if c.user_files_uploaded == 1 else "the harness did not supply the real scan"),
+         timeout_ms=360000,
+         user_files=(UserFile(0, "scan.pdf", "application/pdf", _SCAN),)),
     Case("markdown", "preview",
          "Convert this HTML snippet into Markdown (headings with #, bold with **, links as [text](url), bullet lists with -):\n\n"
          '<h2>Release <em>notes</em></h2><p>See the <a href="https://example.org/x">changelog</a> and <strong>upgrade</strong> soon.</p><ul><li>one</li><li>two</li></ul>',
@@ -109,9 +111,10 @@ CASES = [
          f"How many user-perceived characters (graphemes), Unicode code points and UTF-8 bytes does this text contain? Text: {_CH}",
          _chars),
     Case("characters", "encoding",
-         "This file, notes.txt (base64), shows up as gibberish in my editor. What text encoding is it, and does it start with a byte order mark?\n\n" + b64(_ENC),
-         lambda c: first_error(matches(c.answer, r"UTF-?16[\s-]*(LE|little)|little[\s-]*endian"),
-                               matches(c.answer, r"BOM|byte[\s-]order"), None if used(c, "upload_file") else "never attached the file")),
+          "This real file, notes.txt, shows up as gibberish in my editor. What text encoding is it, and does it start with a byte order mark?",
+          lambda c: first_error(matches(c.answer, r"UTF.?16.*?(LE|little)|little[\s-]*endian"),
+                                matches(c.answer, r"BOM|byte[\s-]order"), None if c.user_files_uploaded == 1 else "the harness did not supply the real text file"),
+          user_files=(UserFile(0, "notes.txt", "text/plain", _ENC),)),
     Case("text", "generate",
          "Generate 4 paragraphs of lorem ipsum filler text for a mockup, keep the generated text on screen so I can copy it, and tell me the total word count.",
          _ph_oracle),

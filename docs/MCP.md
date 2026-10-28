@@ -67,11 +67,33 @@ Score and improve the user's own website from its GitHub repository: `knife_site
 repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,
 security headers, Lighthouse via PageSpeed), `knife_site_audit_get`, `knife_site_page`, `knife_site_files`,
 `knife_site_read`, `knife_site_search`, `knife_site_replace` / `knife_site_write` (commit to the `knife/...` work branch,
-never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL). With Vercel connected in the
+never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL), `knife_site_screenshot` (see "Vision"). With Vercel connected in the
 Website tab: `knife_site_previews` (the work branch's previews and the head commit's state), `knife_site_deploy_logs`,
 `knife_site_deploy` (a preview build of the work branch, never production); previews behind Deployment Protection are
 read with the stored bypass. Publishing and discarding are the user's buttons in the studio. Contract:
 docs/WEBSITE-STUDIO.md.
+
+## Vision (`knife_site_screenshot`, `knife_vision_describe`)
+- `knife_site_screenshot` (group `site`, `outbound`, untrusted output) renders a page of the user's own website in a
+  real browser on the server (docs/WEBSITE-STUDIO.md "Screenshots": production, the linked Vercel preview/deployments,
+  GitHub Pages or a page in the connected public GitHub repository; never unrelated sites). It is project-scoped, not a
+  general web crawler; private repo contents use GitHub API tools and Vercel dashboard data uses its API tools. An MCP
+  client gets the JSON text block and an
+  image block (PNG or JPEG), so a client whose model sees images looks at it directly; `image:false` leaves the block out
+  for text-only clients. A text description from the user's own vision model is added with `describe:true` or a
+  `question`, and always when the user named a vision helper on the active provider profile (docs/ACCOUNTS.md
+  "Vision"), so a text-only agent (OpenCode Go with a deepseek model, for example) can still reason about the page.
+- `knife_vision_describe {image, question?}`: the same describer on an image the account already has: a screenshot's
+  `imageArtifact` (`vis_...`, cached 30 minutes in server memory; the temporary render file is deleted when its job
+  finishes) or a Craft file id (`knife_craft_files`, e.g. a
+  `craft_screenshot` saved with `craft_file_save`).
+- The in-page assistant gets the same tool; its result depends on the active profile: an image part in the next model
+  round for a profile that sees images, the helper's description for a text-only one, neither (with how to set it up)
+  otherwise.
+- Screenshots of the user's open Smart Knife tab (not a website) are not offered: there is no Web API that captures the
+  visible tab without a per-capture screen-share prompt (`getDisplayMedia`), and rasterising the DOM in the page (an
+  html-to-canvas library) cannot draw cross-origin iframes, which are exactly the visual pages (office editor, Craft
+  apps); the assistant reads the page through `page_snapshot`/`read_text`, and the Craft apps have `craft_screenshot`.
 
 ## What's new (`knife_whats_new`, `src/lib/whats-new.ts`)
 One entry per release that changes what agents can do, newest first, naming the tools. `knife_whats_new {count?}`

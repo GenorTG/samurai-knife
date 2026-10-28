@@ -8,7 +8,9 @@ from pathlib import Path
 
 from tests.coverage.core import Case, Ctx, first_error, has, matches
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+_WORKTREE_ROOT = Path(__file__).resolve().parents[3]
+_CANONICAL_REPO_ROOT = Path.home() / "work" / "Samurai-Knife"
+REPO_ROOT = _CANONICAL_REPO_ROOT if _CANONICAL_REPO_ROOT.is_dir() else _WORKTREE_ROOT
 
 GROUP = "cv"
 SKIPS: dict[tuple[str, str | None], str] = {

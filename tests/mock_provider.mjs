@@ -14,6 +14,7 @@
 //   several CALL: lines in one user message      -> that many tool_calls in one round
 //   stream_options.include_usage -> a final usage chunk (deterministic); text containing NOUSAGE omits it, REJECT_STREAM_OPTIONS answers 400 to stream_options
 //   stream:true requests get SSE chunks (reasoning first when text has THINK:<ms>); non-stream is unchanged
+//   last message with image_url parts           -> content "VISION: saw <n> image(s) [<mime>, ...]: <its text>" (vision tests)
 //   role "tool"                               -> content "DONE: <tool result text>"
 //   otherwise                                    -> content "ECHO: <user text>"
 import { createServer } from "node:http";
@@ -31,6 +32,14 @@ function textOf(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) return content.map((part) => part?.text ?? "").join("");
   return "";
+}
+
+/** Image parts of a message (`image_url` with a data URL): their MIME types, for vision tests. */
+function imagesOf(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((part) => part?.type === "image_url" && typeof part.image_url?.url === "string")
+    .map((part) => /^data:([^;,]+)[;,]/.exec(part.image_url.url)?.[1] ?? "url");
 }
 
 function reply(res, body, message, finish, text) {
@@ -145,11 +154,15 @@ const server = createServer((req, res) => {
       requestLog.push({
         n: requestCount,
         stream: body.stream === true,
-        messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, text: textOf(m.content), tool_call_id: m.tool_call_id ?? null })),
+        messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, text: textOf(m.content), tool_call_id: m.tool_call_id ?? null, images: imagesOf(m.content) })),
       });
       const tail = messages[messages.length - 1];
       if (!tail) return send(res, 400, { error: { message: "no messages" } });
       const text = textOf(tail.content);
+      const seen = imagesOf(tail.content);
+      if (seen.length) {
+        return reply(res, body, { role: "assistant", content: `VISION: saw ${seen.length} image(s) [${seen.join(", ")}]: ${text.slice(0, 80)}` }, "stop", "");
+      }
       if (tail.role === "tool") {
         const attackSimulation = messages.some((m) => m.role === "user" && /ATTACK_SIMULATION/.test(textOf(m.content)));
         if (attackSimulation && /<<<UNTRUSTED_CONTENT id=/.test(text)) {

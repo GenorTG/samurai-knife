@@ -13,7 +13,7 @@ const chipButton = "inline-flex h-7 shrink-0 cursor-pointer items-center rounded
  * composer: another tab holds the conversation, the queue is paused, messages are on their way into the
  * running turn, and the queued messages themselves (cancel, edit, send now).
  */
-export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
+export function QueuePanel({ onSendNow, chatId = "default" }: { onSendNow: (id: string) => void; chatId?: string }) {
   const { t } = useT();
   const queue = useRuntime((s) => s.queue);
   const steering = useRuntime((s) => s.steering);
@@ -25,7 +25,7 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
   if (lock !== "other" && queue.length === 0 && steering.length === 0) return null;
 
   const save = (): void => {
-    if (editing) editQueued(editing.id, editing.text);
+    if (editing) editQueued(editing.id, editing.text, chatId);
     setEditing(null);
   };
 
@@ -46,10 +46,10 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
           <span className="min-w-0 flex-1">
             {t("Queue paused")}{paused === "stopped" ? t(" (you stopped the run)") : t(" (the run failed)")}{t(": {queue} waiting.", { queue: queue.length })}
           </span>
-          <button autoComplete="off" type="button" onClick={resumeQueue} className="rounded-md bg-accent px-2 py-1 font-semibold text-accent-fg hover:brightness-110">
+          <button autoComplete="off" type="button" onClick={() => resumeQueue(chatId)} className="rounded-md bg-accent px-2 py-1 font-semibold text-accent-fg hover:brightness-110">
             {t("Resume")}
           </button>
-          <button autoComplete="off" type="button" onClick={clearQueue} className="rounded-md border border-line-strong px-2 py-1 text-ink hover:bg-raised">
+          <button autoComplete="off" type="button" onClick={() => clearQueue(chatId)} className="rounded-md border border-line-strong px-2 py-1 text-ink hover:bg-raised">
             {t("Clear")}
           </button>
         </div>
@@ -117,7 +117,7 @@ export function QueuePanel({ onSendNow }: { onSendNow: (id: string) => void }) {
                   <button autoComplete="off" type="button" onClick={() => setEditing({ id: m.id, text: m.text })} className={chipButton}>
                     {t("Edit")}
                   </button>
-                  <button autoComplete="off" type="button" onClick={() => cancelQueued(m.id)} aria-label={t("Cancel queued message")} title={t("Remove from the queue")} className={chipButton}>
+                  <button autoComplete="off" type="button" onClick={() => cancelQueued(m.id, chatId)} aria-label={t("Cancel queued message")} title={t("Remove from the queue")} className={chipButton}>
                     ✕
                   </button>
                 </>

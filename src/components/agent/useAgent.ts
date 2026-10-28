@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccountStorage } from "@/lib/client-account";
 import { fetchAccount, fetchConversation, login as apiLogin, logout as apiLogout, resetConversation, saveConversation } from "@/lib/agent-client/api";
@@ -40,6 +40,7 @@ export interface AgentController {
   sendNow: (id: string) => void;
   stop: () => void;
   clear: () => void;
+  switchChat: (chatId: string) => void;
   refreshAccount: () => Promise<void>;
   login: (id: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
@@ -48,16 +49,21 @@ export interface AgentController {
 const LOCK_POLL_MS = 1500;
 
 /**
- * Owns the account session, the shared per-account conversation and the running agent turn.
+ * Owns the account session, one chat's transcript and the running agent turn.
  * Run state lives in the runtime store; this hook is the orchestrator around it:
- *  - one turn per account across tabs (run-lock.ts), the other tab queues;
+ *  - one turn per chat across tabs (run-lock.ts), the other tab queues; different chats may run concurrently;
  *  - a message sent during a run is queued (message-queue.ts) and drained in order when the run ends
  *    normally; Stop pauses the queue instead of firing the next message;
  *  - the transcript is a shared append-only log (storage.ts): this tab shows what other tabs append.
  * `onNeedSettings` fires when the model provider is missing.
  */
-export function useAgent(options: { active: boolean; onNeedSettings: () => void }): AgentController {
+export function useAgent(options: { active: boolean; chatId?: string; onNeedSettings: () => void }): AgentController {
   const { active, onNeedSettings } = options;
+  const chatId = options.chatId ?? "default";
+  const selectedChatId = useRef(chatId);
+  useLayoutEffect(() => {
+    selectedChatId.current = chatId;
+  }, [chatId]);
   const router = useRouter();
   const [account, setAccount] = useState<AccountState>({ kind: "loading" });
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
@@ -73,6 +79,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
   /** The running (or starting) turn is being discarded by Clear: no "Stopped." notice, no queue pause. */
   const discardRef = useRef(false);
   const requested = useRef(false);
+  const loadedChatId = useRef(chatId);
   const needSettings = useRef(onNeedSettings);
   useEffect(() => {
     needSettings.current = onNeedSettings;
@@ -85,11 +92,11 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
   const activity = useRuntime((s) => s.activity);
   const accountId = account.kind === "ready" ? account.account.id : null;
   const localChatScope = account.kind === "ready"
-    ? `${account.account.id}:${encodeURIComponent(account.account.provider?.baseUrl ?? "")}:${encodeURIComponent(account.account.provider?.model ?? "")}`
+    ? `${account.account.id}:${encodeURIComponent(account.account.provider?.baseUrl ?? "")}:${encodeURIComponent(account.account.provider?.model ?? "")}${chatId === "default" ? "" : `:${chatId}`}`
     : null;
 
   const applyAccount = useCallback((info: AccountInfo) => {
-    const scopeId = `${info.id}:${encodeURIComponent(info.provider?.baseUrl ?? "")}:${encodeURIComponent(info.provider?.model ?? "")}`;
+    const scopeId = `${info.id}:${encodeURIComponent(info.provider?.baseUrl ?? "")}:${encodeURIComponent(info.provider?.model ?? "")}${chatId === "default" ? "" : `:${chatId}`}`;
     accountIdRef.current = info.id;
     if (scopeIdRef.current !== scopeId) {
       scopeIdRef.current = scopeId;
@@ -98,17 +105,20 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       setMessages(readChat(scopeId));
     }
     setAccount({ kind: "ready", account: info });
-  }, []);
+  }, [chatId]);
 
   const refreshAccount = useCallback(async () => {
+    const requestedChatId = chatId;
     const result = await fetchAccount();
     if (result.ok) {
+      if (selectedChatId.current !== requestedChatId) return;
       const info = result.value;
       applyAccount(info);
       if (info.provider) {
-        const scopeId = `${info.id}:${encodeURIComponent(info.provider.baseUrl)}:${encodeURIComponent(info.provider.model)}`;
+        const scopeId = `${info.id}:${encodeURIComponent(info.provider.baseUrl)}:${encodeURIComponent(info.provider.model)}${chatId === "default" ? "" : `:${chatId}`}`;
         const local = readChat(scopeId);
-        const remote = await fetchConversation();
+        const remote = await fetchConversation(requestedChatId);
+        if (selectedChatId.current !== requestedChatId) return;
         if (remote.ok) {
           actionsRef.current = remote.value.actions;
           loadedRef.current = true;
@@ -117,7 +127,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
             saveChat(scopeId, restored);
             setMessages(restored);
           } else if (local.length > 0) {
-            const saved = await saveConversation({ version: 1, messages: local, actions: [] });
+            const saved = await saveConversation({ version: 1, messages: local, actions: [] }, chatId);
             if (saved.ok) setMessages(local);
           } else setMessages([]);
         }
@@ -127,17 +137,38 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     const f = result.failure;
     if (f.kind === "login_required") setAccount({ kind: "login", accounts: f.accounts });
     else setAccount({ kind: "error", message: f.kind === "error" ? f.message : "Unexpected response." });
-  }, [applyAccount]);
+  }, [applyAccount, chatId]);
+
+  useEffect(() => {
+    if (loadedChatId.current === chatId) return;
+    loadedChatId.current = chatId;
+    actionsRef.current = [];
+    loadedRef.current = false;
+    persistQueueRef.current = Promise.resolve();
+    runtime.setLock("free");
+    runtime.setQueue([], null);
+    runtime.setSteering([]);
+    if (account.kind === "ready") queueMicrotask(() => void refreshAccount());
+  }, [account.kind, chatId, localChatScope, refreshAccount]);
+
+  const switchChat = useCallback((nextChatId: string) => {
+    if (busy || !/^[a-zA-Z0-9_-]{1,64}$/.test(nextChatId)) return;
+    const info = account.kind === "ready" ? account.account : null;
+    const scopeId = info
+      ? `${info.id}:${encodeURIComponent(info.provider?.baseUrl ?? "")}:${encodeURIComponent(info.provider?.model ?? "")}${nextChatId === "default" ? "" : `:${nextChatId}`}`
+      : null;
+    setMessages(scopeId ? readChat(scopeId) : []);
+  }, [account, busy]);
 
   // Transcript + journal only: the taint flag is the server's (/api/agent/chat).
   const enqueueConversationSave = useCallback((history: TranscriptMessage[], actions: string[]): Promise<void> => {
     const pending = persistQueueRef.current.then(async () => {
       // No server copy loaded yet for this scope (or it was just cleared): nothing to save into.
-      if (loadedRef.current) await saveConversation({ version: 1, messages: history, actions });
+      if (loadedRef.current) await saveConversation({ version: 1, messages: history, actions }, chatId);
     });
-    persistQueueRef.current = pending;
+      persistQueueRef.current = pending;
     return pending;
-  }, []);
+  }, [chatId]);
 
   // Load the account the first time the panel is shown (never during SSR or hydration).
   useEffect(() => {
@@ -150,12 +181,12 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
 
   // Queue of the signed-in account, kept in sync with other tabs.
   useEffect(() => {
-    const detach = attachQueue(accountId);
+    const detach = attachQueue(accountId, chatId);
     return () => {
       detach();
-      attachQueue(null);
+      attachQueue(null, chatId);
     };
-  }, [accountId]);
+  }, [accountId, chatId]);
 
   // Transcript: show what other tabs append; a clear elsewhere ends a run here.
   useEffect(() => {
@@ -180,11 +211,11 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
-    void runHeldElsewhere(accountId).then((held) => {
+    void runHeldElsewhere(accountId, chatId).then((held) => {
       if (alive && held && !abortRef.current) runtime.setLock("other");
     });
     const off = subscribeRunAnnouncements((a) => {
-      if (a.accountId !== accountId || abortRef.current) return;
+      if (a.accountId !== accountId || a.chatId !== chatId || abortRef.current) return;
       if (a.running) runtime.setLock("other", a.activity);
       else runtime.setLock("free");
     });
@@ -192,17 +223,17 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       alive = false;
       off();
     };
-  }, [accountId]);
+  }, [accountId, chatId]);
 
   useEffect(() => {
     if (!accountId || lock !== "other") return;
     const timer = setInterval(() => {
-      void runHeldElsewhere(accountId).then((held) => {
+    void runHeldElsewhere(accountId, chatId).then((held) => {
         if (!held && runtime.get().lock === "other") runtime.setLock("free");
       });
     }, LOCK_POLL_MS);
     return () => clearInterval(timer);
-  }, [accountId, lock]);
+  }, [accountId, lock, chatId]);
 
   /* ---------------------------------------------------------------- a turn */
 
@@ -213,7 +244,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       const controller = new AbortController();
       abortRef.current = controller;
       setBusy(true);
-      const lease = await tryAcquireRun(id);
+      const lease = await tryAcquireRun(id, chatId);
       const giveUp = (): void => {
         lease?.release();
         abortRef.current = null;
@@ -222,32 +253,32 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       if (!lease) {
         // Another tab holds the conversation: keep the message (queued) and show the banner.
         runtime.setLock("other");
-        if (!queuedId) enqueue(text);
+        if (!queuedId) enqueue(text, chatId);
         abortRef.current = null;
         setBusy(false);
         return;
       }
-      if (queuedId && !takeQueued(queuedId, { unlessPaused: automatic })) {
+      if (queuedId && !takeQueued(queuedId, { unlessPaused: automatic }, chatId)) {
         giveUp(); // another tab already delivered it, or the queue was paused / cancelled meanwhile
         return;
       }
 
       runtime.setLock("mine");
-      announceRun(id, true, null);
+      announceRun(id, true, null, chatId);
       let lastActivity: string | null = null;
       const offBroadcast = runtime.subscribe(() => {
         lease.renew();
         const now = runtime.get().activity;
         if (now !== lastActivity) {
           lastActivity = now;
-          announceRun(id, true, now);
+          announceRun(id, true, now, chatId);
         }
       });
 
       let outcome: LoopOutcome = "error";
       try {
         await persistQueueRef.current;
-        const durable = await fetchConversation();
+        const durable = await fetchConversation(chatId);
         if (durable.ok) {
           actionsRef.current = durable.value.actions;
           loadedRef.current = true;
@@ -261,6 +292,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
         setMessages(history);
         await enqueueConversationSave(history, actionsRef.current);
         outcome = await runAgentTurn({
+          chatId,
           history,
           accountName: account.account.displayName,
           signal: controller.signal,
@@ -275,7 +307,7 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
             setMessages(updated);
             enqueueConversationSave(updated, actionsRef.current);
           },
-          takeSteering: takeSteeringTexts,
+          takeSteering: () => takeSteeringTexts(chatId),
         });
         if (outcome === "aborted" && !discardRef.current) {
           const stopped = appendChat(scopeId, [{ role: "notice", level: "info", content: "Stopped." }]);
@@ -285,21 +317,21 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       } finally {
         offBroadcast();
         // Everything that decides what happens to the queue must be written BEFORE the lock is released.
-        reclaimSteering();
-        if (discardRef.current) clearQueue();
-        else if (outcome === "aborted") pauseQueue("stopped");
-        else if (outcome === "error" || outcome === "login_required" || outcome === "provider_missing") pauseQueue("failed");
+        reclaimSteering(chatId);
+        if (discardRef.current) clearQueue(chatId);
+        else if (outcome === "aborted") pauseQueue("stopped", chatId);
+        else if (outcome === "error" || outcome === "login_required" || outcome === "provider_missing") pauseQueue("failed", chatId);
         discardRef.current = false;
         lease.release();
         runtime.setLock("free");
-        announceRun(id, false, null);
+        announceRun(id, false, null, chatId);
         abortRef.current = null;
         setBusy(false);
       }
       if (outcome === "login_required") void refreshAccount();
       else if (outcome === "provider_missing") needSettings.current();
     },
-    [account, enqueueConversationSave, refreshAccount, router],
+    [account, chatId, enqueueConversationSave, refreshAccount, router],
   );
 
   // Drain: when idle, not paused and nobody else runs, the oldest queued message starts the next turn.
@@ -321,23 +353,23 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
       if (!trimmed || account.kind !== "ready") return;
       const s = runtime.get();
       const mustQueue = abortRef.current !== null || s.lock === "other" || (s.queue.length > 0 && s.paused === null);
-      if (mustQueue) enqueue(trimmed);
+      if (mustQueue) enqueue(trimmed, chatId);
       else void startTurn(trimmed, null, false);
     },
-    [account.kind, startTurn],
+    [account.kind, chatId, startTurn],
   );
 
   const sendNow = useCallback(
     (id: string) => {
       if (abortRef.current) {
-        moveToSteering(id); // a turn is running here: delivered at its next model-round boundary
+        moveToSteering(id, chatId); // a turn is running here: delivered at its next model-round boundary
         return;
       }
       if (runtime.get().lock === "other") return;
       const item = runtime.get().queue.find((q) => q.id === id);
       if (item) void startTurn(item.text, item.id, false);
     },
-    [startTurn],
+    [chatId, startTurn],
   );
 
   const clear = useCallback(() => {
@@ -349,11 +381,11 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
     if (scopeId) clearChat(scopeId);
     actionsRef.current = [];
     loadedRef.current = false;
-    persistQueueRef.current = persistQueueRef.current.then(async () => { await resetConversation(); });
+    persistQueueRef.current = persistQueueRef.current.then(async () => { await resetConversation(chatId); });
     clearArtifacts();
-    clearQueue();
+    clearQueue(chatId);
     setMessages([]);
-  }, []);
+  }, [chatId]);
 
   const login = useCallback(
     async (id: string, password: string): Promise<string | null> => {
@@ -391,16 +423,16 @@ export function useAgent(options: { active: boolean; onNeedSettings: () => void 
   useEffect(() => {
     const onHide = (): void => {
       if (!abortRef.current) return;
-      reclaimSteering();
-      pauseQueue("stopped");
+      reclaimSteering(chatId);
+      pauseQueue("stopped", chatId);
     };
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
-  }, []);
+  }, [chatId]);
 
   // A live run (here or in another tab) legitimately has tool calls without a result yet; an idle chat shows them as interrupted.
   const live = busy || lock === "other";
   const shown = useMemo(() => (live ? messages : repairTranscript(messages)), [live, messages]);
 
-  return { account, messages: shown, busy, activity, send, sendNow, stop, clear, refreshAccount, login, logout };
+  return { account, messages: shown, busy, activity, send, sendNow, stop, clear, switchChat, refreshAccount, login, logout };
 }
