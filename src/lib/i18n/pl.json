@@ -5045,5 +5045,6 @@
   "Zoom": "Powiększenie",
   "Zoom in": "Powiększ",
   "Zoom out": "Pomniejsz",
-  "Zoom to 100%": "Powiększenie 100%"
+  "Zoom to 100%": "Powiększenie 100%",
+  "The Vercel integration is installed. To link it to this website, click Connect with Vercel below and pick the same team.": "Integracja Vercela jest zainstalowana. Aby połączyć ją z tą stroną, kliknij poniżej „Połącz z Vercel” i wybierz ten sam zespół."
 }

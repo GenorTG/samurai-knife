@@ -13,6 +13,9 @@ export const dynamic = "force-dynamic";
  * GET /api/vercel/callback?code=&state=&configurationId=&teamId= : Vercel's redirect after the integration was installed.
  * The state must be this server's, unused, under 10 minutes old, from this browser, and the session the same account
  * that started it; then the code is exchanged once and the token stored on the CV project the flow started in.
+ * An install started on Vercel's side (Marketplace "Add Integration") comes without our state: its code is never
+ * exchanged (nothing proves this user asked for it, so a crafted link could not attach a stranger's Vercel); the page
+ * says the integration is installed and that "Connect with Vercel" in the app links it.
  */
 export async function GET(request: Request): Promise<Response> {
   let base: string;
@@ -23,6 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   }
   const params = new URL(request.url).searchParams;
   const clear = vercelStateCookie(request, "", true);
+  if (!params.get("state")) return back(base, "/tools/cv-studio?tab=website", { vercel_error: "marketplace" }, [clear]);
   const flow = takeVercelFlow(params.get("state"), cookieValue(request, VERCEL_STATE_COOKIE));
   if (!flow) return back(base, "/tools/cv-studio?tab=website", { vercel_error: "expired" }, [clear]);
   const current = resolveAccount(request);

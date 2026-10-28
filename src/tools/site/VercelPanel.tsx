@@ -7,7 +7,7 @@ import { errorText, siteRequest, type VercelProjectView, type VercelView } from 
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
-type Message = { tone: "good" | "error" | "warn"; text: string } | null;
+type Message = { tone: "good" | "error" | "warn" | "info"; text: string } | null;
 
 const FLASH_ERRORS: Record<string, string> = {
   expired: msg("The Vercel sign-in expired or was opened in another browser: start again."),
@@ -23,6 +23,7 @@ function useVercelFlash(): Message {
   if (p.get("vercel") === "connected") return { tone: "good", text: msg("Vercel connected. Check the project below.") };
   const code = p.get("vercel_error");
   if (!code) return null;
+  if (code === "marketplace") return { tone: "info", text: msg("The Vercel integration is installed. To link it to this website, click Connect with Vercel below and pick the same team.") };
   return { tone: "error", text: FLASH_ERRORS[code] ?? p.get("vercel_message") ?? msg("Vercel could not be connected.") };
 }
 
