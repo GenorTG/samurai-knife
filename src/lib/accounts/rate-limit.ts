@@ -537,6 +537,8 @@ export const LIMITS = {
   outboundPage: (id: string): Limit => ({ key: `outbound:page:${id}`, max: 30, windowMs: 10 * MINUTE, account: id }),
   /** Website studio: one audit fetches up to ~15 pages + PageSpeed; counted per run. */
   outboundAudit: (id: string): Limit => ({ key: `outbound:audit:${id}`, max: 6, windowMs: 60 * MINUTE, account: id }),
+  /** Website screenshots: each one runs a browser on the server (src/lib/vision/screenshot.ts). */
+  outboundScreenshot: (id: string): Limit => ({ key: `outbound:screenshot:${id}`, max: 20, windowMs: 60 * MINUTE, account: id }),
   /** Website studio: GitHub API calls made with the account's own token. */
   outboundGithub: (id: string): Limit => ({ key: `outbound:github:${id}`, max: 600, windowMs: 10 * MINUTE, account: id }),
   /* Sign-in hardening (docs/ACCOUNTS.md "Rate limits"): link checks, login signals, GitHub start. */

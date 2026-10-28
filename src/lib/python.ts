@@ -55,6 +55,11 @@ export type PythonRunOptions = {
    * the sandbox nothing else is visible, so a path in the request outside these dirs does not exist for the script.
    */
   binds?: { readOnly?: string[]; writable?: string[] };
+  /**
+   * Overrides the lane's address-space limit (MB; 0 = none). Chromium (screenshots) reserves tens of GB of virtual
+   * address space it never uses, so an RLIMIT_AS cap kills it at start; its memory is bounded by its own flags instead.
+   */
+  addressSpaceMb?: number;
 };
 
 export interface PythonRunResult<T> {
@@ -289,9 +294,10 @@ async function execute<T>(
 export function startPythonScript<T = unknown>(
   scriptName: string,
   request: unknown,
-  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner, binds }: PythonRunOptions = {},
+  { timeoutMs = 120_000, maxBytes = 64 * 1024 * 1024, lane = "light", signal, label, owner, binds, addressSpaceMb }: PythonRunOptions = {},
 ): JobHandle<PythonRunResult<T>> {
   const limits = laneLimits(lane, timeoutMs);
+  if (addressSpaceMb !== undefined) limits.KNIFE_RLIMIT_AS_MB = String(Math.max(0, Math.floor(addressSpaceMb)));
   const handle = admitPythonJob(lane, owner, (admission) =>
     pythonQueue().submit(lane, ({ signal: jobSignal }) => execute<T>(scriptName, request, maxBytes, limits, jobSignal, binds), {
       signal,

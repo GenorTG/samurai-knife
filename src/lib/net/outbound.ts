@@ -35,9 +35,11 @@ export type OutboundPurpose =
   /** One website-studio operation against the GitHub API with the account's own token or installation. */
   | "github"
   /** One website-studio operation against the Vercel API with the account's own token. */
-  | "vercel";
+  | "vercel"
+  /** One screenshot of the user's own site (a browser on the server; its connections are capped per job). */
+  | "screenshot";
 
-export const OUTBOUND_PURPOSES: readonly OutboundPurpose[] = ["provider", "provider-test", "page", "company", "audit", "psi", "github", "vercel"];
+export const OUTBOUND_PURPOSES: readonly OutboundPurpose[] = ["provider", "provider-test", "page", "company", "audit", "psi", "github", "vercel", "screenshot"];
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -52,6 +54,7 @@ export const DEFAULT_BUDGETS: Record<OutboundPurpose | "host", Budget> = {
   psi: { max: 400, windowMs: HOUR },
   github: { max: 10_000, windowMs: HOUR },
   vercel: { max: 5_000, windowMs: HOUR },
+  screenshot: { max: 300, windowMs: HOUR },
   /** One destination host, across all non-admins: user-chosen pages, audited sites, admin-approved provider URLs. */
   host: { max: 60, windowMs: 10 * MINUTE },
 };
@@ -74,6 +77,8 @@ function accountLimit(account: Pick<Account, "id">, purpose: OutboundPurpose): L
     case "page":
     case "company":
       return LIMITS.outboundPage(account.id);
+    case "screenshot":
+      return LIMITS.outboundScreenshot(account.id);
     case "psi":
       return null; // part of an audit, which the account already paid for
   }
@@ -117,6 +122,7 @@ export function userChosenHost(purpose: OutboundPurpose, host: string): boolean 
     case "page":
     case "company":
     case "audit":
+    case "screenshot":
       return true;
   }
 }
