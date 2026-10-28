@@ -17,7 +17,9 @@ production until the user clicks Publish.
    preview URL in the commit's deployments and can score it.
 4. **Publish** (Changes tab): the user reviews the files and the preview, ticks "I reviewed", and the pull request is
    squash-merged into the base branch, **only if its head is still the commit the user saw**; the work branch is deleted.
-   **Discard** closes the pull request and deletes the branch. No tool can publish or discard.
+   A failed or still-running GitHub check/deployment blocks publishing. If GitHub reports no checks, the UI's human review
+   remains the only gate; the agent must say that automated lint/build verification was not available. **Discard** closes
+   the pull request and deletes the branch. No agent tool can publish or discard.
 
 ## GitHub access (`src/lib/site/github.ts`)
 
@@ -28,6 +30,10 @@ statuses**, **Deployments** and **Checks** read show checks and previews. Refuse
 `.github/workflows/*` (they run code in CI and need another scope), real `.env*` files (`.env.example/.sample/.template`
 are fine). At most 25 files per commit, 1 MB per file. `KNIFE_GITHUB_API_URL` overrides the API base (GitHub
 Enterprise, tests).
+
+Writes read the current Git tree and retain the existing file mode (including executable scripts); new files use `100644`.
+If GitHub reports a truncated tree, the write is refused instead of silently changing modes. The publish endpoint re-reads
+checks for the exact reviewed head and refuses failed or pending states. A missing check is not represented as a pass.
 
 ## Audit (`src/lib/site/audit/`)
 

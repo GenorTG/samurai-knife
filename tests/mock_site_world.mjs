@@ -15,24 +15,27 @@ function sha(text) {
   return createHash("sha1").update(text).digest("hex");
 }
 
-export function createGithub(initialFiles) {
+export function createGithub(initialFiles, initialModes = {}) {
   const commits = new Map(); // sha -> { files: Map(path->content), parents: [], message, date }
   const trees = new Map(); // tree sha -> Map
+  const treeModes = new Map(); // tree sha -> Map(path->git mode)
   const branches = new Map();
   const pulls = [];
   const deployments = []; // { id, sha, statuses: [] }
   const calls = [];
+  const checksControl = { state: "success" };
   // Repository "Website" and GitHub Pages domain (site ownership proof, src/lib/site/ownership.ts); tests may change them.
   const meta = { homepage: process.env.MOCK_REPO_HOMEPAGE ?? "", pagesCname: process.env.MOCK_PAGES_CNAME ?? "" };
   let seq = 0;
-  const mkCommit = (files, parents, message) => {
+  const mkCommit = (files, parents, message, modes = new Map([...files.keys()].map((path) => [path, "100644"]))) => {
     const treeSha = sha(`tree${seq++}${JSON.stringify([...files])}`);
     trees.set(treeSha, files);
+    treeModes.set(treeSha, modes);
     const s = sha(`commit${seq++}${message}${treeSha}`);
     commits.set(s, { files, parents, message, date: new Date().toISOString(), tree: treeSha });
     return s;
   };
-  branches.set("main", mkCommit(new Map(Object.entries(initialFiles)), [], "initial"));
+  branches.set("main", mkCommit(new Map(Object.entries(initialFiles)), [], "initial", new Map(Object.keys(initialFiles).map((path) => [path, initialModes[path] ?? "100644"]))));
   const ancestors = (s) => {
     const out = [];
     const walk = (x) => {
@@ -77,12 +80,14 @@ export function createGithub(initialFiles) {
       return s ? [200, { object: { sha: s } }] : [404, { message: "Not Found" }];
     }
     if ((m = /^\/git\/trees\/(.+)$/.exec(rest)) && method === "GET") {
-      const s = resolveRef(decodeURIComponent(m[1]));
-      if (!s) return [404, { message: "Not Found" }];
-      const files = commits.get(s).files;
+      const ref = decodeURIComponent(m[1]);
+      const s = resolveRef(ref);
+      const treeSha = trees.has(ref) ? ref : (s ? commits.get(s).tree : null);
+      if (!treeSha) return [404, { message: "Not Found" }];
+      const files = trees.get(treeSha);
       const dirs = new Set();
       for (const path of files.keys()) path.split("/").slice(0, -1).forEach((_, i, parts) => dirs.add(parts.slice(0, i + 1).join("/")));
-      return [200, { truncated: false, tree: [...[...dirs].map((d) => ({ path: d, type: "tree" })), ...[...files].map(([path, c]) => ({ path, type: "blob", size: Buffer.byteLength(c) }))] }];
+      return [200, { truncated: false, tree: [...[...dirs].map((d) => ({ path: d, type: "tree" })), ...[...files].map(([path, c]) => ({ path, type: "blob", mode: treeModes.get(treeSha)?.get(path) ?? "100644", size: Buffer.byteLength(c) }))] }];
     }
     if ((m = /^\/contents\/(.+)$/.exec(rest)) && method === "GET") {
       const s = resolveRef(url.searchParams.get("ref") ?? "main");
@@ -115,12 +120,14 @@ export function createGithub(initialFiles) {
     }
     if (rest === "/git/trees" && method === "POST") {
       const files = new Map(trees.get(body.base_tree) ?? []);
+      const modes = new Map(treeModes.get(body.base_tree) ?? []);
       for (const e of body.tree) {
-        if (e.sha === null) files.delete(e.path);
-        else files.set(e.path, e.content);
+        if (e.sha === null) { files.delete(e.path); modes.delete(e.path); }
+        else { files.set(e.path, e.content); modes.set(e.path, e.mode); }
       }
       const treeSha = sha(`tree${seq++}`);
       trees.set(treeSha, files);
+      treeModes.set(treeSha, modes);
       return [201, { sha: treeSha }];
     }
     if (rest === "/git/commits" && method === "POST") {
@@ -159,7 +166,8 @@ export function createGithub(initialFiles) {
       if (m[2] && method === "PUT") {
         const head = branches.get(pr.head);
         if (body.sha && body.sha !== head) return [409, { message: "Head branch was modified" }];
-        const merged = mkCommit(new Map(commits.get(head).files), [branches.get(pr.base)], body.commit_title ?? pr.title);
+        const headCommit = commits.get(head);
+        const merged = mkCommit(new Map(headCommit.files), [branches.get(pr.base)], body.commit_title ?? pr.title, new Map(treeModes.get(headCommit.tree) ?? []));
         branches.set(pr.base, merged);
         Object.assign(pr, { state: "closed", merged: true, mergedAt: new Date().toISOString(), headSha: head });
         return [200, { sha: merged, merged: true }];
@@ -170,13 +178,13 @@ export function createGithub(initialFiles) {
       }
       return [200, pullJson(pr)];
     }
-    if ((m = /^\/commits\/([0-9a-f]+)\/status$/.exec(rest))) return [200, { state: "success", statuses: [{ context: "Vercel", state: "success", target_url: `https://vercel.example.test/${m[1].slice(0, 7)}`, description: "Deployment has completed" }] }];
+    if ((m = /^\/commits\/([0-9a-f]+)\/status$/.exec(rest))) return [200, { state: checksControl.state, statuses: checksControl.state === "none" ? [] : [{ context: "CI", state: checksControl.state, target_url: `https://ci.example.test/${m[1].slice(0, 7)}`, description: checksControl.state }] }];
     if ((m = /^\/commits\/([0-9a-f]+)\/check-runs$/.exec(rest))) return [200, { check_runs: [] }];
     if (rest === "/deployments") return [200, deployments.filter((d) => d.sha === url.searchParams.get("sha")).map((d) => ({ id: d.id, sha: d.sha, environment: d.environment }))];
     if ((m = /^\/deployments\/(\d+)\/statuses$/.exec(rest))) return [200, deployments[Number(m[1]) - 1]?.statuses ?? []];
     return [404, { message: `mock: no route ${method} ${rest}` }];
   }
-  return { handle, branches, commits, pulls, calls, meta, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
+  return { handle, branches, commits, pulls, calls, meta, checksControl, treeModes, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
 }
 
 export const SITE_PAGES = {

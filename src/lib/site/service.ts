@@ -452,6 +452,9 @@ export async function publish(accountId: string, expectedHead: string) {
   let pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
   if (!pull) pull = await openPull(accountId, "Website update from Smart Knife", "");
   if (pull.mergeable === false) throw new SiteError(msg("GitHub cannot merge this pull request (conflicts with the base branch): resolve them on GitHub"), 409);
+  const checks = await github.commitChecks(x.token, x.c.repo, head);
+  if (checks.state === "failure") throw new SiteError("GitHub checks failed for this exact commit; fix them and review the updated preview before publishing", 409);
+  if (checks.state === "pending") throw new SiteError("GitHub checks or preview deployment are still running; wait for them to finish before publishing", 409);
   const merged = await github.mergePull(x.token, x.c.repo, pull.number, head, `${pull.title} (#${pull.number})`);
   await github.deleteBranch(x.token, x.c.repo, work.branch);
   mutateSite(accountId, (s) => {

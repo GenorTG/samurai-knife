@@ -162,6 +162,22 @@ test("write + replace go to a work branch; main is untouched; secrets and workfl
   await assert.rejects(service.writeFiles("genor", "", [{ path: "a.txt", content: "x" }]), /commit message/);
 });
 
+test("writing a tracked executable preserves its Git mode", async () => {
+  const world = createGithub({ "scripts/deploy.sh": "echo old\n" }, { "scripts/deploy.sh": "100755" });
+  const server = await serveGithub(world);
+  const previousApi = process.env.KNIFE_GITHUB_API_URL;
+  process.env.KNIFE_GITHUB_API_URL = `http://127.0.0.1:${server.port}`;
+  try {
+    await github.createBranch(TOKEN, REPO, "mode-test", await github.branchSha(TOKEN, REPO, "main"));
+    await github.commitFiles(TOKEN, REPO, "mode-test", "Update executable", [{ path: "scripts/deploy.sh", content: "echo new\n" }]);
+    const head = world.commits.get(world.branches.get("mode-test"));
+    assert.equal(world.treeModes.get(head.tree).get("scripts/deploy.sh"), "100755");
+  } finally {
+    process.env.KNIFE_GITHUB_API_URL = previousApi;
+    server.server.close();
+  }
+});
+
 test("pull request, changes with the preview URL, publish only at the reviewed head", async () => {
   const pr = await service.openPull("genor", "Projects page", "Adds /projekty and Finetune Studio.");
   assert.equal(pr.number, 1);
@@ -180,6 +196,19 @@ test("pull request, changes with the preview URL, publish only at the reviewed h
   const view = store.siteView(store.loadSite("genor"));
   assert.equal(view.work, null);
   assert.equal(view.lastAction.kind, "published");
+});
+
+test("publish refuses failed and pending checks", async () => {
+  await service.writeFiles("genor", "Add a checked page", [{ path: "app/checked/page.tsx", content: "export default function Checked() { return null; }\n" }]);
+  await service.openPull("genor", "Checked page", "");
+  const ch = await service.changes("genor");
+  gh.checksControl.state = "failure";
+  await assert.rejects(service.publish("genor", ch.work.head), /checks failed/);
+  assert.equal(gh.branches.has(ch.work.branch), true);
+  gh.checksControl.state = "pending";
+  await assert.rejects(service.publish("genor", ch.work.head), /still running/);
+  gh.checksControl.state = "success";
+  await service.discard("genor");
 });
 
 test("discard closes the pull request and deletes the branch, main untouched", async () => {

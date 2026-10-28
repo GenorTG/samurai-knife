@@ -203,10 +203,17 @@ export async function commitFiles(token: string, repo: string, branch: string, m
   if (!head) throw new SiteError(msgf("branch {branch} does not exist", { branch }), 404);
   const commit = await gh<Json>(token, "GET", `/repos/${r}/git/commits/${head}`, undefined, deps);
   const baseTree = String(((commit.tree ?? {}) as Json).sha ?? "");
+  const currentTree = await gh<Json>(token, "GET", `/repos/${r}/git/trees/${baseTree}?recursive=1`, undefined, deps);
+  const existingModes = new Map(
+    ((currentTree.tree ?? []) as Json[])
+      .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
+      .map((entry) => [String(entry.path), String(entry.mode ?? "100644")]),
+  );
+  if (currentTree.truncated === true) throw new SiteError("GitHub truncated the repository tree; refusing to rewrite files without their original modes", 409);
   const tree = changes.map((change) =>
     "delete" in change
       ? { path: checkPath(change.path, true), mode: "100644", type: "blob", sha: null }
-      : { path: checkPath(change.path, true), mode: "100644", type: "blob", content: change.content },
+      : { path: checkPath(change.path, true), mode: existingModes.get(checkPath(change.path, true)) ?? "100644", type: "blob", content: change.content },
   );
   const newTree = await gh<Json>(token, "POST", `/repos/${r}/git/trees`, { base_tree: baseTree, tree }, deps);
   const created = await gh<Json>(token, "POST", `/repos/${r}/git/commits`, { message, tree: String(newTree.sha), parents: [head] }, deps);
