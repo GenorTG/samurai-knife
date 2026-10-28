@@ -81,7 +81,7 @@ SHA-256 of the raw token only).
   `knife_vision_describe`) the describer is the active profile's helper, else the active model when it is `native`
   (`describerFor`). The helper call goes through the same provider path as the assistant (host rules, provider budget,
   SSRF-safe transport, usage ledger); its answer describes third-party pixels and is wrapped in the untrusted-content
-  envelope. Images are kept in server memory only (30 minutes), never in the account's files.
+  envelope. The rendered file exists in a per-job temporary directory until the screenshot job finishes; the returned image is cached in server memory for 30 minutes, never in the account's files.
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.

@@ -55,6 +55,8 @@ test("a real browser behind the proxy: page rendered, other ports refused, navig
     }
     if (path === "/s.css") return [200, "text/css", "body{background:#fafafa;font-family:sans-serif} h1{color:#c00}"];
     if (path === "/away") return [200, "text/html", `<script>location.href="http://127.0.0.1:${secret.port}/";</script>`];
+    if (path === "/repo/my-site") return [200, "text/html", `<script>location.href="/other-repo";</script>`];
+    if (path === "/other-repo") return [200, "text/html", "<title>outside repository</title>"];
     if (path === "/protected") {
       return req.headers["x-vercel-protection-bypass"] === "s3cret" ? [200, "text/html", "<h1>secret preview</h1>"] : [401, "text/html", "<h1>login</h1>"];
     }
@@ -78,6 +80,10 @@ test("a real browser behind the proxy: page rendered, other ports refused, navig
 
     await assert.rejects(
       takeScreenshot("owner", { url: `${origin}/away`, kind: "url", allowedOrigins: [origin] }, { viewport: "mobile", policy }),
+      /left the allowed site/,
+    );
+    await assert.rejects(
+      takeScreenshot("owner", { url: `${origin}/repo/my-site`, kind: "github", allowedOrigins: [origin], allowedPaths: ["/repo/my-site"] }, { viewport: "mobile", policy }),
       /left the allowed site/,
     );
     assert.equal(secret.hits.size, 0, "a navigation off the allowed origins went out");

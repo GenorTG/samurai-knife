@@ -165,7 +165,8 @@ screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, too
   cannot screenshot deployment URLs reported by GitHub because ownership is not confirmed. Admins and private mode: any
   address the network policy allows, like audits.
   `path` is a site path only (`/about`; no scheme, host or `//`). The main frame may navigate only between the target's
-  origin and its `www.`/http twins: a redirect or script that leaves them ends the job with an error, no picture.
+  origin and its `www.`/http twins; for GitHub the navigation must also remain under the connected repository's exact
+  `/<owner>/<repo>` path. A redirect or script that leaves the allowed origin/path ends the job with an error, no picture.
 - **Engine**: the system's Chromium (`/usr/lib/chromium/chromium`, Debian package `chromium`; `KNIFE_CHROMIUM` overrides,
   it must be visible in the sandbox) driven by the Python `playwright` package (only its driver; no browser download)
   as a Python-lane job: heavy lane, the account's share of the work queue, and in public mode the bubblewrap sandbox,
@@ -188,8 +189,9 @@ screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, too
   75 s; RLIMIT_AS is lifted for this job only (Chromium reserves tens of GB it never uses), its heap is capped by flags.
 - **Budget**: outbound purpose `screenshot` (public mode, non-admins): 20 per account per hour, 300 per hour server-wide,
   plus the destination host bucket. Subresources are bounded by the per-job caps, not the shared host buckets.
-- **Result**: `imageArtifact` (`vis_` + 20 hex: the in-memory image store, 8 per account, 30 minutes, 64 MB server-wide,
-  never written to the data dir), target kind, URL, final URL, HTTP status, image size, request counts, and the page
+- **Result**: `imageArtifact` (`vis_` + 20 hex: the in-memory image store, 8 per account, 30 minutes, 64 MB server-wide;
+  during rendering an output file is held in the job's temporary directory and that directory is removed when the job
+  finishes; nothing is kept in account files), target kind, URL, final URL, HTTP status, image size, request counts, and the page
   title inside the untrusted-content envelope. MCP: an image block too (`image:false` omits it). Descriptions: see
   ACCOUNTS.md "Vision".
 

@@ -30,6 +30,8 @@ export interface ScreenshotTarget {
   kind: ScreenshotTargetKind;
   /** Origins the main frame may navigate to (the target and its www/http twins). */
   allowedOrigins: string[];
+  /** Optional decoded path prefixes the main frame must stay under (used for linked GitHub repositories). */
+  allowedPaths?: string[];
   /** The Vercel protection bypass, sent to this host only. */
   hostHeaders?: NetDeps["hostHeaders"];
 }
@@ -132,7 +134,10 @@ export async function resolveScreenshotTarget(accountId: string, input: TargetIn
     const parts = githubUrl.pathname.split("/").filter(Boolean).slice(0, 2).map((part) => {
       try { return decodeURIComponent(part).toLowerCase(); } catch { return ""; }
     });
-    if (parts[0] === repo[0] && parts[1] === repo[1]) return { url, kind: "github", allowedOrigins: ["https://github.com"] };
+    if (parts[0] === repo[0] && parts[1] === repo[1]) {
+      const repoPath = `/${parts[0]}/${parts[1]}`;
+      return { url, kind: "github", allowedOrigins: ["https://github.com"], allowedPaths: [repoPath] };
+    }
   }
 
   const pages = await service.repoPagesHost(accountId);

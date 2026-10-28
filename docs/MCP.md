@@ -84,7 +84,8 @@ docs/WEBSITE-STUDIO.md.
   `question`, and always when the user named a vision helper on the active provider profile (docs/ACCOUNTS.md
   "Vision"), so a text-only agent (OpenCode Go with a deepseek model, for example) can still reason about the page.
 - `knife_vision_describe {image, question?}`: the same describer on an image the account already has: a screenshot's
-  `imageArtifact` (`vis_...`, kept 30 minutes in server memory) or a Craft file id (`knife_craft_files`, e.g. a
+  `imageArtifact` (`vis_...`, cached 30 minutes in server memory; the temporary render file is deleted when its job
+  finishes) or a Craft file id (`knife_craft_files`, e.g. a
   `craft_screenshot` saved with `craft_file_save`).
 - The in-page assistant gets the same tool; its result depends on the active profile: an image part in the next model
   round for a profile that sees images, the helper's description for a text-only one, neither (with how to set it up)

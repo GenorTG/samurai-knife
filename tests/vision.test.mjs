@@ -243,6 +243,7 @@ test("targets: twins, paths, and a public-mode user is held to their own verifie
     const repoPage = await targets.resolveScreenshotTarget("vis", { target: "url", url: "https://github.com/GenorTG/my-site/tree/main" });
     assert.equal(repoPage.kind, "github");
     assert.deepEqual(repoPage.allowedOrigins, ["https://github.com"]);
+    assert.deepEqual(repoPage.allowedPaths, ["/genortg/my-site"]);
     await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "https://github.com/GenorTG/other-repo" }), /connected production site only/);
     await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "https://evil.example/" }), /connected production site only/);
     await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "http://169.254.169.254/latest" }), /connected production site only/);
