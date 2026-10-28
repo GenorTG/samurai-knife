@@ -60,6 +60,7 @@ const OMITTED_SNAPSHOT = JSON.stringify({
 export type LoopOutcome = "done" | "aborted" | "error" | "limit" | "login_required" | "provider_missing";
 
 export interface LoopOptions {
+  chatId?: string;
   /** Conversation so far, ending with the new user message. */
   history: TranscriptMessage[];
   accountName: string;
@@ -239,13 +240,13 @@ export function turnContext(conversation: readonly TranscriptMessage[], turnStar
 }
 
 /** Trust-mode gate (see approval-policy.ts). Returns a ready tool result when the user said no, null to proceed. */
-async function gateCall(call: ToolCall, args: Record<string, unknown>, signal: AbortSignal, server?: { info: KnifeToolEffectInfo | undefined; turn: TurnContext }): Promise<ToolRunResult | null> {
+async function gateCall(call: ToolCall, args: Record<string, unknown>, signal: AbortSignal, chatId: string, server?: { info: KnifeToolEffectInfo | undefined; turn: TurnContext }): Promise<ToolRunResult | null> {
   const verdict = server
-    ? assessServerCall(call.function.name, server.info, args, getTrustMode(), server.turn)
-    : assessCall(call.function.name, args, call.function.arguments, getTrustMode());
+    ? assessServerCall(call.function.name, server.info, args, getTrustMode(chatId), server.turn)
+    : assessCall(call.function.name, args, call.function.arguments, getTrustMode(chatId));
   if (!verdict.ask) return null;
-  if (isRunAllowed() && !verdict.destructive) return null;
-  const decision = await requestApproval({ title: verdict.title, detail: verdict.detail, destructive: verdict.destructive }, signal);
+  if (isRunAllowed(chatId) && !verdict.destructive) return null;
+  const decision = await requestApproval({ title: verdict.title, detail: verdict.detail, destructive: verdict.destructive }, signal, chatId);
   return decision === "deny" ? { ok: false, content: DENIED } : null;
 }
 
@@ -260,12 +261,12 @@ async function executeCall(
   if (!parsed.ok) return { ok: false, content: JSON.stringify({ ok: false, error: parsed.error }) };
   const name = call.function.name;
   if (isUiTool(name)) {
-    const blocked = await gateCall(call, parsed.args, options.signal);
+    const blocked = await gateCall(call, parsed.args, options.signal, options.chatId ?? "default");
     if (blocked) return blocked;
-    return runUiTool(name, parsed.args, { navigate: options.navigate, signal: options.signal });
+    return runUiTool(name, parsed.args, { navigate: options.navigate, signal: options.signal, chatId: options.chatId });
   }
   if (serverToolNames.has(name)) {
-    const blocked = await gateCall(call, parsed.args, options.signal, { info: server.effects[name], turn: server.turn() });
+    const blocked = await gateCall(call, parsed.args, options.signal, options.chatId ?? "default", { info: server.effects[name], turn: server.turn() });
     if (blocked) return blocked;
     return runServerTool(name, parsed.args, options.signal);
   }
@@ -301,7 +302,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     handlers: StreamHandlers | null,
     extra: WireMessage[] = [],
   ): Promise<ApiResult<ChatReply>> => {
-    const request: ChatRequest = { ...base, messages: [{ role: "system", content: system }, ...toWire(working), ...extra] };
+    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system }, ...toWire(working), ...extra] };
     const result = await (handlers ? chatStream(request, handlers, signal) : chat(request, signal));
     if (result.ok && result.value.untrusted) stickyUntrusted = true;
     return result;
@@ -322,7 +323,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   };
 
   runStarted();
-  resetRunTrust();
+  resetRunTrust(options.chatId ?? "default");
   try {
     onActivity("Preparing…");
     const [{ defs: serverDefs, effects }, serverVersion] = await Promise.all([fetchServerToolCatalog(), fetchServerVersion(signal)]);

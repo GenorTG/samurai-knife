@@ -3,7 +3,7 @@ import type { TranscriptMessage } from "@/lib/agent-client/types";
 
 /** localStorage persistence for the widget. Every call is safe when storage is unavailable. */
 
-const UI_KEY = "sk.agent.ui.v1";
+export const UI_KEY = "sk.agent.ui.v1";
 const chatKey = (accountId: string) => `sk.agent.chat.v1.${accountId}`;
 
 export const MIN_WIDTH = 320;
@@ -15,9 +15,12 @@ export interface UiPrefs {
   height: number;
   /** Pinned beside the page (desktop) instead of floating over it. */
   dock: boolean;
+  /** Known conversation ids; the server remains the durable source of transcripts. */
+  chatIds: string[];
 }
 
-export const DEFAULT_PREFS: UiPrefs = { open: false, width: 400, height: 560, dock: false };
+export const DEFAULT_PREFS: UiPrefs = { open: false, width: 400, height: 560, dock: false, chatIds: ["default"] };
+const CHAT_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function clampSize(value: unknown, min: number, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(2000, Math.round(value))) : fallback;
@@ -30,9 +33,13 @@ export function loadPrefs(): UiPrefs {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_PREFS;
     const p = parsed as Record<string, unknown>;
+    const chatIds = Array.isArray(p.chatIds)
+      ? [...new Set(p.chatIds.filter((id): id is string => typeof id === "string" && CHAT_ID.test(id)))].slice(0, 50)
+      : ["default"];
     return {
       open: p.open === true,
       dock: p.dock === true,
+      chatIds: chatIds.length > 0 ? chatIds : ["default"],
       width: clampSize(p.width, MIN_WIDTH, DEFAULT_PREFS.width),
       height: clampSize(p.height, MIN_HEIGHT, DEFAULT_PREFS.height),
     };
@@ -43,10 +50,20 @@ export function loadPrefs(): UiPrefs {
 
 export function savePrefs(prefs: UiPrefs): void {
   try {
-    window.localStorage.setItem(UI_KEY, JSON.stringify(prefs));
+    const latest = loadPrefs();
+    const chatIds = [...new Set([...latest.chatIds, ...prefs.chatIds])].slice(0, 50);
+    window.localStorage.setItem(UI_KEY, JSON.stringify({ ...prefs, chatIds }));
   } catch {
     /* Quota or privacy mode: the widget still works, it just forgets. */
   }
+}
+
+export function subscribePrefs(listener: (prefs: UiPrefs) => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === UI_KEY || event.key === null) listener(loadPrefs());
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
 }
 
 function isToolCall(value: unknown): boolean {

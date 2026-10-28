@@ -203,8 +203,8 @@ export async function logout(): Promise<ApiResult<null>> {
   return { ok: true, value: null };
 }
 
-export async function fetchConversation(): Promise<ApiResult<DurableConversation>> {
-  const r = await call("/api/agent/conversation");
+export async function fetchConversation(chatId = "default"): Promise<ApiResult<DurableConversation>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`);
   if ("failure" in r) return { ok: false, failure: r.failure };
   if (!r.res.ok || !isRecord(r.body) || !Array.isArray(r.body.messages) || !Array.isArray(r.body.actions)) {
     return { ok: false, failure: failureFrom(r.res, r.body) };
@@ -217,14 +217,14 @@ export async function fetchConversation(): Promise<ApiResult<DurableConversation
 }
 
 /** Saves the browser-owned part only; the taint flag is the server's (/api/agent/chat). */
-export async function saveConversation(content: ConversationContent): Promise<ApiResult<null>> {
-  const r = await call("/api/agent/conversation", { method: "PUT", body: content });
+export async function saveConversation(content: ConversationContent, chatId = "default"): Promise<ApiResult<null>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "PUT", body: content });
   if ("failure" in r) return { ok: false, failure: r.failure };
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
-export async function resetConversation(): Promise<ApiResult<null>> {
-  const r = await call("/api/agent/conversation", { method: "DELETE" });
+export async function resetConversation(chatId = "default"): Promise<ApiResult<null>> {
+  const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "DELETE" });
   if ("failure" in r) return { ok: false, failure: r.failure };
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
@@ -255,6 +255,7 @@ function untrustedHeader(res: Response): boolean {
 }
 
 export interface ChatRequest {
+  chatId?: string;
   messages: (WireMessage | { role: "system"; content: string })[];
   tools?: FunctionToolDef[];
   temperature?: number;

@@ -137,6 +137,7 @@ export interface UiToolContext {
   /** Client-side navigation (router.push). */
   navigate: (href: string) => void;
   signal?: AbortSignal;
+  chatId?: string;
 }
 
 type Args = Record<string, unknown>;
@@ -332,7 +333,7 @@ export async function runUiTool(name: string, args: Args, ctx: UiToolContext): P
         const message = stringArg(args, "message")?.trim();
         if (!message) return error('wait_for_user needs {"message": string}.');
         const id = stringArg(args, "id");
-        const r = await requestWait({ message, targetId: id }, ctx.signal);
+        const r = await requestWait({ message, targetId: id }, ctx.signal, ctx.chatId ?? "default");
         if (r.resumedBy === "aborted") return error("Cancelled by the user.");
         if (r.resumedBy === "timeout") return error("The user did not respond within 30 minutes; stop and tell them you are waiting.");
         return out(true, {

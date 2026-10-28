@@ -65,6 +65,7 @@ const bodySchema = z.object({
   stream: z.boolean().optional(),
   // Sent by pages loaded before the Responses continuation was removed (2026-10-25): accepted and ignored.
   previousResponseId: z.string().max(256).nullable().optional(),
+  chatId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
 }).strict();
 
 export async function POST(request: Request): Promise<Response> {
@@ -106,7 +107,7 @@ export async function POST(request: Request): Promise<Response> {
     temperature: parsed.data.temperature,
     maxTokens: parsed.data.maxTokens,
   };
-  const providerId = providerConversationId(provider.baseUrl, provider.model);
+  const providerId = providerConversationId(provider.baseUrl, provider.model, parsed.data.chatId ?? "default");
   // The conversation's taint is server-owned (never written by the browser): every round's messages are checked and
   // the sticky flag goes back as a header, so the widget's approval policy holds across turns and reloads.
   const seen = carriesUntrusted(parsed.data.messages, getToolEffects(toolContextFor(auth.account)));

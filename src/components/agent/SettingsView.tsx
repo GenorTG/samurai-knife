@@ -557,7 +557,7 @@ function ProviderForm({
       </Button>
 
       <p className="text-[11px] leading-snug text-faint">
-        {tr("Chat history is kept on this server per account and provider; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
+        {tr("Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
       </p>
 
       {!firstRun ? (

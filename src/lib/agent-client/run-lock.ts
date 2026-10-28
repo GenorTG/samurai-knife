@@ -26,8 +26,9 @@ const LEASE_TTL_MS = 20_000;
 const LEASE_BEAT_MS = 2_000;
 const LEASE_VERIFY_MS = 30;
 
-const lockName = (accountId: string) => `samurai-knife-agent-run-${accountId}`;
-const leaseKey = (accountId: string) => `sk.agent.lease.v1.${accountId}`;
+const scope = (accountId: string, chatId: string) => chatId === "default" ? accountId : `${accountId}-${chatId}`;
+const lockName = (accountId: string, chatId: string) => `samurai-knife-agent-run-${scope(accountId, chatId)}`;
+const leaseKey = (accountId: string, chatId: string) => `sk.agent.lease.v1.${scope(accountId, chatId)}`;
 
 export function lockBackend(): LockBackend {
   return typeof navigator !== "undefined" && typeof navigator.locks?.request === "function" ? "web-locks" : "lease";
@@ -37,10 +38,10 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /* ---------------------------------------------------------------- web locks */
 
-function acquireWebLock(accountId: string): Promise<RunLease | null> {
+function acquireWebLock(accountId: string, chatId: string): Promise<RunLease | null> {
   return new Promise((resolve) => {
     navigator.locks
-      .request(lockName(accountId), { ifAvailable: true }, (lock) => {
+      .request(lockName(accountId, chatId), { ifAvailable: true }, (lock) => {
         if (!lock) {
           resolve(null);
           return undefined;
@@ -52,10 +53,10 @@ function acquireWebLock(accountId: string): Promise<RunLease | null> {
   });
 }
 
-async function webLockHeld(accountId: string): Promise<boolean> {
+async function webLockHeld(accountId: string, chatId: string): Promise<boolean> {
   try {
     const snapshot = await navigator.locks.query();
-    return (snapshot.held ?? []).some((l) => l.name === lockName(accountId));
+    return (snapshot.held ?? []).some((l) => l.name === lockName(accountId, chatId));
   } catch {
     return false;
   }
@@ -68,9 +69,9 @@ interface Lease {
   at: number;
 }
 
-function readLease(accountId: string): Lease | null {
+function readLease(accountId: string, chatId: string): Lease | null {
   try {
-    const raw = window.localStorage.getItem(leaseKey(accountId));
+    const raw = window.localStorage.getItem(leaseKey(accountId, chatId));
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -83,11 +84,11 @@ function readLease(accountId: string): Lease | null {
 
 const liveElsewhere = (lease: Lease | null): boolean => lease !== null && lease.tab !== TAB_ID && Date.now() - lease.at < LEASE_TTL_MS;
 
-async function acquireLease(accountId: string): Promise<RunLease | null> {
-  if (liveElsewhere(readLease(accountId))) return null;
+async function acquireLease(accountId: string, chatId: string): Promise<RunLease | null> {
+  if (liveElsewhere(readLease(accountId, chatId))) return null;
   const write = (): void => {
     try {
-      window.localStorage.setItem(leaseKey(accountId), JSON.stringify({ tab: TAB_ID, at: Date.now() } satisfies Lease));
+      window.localStorage.setItem(leaseKey(accountId, chatId), JSON.stringify({ tab: TAB_ID, at: Date.now() } satisfies Lease));
     } catch {
       /* storage blocked: fail open */
     }
@@ -95,7 +96,7 @@ async function acquireLease(accountId: string): Promise<RunLease | null> {
   write();
   // Two tabs can write within the same moment; the last write wins, so look again before believing we hold it.
   await sleep(LEASE_VERIFY_MS);
-  const after = readLease(accountId);
+  const after = readLease(accountId, chatId);
   if (after && after.tab !== TAB_ID) return null;
   let lastRenew = Date.now();
   const timer = setInterval(write, LEASE_BEAT_MS);
@@ -108,7 +109,7 @@ async function acquireLease(accountId: string): Promise<RunLease | null> {
     release: () => {
       clearInterval(timer);
       try {
-        if (readLease(accountId)?.tab === TAB_ID) window.localStorage.removeItem(leaseKey(accountId));
+        if (readLease(accountId, chatId)?.tab === TAB_ID) window.localStorage.removeItem(leaseKey(accountId, chatId));
       } catch {
         /* ignore */
       }
@@ -119,19 +120,20 @@ async function acquireLease(accountId: string): Promise<RunLease | null> {
 /* ---------------------------------------------------------------- public API */
 
 /** Take the run lock for this account, or null when another tab already holds it. Never waits. */
-export function tryAcquireRun(accountId: string): Promise<RunLease | null> {
-  return lockBackend() === "web-locks" ? acquireWebLock(accountId) : acquireLease(accountId);
+export function tryAcquireRun(accountId: string, chatId = "default"): Promise<RunLease | null> {
+  return lockBackend() === "web-locks" ? acquireWebLock(accountId, chatId) : acquireLease(accountId, chatId);
 }
 
 /** Is another tab running a turn for this account? (Ask only while this tab holds no lock of its own.) */
-export async function runHeldElsewhere(accountId: string): Promise<boolean> {
-  return lockBackend() === "web-locks" ? webLockHeld(accountId) : liveElsewhere(readLease(accountId));
+export async function runHeldElsewhere(accountId: string, chatId = "default"): Promise<boolean> {
+  return lockBackend() === "web-locks" ? webLockHeld(accountId, chatId) : liveElsewhere(readLease(accountId, chatId));
 }
 
 /* ------------------------------------------------------------ announcements */
 
 export interface RunAnnouncement {
   accountId: string;
+  chatId: string;
   tab: string;
   running: boolean;
   activity: string | null;
@@ -150,8 +152,8 @@ function getChannel(): BroadcastChannel | null {
   return channel;
 }
 
-export function announceRun(accountId: string, running: boolean, activity: string | null): void {
-  getChannel()?.postMessage({ accountId, tab: TAB_ID, running, activity } satisfies RunAnnouncement);
+export function announceRun(accountId: string, running: boolean, activity: string | null, chatId = "default"): void {
+  getChannel()?.postMessage({ accountId, chatId, tab: TAB_ID, running, activity } satisfies RunAnnouncement);
 }
 
 export function subscribeRunAnnouncements(listener: (a: RunAnnouncement) => void): () => void {
@@ -161,9 +163,9 @@ export function subscribeRunAnnouncements(listener: (a: RunAnnouncement) => void
     const d = event.data;
     if (typeof d !== "object" || d === null) return;
     const a = d as Record<string, unknown>;
-    if (typeof a.accountId !== "string" || typeof a.tab !== "string" || typeof a.running !== "boolean") return;
+    if (typeof a.accountId !== "string" || typeof a.chatId !== "string" || typeof a.tab !== "string" || typeof a.running !== "boolean") return;
     if (a.tab === TAB_ID) return;
-    listener({ accountId: a.accountId, tab: a.tab, running: a.running, activity: typeof a.activity === "string" ? a.activity : null });
+    listener({ accountId: a.accountId, chatId: a.chatId, tab: a.tab, running: a.running, activity: typeof a.activity === "string" ? a.activity : null });
   };
   ch.addEventListener("message", onMessage);
   return () => ch.removeEventListener("message", onMessage);

@@ -79,7 +79,7 @@ export async function runExternalCall(call: ExternalCall, approve: ApproveFn, si
   }
   if (runtime.get().run !== "idle") return { status: "busy", ok: false, content: "The in-page assistant is running in this tab; try again when it finishes." };
   const accountId = runtime.get().accountId;
-  const lease = accountId ? await tryAcquireRun(accountId) : null;
+  const lease = accountId ? await tryAcquireRun(accountId, runtime.get().chatId) : null;
   if (accountId && !lease) return { status: "busy", ok: false, content: "The in-page assistant is running in another tab of this account; try again when it finishes." };
   try {
     const verdict = assessCall(call.tool, call.args, JSON.stringify(call.args), getTrustMode());
