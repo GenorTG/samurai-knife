@@ -35,6 +35,7 @@ import { craftToolAvailable } from "./craft-live-tools";
 import { assessCall } from "./approval-policy";
 import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
 import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
+import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -324,7 +325,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   resetRunTrust();
   try {
     onActivity("Preparing…");
-    const { defs: serverDefs, effects } = await fetchServerToolCatalog();
+    const [{ defs: serverDefs, effects }, serverVersion] = await Promise.all([fetchServerToolCatalog(), fetchServerVersion(signal)]);
+    const versions = { version: loadedVersion(), serverVersion };
     const serverGate = { effects, turn: () => turnContext(working, turnStart, effects, stickyUntrusted) };
     const uiNames = new Set(UI_TOOL_DEFS.map((d) => d.function.name));
     const serverTools = serverDefs.filter((d) => !uiNames.has(d.function.name));
@@ -344,7 +346,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       roundStarted();
       const result = await callModel(
         { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
-        buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale() }),
+        buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
         {
           onText: appendDraft,
           onReasoning: addReasoning,
@@ -420,7 +422,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
     const wrapUp = await callModel(
       { temperature: 0.2 },
-      buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, locale: clientLocale() }),
+      buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, locale: clientLocale(), ...versions }),
       null,
       [{ role: "user", content: "[Toolbox note, not from the user] The tool budget for this turn is exhausted. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
     );

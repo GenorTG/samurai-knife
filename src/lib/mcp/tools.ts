@@ -15,6 +15,8 @@ import { searchToolsLoose } from "@/lib/registry";
 import { runIsolated } from "@/lib/isolate/server";
 import { resolveJsonPointer } from "@/lib/json-pointer";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { appVersion } from "@/lib/version";
+import { WHATS_NEW } from "@/lib/whats-new";
 
 export type { KnifeToolContext, KnifeToolDefinition, KnifeToolEffectInfo } from "./define";
 
@@ -71,6 +73,15 @@ const jsonPointerSchema = z.object({
 }).strict();
 
 const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
+  defineTool({
+    name: "knife_whats_new",
+    scope: "pure",
+    effect: "read",
+    description:
+      "The Smart Knife version this server runs and what changed for agents in recent releases (new and changed tools, newest first). Call it when the user asks whether you have new tools or what changed, and answer from it: never say nothing changed without checking. A client that listed tools before an update may still hold the old list: reconnect (or reload the page) to get new ones.",
+    schema: z.object({ count: z.number().int().min(1).max(20).optional() }).strict(),
+    run: ({ count }) => ({ version: appVersion(), releases: WHATS_NEW.slice(0, count ?? 5) }),
+  }),
   defineTool({
     name: "knife_search_tools",
     scope: "pure",

@@ -67,8 +67,20 @@ Score and improve the user's own website from its GitHub repository: `knife_site
 repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,
 security headers, Lighthouse via PageSpeed), `knife_site_audit_get`, `knife_site_page`, `knife_site_files`,
 `knife_site_read`, `knife_site_search`, `knife_site_replace` / `knife_site_write` (commit to the `knife/...` work branch,
-never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL). Publishing and discarding are
-the user's buttons in the studio. Contract: docs/WEBSITE-STUDIO.md.
+never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL). With Vercel connected in the
+Website tab: `knife_site_previews` (the work branch's previews and the head commit's state), `knife_site_deploy_logs`,
+`knife_site_deploy` (a preview build of the work branch, never production); previews behind Deployment Protection are
+read with the stored bypass. Publishing and discarding are the user's buttons in the studio. Contract:
+docs/WEBSITE-STUDIO.md.
+
+## What's new (`knife_whats_new`, `src/lib/whats-new.ts`)
+One entry per release that changes what agents can do, newest first, naming the tools. `knife_whats_new {count?}`
+returns the server's version and the entries; the MCP instructions point to it, and the in-app assistant's system
+prompt carries the version its tab was loaded with plus the newest three entries, so "do you have new tools?" is
+answered from facts. A tab older than the server (after a release) shows a reload banner (`UpdateBanner`, checks
+`GET /api/system/version` every 5 minutes while visible), and the assistant tells the user to reload. Outside clients
+cache their tool list: reconnect after an update. `tests/whats_new.test.mjs` requires the newest entry to be the
+release in package.json and every tool it names to exist.
 
 ## Live view of the user's screen
 - Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast
