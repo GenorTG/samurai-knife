@@ -59,6 +59,10 @@ export interface ProviderInfo {
   keyHint: string | null;
   extraHeaderNames: string[];
   reasoningEffort: ReasoningEffort | null;
+  /** `native` = the model sees images; `none` = text-only (src/lib/vision/config.ts). */
+  vision: "native" | "none";
+  /** Profile id of the vision helper (describes images for a text-only model), or null. */
+  visionHelper: string | null;
 }
 
 /** A saved provider profile (hints only, never the key); `active` = the assistant's provider. */
@@ -87,6 +91,8 @@ export interface ProviderInput {
   apiKey?: string;
   extraHeaders?: Record<string, string>;
   reasoningEffort?: ReasoningEffort | "";
+  vision?: "native" | "none" | "";
+  visionHelper?: string;
 }
 
 export interface ProviderTestResult {

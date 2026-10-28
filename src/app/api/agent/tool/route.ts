@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!KNIFE_TOOLS.some((tool) => tool.name === parsed.data.name)) {
     return json({ ok: false, error: `Unknown tool: ${parsed.data.name}` }, 404);
   }
-  const ctx = toolContextFor(auth.account);
+  const ctx = { ...toolContextFor(auth.account), surface: "assistant" as const };
   // Role filter (tool scopes, src/lib/mcp/define.ts): admin-only tools reach the server owner's GitHub login and disk.
   if (!toolsFor(ctx).some((tool) => tool.name === parsed.data.name)) {
     return json({ ok: false, error: `${parsed.data.name} ${ADMIN_TOOL_MESSAGE}.`, code: "admin_required" }, 403);

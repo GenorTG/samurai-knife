@@ -56,7 +56,7 @@ export async function POST(request: Request): Promise<Response> {
       case "update": {
         const current = providerProfileConfig(account, body.id);
         if (!current) return jsonError(msg("Unknown profile."), 404);
-        const result = await providerFromInput(auth.account, body.provider, current);
+        const result = await providerFromInput(auth.account, body.provider, current, body.id);
         if ("response" in result) return result.response;
         const saved = saveProviderProfile(account.id, { profileId: body.id, name: body.name, config: result.config });
         return json({ account: toPublicAccount(saved.account, authMode()), profileId: saved.profileId });

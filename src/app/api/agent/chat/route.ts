@@ -8,6 +8,9 @@ import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outb
 import { toolContextFor } from "@/lib/accounts/authz";
 import { carriesUntrusted, UNTRUSTED_HEADER } from "@/lib/agent-client/server-tool-policy";
 import { getToolEffects } from "@/lib/mcp/tools";
+import { visionModeOf } from "@/lib/vision/config";
+import { getImage } from "@/lib/vision/images";
+import { withLatestImages } from "@/lib/vision/inject";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,15 +88,24 @@ export async function POST(request: Request): Promise<Response> {
     return limited;
   }
   const net = providerNet(auth.account);
+  const accountId = auth.account.id;
+
+  // Vision (src/lib/vision/inject.ts): screenshots named by the latest tool results go to a model that sees as image
+  // parts; a text-only profile never gets one (its tools already answered with the helper's description).
+  const messages = visionModeOf(provider) === "native"
+    ? withLatestImages(parsed.data.messages, (id) => {
+      const image = getImage(accountId, id);
+      return image ? { mime: image.mime, data: image.bytes } : null;
+    }).messages
+    : parsed.data.messages;
 
   const input = {
     model: provider.model,
-    messages: parsed.data.messages,
+    messages,
     tools: parsed.data.tools,
     temperature: parsed.data.temperature,
     maxTokens: parsed.data.maxTokens,
   };
-  const accountId = auth.account.id;
   const providerId = providerConversationId(provider.baseUrl, provider.model);
   // The conversation's taint is server-owned (never written by the browser): every round's messages are checked and
   // the sticky flag goes back as a header, so the widget's approval policy holds across turns and reloads.

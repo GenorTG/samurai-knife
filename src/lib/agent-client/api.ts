@@ -102,6 +102,8 @@ function parseProvider(value: unknown): ProviderInfo | null {
       value.reasoningEffort === "low" || value.reasoningEffort === "medium" || value.reasoningEffort === "high"
         ? value.reasoningEffort
         : null,
+    vision: value.vision === "native" ? "native" : "none",
+    visionHelper: str(value.visionHelper),
   };
 }
 
