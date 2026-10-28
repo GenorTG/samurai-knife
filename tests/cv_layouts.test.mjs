@@ -44,7 +44,10 @@ test("the catalogue: 14 layouts, each fully described, the DOCX script knows the
     assert.ok(layout.CV_ACCENT_IDS.includes(info.defaultAccent), id);
     assert.ok(layout.CV_FONTS.includes(info.defaultFonts) && info.defaultFonts !== "auto", id);
     // ATS-safe means one plain column and no photo.
-    if (info.atsSafe) assert.equal(info.structure, "single", id), assert.equal(info.photo, false, id);
+    if (info.atsSafe) {
+      assert.equal(info.structure, "single", id);
+      assert.equal(info.photo, false, id);
+    }
   }
 });
 

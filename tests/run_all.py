@@ -105,6 +105,8 @@ SUITES: list[Suite] = [
     Suite("workflows", py(f"{F}/workflows_e2e.py"), "static", timeout=1500),
     Suite("site_studio", py(f"{F}/site_studio_e2e.py"), "static", timeout=900),
     Suite("github_app", py(f"{F}/github_app_e2e.py"), "static", timeout=900),
+    Suite("cv_projects", py(f"{F}/cv_projects_e2e.py"), "static", timeout=900),
+    Suite("cv_layouts_export", py("tests/cv_layouts_export_e2e.py"), "static", timeout=1800),
     Suite("ui_gaps", py("tests/ui_gaps_e2e.py", "{url}", "{mock}"), mock=True, data_env=True),
     Suite("agent_widget", py("tests/agent_widget_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
     Suite("agent_trust_modes", py("tests/agent_trust_modes_e2e.py", "{url}", "{mock}"), mock=True, timeout=1500),
