@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { senderAddress } from "@/lib/mail";
 import { notFound } from "next/navigation";
 import { AuthFrame, ForgotForm } from "@/components/account/AuthForms";
 import { isPublicMode } from "@/lib/accounts/mode";
@@ -15,7 +16,7 @@ export default async function ForgotPasswordPage() {
   if (!isPublicMode()) notFound();
   return (
     <AuthFrame title={t("Forgot password")} intro={t("We send a link to set a new password to the address of your account.")}>
-      <ForgotForm />
+      <ForgotForm sender={senderAddress()} />
     </AuthFrame>
   );
 }

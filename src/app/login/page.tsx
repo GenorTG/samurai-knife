@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { senderAddress } from "@/lib/mail";
 import { AuthFrame, LoginForm } from "@/components/account/AuthForms";
 import { GithubButton } from "@/components/account/GithubButton";
 import { githubErrorText } from "@/components/account/github-errors";
@@ -33,7 +34,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <p className="text-center text-xs text-faint">{t("or with your password")}</p>
         </div>
       ) : null}
-      <LoginForm publicMode={publicMode} next={next} />
+      <LoginForm publicMode={publicMode} next={next} sender={publicMode ? senderAddress() : ""} />
     </AuthFrame>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { senderAddress } from "@/lib/mail";
 import { notFound } from "next/navigation";
 import { AccountPerks, AuthFrame, RegisterChoices } from "@/components/account/AuthForms";
 import { githubErrorText } from "@/components/account/github-errors";
@@ -28,7 +29,7 @@ export default async function RegisterPage({ searchParams }: PageProps<"/registe
   return (
     <AuthFrame title={t("Create your account")} intro={t("Takes a minute: you confirm your email address before the first login.")} aside={<AccountPerks />}>
       {error ? <Notice tone="error">{t(error)}</Notice> : null}
-      <RegisterChoices terms={legalVersion()} github={github} />
+      <RegisterChoices terms={legalVersion()} github={github} sender={senderAddress()} />
     </AuthFrame>
   );
 }

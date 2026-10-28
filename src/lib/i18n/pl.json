@@ -897,6 +897,8 @@
   "Calls any HTTP API: every method, query, headers, JSON / form / multipart / raw / file body, credentials.": "Wywołuje dowolne API HTTP: każda metoda, zapytanie, nagłówki, treść JSON / formularz / multipart / surowa / plik, dane logowania.",
   "Calls to action": "Wezwania do działania",
   "Calls to action found:": "Znalezione wezwania do działania:",
+  "Can't find our email? Look in your spam or junk folder for a message from {address}. Our mail domain is new, so some providers still file it as spam; marking it as “Not spam” helps the next one reach your inbox.": "Nie widzisz naszej wiadomości? Zajrzyj do folderu spam lub wiadomości-śmieci i poszukaj e-maila od {address}. Nasza domena pocztowa jest nowa, więc niektórzy dostawcy wciąż oznaczają ją jako spam; oznaczenie wiadomości jako „To nie spam” pomoże, by kolejna trafiła do skrzynki odbiorczej.",
+  "Can't find our email? Look in your spam or junk folder. Our mail domain is new, so some providers still file it as spam; marking it as “Not spam” helps the next one reach your inbox.": "Nie widzisz naszej wiadomości? Zajrzyj do folderu spam lub wiadomości-śmieci. Nasza domena pocztowa jest nowa, więc niektórzy dostawcy wciąż oznaczają ją jako spam; oznaczenie wiadomości jako „To nie spam” pomoże, by kolejna trafiła do skrzynki odbiorczej.",
   "Cancel": "Anuluj",
   "Cancel conversion": "Anuluj konwersję",
   "Cancel diagram": "Anuluj diagram",

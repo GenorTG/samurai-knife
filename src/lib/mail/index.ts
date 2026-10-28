@@ -54,6 +54,16 @@ function fromAddress(env: NodeJS.ProcessEnv = process.env): string {
   return env.KNIFE_SMTP_FROM?.trim() || "Smart Knife <no-reply@knife.invalid>";
 }
 
+/**
+ * The bare address mail comes from (KNIFE_SMTP_FROM without the display name), for the sign-in pages' "check your spam
+ * folder" hint; "" when unset or a placeholder (.invalid), so the hint then names no address.
+ */
+export function senderAddress(env: NodeJS.ProcessEnv = process.env): string {
+  const from = fromAddress(env);
+  const address = (/<([^<>\s]+@[^<>\s]+)>/.exec(from)?.[1] ?? from).trim();
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address) && !/\.invalid$/i.test(address) ? address : "";
+}
+
 let smtp: { key: string; transport: Transporter } | null = null;
 
 const intEnv = (value: string | undefined, fallback: number, min: number, max: number): number => {

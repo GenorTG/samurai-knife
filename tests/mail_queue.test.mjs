@@ -433,3 +433,11 @@ test("the real module: outbox delivery through the queue, stats, variants share 
   delete process.env.KNIFE_MAIL_MAILBOX_LIMITS;
   await mail.resetMailForTests();
 });
+
+test("senderAddress: the bare From address for the sign-in pages' spam hint, never a placeholder", async () => {
+  const { senderAddress } = await import("../src/lib/mail/index.ts");
+  assert.equal(senderAddress({ KNIFE_SMTP_FROM: "Smart Knife <no-reply@mail.example.org>" }), "no-reply@mail.example.org");
+  assert.equal(senderAddress({ KNIFE_SMTP_FROM: "no-reply@mail.example.org" }), "no-reply@mail.example.org");
+  assert.equal(senderAddress({}), "", "the built-in .invalid default is not shown");
+  assert.equal(senderAddress({ KNIFE_SMTP_FROM: "Broken <nothing here>" }), "");
+});

@@ -9,6 +9,23 @@ import { GithubButton } from "./GithubButton";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
+/**
+ * Our mail domain is new, so some providers still file its mail as spam: every page that sends (or waits for) an email
+ * says where to look and which sender to look for. `sender` = the bare From address (mail/senderAddress), "" = unnamed.
+ */
+export function SpamHint({ sender, compact = false }: { sender: string; compact?: boolean }) {
+  const { t } = useT();
+  const text = sender
+    ? t("Can't find our email? Look in your spam or junk folder for a message from {address}. Our mail domain is new, so some providers still file it as spam; marking it as “Not spam” helps the next one reach your inbox.", { address: sender })
+    : t("Can't find our email? Look in your spam or junk folder. Our mail domain is new, so some providers still file it as spam; marking it as “Not spam” helps the next one reach your inbox.");
+  if (compact) return <p className="text-xs text-muted" data-spam-hint>{text}</p>;
+  return (
+    <div data-spam-hint>
+      <Notice tone="info">{text}</Notice>
+    </div>
+  );
+}
+
 /** Centered single-panel frame for the sign-in pages (inside <main>, like every page). */
 export function AuthFrame({ title, intro, aside, children }: { title: string; intro?: ReactNode; aside?: ReactNode; children: ReactNode }) {
   const form = (
@@ -94,7 +111,7 @@ function Status({ note }: { note: Note }) {
 
 /* ------------------------------------------------------------------------------------------------ login */
 
-export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: string }) {
+export function LoginForm({ publicMode, next, sender = "" }: { publicMode: boolean; next?: string; sender?: string }) {
   const { t } = useT();
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
@@ -144,6 +161,7 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
             {t("No account yet?")}{" "} <A href="/register">{t("Create one")}</A>{t(". Did not get the confirmation email?")}{" "} <A href="/verify">{t("Send it again")}</A>.
           </p>
         ) : null}
+        {publicMode ? <SpamHint sender={sender} compact /> : null}
       </form>
     </Panel>
   );
@@ -155,7 +173,7 @@ export function LoginForm({ publicMode, next }: { publicMode: boolean; next?: st
  * Sign-up: one consent (Terms of Service + privacy notice, in the version the page shows) gates both ways in, GitHub and
  * the password form. The server refuses a sign-up without it (400 terms_required) or for another version (409).
  */
-export function RegisterChoices({ terms, github }: { terms: string; github: boolean }) {
+export function RegisterChoices({ terms, github, sender = "" }: { terms: string; github: boolean; sender?: string }) {
   const { t, locale } = useT();
   const [accepted, setAccepted] = useState(false);
   return (
@@ -185,12 +203,12 @@ export function RegisterChoices({ terms, github }: { terms: string; github: bool
           <p className="text-center text-xs text-faint">{t("GitHub's verified email is used; no password needed. Or create an account with a password:")}</p>
         </div>
       ) : null}
-      <RegisterForm terms={terms} accepted={accepted} />
+      <RegisterForm terms={terms} accepted={accepted} sender={sender} />
     </div>
   );
 }
 
-export function RegisterForm({ terms, accepted }: { terms: string; accepted: boolean }) {
+export function RegisterForm({ terms, accepted, sender = "" }: { terms: string; accepted: boolean; sender?: string }) {
   const { t } = useT();
   const [mismatch, setMismatch] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -227,6 +245,7 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
       <Panel>
         <div className="space-y-3" role="status" aria-live="polite">
           <Notice tone="good">{done}</Notice>
+          <SpamHint sender={sender} />
           <p className="text-sm text-muted">{t("The link works once and expires in 24 hours. Then")}{" "} <A href="/login">{t("log in")}</A>.</p>
         </div>
       </Panel>
@@ -264,7 +283,7 @@ export function RegisterForm({ terms, accepted }: { terms: string; accepted: boo
 /* ----------------------------------------------------------------------------------------------- verify */
 
 /** With a token: one button consumes it (a mail scanner prefetching the link does not). Without: resend the link. */
-export function VerifyPanel({ token }: { token: string | null }) {
+export function VerifyPanel({ token, sender = "" }: { token: string | null; sender?: string }) {
   const { t } = useT();
   const [result, setResult] = useState<Note>(null);
   const [working, setWorking] = useState(false);
@@ -303,12 +322,12 @@ export function VerifyPanel({ token }: { token: string | null }) {
           </div>
         </Panel>
       ) : null}
-      <ResendForm />
+      <ResendForm sender={sender} />
     </div>
   );
 }
 
-export function ResendForm() {
+export function ResendForm({ sender = "" }: { sender?: string }) {
   const { t } = useT();
   const [email, setEmail] = useState("");
   const { working, setWorking, note, setNote } = useSubmit();
@@ -333,6 +352,7 @@ export function ResendForm() {
           <TextInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         <Status note={note} />
+        <SpamHint sender={sender} compact={note?.tone !== "good"} />
         <Button type="submit" disabled={working || !email.trim()}>
           {working ? t("Sending…") : t("Send a new link")}
         </Button>
@@ -343,7 +363,7 @@ export function ResendForm() {
 
 /* ---------------------------------------------------------------------------------------- forgot / reset */
 
-export function ForgotForm() {
+export function ForgotForm({ sender = "" }: { sender?: string }) {
   const { t } = useT();
   const [email, setEmail] = useState("");
   const { working, setWorking, note, setNote } = useSubmit();
@@ -368,6 +388,7 @@ export function ForgotForm() {
           <TextInput autoFocus type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         <Status note={note} />
+        <SpamHint sender={sender} compact={note?.tone !== "good"} />
         <Button type="submit" variant="primary" disabled={working || !email.trim()}>
           {working ? t("Sending…") : t("Send reset link")}
         </Button>

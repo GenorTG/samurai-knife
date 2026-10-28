@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { senderAddress } from "@/lib/mail";
 import { notFound } from "next/navigation";
 import { AuthFrame, VerifyPanel } from "@/components/account/AuthForms";
 import { isPublicMode } from "@/lib/accounts/mode";
@@ -16,7 +17,7 @@ export default async function VerifyPage({ searchParams }: PageProps<"/verify">)
   const token = (await searchParams).token;
   return (
     <AuthFrame title={t("Confirm email")}>
-      <VerifyPanel token={typeof token === "string" && token ? token : null} />
+      <VerifyPanel token={typeof token === "string" && token ? token : null} sender={senderAddress()} />
     </AuthFrame>
   );
 }
