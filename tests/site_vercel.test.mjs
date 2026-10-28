@@ -5,84 +5,18 @@
 // audit options for a protected preview, the OAuth state (one-time, same browser) and the code exchange.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/site_vercel.test.mjs
 import assert from "node:assert/strict";
-import http from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createGithub, INITIAL_FILES, REPO, serveGithub, TOKEN } from "./mock_site_world.mjs";
-
-const VTOKEN = "vercelMockToken0123456789abcdef";
-const BYPASS = "Bypass0123456789abcdefABCDEF0123";
+import { BYPASS, createVercel, serve, VTOKEN } from "./mock_vercel.mjs";
 
 const dataDir = mkdtempSync(join(tmpdir(), "knife-vercel-"));
 process.env.KNIFE_DATA_DIR = dataDir;
 process.env.KNIFE_VERCEL_CLIENT_ID = "oac_test";
 process.env.KNIFE_VERCEL_CLIENT_SECRET = "secret_test";
 process.env.KNIFE_VERCEL_INTEGRATION_SLUG = "smart-knife-test";
-
-/** The fake Vercel: two projects (one deploys genor/website), deployments, events, bypass secrets, OAuth exchange. */
-function createVercel() {
-  const site = { id: "prj_site", name: "website", link: { type: "github", org: "genor", repo: "website", repoId: 4242, productionBranch: "main" }, ssoProtection: { deploymentType: "preview" }, protectionBypass: {} };
-  const other = { id: "prj_other", name: "other", link: { type: "github", org: "genor", repo: "other", repoId: 7, productionBranch: "main" }, ssoProtection: null, protectionBypass: {} };
-  const projects = [site, other];
-  const deployments = [];
-  const created = [];
-  const calls = [];
-  function handle(method, url, body, auth) {
-    calls.push(`${method} ${url.pathname}${url.search}`);
-    if (url.pathname === "/v2/oauth/access_token") {
-      const form = new URLSearchParams(body);
-      if (form.get("code") === "goodcode123" && form.get("client_secret") === "secret_test") return [200, { token_type: "Bearer", access_token: VTOKEN, installation_id: "icfg_1", team_id: null }];
-      return [400, { error: "invalid_grant", error_description: "bad code" }];
-    }
-    if (auth !== `Bearer ${VTOKEN}`) return [401, { error: { code: "forbidden", message: "Not authorized" } }];
-    let m;
-    if (url.pathname === "/v2/user") return [200, { user: { username: "genor" } }];
-    if (url.pathname === "/v10/projects") return [200, { projects }];
-    if ((m = /^\/v9\/projects\/([^/]+)$/.exec(url.pathname))) {
-      const p = projects.find((x) => x.id === m[1] || x.name === m[1]);
-      return p ? [200, p] : [404, { error: { message: "Project not found" } }];
-    }
-    if ((m = /^\/v1\/projects\/([^/]+)\/protection-bypass$/.exec(url.pathname)) && method === "PATCH") {
-      const p = projects.find((x) => x.id === m[1]);
-      p.protectionBypass[BYPASS] = { createdAt: 1, createdBy: "u", scope: "automation-bypass" };
-      return [200, { protectionBypass: p.protectionBypass }];
-    }
-    if (url.pathname === "/v7/deployments") {
-      const q = url.searchParams;
-      const list = deployments.filter((d) => d.projectId === q.get("projectId") && (!q.get("branch") || d.meta.githubCommitRef === q.get("branch")) && (!q.get("sha") || d.meta.githubCommitSha === q.get("sha")));
-      return [200, { deployments: list.slice().reverse() }];
-    }
-    if ((m = /^\/v13\/deployments\/([^/]+)$/.exec(url.pathname)) && method === "GET") {
-      const d = deployments.find((x) => x.uid === m[1] || x.url === m[1]);
-      return d ? [200, { ...d, id: d.uid, readyState: d.state }] : [404, { error: { message: "Deployment not found" } }];
-    }
-    if ((m = /^\/v3\/deployments\/([^/]+)\/events$/.exec(url.pathname))) return [200, [{ type: "command", text: "npm run build" }, { type: "stdout", text: "Compiling" }, { type: "stderr", text: "Error: boom in app/page.tsx:3" }]];
-    if (url.pathname === "/v13/deployments" && method === "POST") {
-      const b = JSON.parse(body);
-      created.push(b);
-      const d = { uid: `dpl_new${created.length}`, url: `website-new${created.length}.vercel.app`, state: "QUEUED", target: null, projectId: b.project, createdAt: Date.now(), meta: { githubCommitRef: b.gitSource.ref, githubCommitSha: b.gitSource.sha }, inspectorUrl: "https://vercel.com/i" };
-      deployments.push(d);
-      return [200, d];
-    }
-    return [404, { error: { message: `no mock for ${method} ${url.pathname}` } }];
-  }
-  return { site, other, projects, deployments, created, calls, handle };
-}
-
-function serve(handler) {
-  const server = http.createServer((req, res) => {
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => {
-      const [status, body, headers = { "content-type": "application/json" }] = handler(req.method, new URL(req.url, "http://localhost"), Buffer.concat(chunks).toString("utf8"), req.headers.authorization, req.headers);
-      res.writeHead(status, headers);
-      res.end(typeof body === "string" ? body : JSON.stringify(body));
-    });
-  });
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port })));
-}
 
 const gh = createGithub(INITIAL_FILES);
 const ghServer = await serveGithub(gh);

@@ -135,7 +135,8 @@ function deployment(raw: unknown): VercelDeployment {
   const created = Number(d.createdAt ?? d.created ?? 0);
   return {
     id: str(d.uid) || str(d.id),
-    url: host ? `https://${host.replace(/^https?:\/\//, "")}` : "",
+    // Vercel answers a bare host (always https); a full URL is kept as given (test doubles on loopback).
+    url: host ? (/^https?:\/\//.test(host) ? host.replace(/\/+$/, "") : `https://${host}`) : "",
     state: str(d.readyState) || str(d.state),
     target: str(d.target) || "preview",
     projectId: str(d.projectId),
@@ -155,7 +156,7 @@ export async function listDeployments(scope: VercelScope, projectId: string, fil
 /** By id (`dpl_...`) or by its host (`my-site-abc123.vercel.app`). */
 export async function getDeployment(scope: VercelScope, idOrHost: string, deps?: NetDeps): Promise<VercelDeployment> {
   const v = idOrHost.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (!/^[A-Za-z0-9_.-]{1,253}$/.test(v)) throw new SiteError(msgf("'{value}' is not a deployment id or host", { value: v.slice(0, 80) }));
+  if (!/^[A-Za-z0-9_.:-]{1,253}$/.test(v)) throw new SiteError(msgf("'{value}' is not a deployment id or host", { value: v.slice(0, 80) }));
   return deployment(await call(scope, "GET", `/v13/deployments/${encodeURIComponent(v)}`, {}, undefined, deps));
 }
 

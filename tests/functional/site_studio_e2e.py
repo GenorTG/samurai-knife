@@ -11,6 +11,11 @@ GitHub API, a small Polish website, a PageSpeed endpoint), driven like a person 
 - An agent over MCP: knife_site_status (instructions), knife_site_replace + knife_site_pr -> the open Changes tab shows
   the work branch, the commit, the diff and the preview by itself; "Score the preview" audits it; Publish (two steps)
   merges exactly the reviewed head into main on the fake GitHub; the work branch is gone.
+- Vercel (tests/mock_vercel.mjs): Connect Vercel in the UI picks the project, the token never comes back; an agent
+  follows the work branch's preview (knife_site_previews), starts a preview build (knife_site_deploy), is refused on a
+  protected preview without a bypass secret, the UI creates one, then knife_site_audit target=preview and
+  knife_site_page read it with the header (every request that reached it carried it), knife_site_deploy_logs; the
+  Changes tab shows the Vercel previews panel. knife_whats_new names the new tools.
 - Firefox: every tab hydrates without console errors.
 
 Self-contained: own scratch server (tests/scratch_server.py), own mock world on free loopback ports, never the live app.
@@ -37,6 +42,7 @@ HEADED = "--headed" in sys.argv
 FAILS: list[str] = []
 PASSES = 0
 TOKEN = "ghp_mockTokenForSiteStudioTests000000"
+VTOKEN = "vercelMockToken0123456789abcdef"
 CONSOLE: list[str] = []
 
 
@@ -91,7 +97,7 @@ def go(page: Page, path: str) -> None:
     page.wait_for_function("() => Array.from(document.querySelectorAll('main *')).slice(0, 400).some(el => Object.keys(el).some(k => k.startsWith('__reactProps$')))", timeout=60_000)
 
 
-def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
+def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> None:
     base = server.url
     mcp = Mcp(base)
     with sync_playwright() as pw:
@@ -178,6 +184,49 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
         ok, text = mcp.tool("knife_site_changes", {})
         check("knife_site_changes reports the preview URL", ok and site_url.replace("http://", "") in text, text[:300])
 
+        # ---------------------------------------------------------------- 4b. Vercel (optional): connect, preview build, protected preview
+        ok, text = mcp.tool("knife_whats_new", {"count": 1})
+        check("knife_whats_new names the new Vercel tools and the server's version", ok and "knife_site_previews" in text and '"version": "0.13.0.' in text, text[:300])
+        ok, text = mcp.tool("knife_site_previews", {})
+        check("without Vercel, knife_site_previews says how to connect", not ok and "Vercel is not connected" in text, text[:200])
+        go(page, "/tools/cv-studio?tab=website&step=connect")
+        page.get_by_label("Vercel token").fill(VTOKEN)
+        page.get_by_role("button", name="Connect Vercel").click()
+        expect(page.get_by_text("no bypass secret: protected previews cannot be read")).to_be_visible(timeout=20_000)
+        check("Connect Vercel picks the project that deploys genor/website", page.get_by_label("Vercel project").input_value() == "prj_site")
+        _, vview = http("GET", f"{base}/api/site/vercel?projects=1")
+        check("the Vercel token never comes back from /api/site/vercel", VTOKEN not in json.dumps(vview) and isinstance(vview, dict) and vview.get("vercel", {}).get("hasBypass") is False, vview)
+        ok, text = mcp.tool("knife_site_previews", {})
+        check("knife_site_previews: no deployment of the work branch head yet", ok and '"headDeployment": null' in text and "knife_site_deploy" in text, text[:400])
+        ok, text = mcp.tool("knife_site_deploy", {})
+        check("knife_site_deploy starts a preview build of the work branch", ok and '"created": true' in text and '"branch": "knife/' in text, text[:300])
+        go(page, "/tools/cv-studio?tab=website&step=changes")
+        expect(page.get_by_text("Vercel previews")).to_be_visible(timeout=20_000)
+        ready = False
+        for _ in range(10):
+            ok, text = mcp.tool("knife_site_previews", {})
+            if ok and '"state": "READY"' in text:
+                ready = True
+                break
+            time.sleep(1)
+        check("the head preview reaches READY (knife_site_previews)", ready, text[:400])
+        ok, text = mcp.tool("knife_site_audit", {"target": "preview", "lighthouse": False})
+        check("a protected preview without a bypass secret is refused with the fix", not ok and "no bypass secret" in text, text[:300])
+        go(page, "/tools/cv-studio?tab=website&step=connect")
+        page.get_by_role("button", name="Create bypass secret").click()
+        expect(page.get_by_text("bypass secret stored")).to_be_visible(timeout=20_000)
+        ok, text = mcp.tool("knife_site_audit", {"target": "preview", "lighthouse": False})
+        check("knife_site_audit target=preview reads the protected preview with the bypass", ok and "Protected Vercel preview read with the bypass secret" in text and preview_url in text, text[:400])
+        _, seen = http("GET", f"{preview_url}/__seen")
+        check("every request that reached the protected preview carried the bypass header", isinstance(seen, list) and len(seen) > 0 and all(x["bypass"] for x in seen), seen)
+        ok, text = mcp.tool("knife_site_page", {"url": preview_url + "/"})
+        check("knife_site_page reads the protected preview (not Vercel's login page)", ok and "Vercel Authentication" not in text and "Samurai Knife" in text, text[:300])
+        ok, text = mcp.tool("knife_site_deploy_logs", {"id": "dpl_new1"})
+        check("knife_site_deploy_logs returns the build output", ok and "boom in app/page.tsx" in text, text[:300])
+        go(page, "/tools/cv-studio?tab=website&step=changes")
+        expect(page.get_by_text("Vercel previews")).to_be_visible(timeout=20_000)
+        expect(page.locator("main").get_by_text("READY").first).to_be_visible(timeout=20_000)
+
         # ---------------------------------------------------------------- 5. publish (two steps, UI only)
         page.get_by_role("button", name="Publish to production…").click()
         publish = page.get_by_role("button", name="Publish to production", exact=True)
@@ -209,24 +258,28 @@ def run(server: ScratchServer, gh_url: str, site_url: str) -> None:
 
 
 def main() -> int:
-    gh_port, site_port, psi_port = free_ports(3)
+    gh_port, site_port, psi_port, vercel_port, preview_port = free_ports(5)
     site_url = f"http://127.0.0.1:{site_port}"
+    preview_url = f"http://127.0.0.1:{preview_port}"
     world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url, "MOCK_REPO_HOMEPAGE": site_url})
+    vercel = subprocess.Popen(["node", str(ROOT / "tests/mock_vercel.mjs"), str(vercel_port), str(preview_port)], stdout=subprocess.PIPE, text=True)
     try:
         assert world.stdout is not None and world.stdout.readline().strip() == "READY", "mock world did not start"
-        env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run"}
+        assert vercel.stdout is not None and vercel.stdout.readline().strip() == "READY", "mock Vercel did not start"
+        env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run", "KNIFE_VERCEL_API_URL": f"http://127.0.0.1:{vercel_port}"}
         with ScratchServer() as server:
             server.start(env=env)
             print(f"scratch server {server.url} data {server.data_dir}", flush=True)
             try:
-                run(server, f"http://127.0.0.1:{gh_port}", site_url)
+                run(server, f"http://127.0.0.1:{gh_port}", site_url, preview_url)
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
                 FAILS.append("crashed: " + traceback.format_exc().strip().splitlines()[-1])
                 print(server.log_tail(3000))
     finally:
-        world.terminate()
-        world.wait(timeout=10)
+        for proc in (world, vercel):
+            proc.terminate()
+            proc.wait(timeout=10)
     print(f"\n{PASSES} passed, {len(FAILS)} failed")
     if FAILS:
         print(f"{len(FAILS)} FAILED: {FAILS}")
