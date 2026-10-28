@@ -237,8 +237,15 @@ test("targets: twins, paths, and a public-mode user is held to their own verifie
     const prod = await targets.resolveScreenshotTarget("vis", { target: "production", path: "/about" });
     assert.equal(prod.url, "https://me.example/about");
     assert.ok(prod.allowedOrigins.includes("https://www.me.example"));
-    await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "https://evil.example/" }), /own website only/);
-    await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "http://169.254.169.254/latest" }), /own website only/);
+    siteStore.mutateSite("vis", (s) => {
+      s.connection = { repo: "GenorTG/my-site", baseBranch: "main", productionUrl: "https://me.example", pages: ["/"], token: { source: "host-gh", login: "GenorTG" }, psiKey: "", verifiedOrigin: "https://me.example", connectedAt: new Date().toISOString() };
+    });
+    const repoPage = await targets.resolveScreenshotTarget("vis", { target: "url", url: "https://github.com/GenorTG/my-site/tree/main" });
+    assert.equal(repoPage.kind, "github");
+    assert.deepEqual(repoPage.allowedOrigins, ["https://github.com"]);
+    await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "https://github.com/GenorTG/other-repo" }), /connected production site only/);
+    await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "https://evil.example/" }), /connected production site only/);
+    await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "url", url: "http://169.254.169.254/latest" }), /connected production site only/);
     await assert.rejects(targets.resolveScreenshotTarget("vis", { target: "preview" }), /need Vercel connected/);
     assert.equal((await targets.resolveScreenshotTarget("vis", { target: "url", url: "https://me.example/blog" })).kind, "site");
   } finally {
@@ -284,7 +291,7 @@ test("tools: registered with the right effects, offered to MCP and the assistant
   assert.ok(server, "the MCP server registers the vision tools without error");
   process.env.KNIFE_AUTH_MODE = "public";
   try {
-    await assert.rejects(callKnifeTool("knife_site_screenshot", { target: "url", url: "https://evil.example/" }, { accountId: "vis", admin: false, surface: "assistant" }), /own website only/);
+    await assert.rejects(callKnifeTool("knife_site_screenshot", { target: "url", url: "https://evil.example/" }, { accountId: "vis", admin: false, surface: "assistant" }), /connected production site only/);
   } finally {
     delete process.env.KNIFE_AUTH_MODE;
   }

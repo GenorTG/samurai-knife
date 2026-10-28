@@ -62,7 +62,11 @@ SHA-256 of the raw token only).
   active provider) and returns the model ids it lists. `POST /api/account/provider/models {baseUrl, apiKey?,
   extraHeaders?}` lists the models for fields not saved yet (the settings' "Load models"): the same checks as a save and
   the Test budget; without `apiKey` the stored key is used only when `baseUrl` is the stored one, so a newly typed
-  address never receives the old key. Workflow AI nodes pick any profile.
+  address never receives the old key. The returned ids and optional metadata from `/models` feed the picker: context
+  window (`context_length` / `context_window`), image-input support (`architecture.input_modalities` or equivalent), and
+  advertised `supported_parameters` such as tools, reasoning, JSON output, streaming or audio. A missing field is shown as
+  unknown; capabilities are never guessed from model names. Selecting an entry with explicit image modality updates the
+  profile's vision flag. Workflow AI nodes pick any profile.
 - Vision (`src/lib/vision/config.ts`): each profile's config may carry `vision` (`native` = the model accepts
   OpenAI-style `image_url` parts; unset or `none` = text-only, which is what every profile saved before 2026-10-28 is,
   so nothing changes for them) and `visionHelper` (the id of another saved profile, any OpenAI-compatible vision model:

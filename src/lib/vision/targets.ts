@@ -17,12 +17,13 @@ import * as vercelService from "@/lib/site/vercel-service";
  *   Deployment Protection with the stored bypass, sent to that preview's host only). Without Vercel, admins and private
  *   mode may use the preview URL the repository's deployments report; others are refused (nothing vouches for it).
  * - `url`: a page on one of the above, on a deployment Vercel confirms belongs to the linked project (the user's own
- *   Vercel token is the proof), or on the repository's GitHub Pages host (asked with the user's own GitHub access).
+ *   Vercel token is the proof), on the repository's GitHub Pages host, or inside the connected GitHub repository's path.
+ *   For the GitHub web page Chromium receives no GitHub token; private repo contents stay on the GitHub API tools.
  *   Admins and private mode: any address the network policy allows, like audits.
  * The network rules (no loopback/LAN/metadata in public mode, every connection checked) are the proxy's (proxy.ts).
  */
 
-export type ScreenshotTargetKind = "production" | "preview" | "pages" | "site" | "url";
+export type ScreenshotTargetKind = "production" | "preview" | "pages" | "github" | "site" | "url";
 
 export interface ScreenshotTarget {
   url: string;
@@ -75,7 +76,7 @@ export function pathOn(base: string, path: string | undefined): string {
 function parse(url: string): URL {
   try {
     const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol)) throw new Error("scheme");
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error("scheme or credentials");
     return parsed;
   } catch {
     throw new SiteError(msgf("'{url}' is not a valid URL", { url: url.slice(0, 200) }));
@@ -122,6 +123,18 @@ export async function resolveScreenshotTarget(accountId: string, input: TargetIn
   if (!ownSite) return done(url, outboundBudgeted(account) ? "site" : "url", (await vercelService.linkedDeployment(accountId, url, deps))?.hostHeaders);
   const deployment = await vercelService.linkedDeployment(accountId, url, deps);
   if (deployment) return done(url, "preview", deployment.hostHeaders);
+
+  // The connected repository is a bounded, project-related browser target. Do not pass GitHub credentials to Chromium:
+  // public repository pages work directly; private repository contents remain available through the GitHub API tools.
+  const repo = site.connection?.repo.toLowerCase().split("/");
+  const githubUrl = new URL(url);
+  if (repo?.length === 2 && githubUrl.hostname.toLowerCase() === "github.com") {
+    const parts = githubUrl.pathname.split("/").filter(Boolean).slice(0, 2).map((part) => {
+      try { return decodeURIComponent(part).toLowerCase(); } catch { return ""; }
+    });
+    if (parts[0] === repo[0] && parts[1] === repo[1]) return { url, kind: "github", allowedOrigins: ["https://github.com"] };
+  }
+
   const pages = await service.repoPagesHost(accountId);
   if (pages && sameSiteHost(url, `https://${pages}/`)) return done(url, "pages");
   throw new SiteError(msgf("{problem}; screenshots also accept a deployment of your linked Vercel project or your repository's GitHub Pages site", { problem: ownSite }), 403);

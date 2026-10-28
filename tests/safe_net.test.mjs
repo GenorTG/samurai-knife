@@ -334,6 +334,34 @@ test("provider Test: refused for a user on loopback; raw bodies echoed only when
   }
 });
 
+test("provider Test: listed models expose only advertised metadata and preserve unknowns", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ data: [
+      { id: "vision-model", context_length: 128000, architecture: { input_modalities: ["text", "image"] }, supported_parameters: ["tools", "temperature", "max_tokens", "unsupported value"] },
+      { id: "text-model", top_provider: { context_length: 32000 }, input_modalities: ["text"] },
+      { id: "unknown-model" },
+      { id: "bad\nmodel", context_length: 999 },
+    ] }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const result = await provider.testProvider(
+      { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: "***", model: "m" },
+      { policy: OPEN, echoUpstream: false },
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.models, ["text-model", "unknown-model", "vision-model"]);
+    assert.deepEqual(result.modelDetails, [
+      { id: "text-model", contextLength: 32000, vision: false, features: [] },
+      { id: "unknown-model", contextLength: null, vision: null, features: [] },
+      { id: "vision-model", contextLength: 128000, vision: true, features: ["max_tokens", "temperature", "tools", "vision"] },
+    ]);
+  } finally {
+    server.close();
+  }
+});
+
 // ---- body limits ----------------------------------------------------------------------------
 
 function streamingRequest(chunks, headers = {}, { onPull } = {}) {

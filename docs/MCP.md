@@ -75,8 +75,10 @@ docs/WEBSITE-STUDIO.md.
 
 ## Vision (`knife_site_screenshot`, `knife_vision_describe`)
 - `knife_site_screenshot` (group `site`, `outbound`, untrusted output) renders a page of the user's own website in a
-  real browser on the server (docs/WEBSITE-STUDIO.md "Screenshots": production, the Vercel preview, deployments of the
-  linked project, the repository's GitHub Pages; never other sites). An MCP client gets the JSON text block and an
+  real browser on the server (docs/WEBSITE-STUDIO.md "Screenshots": production, the linked Vercel preview/deployments,
+  GitHub Pages or a page in the connected public GitHub repository; never unrelated sites). It is project-scoped, not a
+  general web crawler; private repo contents use GitHub API tools and Vercel dashboard data uses its API tools. An MCP
+  client gets the JSON text block and an
   image block (PNG or JPEG), so a client whose model sees images looks at it directly; `image:false` leaves the block out
   for text-only clients. A text description from the user's own vision model is added with `describe:true` or a
   `question`, and always when the user named a vision helper on the active provider profile (docs/ACCOUNTS.md

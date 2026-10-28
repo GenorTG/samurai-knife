@@ -158,8 +158,12 @@ screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, too
   READY preview of the work branch's head commit on the linked Vercel project (a protected one through the stored
   bypass); `url` = a page on those, on a deployment Vercel confirms belongs to the linked project (`linkedDeployment`:
   the user's own Vercel token vouches for the host), or on the repository's GitHub Pages host (`repoPagesHost`, asked
-  with the user's own GitHub access). Without Vercel, a public non-admin cannot screenshot a preview (nothing vouches
-  for a URL taken from a deployment status). Admins and private mode: any address the network policy allows, like audits.
+  with the user's own GitHub access), or inside the connected public GitHub repository's exact `github.com/<owner>/<repo>`
+  path (no credentials are passed to Chromium). Private repository contents remain available through authenticated GitHub
+  API tools. This is a project-scoped browser, not a general web crawler. Use `knife_site_previews` / `knife_site_deploy_logs`
+  for Vercel project data; the Vercel dashboard needs a user session and is not opened here. Without Vercel, public non-admins
+  cannot screenshot deployment URLs reported by GitHub because ownership is not confirmed. Admins and private mode: any
+  address the network policy allows, like audits.
   `path` is a site path only (`/about`; no scheme, host or `//`). The main frame may navigate only between the target's
   origin and its `www.`/http twins: a redirect or script that leaves them ends the job with an error, no picture.
 - **Engine**: the system's Chromium (`/usr/lib/chromium/chromium`, Debian package `chromium`; `KNIFE_CHROMIUM` overrides,

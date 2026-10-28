@@ -11,6 +11,7 @@ import type {
   FunctionToolDef,
   ProviderInfo,
   ProviderInput,
+  ProviderModelDetails,
   ProviderTestResult,
   ToolCall,
   ToolRunResult,
@@ -161,6 +162,24 @@ export async function saveProvider(input: ProviderInput): Promise<ApiResult<null
   return { ok: true, value: null };
 }
 
+function parseModelDetails(value: unknown): ProviderModelDetails[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ProviderModelDetails[] = [];
+  for (const entry of value.slice(0, 400)) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length > 200) continue;
+    const features = Array.isArray(entry.features)
+      ? entry.features.filter((feature): feature is string => typeof feature === "string").slice(0, 20)
+      : [];
+    out.push({
+      id: entry.id,
+      contextLength: typeof entry.contextLength === "number" && Number.isSafeInteger(entry.contextLength) ? entry.contextLength : null,
+      vision: typeof entry.vision === "boolean" ? entry.vision : null,
+      features,
+    });
+  }
+  return out;
+}
+
 function testResult(res: Response, body: unknown): ApiResult<ProviderTestResult> {
   if (!isRecord(body)) return { ok: false, failure: failureFrom(res, body) };
   if (!res.ok && body.ok === undefined) return { ok: false, failure: failureFrom(res, body) };
@@ -171,6 +190,7 @@ function testResult(res: Response, body: unknown): ApiResult<ProviderTestResult>
       status: typeof body.status === "number" ? body.status : undefined,
       modelCount: typeof body.modelCount === "number" ? body.modelCount : undefined,
       models: Array.isArray(body.models) ? body.models.filter((m): m is string => typeof m === "string") : undefined,
+      modelDetails: parseModelDetails(body.modelDetails),
       error: str(body.error) ?? undefined,
     },
   };
