@@ -9,6 +9,9 @@
 # -> preflight on a spare loopback port with an empty data dir -> .next/cache -> /var/cache/samurai-knife
 # -> point <APP_ROOT>/current at it -> restart samurai-knife.service (polkit allows exactly that) -> health check
 # -> on failure point `current` back and restart. Keeps the newest KEEP releases plus the rollback target.
+# Before the restart it waits for a quiet moment (GET <LIVE_URL>/api/system/activity: no agent call, job, audit or
+# workflow run, nothing for QUIET_SEC seconds): a busy server postpones the switch to the next run, keeping the built release,
+# and after POSTPONE_MAX seconds of postponing it switches anyway (Next drains in-flight requests on SIGTERM).
 #
 #   knife-update                 deploy if there is a newer release
 #   knife-update --check         only report what would happen
@@ -32,6 +35,12 @@ PYTHON_BIN="$(conf PYTHON_BIN)"; PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
 CACHE_DIR="$(conf CACHE_DIR)"; CACHE_DIR="${CACHE_DIR:-/var/cache/samurai-knife}"
 # Root's installed sidecar bundles (knife-sidecar sync); only listed, to name the ids in the "sync may be needed" line.
 SIDECAR_BUNDLES="$(conf SIDECAR_BUNDLES)"; SIDECAR_BUNDLES="${SIDECAR_BUNDLES:-/etc/samurai-knife/sidecars}"
+# Quiet moment before a restart (docs/DEPLOY.md "Updates without breaking work"): seconds without work, how long one
+# run waits for it, and how long a ready release may stay postponed before it goes live anyway.
+num_conf() { local v; v="$(conf "$1")"; [[ "$v" =~ ^[0-9]{1,6}$ ]] && printf '%s' "$v" || printf '%s' "$2"; }
+QUIET_SEC="$(num_conf QUIET_SEC 120)"
+WAIT_MAX="$(num_conf WAIT_MAX 600)"
+POSTPONE_MAX="$(num_conf POSTPONE_MAX 10800)"
 STATE="${STATE_DIRECTORY:-${HOME:-/var/lib/knife-deploy}}"
 GIT_DIR="$APP_ROOT/repo.git"
 RELEASES="$APP_ROOT/releases"
@@ -138,6 +147,31 @@ if [[ "$mode" == "auto" && -f "$RELEASES/.failed/$safe" && "$(cat "$RELEASES/.fa
   exit 0   # already failed (logged then); retry by hand with --deploy
 fi
 [[ "$(readlink -f "$dir" 2>/dev/null)" == "$current_dir" && -n "$current_dir" ]] && die "$dir is the running release"
+check_url() {  # <base> -> 0 when the pages, the account API and the MCP endpoint answer (signed out, public mode)
+  local base="$1" u code where
+  for u in / /login; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base$u")"; [[ "$code" == 200 ]] || { echo "$u -> $code"; return 1; }
+  done
+  for u in /tools/json /tools/cv-studio; do
+    read -r code where < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 "$base$u")
+    [[ "$code" == 200 ]] && continue
+    [[ "$code" == 307 && "$where" == *"/login?next="* ]] || { echo "$u -> $code $where"; return 1; }
+  done
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/api/account")"
+  [[ "$code" == 200 || "$code" == 401 ]] || { echo "/api/account -> $code"; return 1; }
+  code="$(curl -s -o "$STATE/mcp-check" -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' "$base/api/mcp")"
+  if [[ "$code" == 200 ]]; then grep -q '"knife_' "$STATE/mcp-check" || { echo "mcp tools/list empty"; return 1; }
+  elif [[ "$code" != 401 ]]; then echo "/api/mcp -> $code"; return 1; fi
+}
+# A release built and preflighted by an earlier run that postponed its switch (server busy) is used as it is.
+ready=""
+if [[ "$mode" != "install" && -f "$dir/.ready" && "$(sed -n 's/^commit=//p' "$dir/.release" 2>/dev/null)" == "$target" ]]; then
+  ready=1
+  failed_dir="$dir"
+  log "$name (${target:0:7}) is already built: waiting for a quiet moment to switch"
+fi
+if [[ -z "$ready" ]]; then
 log "building $name (${target:0:7}) into $dir"
 rm -rf "$dir"; mkdir -p "$dir"
 failed_dir="$dir"
@@ -160,23 +194,6 @@ env -i PATH="$PATH" HOME="$pre" NODE_ENV=production KNIFE_AUTH_MODE=public KNIFE
   setsid "$NODE_BIN" scripts/serve.mjs start >"$pre/server.log" 2>&1 &
 echo $! >"$pre/pid"
 cd /
-check_url() {  # <base> -> 0 when the pages, the account API and the MCP endpoint answer (signed out, public mode)
-  local base="$1" u code where
-  for u in / /login; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base$u")"; [[ "$code" == 200 ]] || { echo "$u -> $code"; return 1; }
-  done
-  for u in /tools/json /tools/cv-studio; do
-    read -r code where < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 "$base$u")
-    [[ "$code" == 200 ]] && continue
-    [[ "$code" == 307 && "$where" == *"/login?next="* ]] || { echo "$u -> $code $where"; return 1; }
-  done
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/api/account")"
-  [[ "$code" == 200 || "$code" == 401 ]] || { echo "/api/account -> $code"; return 1; }
-  code="$(curl -s -o "$STATE/mcp-check" -w '%{http_code}' --max-time 20 -X POST -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' "$base/api/mcp")"
-  if [[ "$code" == 200 ]]; then grep -q '"knife_' "$STATE/mcp-check" || { echo "mcp tools/list empty"; return 1; }
-  elif [[ "$code" != 401 ]]; then echo "/api/mcp -> $code"; return 1; fi
-}
 ok=""
 for _ in $(seq 120); do curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$pport/" && { ok=1; break; }; sleep 0.5; done
 if [[ -n "$ok" ]]; then pre_problem="$(check_url "http://127.0.0.1:$pport")" || true; else pre_problem="did not start"; fi
@@ -187,9 +204,28 @@ rm -rf "$pre"
 # The release is read-only to the service; Next's runtime cache goes to the service's CacheDirectory.
 rm -rf "$dir/.next/cache" && ln -s "$CACHE_DIR" "$dir/.next/cache"
 chmod -R go-w "$dir"
+touch "$dir/.ready"
+fi
 
 point_current() { ln -sfn "$1" "$APP_ROOT/current.next" && mv -T "$APP_ROOT/current.next" "$APP_ROOT/current"; }
 service_active() { systemctl is-active --quiet "$SERVICE"; }
+# 0 = quiet (or the live app has no activity endpoint: an older release), 1 = still busy after WAIT_MAX seconds.
+# The answer is counts only; a line per change of reason goes to the log so the viewer shows why a switch waits.
+wait_for_quiet() {
+  local deadline=$((SECONDS + WAIT_MAX)) body code busy idle why last=""
+  while :; do
+    body="$(curl -s --max-time 5 -w '\n%{http_code}' "$LIVE_URL/api/system/activity" 2>/dev/null || true)"
+    code="${body##*$'\n'}"; body="${body%$'\n'*}"
+    [[ "$code" == 200 ]] || return 0
+    busy="$(printf '%s' "$body" | sed -n 's/.*"busy":\(true\|false\).*/\1/p')"
+    idle="$(printf '%s' "$body" | sed -n 's/.*"idleSeconds":\([0-9]*\).*/\1/p')"
+    [[ "$busy" == false && "${idle:-0}" -ge "$QUIET_SEC" ]] && return 0
+    why="$(printf '%s' "$body" | sed 's/"idleSeconds":[0-9]*,\{0,1\}//')"
+    if [[ "$why" != "$last" ]]; then log "waiting for a quiet moment (${QUIET_SEC}s without work): $why"; last="$why"; fi
+    (( SECONDS >= deadline )) && return 1
+    sleep 10
+  done
+}
 restart_and_check() {
   systemctl --no-ask-password restart "$SERVICE" || { echo "systemctl restart $SERVICE refused"; return 1; }
   local up=""
@@ -204,6 +240,18 @@ if [[ "$mode" == "install" ]] || ! service_active; then
   log "current -> $name (${target:0:7}); $SERVICE is not running, so it was not started"
 else
   [[ -n "$LIVE_URL" ]] || die "LIVE_URL missing in $CONF"
+  postponed="$STATE/postponed-since"
+  if ! wait_for_quiet; then
+    [[ -f "$postponed" ]] || date +%s >"$postponed"
+    since="$(cat "$postponed" 2>/dev/null || date +%s)"; [[ "$since" =~ ^[0-9]+$ ]] || since="$(date +%s)"
+    if (( $(date +%s) - since < POSTPONE_MAX )); then
+      failed_dir=""
+      log "postponed: the server is busy (someone or an agent is working); $name stays built and switches on a later run"
+      exit 0
+    fi
+    log "postponed for over ${POSTPONE_MAX}s: switching now (in-flight requests are drained on stop)"
+  fi
+  rm -f "$postponed"
   point_current "$dir"
   if ! problem="$(restart_and_check)"; then
     log "health check failed after the switch (${problem:-no answer}): rolling back to ${current:0:7}"

@@ -463,6 +463,23 @@ bridge) or `deploy/sidecar-helper/`, run `sudo knife-sidecar check <id>` for eve
 `sudo knife-sidecar sync <id>` for each that differs; a changed helper needs `deploy/install.sh` first. The update log
 says when this applies, and the app shows "Sync needed" (section "Sidecars without the docker group").
 
+### Updates without breaking work
+
+A release goes live only at a quiet moment, so an update never cuts off someone working (an agent steering the app over
+MCP, the assistant, a website audit, a PDF job, a workflow run). `scripts/activity.mjs` (preloaded through
+`scripts/peer-address.mjs`) counts the requests that are work: every non-GET `/api/` call and the GET routes an agent
+waits on (`/api/mcp`, `/api/agent`, `/api/jobs`, `/api/site`, `/api/pdf`, `/api/sql`, `/api/workflows`); page loads,
+static files and the background polls of open tabs (`/api/ui/presence`, `/api/ui/poll`) are not, so an open tab alone
+never holds an update. `GET /api/system/activity` answers `{busy, idleSeconds, inflight, jobs, audits, workflows}`
+(counts only) to processes on the same host and 404 to anything else, including requests through the proxy.
+
+Before the restart `knife-update` polls it every 10 s for up to `WAIT_MAX` seconds (600) until nothing runs and nothing
+has run for `QUIET_SEC` seconds (120: an agent thinking between two calls is still working). Still busy: the switch is
+postponed (logged), the built and preflighted release is kept (`<release>/.ready`) and the next run only waits again;
+after `POSTPONE_MAX` seconds (10800) of postponing it switches anyway. On stop Next finishes the requests in flight
+(`TimeoutStopSec=60`). A live release without the endpoint never blocks an update. All three are optional `update.conf`
+keys. The updater and the unit are installed by `deploy/install.sh`, so a change to them takes effect after it is rerun.
+
 With the install script (above) this is `knife-update` on a timer; the rest of this section describes the same flow
 for a PM2 setup. To keep a server on the newest release without touching the checkout it serves from, build every release in its own
 directory (a `git worktree` per tag, its own `npm ci`, `.env.local` copied in) and serve through a `current` symlink: the

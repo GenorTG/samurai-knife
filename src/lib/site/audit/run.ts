@@ -62,6 +62,13 @@ export function currentAudit(accountId: string): AuditProgress | null {
   return null;
 }
 
+/** Audits still running on this server, any account (GET /api/system/activity). */
+export function auditsRunning(): number {
+  let n = 0;
+  for (const p of running().values()) if (!p.finished) n++;
+  return n;
+}
+
 function gc(): void {
   const cutoff = Date.now() - 15 * 60_000;
   for (const [id, p] of running()) if (p.finished && p.startedAt < cutoff) running().delete(id);

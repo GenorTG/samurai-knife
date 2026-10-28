@@ -28,6 +28,8 @@ for (const Server of [http.Server, https.Server]) {
   Server.prototype.emit = patched;
 }
 
+// Counts requests that are someone's work, so an update waits for a quiet moment (scripts/activity.mjs).
+await import("./activity.mjs");
 if (process.env.KNIFE_SECURITY_HEADERS_INSTALL === "1") await import("./security-headers.mjs");
 // Last, so it wraps the others: requests for the office host (KNIFE_OFFICE_PUBLIC_URL) never get the app's headers.
 await import("./office-proxy.mjs");
