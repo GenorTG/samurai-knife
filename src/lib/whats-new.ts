@@ -15,6 +15,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     version: "0.13.0",
     date: "2026-10-28",
     items: [
+      "Vision: knife_site_screenshot renders a page of the user's own website (production, the Vercel preview of the work branch, its GitHub Pages; desktop or mobile, full page) in a real browser on the server; MCP clients get the image, and a text description from the user's vision model with describe:true or a question. knife_vision_describe turns a screenshot id or a Craft file id into text for models that cannot see. Provider profiles say whether the model sees images and may name a vision helper profile; the in-page assistant sends images only to a model that sees them, otherwise the helper's description.",
       "Website + Vercel (optional, Website tab of cv-studio): knife_site_previews (Vercel previews of the work branch, the deployment of its head commit with state, URL and error), knife_site_deploy_logs (build log of a failed preview), knife_site_deploy (start a PREVIEW build of the work branch; never production). knife_site_audit {target:\"preview\"} and knife_site_page read previews behind Vercel Deployment Protection with the stored bypass secret.",
       "knife_whats_new: this list (the server's version and recent changes for agents).",
       "The assistant now knows its own version and these notes, and says so when its browser tab is older than the server (reload to get new tools).",

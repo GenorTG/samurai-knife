@@ -296,6 +296,19 @@ The systemd unit retains only the namespace and syscall permissions bwrap needs 
 Do not tighten it to `RestrictNamespaces=yes` or remove mount/capability syscalls without re-running the sandbox probe.
 `run_limited.py` rlimits and process-group cancellation remain active.
 
+### Screenshots (optional)
+
+`knife_site_screenshot` (docs/WEBSITE-STUDIO.md "Screenshots") needs Chromium on the host, under `/usr` so the parser
+sandbox sees it: Debian/Ubuntu `apt-get install chromium` (binary `/usr/lib/chromium/chromium`; `/usr/bin/chromium` is a
+shell wrapper that reads `/etc/chromium.d`, which the sandbox does not mount). Another path: `KNIFE_CHROMIUM=<binary>`
+(outside `/usr` it must also be in `KNIFE_PY_SANDBOX_RO`). The Python side is the `playwright` package in
+`server/py/requirements.txt`, installed into every release's venv by knife-update (pip only; `playwright install` is
+never run, no browser is downloaded). Without Chromium the tool answers that screenshots are not set up; nothing else
+changes. `deploy/install.sh` does not install Chromium (optional, ~250 MB with its libraries): install it once as root.
+The job runs on the heavy Python lane (`KNIFE_PY_HEAVY`, default 1) with the address-space rlimit lifted for it only;
+Chromium needs `AF_UNIX` (the proxy socket) and writes its profile and temp files to the job's scratch dir. After
+installing Chromium, check it on the production build: one `knife_site_screenshot` of the production site over MCP.
+
 ### Log files
 
 Besides the journal, the app keeps its own log files under one root, `KNIFE_LOG_DIR` (the systemd unit sets

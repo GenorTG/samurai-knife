@@ -109,7 +109,7 @@ commits and audits show up by themselves.
 `knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
 `knife_site_page {url}`, `knife_site_files {path?, ref?}`, `knife_site_read {path, ref?}`, `knife_site_search {query}`,
 `knife_site_replace {path, find, replace, message, all?}`, `knife_site_write {message, files, delete?}`,
-`knife_site_pr {title, body}`, `knife_site_changes`, and with Vercel connected `knife_site_previews`,
+`knife_site_pr {title, body}`, `knife_site_changes`, `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
 `knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. The assistant preloads the group on `site-studio` and
 `cv-studio`; its system prompt has the workflow (status -> audit -> read -> replace/write -> pr -> audit the preview;
 copy in the site's language, facts only from the CV). Its click guard treats buttons labelled publish/deploy as
@@ -146,8 +146,54 @@ the team, the project and `hasBypass`). Code: `src/lib/site/vercel.ts` (REST cal
   Lighthouse. A protected preview without a secret is refused with the fix, not audited as Vercel's login page.
 - Budget: outbound purpose `vercel` (same per-account limit as `github`).
 
+## Screenshots (`knife_site_screenshot`, 2026-10-28)
+
+Agents that build or fix the site can SEE it: `knife_site_screenshot {target, path?, url?, viewport, fullPage?, format?,
+describe?, question?, image?}` renders one page in a real browser on the server. Code: `src/lib/vision/` (targets.ts,
+screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, tool in `src/lib/mcp/tools-vision.ts` (group
+`site` for the assistant). Vision routing (who gets the image, who gets words) is docs/ACCOUNTS.md "Vision".
+
+- **Where** (`targets.ts`), the same "own site only" rule as audits and page reads: `production` = the connected
+  production URL or the site saved by address (public-mode non-admins: verified, `siteTargetProblem`); `preview` = the
+  READY preview of the work branch's head commit on the linked Vercel project (a protected one through the stored
+  bypass); `url` = a page on those, on a deployment Vercel confirms belongs to the linked project (`linkedDeployment`:
+  the user's own Vercel token vouches for the host), or on the repository's GitHub Pages host (`repoPagesHost`, asked
+  with the user's own GitHub access). Without Vercel, a public non-admin cannot screenshot a preview (nothing vouches
+  for a URL taken from a deployment status). Admins and private mode: any address the network policy allows, like audits.
+  `path` is a site path only (`/about`; no scheme, host or `//`). The main frame may navigate only between the target's
+  origin and its `www.`/http twins: a redirect or script that leaves them ends the job with an error, no picture.
+- **Engine**: the system's Chromium (`/usr/lib/chromium/chromium`, Debian package `chromium`; `KNIFE_CHROMIUM` overrides,
+  it must be visible in the sandbox) driven by the Python `playwright` package (only its driver; no browser download)
+  as a Python-lane job: heavy lane, the account's share of the work queue, and in public mode the bubblewrap sandbox,
+  which has NO network. Chromium runs with `--no-sandbox` because bubblewrap is the sandbox (no nested user namespaces).
+  Rejected alternatives: the npm `playwright`/`puppeteer` package would run Chromium as the app user outside the parser
+  sandbox; Chromium's `--screenshot` CLI cannot set a per-host header or stop a navigation; a hosted screenshot API
+  would be a new data recipient and would need the bypass secret.
+- **Network** (`proxy.ts`): the browser's only way out is an HTTP proxy the server runs on a unix socket in the job's
+  scratch dir (bound into the sandbox; the script relays the sandbox loopback to it). Every CONNECT (https) and every
+  absolute-form http request is checked with the shared rules (`src/lib/net/safe-fetch.ts`: scheme, port list, literal
+  and name checks, one DNS resolution with every address allowed, the deny list, a connection pinned to a checked
+  address), so a page embedding `http://169.254.169.254/`, `localhost` or a name that resolves to a LAN address gets a
+  refusal. Per job at most 400 connections and 60 MB both ways; per page 300 requests; service workers, downloads,
+  popups and dialogs are refused; only http(s) leaves the page.
+- **Vercel bypass**: sent by the browser as `x-vercel-protection-bypass` only on requests whose host is the confirmed
+  preview host (checked per request, so never across a redirect to another host), never in the URL (page scripts and
+  analytics would see it), never to PageSpeed or anyone else.
+- **Bounds**: viewport desktop 1280x800 or mobile 390x844; full page cut at 4,000 px (`truncated`); PNG, or JPEG at
+  falling quality and then fewer rows until it fits 3.5 MB; page load 30 s (a slow page still gets its picture), job
+  75 s; RLIMIT_AS is lifted for this job only (Chromium reserves tens of GB it never uses), its heap is capped by flags.
+- **Budget**: outbound purpose `screenshot` (public mode, non-admins): 20 per account per hour, 300 per hour server-wide,
+  plus the destination host bucket. Subresources are bounded by the per-job caps, not the shared host buckets.
+- **Result**: `imageArtifact` (`vis_` + 20 hex: the in-memory image store, 8 per account, 30 minutes, 64 MB server-wide,
+  never written to the data dir), target kind, URL, final URL, HTTP status, image size, request counts, and the page
+  title inside the untrusted-content envelope. MCP: an image block too (`image:false` omits it). Descriptions: see
+  ACCOUNTS.md "Vision".
+
 ## Tests
 
+`tests/vision.test.mjs` (unit: routing, store, injection, proxy refusals, own-site targets, describer with the mock
+provider), `tests/vision_engine.test.mjs` (a real Chromium behind the proxy against a local fake site; needs a Python with
+`playwright` in `KNIFE_VISION_PYTHON`; `KNIFE_VISION_BWRAP=1` runs it inside bubblewrap).
 `tests/site_vercel.test.mjs` (unit: the whole Vercel flow against a fake Vercel API and the mock GitHub).
 `tests/site_studio.test.mjs` (unit: analyzers, PageSpeed parsing, path rules, the whole GitHub flow and an audit
 against `tests/mock_site_world.mjs`), `tests/functional/site_studio_e2e.py` (Chromium + Firefox, the mock world as
