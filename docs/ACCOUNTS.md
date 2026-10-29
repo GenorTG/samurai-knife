@@ -79,7 +79,9 @@ SHA-256 of the raw token only).
   the helper's text description in the tool result instead; without either it gets neither and the result says how to
   set one up. An image never goes to a text-only model. On request (`describe:true`, a `question`,
   `knife_vision_describe`) the describer is the active profile's helper, else the active model when it is `native`
-  (`describerFor`). The helper call goes through the same provider path as the assistant (host rules, provider budget,
+  (`describerFor`). A description may use 8,000 completion tokens (reasoning models think first: a 1440x900 screenshot
+  took one ~3,400 reasoning tokens); an answer cut off at the limit with no text is retried once with 16,000, and if it
+  is still empty the error says the model spent its budget reasoning (pick a non-reasoning vision helper). The helper call goes through the same provider path as the assistant (host rules, provider budget,
   SSRF-safe transport, usage ledger); its answer describes third-party pixels and is wrapped in the untrusted-content
   envelope. The rendered file exists in a per-job temporary directory until the screenshot job finishes; the returned image is cached in server memory for 30 minutes, never in the account's files.
 - Vision detection (`src/lib/vision/probe.ts`, `capabilities.ts`, `POST /api/account/provider/vision-probe`): most
@@ -87,7 +89,8 @@ SHA-256 of the raw token only).
   model picker shows "vision unknown". The Provider settings show the vision choice next to the model (always visible),
   with **Detect** (the typed model) and **Check all models for vision** (every listed model still unknown, 3 per request,
   at most 60 per press, Stop button). Each check is one real chat completion: a 64x32 PNG whose two halves have two
-  different colours picked at random by the server, `max_tokens` 400, temperature 0, asking for the two colours or
+  different colours picked at random by the server, `max_tokens` 2,000 (retried once with 8,000 when a reasoning model
+  stops at the limit before writing anything), temperature 0, asking for the two colours or
   `NO_IMAGE`. Naming both in order = sees images (a guessing text model has a 1-in-30 chance); an HTTP 4xx about images /
   multimodal input / content types (not 401/403/404/408/409/429), or an answer saying there is no image = text only;
   anything else (timeouts, 5xx, auth, rate limits, wrong colours, an empty reasoning answer) = unknown and never cached.

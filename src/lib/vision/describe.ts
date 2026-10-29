@@ -23,6 +23,13 @@ export class VisionError extends Error {
 }
 
 export const MAX_DESCRIPTION_CHARS = 8_000;
+/**
+ * Completion budget of one description. Reasoning models spend it on thinking before they write a word (a real 1440x900
+ * screenshot took deepseek-v4.1-flash ~3,400 reasoning tokens), so it is generous; an answer cut off with nothing
+ * written is retried once with DESCRIBE_RETRY_MAX_TOKENS.
+ */
+export const DESCRIBE_MAX_TOKENS = 8_000;
+export const DESCRIBE_RETRY_MAX_TOKENS = 16_000;
 
 export const DESCRIBE_PROMPT = [
   "Describe this image for someone who cannot see it and has to improve the page it shows.",
@@ -47,7 +54,7 @@ export interface Description {
 }
 
 /** The request body sent to the describing model. Exported for tests. */
-export function describeInput(config: ProviderConfig, image: { mime: string; bytes: Uint8Array }, question?: string): ChatInput {
+export function describeInput(config: ProviderConfig, image: { mime: string; bytes: Uint8Array }, question?: string, maxTokens = DESCRIBE_MAX_TOKENS): ChatInput {
   const prompt = question?.trim() ? `${DESCRIBE_PROMPT}\n\nAnswer this question about it as well: ${question.trim()}` : DESCRIBE_PROMPT;
   return {
     model: config.model,
@@ -58,7 +65,7 @@ export function describeInput(config: ProviderConfig, image: { mime: string; byt
         { type: "image_url", image_url: { url: `data:${image.mime};base64,${Buffer.from(image.bytes).toString("base64")}` } },
       ],
     }],
-    maxTokens: 1_500,
+    maxTokens,
     temperature: 0.2,
   };
 }
@@ -73,11 +80,21 @@ export async function describeImage(accountId: string, image: { mime: string; by
   const budget = admitProvider(account, "provider", chosen.config.baseUrl);
   if (budget.problem) throw new VisionError(budget.problem, 403);
   if (!budget.ok) throw new VisionError(outboundLimitMessage(budget.retryAfterSeconds), 429);
-  const started = Date.now();
-  const outcome = await forwardChat(chosen.config, describeInput(chosen.config, image, question), providerNet(account));
-  recordRound(accountId, { model: chosen.config.model, usage: outcome.ok ? outcome.result.usage ?? null : null, ms: Date.now() - started, failed: !outcome.ok });
-  if (!outcome.ok) throw new VisionError(outcome.error, outcome.status);
-  const text = outcome.result.message.content.trim();
+  let text = "";
+  let cutOff = false;
+  for (const maxTokens of [DESCRIBE_MAX_TOKENS, DESCRIBE_RETRY_MAX_TOKENS]) {
+    const started = Date.now();
+    const outcome = await forwardChat(chosen.config, describeInput(chosen.config, image, question, maxTokens), providerNet(account));
+    recordRound(accountId, { model: chosen.config.model, usage: outcome.ok ? outcome.result.usage ?? null : null, ms: Date.now() - started, failed: !outcome.ok });
+    if (!outcome.ok) throw new VisionError(outcome.error, outcome.status);
+    text = outcome.result.message.content.trim();
+    cutOff = outcome.result.finishReason === "length";
+    // Only an answer cut off before any text is worth a second, larger round (a reasoning model thinking too long).
+    if (text || !cutOff) break;
+  }
+  if (!text && cutOff) {
+    throw new VisionError(msg("The vision model spent its whole token budget reasoning and wrote no description. Choose a vision helper profile with a model that does not reason (or reasons less) for describing images."), 502);
+  }
   if (!text) throw new VisionError(msg("The vision model returned an empty description."), 502);
   return { text: text.slice(0, MAX_DESCRIPTION_CHARS), model: chosen.config.model, profileId: chosen.profileId };
 }

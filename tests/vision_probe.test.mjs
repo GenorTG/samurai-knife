@@ -124,7 +124,10 @@ test("probeVision against a stub: sees / refuses / drops / fails / max_completio
       const name = (rgb) => Object.entries(probe.PROBE_COLOURS).find(([, v]) => v.every((c, i) => c === rgb[i]))?.[0];
       const colours = `${name(pixel(png, 1, 1))} ${name(pixel(png, 62, 1))}`;
       if (body.model === "reasoner" && body.max_tokens !== undefined) return send(400, { error: { message: "Use max_completion_tokens instead of max_tokens." } });
-      if (body.model === "seer" || body.model === "reasoner") return send(200, { choices: [{ message: { role: "assistant", content: colours } }] });
+      const budget = body.max_tokens ?? body.max_completion_tokens;
+      if (body.model === "thinker" && budget < 5_000) return send(200, { choices: [{ message: { role: "assistant", content: "" }, finish_reason: "length" }] });
+      if (body.model === "deep-thinker") return send(200, { choices: [{ message: { role: "assistant", content: null }, finish_reason: "length" }] });
+      if (body.model === "seer" || body.model === "reasoner" || body.model === "thinker") return send(200, { choices: [{ message: { role: "assistant", content: colours } }] });
       if (body.model === "text") return send(400, { error: { message: "This model does not support image input." } });
       if (body.model === "dropper") return send(200, { choices: [{ message: { role: "assistant", content: "NO_IMAGE" } }] });
       return send(503, { error: { message: "overloaded" } });
@@ -135,7 +138,13 @@ test("probeVision against a stub: sees / refuses / drops / fails / max_completio
   try {
     assert.deepEqual(await probe.probeVision(config, OPEN_NET, "seer"), { vision: true, reason: "saw", status: 200 });
     assert.equal((await probe.probeVision(config, OPEN_NET, "reasoner")).vision, true);
-    assert.equal(seen.at(-1).body.max_completion_tokens, 400, "retried with max_completion_tokens");
+    assert.equal(seen.at(-1).body.max_completion_tokens, probe.PROBE_MAX_TOKENS, "retried with max_completion_tokens");
+    // A reasoning model out of tokens before answering: retried once larger; still empty = unknown, never text-only.
+    assert.deepEqual(await probe.probeVision(config, OPEN_NET, "thinker"), { vision: true, reason: "saw", status: 200 });
+    assert.equal(seen.at(-1).body.max_tokens, probe.PROBE_RETRY_MAX_TOKENS);
+    const before = seen.length;
+    assert.deepEqual(await probe.probeVision(config, OPEN_NET, "deep-thinker"), { vision: null, reason: "unclear", status: 200 });
+    assert.equal(seen.length - before, 2, "one retry only");
     assert.deepEqual(await probe.probeVision(config, OPEN_NET, "text"), { vision: false, reason: "rejected", status: 400 });
     assert.deepEqual(await probe.probeVision(config, OPEN_NET, "dropper"), { vision: false, reason: "no_image", status: 200 });
     assert.deepEqual(await probe.probeVision(config, OPEN_NET, "down"), { vision: null, reason: "error", status: 503 });

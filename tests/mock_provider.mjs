@@ -5,6 +5,9 @@
 //     mock-vision  reads a probe picture (two solid halves) and names the colours, e.g. "red blue"
 //     mock-text    answers HTTP 400 "does not support image input" to any request carrying an image part
 //     mock-blind   accepts the request but answers NO_IMAGE (a provider that drops images)
+//     mock-thinker-<N>  a reasoning vision model that needs N completion tokens: with a smaller max_tokens /
+//                  max_completion_tokens it answers empty content + finish_reason "length" (all spent reasoning),
+//                  otherwise like mock-vision (probe colours) or the generic VISION: answer
 //   GET  /v1/models
 //   POST /v1/chat/completions   (non-stream)
 //   GET  /__last                -> last POST body (+ received headers) for assertions
@@ -199,6 +202,17 @@ const server = createServer((req, res) => {
       }
       if (body.model === "mock-blind" && seen.length) {
         return reply(res, body, { role: "assistant", content: "NO_IMAGE" }, "stop", "");
+      }
+      const thinker = /^mock-thinker-(\d+)$/.exec(String(body.model ?? ""));
+      if (thinker && seen.length) {
+        const budget = Number(body.max_tokens ?? body.max_completion_tokens ?? Number.POSITIVE_INFINITY);
+        if (budget < Number(thinker[1])) {
+          return send(res, 200, { ...completion({ role: "assistant", content: "" }, "length"), usage: { prompt_tokens: 10, completion_tokens: budget, total_tokens: budget + 10, completion_tokens_details: { reasoning_tokens: budget } } });
+        }
+        if (/left half/.test(text)) {
+          const colours = probeColours(tail.content.find((p) => p?.type === "image_url").image_url.url);
+          return reply(res, body, { role: "assistant", content: colours ? colours.join(" ") : "unreadable" }, "stop", "");
+        }
       }
       if (body.model === "mock-vision" && seen.length && /left half/.test(text)) {
         const part = tail.content.find((p) => p?.type === "image_url");

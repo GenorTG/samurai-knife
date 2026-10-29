@@ -20,7 +20,13 @@ export const PROBE_TIMEOUT_MS = (() => {
 export const PROBE_CONCURRENCY = 3;
 /** Models one request may check (the settings page sends batches and shows progress). */
 export const MAX_PROBE_MODELS = 6;
-const PROBE_MAX_TOKENS = 400;
+/**
+ * Completion budget of one probe. A reasoning model thinks before it names the colours, so the first try leaves room;
+ * an answer cut off with nothing written (finish_reason "length") is retried once with PROBE_RETRY_MAX_TOKENS, and if it
+ * is still empty the verdict is "unclear" (unknown), never "text only".
+ */
+export const PROBE_MAX_TOKENS = 2_000;
+export const PROBE_RETRY_MAX_TOKENS = 8_000;
 
 export const PROBE_COLOURS = {
   red: [220, 30, 30],
@@ -183,14 +189,24 @@ function answerText(text: string): string | null {
   return null;
 }
 
+/** A completion whose first choice stopped at the token limit before writing any text. */
+export function cutOffEmpty(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text) as { choices?: { finish_reason?: unknown }[] };
+    return parsed.choices?.[0]?.finish_reason === "length" && answerText(text) === null;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------------------------------------------ probing */
 
-function probeBody(model: string, png: Buffer, tokenField: "max_tokens" | "max_completion_tokens"): string {
+function probeBody(model: string, png: Buffer, tokenField: "max_tokens" | "max_completion_tokens", maxTokens: number): string {
   return JSON.stringify({
     model,
     stream: false,
     temperature: 0,
-    [tokenField]: PROBE_MAX_TOKENS,
+    [tokenField]: maxTokens,
     messages: [{
       role: "user",
       content: [
@@ -207,10 +223,16 @@ export async function probeVision(config: ProviderConfig, net: ProviderNet, mode
   const png = twoColourPng(colours[0], colours[1]);
   const timeout = options.timeoutMs ?? PROBE_TIMEOUT_MS;
   const target = { ...config, model };
-  let response = await providerPost(target, net, "/chat/completions", probeBody(model, png, "max_tokens"), timeout);
+  let tokenField: "max_tokens" | "max_completion_tokens" = "max_tokens";
+  let response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS), timeout);
   // Newer OpenAI reasoning models reject max_tokens (the same retry as a chat round).
   if (response.ok && response.status === 400 && response.text.includes("max_completion_tokens")) {
-    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, "max_completion_tokens"), timeout);
+    tokenField = "max_completion_tokens";
+    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS), timeout);
+  }
+  // A reasoning model that ran out of tokens before answering: once more with a larger budget.
+  if (response.ok && response.status >= 200 && response.status < 300 && cutOffEmpty(response.text)) {
+    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_RETRY_MAX_TOKENS), timeout);
   }
   return classifyProbe(response, colours);
 }
