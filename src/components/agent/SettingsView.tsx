@@ -578,7 +578,7 @@ function ProviderForm({
                 const capabilities = details
                   ? ` · ${details.contextLength ? `${details.contextLength.toLocaleString()} ctx` : tr("context unknown")} · ${visionLabel}${details.features.length ? ` · ${details.features.join(", ")}` : ""}`
                   : "";
-                return <option key={id} value={id}>{id}{capabilities}</option>;
+                return <option key={id} value={id}>{id}{details?.displayName && details.displayName !== id ? ` (${details.displayName})` : ""}{capabilities}</option>;
               })}
             </select>
             <div className="flex flex-wrap items-center justify-between gap-2">

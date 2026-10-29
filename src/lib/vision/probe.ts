@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 import { deflateSync } from "node:zlib";
-import { providerPost, type ProviderNet } from "@/lib/accounts/provider";
+import { acceptsTemperature, providerPost, type ProviderNet } from "@/lib/accounts/provider";
 import type { ProviderConfig } from "@/lib/accounts/store";
 
 /**
@@ -201,11 +201,11 @@ export function cutOffEmpty(text: string): boolean {
 
 /* ------------------------------------------------------------------------------------------------------ probing */
 
-function probeBody(model: string, png: Buffer, tokenField: "max_tokens" | "max_completion_tokens", maxTokens: number): string {
+function probeBody(model: string, png: Buffer, tokenField: "max_tokens" | "max_completion_tokens", maxTokens: number, temperature: boolean): string {
   return JSON.stringify({
     model,
     stream: false,
-    temperature: 0,
+    ...(temperature ? { temperature: 0 } : {}),
     [tokenField]: maxTokens,
     messages: [{
       role: "user",
@@ -223,16 +223,17 @@ export async function probeVision(config: ProviderConfig, net: ProviderNet, mode
   const png = twoColourPng(colours[0], colours[1]);
   const timeout = options.timeoutMs ?? PROBE_TIMEOUT_MS;
   const target = { ...config, model };
+  const withTemperature = acceptsTemperature(config);
   let tokenField: "max_tokens" | "max_completion_tokens" = "max_tokens";
-  let response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS), timeout);
+  let response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS, withTemperature), timeout);
   // Newer OpenAI reasoning models reject max_tokens (the same retry as a chat round).
   if (response.ok && response.status === 400 && response.text.includes("max_completion_tokens")) {
     tokenField = "max_completion_tokens";
-    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS), timeout);
+    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_MAX_TOKENS, withTemperature), timeout);
   }
   // A reasoning model that ran out of tokens before answering: once more with a larger budget.
   if (response.ok && response.status >= 200 && response.status < 300 && cutOffEmpty(response.text)) {
-    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_RETRY_MAX_TOKENS), timeout);
+    response = await providerPost(target, net, "/chat/completions", probeBody(model, png, tokenField, PROBE_RETRY_MAX_TOKENS, withTemperature), timeout);
   }
   return classifyProbe(response, colours);
 }

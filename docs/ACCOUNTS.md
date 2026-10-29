@@ -67,6 +67,19 @@ SHA-256 of the raw token only).
   advertised `supported_parameters` such as tools, reasoning, JSON output, streaming or audio. A missing field is shown as
   unknown; capabilities are never guessed from model names. Selecting an entry with explicit image modality updates the
   profile's vision flag. Workflow AI nodes pick any profile.
+- Anthropic (`api.anthropic.com/v1`, the settings' Anthropic preset; `isAnthropicBaseUrl` in
+  `src/lib/accounts/provider.ts`, exact host only): chat goes through Anthropic's OpenAI-compatible
+  `/v1/chat/completions` (Bearer key, tools, streaming, `image_url` parts; `max_tokens` optional there), but its native
+  `GET /v1/models` (Test, Load models) answers 400 without `anthropic-version`. For that host every request also carries
+  `anthropic-version: 2023-06-01` and `x-api-key: <key>`; an extra header of the same name set by the user wins.
+  `/models` is read in Anthropic's native shape (`display_name`, `created_at`, `max_input_tokens`,
+  `capabilities.image_input/thinking/structured_outputs/pdf_input.supported`), paged with `after_id` (`has_more` /
+  `last_id`, at most 5 pages of 1,000, the list keeps 400). Requests to that host never carry `temperature` (Claude 4.7
+  and later answer 400 to any value below 1 there): the assistant's 0.2, the describer's 0.2 and the probe's 0 are left
+  out. Errors `{type:"error", error:{type, message}}` read as `message (type)`. Tests: the mock provider's
+  `/anthropic/v1` plays the host when the server or test sets `KNIFE_ANTHROPIC_TEST_BASE` to that base URL (test seam
+  only; it adds the same headers to that one address). Workflow AI nodes call `/chat/completions` themselves with
+  Bearer only and still send their temperature.
 - Vision (`src/lib/vision/config.ts`): each profile's config may carry `vision` (`native` = the model accepts
   OpenAI-style `image_url` parts; unset or `none` = text-only, which is what every profile saved before 2026-10-28 is,
   so nothing changes for them) and `visionHelper` (the id of another saved profile, any OpenAI-compatible vision model:

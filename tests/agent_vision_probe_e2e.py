@@ -6,12 +6,15 @@ mock-blind (answers NO_IMAGE) next to mock-model / mock-model-2 (which answer wi
 Start the mock:   node tests/mock_provider.mjs 3299
 Start the server: KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3232 npm run dev      (127.0.0.1 only, FRESH data dir)
 Run:              python3 tests/agent_vision_probe_e2e.py http://127.0.0.1:3232 http://127.0.0.1:3299
+For the Anthropic part start the server with KNIFE_ANTHROPIC_TEST_BASE=http://127.0.0.1:3299/anthropic/v1 (the mock's
+fake api.anthropic.com); without it that part is skipped.
 
 Covers: the vision control is visible next to the model (not inside a closed panel); Detect on one model; "Check all
 models"; learned answers shown in the list after a reload (server cache); picking a detected vision model sets "Sees
 images", saved and kept after reload; the saved setting really sends a picture (knife_vision_describe -> mock); a
 text-only setting sends none; probe errors are not remembered; route bounds; the per-turn limit saved, shown and
-honoured by the loop (rounds and tool calls).
+honoured by the loop (rounds and tool calls); Anthropic: Load models (native /models, display names, paged), Connect /
+Test and a chat round through the settings and the widget.
 """
 import base64
 import json
@@ -159,7 +162,7 @@ with sync_playwright() as pw:
     last = http_json("GET", "/__last", base=MOCK)[1]
     parts = last["body"]["messages"][0]["content"]
     check("probe request: one tiny PNG as image_url to the probed model", last["body"]["model"] == "mock-text" and any(p.get("type") == "image_url" and p["image_url"]["url"].startswith("data:image/png;base64,") for p in parts), last["body"]["model"])
-    check("probe request: small token budget, no tools", last["body"].get("max_tokens") == 400 and "tools" not in last["body"], last["body"].keys())
+    check("probe request: small token budget, no tools", last["body"].get("max_tokens") == 2000 and "tools" not in last["body"], last["body"].keys())
 
     # 4. Check all models ----------------------------------------------------------------------------------------------
     f.locator("[data-provider-check-all]").click()
@@ -266,6 +269,35 @@ with sync_playwright() as pw:
 
     status, account = http_json("PUT", "/api/account/assistant", {"reset": True})
     check("turn limit reset to the defaults", status == 200 and account["assistant"] == {"maxRounds": 24, "maxToolCalls": 40, "custom": False}, account.get("assistant"))
+
+    # 8. Anthropic (api.anthropic.com played by the mock: anthropic-version / x-api-key required, native /models) -------
+    anthropic_base = f"{MOCK}/anthropic/v1"
+    status, listed = http_json("POST", "/api/account/provider/models", {"baseUrl": anthropic_base, "apiKey": "mock-key"})
+    if status == 200 and listed.get("ok") is False and "anthropic-version" in (listed.get("error") or ""):
+        print("skip Anthropic: start the server with KNIFE_ANTHROPIC_TEST_BASE=" + anthropic_base)
+    else:
+        page.reload(wait_until="networkidle")
+        open_settings(page)
+        f = form(page)
+        f.locator("button", has_text="Custom").click()
+        f.locator("input[type=url]").fill(anthropic_base)
+        f.locator("#sk-provider-key").fill("mock-key")
+        f.locator("#sk-provider-model").fill("claude-sonnet-mock")
+        f.locator("button", has_text="Load models").click()
+        f.locator("select[aria-label='Available models'] option[value='claude-text-mock']").wait_for(state="attached")
+        labels = f.locator("select[aria-label='Available models'] option").all_inner_texts()
+        check("Anthropic Load models: both pages, display names, image support", len(labels) == 4 and "Claude Opus Mock" in option_label(page, "claude-opus-mock") and "1,000,000 ctx" in option_label(page, "claude-opus-mock") and "text only" in option_label(page, "claude-text-mock"), labels)
+        f.locator("select[aria-label='Available models']").select_option("claude-opus-mock")
+        check("Anthropic: picking an image model sets Sees images", f.locator("select[aria-label='Does this model see images?']").input_value() == "native")
+        f.locator("button[type=submit]").click()
+        wait_until(lambda: (page_account(page).get("provider") or {}).get("model") == "claude-opus-mock", "the Anthropic provider to be saved")
+        status, tested = http_json("POST", "/api/account/provider/test", {})
+        check("Anthropic Test: connected, 3 models", status == 200 and tested.get("ok") is True and tested.get("modelCount") == 3, tested)
+        back_to_chat(page)
+        turn = this_turn(send(page, "hello anthropic"), "hello anthropic")
+        sent = http_json("GET", "/__last", base=MOCK)[1]
+        check("Anthropic chat round answered", turn[-1]["role"] == "assistant" and turn[-1]["content"].startswith("ECHO: hello anthropic"), turn[-1])
+        check("Anthropic chat round: version header, no temperature", sent["headers"].get("anthropic-version") == "2023-06-01" and "temperature" not in sent["body"] and sent["body"]["model"] == "claude-opus-mock", (sent["headers"], list(sent["body"])))
 
     data_dir = os.environ.get("KNIFE_DATA_DIR", "")
     if data_dir:

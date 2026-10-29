@@ -116,6 +116,9 @@ export interface ProviderModelDetails {
   visionSource: "advertised" | "detected" | null;
   visionCheckedAt?: string;
   features: string[];
+  /** Provider's human-readable name (Anthropic `display_name`). */
+  displayName?: string;
+  createdAt?: string;
 }
 
 /** One model's answer from POST /api/account/provider/vision-probe. */

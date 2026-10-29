@@ -71,9 +71,39 @@ export function validateExtraHeaders(headers: Record<string, string>, strict = f
   return null;
 }
 
+/**
+ * Anthropic's API (docs: platform.claude.com "OpenAI SDK compatibility" and "List Models"): /v1/chat/completions takes
+ * the OpenAI shape with `Authorization: Bearer`, but its native endpoints (GET /v1/models, the Test and Load-models
+ * buttons) answer 400 without `anthropic-version` and authenticate with `x-api-key`. Both are added for that host only;
+ * a user's own extra header of the same name wins.
+ */
+export const ANTHROPIC_VERSION = "2023-06-01";
+
+export function isAnthropicBaseUrl(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === "api.anthropic.com";
+  } catch {
+    return false;
+  }
+}
+
+/** Test seam: KNIFE_ANTHROPIC_TEST_BASE treats one more base URL (the mock provider's /anthropic/v1) as Anthropic. */
+function anthropicTarget(baseUrl: string): boolean {
+  const testBase = process.env.KNIFE_ANTHROPIC_TEST_BASE;
+  return isAnthropicBaseUrl(baseUrl) || (Boolean(testBase) && baseUrl === testBase);
+}
+
 function upstreamHeaders(provider: ProviderConfig): Record<string, string> {
+  const anthropic = anthropicTarget(provider.baseUrl)
+    ? { "anthropic-version": ANTHROPIC_VERSION, ...(provider.apiKey ? { "x-api-key": provider.apiKey } : {}) }
+    : {};
+  const extra = provider.extraHeaders ?? {};
+  // A user header wins over a default whatever its case (HTTP names are case-insensitive).
+  const overridden = new Set(Object.keys(extra).map((name) => name.toLowerCase()));
+  const defaults = Object.fromEntries(Object.entries(anthropic).filter(([name]) => !overridden.has(name)));
   const headers: Record<string, string> = {
-    ...(provider.extraHeaders ?? {}),
+    ...defaults,
+    ...extra,
     "Content-Type": "application/json",
     Accept: "application/json",
   };
@@ -153,6 +183,11 @@ async function upstreamFetch(
  * the status and body for the caller to classify, or the transport failure. The body is never shown as is: callers keep
  * only what they classify from it.
  */
+/** Whether a request body may carry `temperature` for this provider (not Anthropic, see chatBody). */
+export function acceptsTemperature(provider: ProviderConfig): boolean {
+  return !anthropicTarget(provider.baseUrl);
+}
+
 export async function providerPost(
   provider: ProviderConfig,
   net: ProviderNet,
@@ -186,7 +221,9 @@ function errorDetail(text: string, provider: ProviderConfig, echo: boolean): str
     const inner = parsed.error;
     if (typeof inner === "string") detail = inner;
     else if (inner && typeof inner === "object" && "message" in inner && typeof inner.message === "string") {
-      detail = inner.message;
+      // Anthropic: {type: "error", error: {type: "invalid_request_error", message}}; OpenAI: {error: {message, type}}.
+      const kind = "type" in inner && typeof inner.type === "string" && /^[a-z_]{1,60}$/.test(inner.type) ? inner.type : null;
+      detail = kind && !inner.message.includes(kind) ? `${inner.message} (${kind})` : inner.message;
     }
   } catch {
     // keep raw text (echo) or nothing
@@ -215,6 +252,10 @@ export interface ProviderModelDetails {
   /** When the probe checked it (detected only). */
   visionCheckedAt?: string;
   features: string[];
+  /** A human-readable name when the provider gives one (Anthropic `display_name`). */
+  displayName?: string;
+  /** Release date when the provider gives one (Anthropic `created_at`, RFC 3339). */
+  createdAt?: string;
 }
 
 const modelListSchema = z.object({ data: z.array(z.unknown()) }).passthrough();
@@ -249,11 +290,16 @@ function modelDetails(entries: unknown[]): ProviderModelDetails[] {
       ? modalityList.filter((value): value is string => typeof value === "string").map((value) => value.toLowerCase())
       : null;
     const capabilities = isRecord(raw.capabilities) ? raw.capabilities : null;
+    // Anthropic: capabilities.<name> = {supported: boolean}.
+    const supported = (name: string): boolean | null => {
+      const entry = capabilities?.[name];
+      return isRecord(entry) && typeof entry.supported === "boolean" ? entry.supported : null;
+    };
     const explicitVision = typeof raw.vision === "boolean"
       ? raw.vision
       : capabilities && typeof capabilities.vision === "boolean"
         ? capabilities.vision
-        : null;
+        : supported("image_input");
     const topProvider = isRecord(raw.top_provider) ? raw.top_provider : null;
     const context = [raw.context_length, raw.context_window, raw.max_input_tokens, topProvider?.context_length]
       .find((value) => typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 10_000_000);
@@ -267,6 +313,9 @@ function modelDetails(entries: unknown[]): ProviderModelDetails[] {
       else if (/^[a-z][a-z0-9_:-]{0,39}$/.test(normalized)) featureSet.add(normalized);
       if (featureSet.size >= 20) break;
     }
+    if (supported("thinking")) featureSet.add("reasoning");
+    if (supported("structured_outputs")) featureSet.add("JSON output");
+    if (supported("pdf_input")) featureSet.add("pdf");
     if (modalities?.includes("audio")) featureSet.add("audio");
     if (modalities?.includes("image")) featureSet.add("vision");
     const vision = modalities ? modalities.includes("image") : explicitVision;
@@ -276,27 +325,44 @@ function modelDetails(entries: unknown[]): ProviderModelDetails[] {
       vision,
       visionSource: vision === null ? null : "advertised",
       features: [...featureSet].sort(),
+      ...(typeof raw.display_name === "string" && raw.display_name && raw.display_name.length <= 120 && !/[\u0000-\u001f]/.test(raw.display_name) ? { displayName: raw.display_name } : {}),
+      ...(typeof raw.created_at === "string" && /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/.test(raw.created_at) ? { createdAt: raw.created_at } : {}),
     });
   }
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_LISTED_MODELS);
 }
 
+/** Pages of Anthropic's GET /models read at most (1,000 models each; the list keeps MAX_LISTED_MODELS). */
+const MAX_MODEL_PAGES = 5;
+const anthropicPageSchema = z.object({ has_more: z.boolean().optional(), last_id: z.union([z.string(), z.null()]).optional() }).passthrough();
+
 export async function testProvider(provider: ProviderConfig, net: ProviderNet): Promise<ProviderTestResult> {
   try {
-    const { status, text } = await upstreamFetch(provider, net, "/models", { method: "GET" }, TEST_TIMEOUT_MS);
-    if (status < 200 || status >= 300) {
-      return { ok: false, status, error: `Provider returned HTTP ${status}: ${errorDetail(text, provider, net.echoUpstream)}` };
+    const anthropic = anthropicTarget(provider.baseUrl);
+    const entries: unknown[] = [];
+    let status = 0;
+    let after: string | null = null;
+    for (let page = 0; page < (anthropic ? MAX_MODEL_PAGES : 1); page++) {
+      const query = anthropic ? `?limit=1000${after ? `&after_id=${encodeURIComponent(after)}` : ""}` : "";
+      const answer = await upstreamFetch(provider, net, `/models${query}`, { method: "GET" }, TEST_TIMEOUT_MS);
+      status = answer.status;
+      if (status < 200 || status >= 300) {
+        return { ok: false, status, error: `Provider returned HTTP ${status}: ${errorDetail(answer.text, provider, net.echoUpstream)}` };
+      }
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(answer.text) as unknown;
+      } catch {
+        return { ok: false, status, error: "Provider /models did not return JSON." };
+      }
+      const models = modelListSchema.safeParse(parsedJson);
+      if (!models.success) return page === 0 ? { ok: true, status } : { ok: true, status, modelCount: entries.length, models: modelIds(entries), modelDetails: modelDetails(entries) };
+      entries.push(...models.data.data);
+      const more = anthropicPageSchema.safeParse(parsedJson);
+      after = more.success && more.data.has_more && typeof more.data.last_id === "string" && more.data.last_id ? more.data.last_id : null;
+      if (!after || entries.length >= MAX_LISTED_MODELS) break;
     }
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(text) as unknown;
-    } catch {
-      return { ok: false, status, error: "Provider /models did not return JSON." };
-    }
-    const models = modelListSchema.safeParse(parsedJson);
-    return models.success
-      ? { ok: true, status, modelCount: models.data.data.length, models: modelIds(models.data.data), modelDetails: modelDetails(models.data.data) }
-      : { ok: true, status };
+    return { ok: true, status, modelCount: entries.length, models: modelIds(entries), modelDetails: modelDetails(entries) };
   } catch (error) {
     if (error instanceof UpstreamFailure) return { ok: false, status: null, error: failureMessage(error) };
     return { ok: false, status: null, error: "Provider test failed." };
@@ -343,7 +409,8 @@ function chatBody(provider: ProviderConfig, input: ChatInput, tokenField: string
   if (stream && withUsage) body.stream_options = { include_usage: true };
   if (provider.reasoningEffort) body.reasoning_effort = provider.reasoningEffort;
   if (input.tools && input.tools.length > 0) body.tools = input.tools;
-  if (input.temperature !== undefined) body.temperature = input.temperature;
+  // Claude 4.7 and later answer 400 to any temperature below 1 on Anthropic's compatibility layer: leave it out there.
+  if (input.temperature !== undefined && !anthropicTarget(provider.baseUrl)) body.temperature = input.temperature;
   if (input.maxTokens !== undefined) body[tokenField] = input.maxTokens;
   return JSON.stringify(body);
 }

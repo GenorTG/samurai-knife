@@ -8,6 +8,11 @@
 //     mock-thinker-<N>  a reasoning vision model that needs N completion tokens: with a smaller max_tokens /
 //                  max_completion_tokens it answers empty content + finish_reason "length" (all spent reasoning),
 //                  otherwise like mock-vision (probe colours) or the generic VISION: answer
+//   Base URL .../anthropic/v1 behaves like api.anthropic.com (the server treats it so when KNIFE_ANTHROPIC_TEST_BASE names
+//   it): every request needs `anthropic-version` (else 400 "anthropic-version: header is required") and GET /models needs
+//   `x-api-key: mock-key` (else 401), all errors in Anthropic's {type:"error", error:{type, message}} shape; GET /models
+//   is the native shape (display_name, created_at, max_input_tokens, capabilities.image_input) paged two at a time
+//   (has_more / last_id / after_id); chat completions answer 400 to any temperature below 1 (Claude 4.7+), else as /v1.
 //   GET  /v1/models
 //   POST /v1/chat/completions   (non-stream)
 //   GET  /__last                -> last POST body (+ received headers) for assertions
@@ -163,6 +168,25 @@ const server = createServer((req, res) => {
     if (req.method === "DELETE") requestLog = [];
     return send(res, 200, requestLog);
   }
+  const anthropic = url.pathname.startsWith("/anthropic/v1/");
+  if (anthropic) {
+    url.pathname = url.pathname.slice("/anthropic".length);
+    const anthropicError = (status, type, message) => send(res, status, { type: "error", error: { type, message } });
+    if (!req.headers["anthropic-version"]) return anthropicError(400, "invalid_request_error", "anthropic-version: header is required");
+    if (req.method === "GET" && url.pathname === "/v1/models") {
+      if (req.headers["x-api-key"] !== KEY) return anthropicError(401, "authentication_error", "invalid x-api-key");
+      const all = [
+        { type: "model", id: "claude-opus-mock", display_name: "Claude Opus Mock", created_at: "2026-09-21T00:00:00Z", max_input_tokens: 1000000, max_tokens: 128000, capabilities: { image_input: { supported: true }, thinking: { supported: true }, structured_outputs: { supported: true }, pdf_input: { supported: true } } },
+        { type: "model", id: "claude-sonnet-mock", display_name: "Claude Sonnet Mock", created_at: "2026-09-01T00:00:00Z", max_input_tokens: 200000, capabilities: { image_input: { supported: true } } },
+        { type: "model", id: "claude-text-mock", display_name: "Claude Text Mock", created_at: "2024-01-01T00:00:00Z", capabilities: { image_input: { supported: false } } },
+      ];
+      const after = url.searchParams.get("after_id");
+      const start = after ? all.findIndex((m) => m.id === after) + 1 : 0;
+      const page = all.slice(start, start + 2);
+      const more = start + 2 < all.length;
+      return send(res, 200, { data: page, has_more: more, first_id: page[0]?.id ?? null, last_id: page.at(-1)?.id ?? null });
+    }
+  }
   if (req.headers.authorization !== `Bearer ${KEY}`) {
     // Echoes the received credential so tests can prove the server redacts it.
     return send(res, 401, { error: { message: `bad key: ${req.headers.authorization ?? "none"}`, type: "auth" } });
@@ -181,7 +205,10 @@ const server = createServer((req, res) => {
       } catch {
         return send(res, 400, { error: { message: "invalid json" } });
       }
-      last = { body, headers: { authorization: req.headers.authorization, "x-test-header": req.headers["x-test-header"] ?? null } };
+      last = { body, headers: { authorization: req.headers.authorization, "x-test-header": req.headers["x-test-header"] ?? null, "anthropic-version": req.headers["anthropic-version"] ?? null, "x-api-key": req.headers["x-api-key"] ? "present" : null } };
+      if (anthropic && typeof body.temperature === "number" && body.temperature < 1) {
+        return send(res, 400, { type: "error", error: { type: "invalid_request_error", message: "temperature: values below 1 are not supported for this model" } });
+      }
       const messages = Array.isArray(body.messages) ? body.messages : [];
       requestCount += 1;
       inflight += 1;
