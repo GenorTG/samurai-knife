@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/accounts/secret-box";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { resolveTurnLimits, turnLimitsSchema, type TurnLimits } from "@/lib/agent-client/turn-limits";
 
 /**
  * Account store. Lives outside the repo (KNIFE_DATA_DIR or ~/.local/share/samurai-knife) in `accounts.json` (0600, atomic
@@ -127,6 +128,11 @@ const accountSchema = z.object({
   termsVersion: z.string().max(64).nullable().default(null),
   /** Interface language the user picked (src/lib/i18n): follows them to every device; null = the browser decides. */
   language: z.enum(["en", "pl"]).nullable().default(null),
+  /**
+   * The assistant's per-turn budget the user set (src/lib/agent-client/turn-limits.ts); null = the defaults. A value out
+   * of bounds (a hand edit) reads as null rather than breaking the whole file.
+   */
+  assistant: turnLimitsSchema.nullable().default(null).catch(null),
 });
 
 const storeSchema = z.object({
@@ -602,6 +608,8 @@ export interface PublicAccount {
   github: string | null;
   /** Interface language the user picked, or null (the browser decides). */
   language: "en" | "pl" | null;
+  /** The assistant's per-turn budget (defaults filled in) and whether the user changed it. */
+  assistant: TurnLimits & { custom: boolean };
 }
 
 export function maskKey(key: string): string | null {
@@ -641,7 +649,18 @@ export function toPublicAccount(account: Account, mode: "private" | "public" = "
     authMode: mode,
     github: account.github?.login ?? null,
     language: account.language ?? null,
+    assistant: { ...resolveTurnLimits(account.assistant), custom: account.assistant !== null && account.assistant !== undefined },
   };
+}
+
+/** Saves the assistant's per-turn budget (null: back to the defaults). Returns the account, or undefined. */
+export function setAssistantLimits(id: string, limits: TurnLimits | null): Account | undefined {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) return undefined;
+    account.assistant = limits;
+    return account;
+  });
 }
 
 /** Saves the account's interface language (null: follow the browser). */

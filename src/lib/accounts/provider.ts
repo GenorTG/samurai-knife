@@ -148,6 +148,26 @@ async function upstreamFetch(
   }
 }
 
+/**
+ * One raw POST to the provider through the same SSRF-safe transport (used by the vision probe, src/lib/vision/probe.ts):
+ * the status and body for the caller to classify, or the transport failure. The body is never shown as is: callers keep
+ * only what they classify from it.
+ */
+export async function providerPost(
+  provider: ProviderConfig,
+  net: ProviderNet,
+  path: string,
+  body: string,
+  timeoutMs: number,
+): Promise<{ ok: true; status: number; text: string } | { ok: false; failure: "timeout" | "network" | "too_large" | "refused" }> {
+  try {
+    const { status, text } = await upstreamFetch(provider, net, path, { method: "POST", body }, timeoutMs);
+    return { ok: true, status, text };
+  } catch (error) {
+    return { ok: false, failure: asUpstreamFailure(error).kind };
+  }
+}
+
 function failureMessage(failure: UpstreamFailure): string {
   if (failure.kind === "timeout") return "The provider did not answer in time.";
   if (failure.kind === "too_large") return "The provider response was too large.";
@@ -190,6 +210,10 @@ export interface ProviderModelDetails {
   id: string;
   contextLength: number | null;
   vision: boolean | null;
+  /** Where `vision` comes from: the provider's /models, the vision probe's learned answer (src/lib/vision/capabilities.ts), or nowhere. */
+  visionSource: "advertised" | "detected" | null;
+  /** When the probe checked it (detected only). */
+  visionCheckedAt?: string;
   features: string[];
 }
 
@@ -245,10 +269,12 @@ function modelDetails(entries: unknown[]): ProviderModelDetails[] {
     }
     if (modalities?.includes("audio")) featureSet.add("audio");
     if (modalities?.includes("image")) featureSet.add("vision");
+    const vision = modalities ? modalities.includes("image") : explicitVision;
     byId.set(raw.id, {
       id: raw.id,
       contextLength: typeof context === "number" ? context : null,
-      vision: modalities ? modalities.includes("image") : explicitVision,
+      vision,
+      visionSource: vision === null ? null : "advertised",
       features: [...featureSet].sort(),
     });
   }

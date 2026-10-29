@@ -4,9 +4,10 @@ import { msgf } from "@/lib/i18n/msg";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
-import { changeProfile, listModels, saveProvider, testProvider } from "@/lib/agent-client/api";
+import { changeProfile, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider } from "@/lib/agent-client/api";
 import { UsagePanel } from "./UsagePanel";
-import type { AccountInfo, ProviderInput } from "@/lib/agent-client/types";
+import type { AccountInfo, ProviderInput, ProviderModelDetails, VisionProbeResult } from "@/lib/agent-client/types";
+import { TURN_LIMIT_BOUNDS } from "@/lib/agent-client/turn-limits";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
@@ -239,7 +240,10 @@ function ProviderForm({
   const helperChoices = account.providerProfiles.filter((profile) => profile.id !== activeProfileId);
   const [working, setWorking] = useState<"connect" | "models" | null>(null);
   const [models, setModels] = useState<string[]>([]);
-  const [modelDetails, setModelDetails] = useState<Record<string, { contextLength: number | null; vision: boolean | null; features: string[] }>>({});
+  const [modelDetails, setModelDetails] = useState<Record<string, ProviderModelDetails>>({});
+  /** Vision detection in progress: "one" (Detect for the typed model) or "all" (the model list); stop = Stop pressed. */
+  const [probing, setProbing] = useState<"one" | "all" | null>(null);
+  const stopProbe = useRef(false);
 
   const preset = presetFor(baseUrl);
   const local = "local" in preset && preset.local;
@@ -285,20 +289,12 @@ function ProviderForm({
 
   /** The models the provider lists for the fields as typed (nothing is saved). */
   async function loadModels(): Promise<boolean> {
-    if (!baseUrl.trim()) {
-      setStatus({ tone: "error", text: tr("Enter the base URL.") });
+    const fields = connectionFields();
+    if (typeof fields === "string") {
+      setStatus({ tone: "error", text: fields });
       return false;
     }
-    const parsed = parseHeaders(headersText);
-    if (!parsed.ok) {
-      setStatus({ tone: "error", text: parsed.error });
-      return false;
-    }
-    const result = await listModels({
-      baseUrl: baseUrl.trim(),
-      ...(clearKey ? { apiKey: "" } : apiKey !== "" ? { apiKey } : {}),
-      ...(Object.keys(parsed.headers).length > 0 ? { extraHeaders: parsed.headers } : {}),
-    });
+    const result = await listModels(fields);
     if (!result.ok) {
       setStatus({ tone: "error", text: result.failure.kind === "error" ? result.failure.message : tr("Could not list the models.") });
       return false;
@@ -369,6 +365,109 @@ function ProviderForm({
     }
     if (changed) await onSaved();
   }
+
+  /** The typed connection fields for the model-list and probe routes (the stored key only for the stored address). */
+  function connectionFields(): { baseUrl: string; apiKey?: string; extraHeaders?: Record<string, string> } | string {
+    if (!baseUrl.trim()) return tr("Enter the base URL.");
+    const parsed = parseHeaders(headersText);
+    if (!parsed.ok) return parsed.error;
+    return {
+      baseUrl: baseUrl.trim(),
+      ...(clearKey ? { apiKey: "" } : apiKey !== "" ? { apiKey } : {}),
+      ...(Object.keys(parsed.headers).length > 0 ? { extraHeaders: parsed.headers } : {}),
+    };
+  }
+
+  /** Learned answers into the model details (a model the provider does not list gets an entry of its own). */
+  function mergeProbe(results: VisionProbeResult[]) {
+    setModelDetails((previous) => {
+      const next = { ...previous };
+      for (const result of results) {
+        if (result.vision === null) continue;
+        const base = next[result.model] ?? { id: result.model, contextLength: null, vision: null, visionSource: null, features: [] };
+        next[result.model] = { ...base, vision: result.vision, visionSource: "detected", ...(result.checkedAt ? { visionCheckedAt: result.checkedAt } : {}) };
+      }
+      return next;
+    });
+  }
+
+  /** One sentence for one model's probe answer. */
+  function probeText(result: VisionProbeResult): string {
+    const id = result.model;
+    const date = result.checkedAt ? result.checkedAt.slice(0, 10) : "";
+    switch (result.reason) {
+      case "saw":
+        return tr("{id} sees images: it named the colours of a test picture.", { id });
+      case "rejected":
+        return tr("{id} is text only: the provider refused the test picture (HTTP {status}).", { id, status: String(result.status ?? "") });
+      case "no_image":
+        return tr("{id} is text only: it answered that it got no image.", { id });
+      case "cached":
+        return result.vision ? tr("{id} sees images (checked on {date}).", { id, date }) : tr("{id} is text only (checked on {date}).", { id, date });
+      case "unclear":
+        return tr("Could not tell whether {id} sees images: its answer was unclear. Try again or choose by hand.", { id });
+      case "rate_limited":
+        return tr("Too many requests: check {id} again later.", { id });
+      case "error":
+        return result.status
+          ? tr("Could not test {id} (HTTP {status}). Nothing was remembered.", { id, status: String(result.status) })
+          : tr("Could not test {id}: no answer. Nothing was remembered.", { id });
+    }
+  }
+
+  /** Detect: ask the typed model with a tiny test picture; a definite answer sets "Sees images" (saved with Connect). */
+  async function detectVision() {
+    const id = model.trim();
+    if (!id) return setStatus({ tone: "error", text: tr("Choose a model.") });
+    const fields = connectionFields();
+    if (typeof fields === "string") return setStatus({ tone: "error", text: fields });
+    setProbing("one");
+    setStatus({ tone: "info", text: tr("Sending {id} a tiny test picture…", { id }) });
+    const result = await probeVisionModels({ ...fields, models: [id], force: modelDetails[id]?.visionSource === "detected" });
+    setProbing(null);
+    if (!result.ok) return setStatus({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not test the model.") });
+    const answer = result.value[0];
+    if (!answer) return setStatus({ tone: "error", text: tr("Could not test the model.") });
+    mergeProbe(result.value);
+    if (answer.vision !== null) setVision(answer.vision ? "native" : "none");
+    const changed = answer.vision !== null && (answer.vision ? "native" : "none") !== (provider?.vision ?? "none");
+    setStatus({ tone: answer.vision === null ? "error" : "good", text: changed ? `${probeText(answer)} ${tr("Press Connect to save it.")}` : probeText(answer) });
+  }
+
+  /** Check all: every listed model whose vision is still unknown, a few at a time (at most 60 per press). */
+  async function detectAll() {
+    const fields = connectionFields();
+    if (typeof fields === "string") return setStatus({ tone: "error", text: fields });
+    const todo = models.filter((id) => (modelDetails[id]?.vision ?? null) === null).slice(0, 60);
+    if (!todo.length) return setStatus({ tone: "info", text: tr("Every listed model already has a known vision answer.") });
+    stopProbe.current = false;
+    setProbing("all");
+    const counts = { yes: 0, no: 0, unknown: 0 };
+    let done = 0;
+    for (let at = 0; at < todo.length && !stopProbe.current; at += 3) {
+      setStatus({ tone: "info", text: tr("Checking models for vision: {done} of {total}…", { done: String(done), total: String(todo.length) }) });
+      const batch = todo.slice(at, at + 3);
+      const result = await probeVisionModels({ ...fields, models: batch });
+      if (!result.ok) {
+        setProbing(null);
+        return setStatus({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not test the model.") });
+      }
+      mergeProbe(result.value);
+      for (const answer of result.value) counts[answer.vision === null ? "unknown" : answer.vision ? "yes" : "no"] += 1;
+      done += batch.length;
+    }
+    setProbing(null);
+    setStatus({ tone: "good", text: tr("Vision check done ({done} models). Sees images: {yes}. Text only: {no}. Unknown: {unknown}.", { done: String(done), yes: String(counts.yes), no: String(counts.no), unknown: String(counts.unknown) }) });
+  }
+
+  const current = modelDetails[model.trim()];
+  const visionNote = !current || current.vision === null
+    ? tr("Not known whether this model sees images. Detect asks it with a tiny test picture (one small request).")
+    : current.visionSource === "advertised"
+      ? current.vision ? tr("The provider lists this model as seeing images.") : tr("The provider lists this model as text only.")
+      : current.vision
+        ? tr("Detected on {date}: sees images.", { date: (current.visionCheckedAt ?? "").slice(0, 10) })
+        : tr("Detected on {date}: text only.", { date: (current.visionCheckedAt ?? "").slice(0, 10) });
 
   const keyPlaceholder =
     provider?.hasKey && !otherAddress(provider.baseUrl, baseUrl)
@@ -471,21 +570,63 @@ function ProviderForm({
               <option value="">{models.length} {" "}{tr("models available: pick one…")}</option>
               {models.map((id) => {
                 const details = modelDetails[id];
+                const visionLabel = !details || details.vision === null
+                  ? tr("vision unknown")
+                  : details.visionSource === "detected"
+                    ? details.vision ? tr("vision (detected)") : tr("text only (detected)")
+                    : details.vision ? tr("vision") : tr("text only");
                 const capabilities = details
-                  ? ` · ${details.contextLength ? `${details.contextLength.toLocaleString()} ctx` : tr("context unknown")} · ${details.vision === null ? tr("vision unknown") : details.vision ? tr("vision") : tr("text only")}${details.features.length ? ` · ${details.features.join(", ")}` : ""}`
+                  ? ` · ${details.contextLength ? `${details.contextLength.toLocaleString()} ctx` : tr("context unknown")} · ${visionLabel}${details.features.length ? ` · ${details.features.join(", ")}` : ""}`
                   : "";
                 return <option key={id} value={id}>{id}{capabilities}</option>;
               })}
             </select>
-            {modelDetails[model] ? (
-              <p className="text-[11px] text-faint" aria-live="polite">
-                {tr("Context: {value}", { value: modelDetails[model].contextLength?.toLocaleString() ?? tr("not advertised") })}
-                {" · "}{tr("Vision: {value}", { value: modelDetails[model].vision === null ? tr("unknown") : modelDetails[model].vision ? tr("yes") : tr("no") })}
-                {modelDetails[model].features.length ? ` · ${tr("Features")}: ${modelDetails[model].features.join(", ")}` : ""}
-              </p>
-            ) : models.includes(model) ? <p className="text-[11px] text-faint">{tr("This provider does not advertise model capabilities.")}</p> : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {modelDetails[model] ? (
+                <p className="min-w-0 text-[11px] text-faint" aria-live="polite">
+                  {tr("Context: {value}", { value: modelDetails[model].contextLength?.toLocaleString() ?? tr("not advertised") })}
+                  {modelDetails[model].features.length ? ` · ${tr("Features")}: ${modelDetails[model].features.join(", ")}` : ""}
+                </p>
+              ) : <p className="min-w-0 text-[11px] text-faint">{models.includes(model) ? tr("This provider does not advertise model capabilities.") : ""}</p>}
+              {probing === "all" ? (
+                <button autoComplete="off" type="button" onClick={() => { stopProbe.current = true; }} className="cursor-pointer text-[11px] whitespace-nowrap text-accent-soft underline underline-offset-2 hover:text-ink">
+                  {tr("Stop checking")}
+                </button>
+              ) : (
+                <button
+                  autoComplete="off"
+                  type="button"
+                  disabled={working !== null || probing !== null}
+                  onClick={() => void detectAll()}
+                  title={tr("Sends every model whose vision is unknown a tiny test picture (one small request each) and remembers the answers.")}
+                  className="cursor-pointer text-[11px] whitespace-nowrap text-accent-soft underline underline-offset-2 hover:text-ink disabled:cursor-default disabled:opacity-50"
+                  data-provider-check-all
+                >
+                  {tr("Check all models for vision")}
+                </button>
+              )}
+            </div>
           </>
         ) : null}
+      </div>
+
+      <div className="space-y-1.5 rounded-lg border border-line px-3 py-2" data-provider-vision>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="sk-provider-vision" className="min-w-0 text-xs text-muted">
+            {tr("Vision: screenshots and images")}
+          </label>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <select id="sk-provider-vision" className="sk-input h-8 px-2 text-xs" value={vision} onChange={(e) => setVision(e.target.value === "native" ? "native" : "none")} aria-label={tr("Does this model see images?")}>
+              <option value="none">{tr("Text only")}</option>
+              <option value="native">{tr("Sees images")}</option>
+            </select>
+            <Button size="sm" disabled={working !== null || probing !== null || !model.trim()} onClick={() => void detectVision()} data-provider-detect title={tr("Send the model one tiny test picture to find out whether it sees images.")}>
+              {probing === "one" ? tr("Detecting…") : current?.visionSource === "detected" ? tr("Check again") : tr("Detect")}
+            </Button>
+          </div>
+        </div>
+        <p className="text-[11px] text-faint" data-provider-vision-note>{visionNote}</p>
+        <p className="text-[11px] text-faint">{tr("Only a model that sees images is sent pictures; a text-only one never is.")}</p>
       </div>
 
       <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.extraHeaderNames.length || provider?.reasoningEffort)}>
@@ -534,19 +675,9 @@ function ProviderForm({
         </div>
       </details>
 
-      <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.vision === "native" || provider?.visionHelper)} data-provider-vision>
-        <summary className="cursor-pointer text-xs text-muted select-none">{tr("Vision: screenshots and images")}</summary>
+      <details className="rounded-lg border border-line px-3 py-2" open={Boolean(provider?.visionHelper)} data-provider-vision-helper>
+        <summary className="cursor-pointer text-xs text-muted select-none">{tr("Vision helper for a text-only model")}</summary>
         <div className="mt-3 space-y-3">
-          <label className="flex items-center justify-between gap-3 text-xs text-muted">
-            <span className="min-w-0">
-              {tr("This model")}
-              <span className="block text-[11px] text-faint">{tr("Only a model that sees images is sent pictures; a text-only one never is.")}</span>
-            </span>
-            <select className="sk-input h-8 shrink-0 px-2 text-xs" value={vision} onChange={(e) => setVision(e.target.value === "native" ? "native" : "none")} aria-label={tr("Does this model see images?")}>
-              <option value="none">{tr("Text only")}</option>
-              <option value="native">{tr("Sees images")}</option>
-            </select>
-          </label>
           <label className="flex items-center justify-between gap-3 text-xs text-muted">
             <span className="min-w-0">
               {tr("Vision helper")}
@@ -579,6 +710,8 @@ function ProviderForm({
         {tr("Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
       </p>
 
+      {!firstRun ? <TurnLimitPanel account={account} onSaved={onSaved} /> : null}
+
       {!firstRun ? (
         <details className="rounded-lg border border-line px-3 py-2">
           <summary className="cursor-pointer text-xs text-muted select-none">{tr("Token usage")}</summary>
@@ -596,5 +729,80 @@ function ProviderForm({
         </div>
       ) : null}
     </form>
+  );
+}
+
+/**
+ * Turn limit: how many model rounds one message may take and how many tool calls they may make together, before the
+ * assistant stops and summarises. Saved on the account at once (its own Save, not the provider's Connect).
+ */
+function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: () => Promise<void> }) {
+  const { t: tr, m } = useT();
+  const saved = account.assistant;
+  const [rounds, setRounds] = useState(String(saved.maxRounds));
+  const [calls, setCalls] = useState(String(saved.maxToolCalls));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<Status>(null);
+  const bounds = TURN_LIMIT_BOUNDS;
+  const roundsValue = Number(rounds);
+  const callsValue = Number(calls);
+  const valid =
+    Number.isInteger(roundsValue) && roundsValue >= bounds.maxRounds.min && roundsValue <= bounds.maxRounds.max &&
+    Number.isInteger(callsValue) && callsValue >= bounds.maxToolCalls.min && callsValue <= bounds.maxToolCalls.max;
+  const changed = roundsValue !== saved.maxRounds || callsValue !== saved.maxToolCalls;
+  const save = async (reset: boolean) => {
+    setBusy(true);
+    setNote(null);
+    const result = await saveTurnLimits(reset ? null : { maxRounds: roundsValue, maxToolCalls: callsValue });
+    setBusy(false);
+    if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not save the turn limit.") });
+    if (reset) {
+      setRounds(String(bounds.maxRounds.default));
+      setCalls(String(bounds.maxToolCalls.default));
+    }
+    setNote({ tone: "good", text: tr("Turn limit saved: it applies from the next message.") });
+    await onSaved();
+  };
+  return (
+    <details className="rounded-lg border border-line px-3 py-2" data-turn-limit open={saved.custom || undefined}>
+      <summary className="cursor-pointer text-xs text-muted select-none">
+        {tr("Turn limit: {rounds} model rounds, {calls} tool calls per message", { rounds: String(saved.maxRounds), calls: String(saved.maxToolCalls) })}
+      </summary>
+      <div className="mt-3 space-y-3">
+        <p className="text-[11px] leading-snug text-faint">
+          {tr("One message to the assistant may take several model rounds (each round can call tools). When either limit is reached, the assistant stops and summarises what is done and what is left. Higher limits allow longer jobs and cost more tokens.")}
+        </p>
+        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+          <span className="min-w-0">
+            {tr("Model rounds per message")}
+            <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxRounds.min), max: String(bounds.maxRounds.max), value: String(bounds.maxRounds.default) })}</span>
+          </span>
+          <TextInput type="number" inputMode="numeric" min={bounds.maxRounds.min} max={bounds.maxRounds.max} step={1} value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label={tr("Model rounds per message")} className="h-8 w-20 shrink-0 text-xs" />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+          <span className="min-w-0">
+            {tr("Tool calls per message")}
+            <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxToolCalls.min), max: String(bounds.maxToolCalls.max), value: String(bounds.maxToolCalls.default) })}</span>
+          </span>
+          <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 w-20 shrink-0 text-xs" />
+        </label>
+        {!valid ? <p className="text-[11px] text-danger">{tr("Enter whole numbers within the limits shown.")}</p> : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button size="sm" variant="primary" disabled={busy || !valid || !changed} onClick={() => void save(false)}>
+            {tr("Save turn limit")}
+          </Button>
+          {saved.custom ? (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(true)}>
+              {tr("Back to the defaults")}
+            </Button>
+          ) : null}
+        </div>
+        {note ? (
+          <div role="status">
+            <Notice tone={note.tone}>{note.text}</Notice>
+          </div>
+        ) : null}
+      </div>
+    </details>
   );
 }

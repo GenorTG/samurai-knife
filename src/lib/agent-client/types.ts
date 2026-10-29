@@ -1,4 +1,5 @@
 import type { RunUsage, Usage } from "@/lib/usage";
+import type { TurnLimits } from "@/lib/agent-client/turn-limits";
 
 /**
  * Shared types for the browser-side agent. The wire shapes follow the OpenAI
@@ -78,6 +79,8 @@ export interface AccountInfo {
   requiresPassword: boolean;
   provider: ProviderInfo | null;
   providerProfiles: ProviderProfileInfo[];
+  /** The assistant's per-turn budget (src/lib/agent-client/turn-limits.ts); `custom` = the user changed the defaults. */
+  assistant: TurnLimits & { custom: boolean };
 }
 
 export interface AccountChoice {
@@ -109,7 +112,20 @@ export interface ProviderModelDetails {
   id: string;
   contextLength: number | null;
   vision: boolean | null;
+  /** `advertised` = the provider's /models says so; `detected` = the vision probe learned it; null = unknown. */
+  visionSource: "advertised" | "detected" | null;
+  visionCheckedAt?: string;
   features: string[];
+}
+
+/** One model's answer from POST /api/account/provider/vision-probe. */
+export interface VisionProbeResult {
+  model: string;
+  vision: boolean | null;
+  source: "detected" | null;
+  reason: "saw" | "rejected" | "no_image" | "unclear" | "error" | "cached" | "rate_limited";
+  status: number | null;
+  checkedAt?: string;
 }
 
 export interface ChatReply {

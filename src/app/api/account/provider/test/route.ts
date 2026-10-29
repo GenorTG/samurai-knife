@@ -1,6 +1,7 @@
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { testProvider } from "@/lib/accounts/provider";
 import { getAccount, PROFILE_ID, providerProfileConfig } from "@/lib/accounts/store";
+import { withLearnedVision } from "@/lib/vision/capabilities";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 import { msg } from "@/lib/i18n/msg";
 
@@ -32,5 +33,5 @@ export async function POST(request: Request): Promise<Response> {
     limited.headers.set("Retry-After", String(budget.retryAfterSeconds));
     return limited;
   }
-  return json(await testProvider(provider, providerNet(auth.account)));
+  return json(withLearnedVision(provider.baseUrl, await testProvider(provider, providerNet(auth.account))));
 }

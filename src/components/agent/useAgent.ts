@@ -308,6 +308,7 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
             enqueueConversationSave(updated, actionsRef.current);
           },
           takeSteering: () => takeSteeringTexts(chatId),
+          limits: account.account.assistant,
         });
         if (outcome === "aborted" && !discardRef.current) {
           const stopped = appendChat(scopeId, [{ role: "notice", level: "info", content: "Stopped." }]);

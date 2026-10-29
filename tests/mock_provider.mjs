@@ -1,5 +1,10 @@
 // Deterministic OpenAI-compatible mock provider for tests. Never test against a real model server.
 // Usage: node tests/mock_provider.mjs [port=3299]   (binds 127.0.0.1)
+//   Base URL .../vision/v1 is the same provider whose /models also lists mock-vision, mock-text and mock-blind (vision
+//   detection tests; the plain /v1 list stays two models). The three behave by model name on either path:
+//     mock-vision  reads a probe picture (two solid halves) and names the colours, e.g. "red blue"
+//     mock-text    answers HTTP 400 "does not support image input" to any request carrying an image part
+//     mock-blind   accepts the request but answers NO_IMAGE (a provider that drops images)
 //   GET  /v1/models
 //   POST /v1/chat/completions   (non-stream)
 //   GET  /__last                -> last POST body (+ received headers) for assertions
@@ -10,6 +15,7 @@
 //   user text containing CALL:<tool>:<json args> -> assistant message with that single tool_call
 //   user text containing SLOW:<ms>               -> replies "SLOWDONE: <text>" after <ms> (max 60000); cancelled on disconnect
 //   user text containing STREAM:<n>             -> (stream:true) streams ~n words, one every GAP ms (default 120)
+//   user text containing LOOP:<tool>:<json args> -> calls that tool again after every tool result of this turn (turn limit tests)
 //   user text containing GAP:<ms>                -> delay between streamed chunks / between tool name and arguments
 //   several CALL: lines in one user message      -> that many tool_calls in one round
 //   stream_options.include_usage -> a final usage chunk (deterministic); text containing NOUSAGE omits it, REJECT_STREAM_OPTIONS answers 400 to stream_options
@@ -18,8 +24,32 @@
 //   role "tool"                               -> content "DONE: <tool result text>"
 //   otherwise                                    -> content "ECHO: <user text>"
 import { createServer } from "node:http";
+import { inflateSync } from "node:zlib";
 
 const port = Number(process.argv[2] ?? 3299);
+const PROBE_COLOURS = { red: [220, 30, 30], green: [30, 170, 60], blue: [30, 70, 220], yellow: [240, 210, 20], black: [0, 0, 0], white: [255, 255, 255] };
+
+/** The two halves' colours of an RGB PNG data URL (the vision probe's picture), or null. */
+function probeColours(url) {
+  const match = /^data:image\/png;base64,(.+)$/.exec(url);
+  if (!match) return null;
+  const png = Buffer.from(match[1], "base64");
+  let at = 8;
+  let width = 0;
+  const idat = [];
+  while (at < png.length) {
+    const length = png.readUInt32BE(at);
+    const type = png.toString("ascii", at + 4, at + 8);
+    const data = png.subarray(at + 8, at + 8 + length);
+    if (type === "IHDR") width = data.readUInt32BE(0);
+    if (type === "IDAT") idat.push(data);
+    at += 12 + length;
+  }
+  const rows = inflateSync(Buffer.concat(idat));
+  const pixel = (x) => [rows[1 + x * 3], rows[2 + x * 3], rows[3 + x * 3]];
+  const nearest = ([r, g, b]) => Object.entries(PROBE_COLOURS).sort(([, a], [, c]) => Math.hypot(a[0] - r, a[1] - g, a[2] - b) - Math.hypot(c[0] - r, c[1] - g, c[2] - b))[0][0];
+  return [nearest(pixel(2)), nearest(pixel(width - 3))];
+}
 const KEY = "mock-key";
 let last = null;
 /** Every chat request received, oldest first, so tests can assert what the model was actually sent and in which order. */
@@ -117,6 +147,8 @@ async function streamReply(res, message, gap, thinkMs, words, usage) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
+  const visionModels = url.pathname.startsWith("/vision/v1/");
+  if (visionModels) url.pathname = url.pathname.slice("/vision".length);
   if (req.method === "GET" && url.pathname === "/__last") {
     return send(res, 200, last ?? { body: null });
   }
@@ -133,7 +165,8 @@ const server = createServer((req, res) => {
     return send(res, 401, { error: { message: `bad key: ${req.headers.authorization ?? "none"}`, type: "auth" } });
   }
   if (req.method === "GET" && url.pathname === "/v1/models") {
-    return send(res, 200, { object: "list", data: [{ id: "mock-model", object: "model" }, { id: "mock-model-2", object: "model" }] });
+    const extra = visionModels ? ["mock-vision", "mock-text", "mock-blind"].map((id) => ({ id, object: "model" })) : [];
+    return send(res, 200, { object: "list", data: [{ id: "mock-model", object: "model" }, { id: "mock-model-2", object: "model" }, ...extra] });
   }
   if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
     const chunks = [];
@@ -160,8 +193,29 @@ const server = createServer((req, res) => {
       if (!tail) return send(res, 400, { error: { message: "no messages" } });
       const text = textOf(tail.content);
       const seen = imagesOf(tail.content);
+      const anyImage = messages.some((m) => imagesOf(m.content).length > 0);
+      if (body.model === "mock-text" && anyImage) {
+        return send(res, 400, { error: { message: "Model mock-text does not support image input (image_url content parts).", type: "invalid_request_error" } });
+      }
+      if (body.model === "mock-blind" && seen.length) {
+        return reply(res, body, { role: "assistant", content: "NO_IMAGE" }, "stop", "");
+      }
+      if (body.model === "mock-vision" && seen.length && /left half/.test(text)) {
+        const part = tail.content.find((p) => p?.type === "image_url");
+        const colours = probeColours(part.image_url.url);
+        return reply(res, body, { role: "assistant", content: colours ? colours.join(" ") : "unreadable" }, "stop", "");
+      }
       if (seen.length) {
         return reply(res, body, { role: "assistant", content: `VISION: saw ${seen.length} image(s) [${seen.join(", ")}]: ${text.slice(0, 80)}` }, "stop", "");
+      }
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const loop = lastUser ? /LOOP:([A-Za-z0-9_]+):(\{.*\})/.exec(textOf(lastUser.content)) : null;
+      if (tail.role === "tool" && loop && Array.isArray(body.tools) && body.tools.length > 0) {
+        return reply(res, body, {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: `loop_${requestCount}`, type: "function", function: { name: loop[1], arguments: loop[2] } }],
+        }, "tool_calls", "");
       }
       if (tail.role === "tool") {
         const attackSimulation = messages.some((m) => m.role === "user" && /ATTACK_SIMULATION/.test(textOf(m.content)));
@@ -183,7 +237,7 @@ const server = createServer((req, res) => {
         res.on("close", () => clearTimeout(timer));
         return;
       }
-      const matches = [...text.matchAll(/CALL:([A-Za-z0-9_]+):(\{.*\})/g)];
+      const matches = [...text.matchAll(/(?:CALL|LOOP):([A-Za-z0-9_]+):(\{.*\})/g)];
       if (tail.role === "user" && matches.length > 0) {
         return reply(res, body, {
           role: "assistant",

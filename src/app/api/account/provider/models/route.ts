@@ -3,6 +3,7 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import { normalizeBaseUrl, testProvider } from "@/lib/accounts/provider";
 import { providerFromInput } from "@/lib/accounts/provider-input";
 import { getAccount } from "@/lib/accounts/store";
+import { withLearnedVision } from "@/lib/vision/capabilities";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 
 export const runtime = "nodejs";
@@ -39,5 +40,5 @@ export async function POST(request: Request): Promise<Response> {
     limited.headers.set("Retry-After", String(budget.retryAfterSeconds));
     return limited;
   }
-  return json(await testProvider(result.config, providerNet(auth.account)));
+  return json(withLearnedVision(result.config.baseUrl, await testProvider(result.config, providerNet(auth.account))));
 }

@@ -89,3 +89,33 @@ test("set-password revokes the account's MCP keys (like the web reset) and says 
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /0 MCP key\(s\) revoked/);
 });
+
+test("set-provider keeps the app's vision, helper and reasoning settings; --vision sets it", () => {
+  assert.equal(run(["add", "visioner", "--name", "Visioner"]).status, 0);
+  let r = run(["set-provider", "visioner", "--base-url", "https://api.example.test/v1", "--model", "m-1", "--vision", "native", "--key-stdin"], FAKE);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(opened("visioner").vision, "native");
+  // Settings the app saved (reasoning effort, helper) survive a CLI change; "Sees images" stays for the same model.
+  const file = join(dir, "accounts.json");
+  const raw = JSON.parse(readFileSync(file, "utf8"));
+  const account = raw.accounts.find((a) => a.id === "visioner");
+  account.provider.reasoningEffort = "high";
+  account.provider.visionHelper = "abc123";
+  writeFileSync(file, JSON.stringify(raw));
+  r = run(["set-provider", "visioner", "--base-url", "https://api.example.test/v1/", "--model", "m-1"]);
+  assert.equal(r.status, 0, r.stderr);
+  let provider = opened("visioner");
+  assert.deepEqual([provider.vision, provider.visionHelper, provider.reasoningEffort], ["native", "abc123", "high"]);
+  const profiles = accounts().find((a) => a.id === "visioner").providerProfiles;
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].config.vision, "native", "the active profile mirrors the provider");
+  // Another model: "Sees images" described the old one, so it is not carried over.
+  r = run(["set-provider", "visioner", "--base-url", "https://api.example.test/v1", "--model", "m-2"]);
+  assert.equal(r.status, 0, r.stderr);
+  provider = opened("visioner");
+  assert.equal(provider.vision, undefined);
+  assert.equal(provider.visionHelper, "abc123");
+  r = run(["set-provider", "visioner", "--base-url", "https://api.example.test/v1", "--model", "m-2", "--vision", "maybe"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--vision takes native/);
+});

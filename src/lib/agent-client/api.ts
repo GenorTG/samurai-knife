@@ -17,7 +17,9 @@ import type {
   ToolRunResult,
   WireMessage,
   ProviderProfileInfo,
+  VisionProbeResult,
 } from "./types";
+import { resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import type { ConversationContent, DurableConversation } from "./conversation-store";
 
 /**
@@ -123,8 +125,21 @@ export async function fetchAccount(): Promise<ApiResult<AccountInfo>> {
       requiresPassword: body.requiresPassword === true,
       provider: parseProvider(body.provider),
       providerProfiles: parseProfiles(body.providerProfiles),
+      assistant: parseAssistant(body.assistant),
     },
   };
+}
+
+function parseAssistant(value: unknown): AccountInfo["assistant"] {
+  return { ...resolveTurnLimits(isRecord(value) ? { maxRounds: value.maxRounds, maxToolCalls: value.maxToolCalls } : null), custom: isRecord(value) && value.custom === true };
+}
+
+/** PUT /api/account/assistant: the per-turn budget (null = back to the defaults). */
+export async function saveTurnLimits(limits: TurnLimits | null): Promise<ApiResult<null>> {
+  const r = await call("/api/account/assistant", { method: "PUT", body: limits ?? { reset: true } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok) return { ok: false, failure: failureFrom(r.res, r.body) };
+  return { ok: true, value: null };
 }
 
 function parseProfiles(value: unknown): ProviderProfileInfo[] {
@@ -174,6 +189,8 @@ function parseModelDetails(value: unknown): ProviderModelDetails[] | undefined {
       id: entry.id,
       contextLength: typeof entry.contextLength === "number" && Number.isSafeInteger(entry.contextLength) ? entry.contextLength : null,
       vision: typeof entry.vision === "boolean" ? entry.vision : null,
+      visionSource: entry.visionSource === "advertised" || entry.visionSource === "detected" ? entry.visionSource : null,
+      ...(typeof entry.visionCheckedAt === "string" ? { visionCheckedAt: entry.visionCheckedAt } : {}),
       features,
     });
   }
@@ -470,4 +487,30 @@ export async function fetchUsage(): Promise<UsageSummary | null> {
   const r = await call("/api/account/usage");
   if ("failure" in r || !r.res.ok || !isRecord(r.body)) return null;
   return r.body as unknown as UsageSummary;
+}
+
+const PROBE_REASONS = new Set<VisionProbeResult["reason"]>(["saw", "rejected", "no_image", "unclear", "error", "cached", "rate_limited"]);
+
+/**
+ * POST /api/account/provider/vision-probe: ask up to 6 models whether they see images (one tiny request each, answers
+ * remembered on the server). Same fields as listModels: the stored key only for the stored address.
+ */
+export async function probeVisionModels(input: { baseUrl: string; apiKey?: string; extraHeaders?: Record<string, string>; models: string[]; force?: boolean }): Promise<ApiResult<VisionProbeResult[]>> {
+  const r = await call("/api/account/provider/vision-probe", { method: "POST", body: input });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok || !isRecord(r.body) || !Array.isArray(r.body.results)) return { ok: false, failure: failureFrom(r.res, r.body) };
+  const out: VisionProbeResult[] = [];
+  for (const entry of r.body.results) {
+    if (!isRecord(entry) || typeof entry.model !== "string") continue;
+    const reason = typeof entry.reason === "string" && PROBE_REASONS.has(entry.reason as VisionProbeResult["reason"]) ? (entry.reason as VisionProbeResult["reason"]) : "error";
+    out.push({
+      model: entry.model,
+      vision: typeof entry.vision === "boolean" ? entry.vision : null,
+      source: entry.source === "detected" ? "detected" : null,
+      reason,
+      status: typeof entry.status === "number" ? entry.status : null,
+      ...(typeof entry.checkedAt === "string" ? { checkedAt: entry.checkedAt } : {}),
+    });
+  }
+  return { ok: true, value: out };
 }

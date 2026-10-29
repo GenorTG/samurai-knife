@@ -36,6 +36,7 @@ import { assessCall } from "./approval-policy";
 import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
 import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
+import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -43,8 +44,9 @@ import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
  * Never throws; every outcome is reported through the callbacks and return value.
  */
 
-export const MAX_ROUNDS = 24;
-export const MAX_TOOL_CALLS = 40;
+/** Defaults of the per-turn budget; the account's own setting (turn-limits.ts, LoopOptions.limits) wins. */
+export const MAX_ROUNDS = DEFAULT_TURN_LIMITS.maxRounds;
+export const MAX_TOOL_CALLS = DEFAULT_TURN_LIMITS.maxToolCalls;
 export const MAX_STORED_MESSAGES = 200;
 
 const TOOL_RESULT_LIMIT = 12000;
@@ -74,6 +76,8 @@ export interface LoopOptions {
    * Each one is appended to the turn as a user message before the next model call. Returns [] when empty.
    */
   takeSteering?: () => string[];
+  /** The account's per-turn budget (Settings: "Turn limit"); omitted = the defaults. */
+  limits?: TurnLimits;
 }
 
 /* ---------------------------------------------------------- history hygiene */
@@ -277,6 +281,7 @@ async function executeCall(
 
 export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const { signal, onMessage } = options;
+  const { maxRounds, maxToolCalls } = resolveTurnLimits(options.limits);
   const onActivity = runtime.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
@@ -340,7 +345,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     let toolCalls = 0;
     let limitHit = false;
 
-    for (let round = 0; round < MAX_ROUNDS; round += 1) {
+    for (let round = 0; round < maxRounds; round += 1) {
       if (signal.aborted) return "aborted";
       deliverSteering();
       onActivity("Thinking…");
@@ -377,7 +382,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         if (reply.content && reply.content.trim()) append({ role: "assistant", content: reply.content });
         else notice("error", "The model returned an empty reply.");
         // The user steered while this reply was being written: the turn goes on instead of ending.
-        if (round + 1 < MAX_ROUNDS && deliverSteering()) continue;
+        if (round + 1 < maxRounds && deliverSteering()) continue;
         return "done";
       }
       append({ role: "assistant", content: reply.content, tool_calls: calls });
@@ -387,7 +392,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
           append({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "Cancelled by the user." }) });
           continue;
         }
-        if (toolCalls >= MAX_TOOL_CALLS) {
+        if (toolCalls >= maxToolCalls) {
           limitHit = true;
           append({
             role: "tool",
@@ -417,7 +422,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     }
 
     // Round or tool budget exhausted: one last call without tools so the user gets a summary.
-    notice("info", `Reached the per-turn limit (${MAX_ROUNDS} model rounds / ${MAX_TOOL_CALLS} tool calls). Asking the model to summarise.`);
+    notice("info", `Reached the per-turn limit (${maxRounds} model rounds / ${maxToolCalls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.`);
     onActivity("Summarising…");
     runtime.advance("summarising");
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
