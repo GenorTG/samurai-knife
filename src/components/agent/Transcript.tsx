@@ -80,7 +80,7 @@ export function Transcript({
   suggestions: string[];
   onPick: (prompt: string) => void;
 }) {
-  const { t } = useT();
+  const { t, tn } = useT();
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -137,6 +137,18 @@ export function Transcript({
             <p key={i} data-agent-usage className="px-1 text-[11px] text-faint" title={t("Tokens used by this turn (prompt in, completion out)")}>
               {m.content}
             </p>
+          );
+        }
+        if (m.role === "notice" && m.level === "summary") {
+          return (
+            <details key={i} data-agent-summary className="rounded-lg border border-line bg-raised/50 px-2.5 py-1.5 text-[11px] text-faint">
+              <summary className="cursor-pointer select-none">
+                {m.summarised
+                  ? tn("Older messages summarised ({n} earlier request)", "Older messages summarised ({n} earlier requests)", m.summarised)
+                  : t("Older messages summarised")}
+              </summary>
+              <p className="mt-1 break-words whitespace-pre-wrap">{m.content}</p>
+            </details>
           );
         }
         if (m.role === "notice") {

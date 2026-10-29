@@ -3083,6 +3083,13 @@
   "Official, unmodified web builds served by this instance. Expand an app to read the licence and notice texts for the active version, including any third-party licences named by its NOTICE.": "Oficjalne, niezmienione wersje webowe serwowane przez tę instancję. Rozwiń aplikację, aby przeczytać teksty licencji i informacji dla aktywnej wersji, w tym licencje zewnętrzne wymienione w jej pliku NOTICE.",
   "Offset from now": "Różnica od teraz",
   "OKLCH": "OKLCH",
+  "Older messages summarised": "Starsze wiadomości streszczone",
+  "Older messages summarised ({n} earlier request)": [
+    "Starsze wiadomości streszczone ({n} wcześniejsza prośba)",
+    "Starsze wiadomości streszczone ({n} wcześniejsze prośby)",
+    "Starsze wiadomości streszczone ({n} wcześniejszych próśb)"
+  ],
+  "Older messages were shortened to fit the model's context; the latest answers are kept in full.": "Starsze wiadomości skrócono, żeby zmieściły się w kontekście modelu; ostatnie odpowiedzi zostały zachowane w całości.",
   "Older settings keep working: {endpoint} with your username {username} and a key (HTTP Basic auth, or a Bearer key with the X-Knife-User header).": "Starsze ustawienia nadal działają: {endpoint} z nazwą użytkownika {username} i kluczem (HTTP Basic auth albo klucz Bearer z nagłówkiem X-Knife-User).",
   "Ollama": "Ollama",
   "On day of month": "W dniu miesiąca",

@@ -1,4 +1,4 @@
-import { MAX_STORED_MESSAGES, capTranscript, repairTranscript } from "@/lib/agent-client/loop";
+import { MAX_STORED_MESSAGES, capTranscript, repairTranscript } from "@/lib/agent-client/context";
 import type { TranscriptMessage } from "@/lib/agent-client/types";
 
 /** localStorage persistence for the widget. Every call is safe when storage is unavailable. */
@@ -87,7 +87,7 @@ function isTranscriptMessage(value: unknown): value is TranscriptMessage {
     case "tool":
       return typeof m.tool_call_id === "string" && typeof m.content === "string";
     case "notice":
-      return (m.level === "error" || m.level === "info" || m.level === "usage") && typeof m.content === "string";
+      return (m.level === "error" || m.level === "info" || m.level === "usage" || m.level === "summary") && typeof m.content === "string";
     default:
       return false;
   }
@@ -109,20 +109,20 @@ const memoryOnly = new Map<string, TranscriptMessage[]>();
 
 function persistChat(accountId: string, messages: TranscriptMessage[]): TranscriptMessage[] {
   const capped = capTranscript(messages, MAX_STORED_MESSAGES);
-  let stored = capped;
   try {
     window.localStorage.setItem(chatKey(accountId), JSON.stringify(capped));
+    memoryOnly.delete(accountId);
   } catch {
-    stored = capTranscript(capped, 40);
+    // Full browser storage: this tab keeps (and the server receives) the whole transcript; other tabs get a shorter
+    // copy when it fits. Never hand the shortened copy back, or the next save would cut the server's copy too.
+    memoryOnly.set(accountId, capped);
     try {
-      window.localStorage.setItem(chatKey(accountId), JSON.stringify(stored));
+      window.localStorage.setItem(chatKey(accountId), JSON.stringify(capTranscript(capped, 40)));
     } catch {
-      memoryOnly.set(accountId, stored);
-      return stored;
+      /* nothing fits: other tabs show what they last had */
     }
   }
-  memoryOnly.delete(accountId);
-  return stored;
+  return capped;
 }
 
 /** The shared transcript as it is stored right now (other tabs' appends included). */

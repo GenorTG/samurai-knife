@@ -7,6 +7,7 @@ import { fetchAccount, fetchConversation, login as apiLogin, logout as apiLogout
 import { clearArtifacts } from "@/lib/agent-client/artifacts";
 import { stopRequested } from "@/lib/agent-client/feedback";
 import { repairTranscript, runAgentTurn, type LoopOutcome } from "@/lib/agent-client/loop";
+import { extendsTranscript, pickTranscript } from "@/lib/agent-client/context";
 import {
   attachQueue,
   clearQueue,
@@ -122,21 +123,24 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
         if (remote.ok) {
           actionsRef.current = remote.value.actions;
           loadedRef.current = true;
-          if (remote.value.messages.length > 0) {
-            const restored = remote.value.messages as TranscriptMessage[];
-            saveChat(scopeId, restored);
-            setMessages(restored);
-          } else {
-            const legacy = local.length > 0 ? local : readLegacyChat(info.id, requestedChatId);
-            if (legacy.length > 0) {
-              saveChat(scopeId, legacy);
-              const saved = await saveConversation({ version: 1, messages: legacy, actions: [] }, requestedChatId);
-              if (saved.ok) {
-                clearLegacyChat(info.id, requestedChatId);
-                setMessages(legacy);
-              } else setMessages(legacy);
-            } else setMessages([]);
+          // A run in this tab owns the transcript until it ends; it reconciles at the next turn start.
+          if (abortRef.current) return;
+          // Continue from the copy that holds the most: the server one, unless this browser has more after it (a save
+          // that failed during a restart) or an older release left it under a provider-scoped key.
+          const remoteMessages = remote.value.messages as TranscriptMessage[];
+          const legacy = readLegacyChat(info.id, requestedChatId);
+          const localBest = pickTranscript(local, legacy, "local");
+          const chosen = pickTranscript(localBest.messages, remoteMessages, "remote");
+          if (chosen.messages.length === 0) {
+            setMessages([]);
+            return;
           }
+          saveChat(scopeId, chosen.messages);
+          setMessages(chosen.messages);
+          if (chosen.from === "local" && extendsTranscript(chosen.messages, remoteMessages)) {
+            const saved = await saveConversation({ version: 1, messages: chosen.messages, actions: actionsRef.current }, requestedChatId);
+            if (saved.ok) clearLegacyChat(info.id, requestedChatId);
+          } else clearLegacyChat(info.id, requestedChatId);
         }
       }
       return;
@@ -290,7 +294,12 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
         }
         // Under the lock the stored transcript is ours to repair (a crashed run may have left unpaired tool calls).
         const scopeId = scopeIdRef.current ?? id;
-        const stored = readChat(scopeId);
+        let stored = readChat(scopeId);
+        // The server copy is ahead (another browser, or this tab loaded before a turn elsewhere): continue from it.
+        if (durable.ok) {
+          const chosen = pickTranscript(stored, durable.value.messages as TranscriptMessage[], "local");
+          if (chosen.from === "remote" && chosen.messages !== stored) stored = replaceChat(scopeId, chosen.messages);
+        }
         const repaired = repairTranscript(stored);
         if (repaired.length !== stored.length) replaceChat(scopeId, repaired);
         const history = appendChat(scopeId, [{ role: "user", content: text }]);

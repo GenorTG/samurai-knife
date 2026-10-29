@@ -50,7 +50,8 @@ export async function PUT(request: Request): Promise<Response> {
   const current = scope(auth.account.id, request);
   if (!current && getAccount(auth.account.id)?.provider) return jsonError("invalid_chat_id", 400);
   if (!current) return jsonError("provider_not_configured", 409);
-  const read = await readJsonBody(request, 2 * 1024 * 1024);
+  // The browser caps a transcript at MAX_STORED_CHARS (context.ts); this leaves room for JSON escaping and UTF-8.
+  const read = await readJsonBody(request, 4 * 1024 * 1024);
   if ("response" in read) return read.response;
   const parsed = bodySchema.safeParse(read.body);
   if (!parsed.success) return jsonError("invalid_conversation", 400);

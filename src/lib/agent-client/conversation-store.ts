@@ -16,7 +16,7 @@ const transcriptMessageSchema = z.discriminatedUnion("role", [
   z.object({ role: z.literal("user"), content: z.string() }),
   z.object({ role: z.literal("assistant"), content: z.string().nullable(), tool_calls: z.array(toolCallSchema).optional() }),
   z.object({ role: z.literal("tool"), tool_call_id: z.string(), content: z.string() }),
-  z.object({ role: z.literal("notice"), level: z.enum(["error", "info", "usage"]), content: z.string() }).passthrough(),
+  z.object({ role: z.literal("notice"), level: z.enum(["error", "info", "usage", "summary"]), content: z.string() }).passthrough(),
 ]);
 
 /** What the browser owns and writes (PUT): the transcript and the action journal. */

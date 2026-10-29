@@ -37,6 +37,8 @@ import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTool
 import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
+import { buildContext, summarySection } from "./context";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -47,17 +49,11 @@ import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-
 /** Defaults of the per-turn budget; the account's own setting (turn-limits.ts, LoopOptions.limits) wins. */
 export const MAX_ROUNDS = DEFAULT_TURN_LIMITS.maxRounds;
 export const MAX_TOOL_CALLS = DEFAULT_TURN_LIMITS.maxToolCalls;
-export const MAX_STORED_MESSAGES = 200;
+export { MAX_STORED_MESSAGES } from "./context";
 
 const TOOL_RESULT_LIMIT = 12000;
 /** Per-round completion cap (reasoning included). Normal rounds are <500 tokens; a runaway round (copying base64, looping reasoning) otherwise burns minutes. */
 const ROUND_MAX_TOKENS = 8000;
-const CONTEXT_MESSAGES = 80;
-const CONTEXT_CHARS = 120_000;
-const OMITTED_SNAPSHOT = JSON.stringify({
-  ok: true,
-  omitted: "Older page snapshot dropped to save context. Call page_snapshot for the current page.",
-});
 
 export type LoopOutcome = "done" | "aborted" | "error" | "limit" | "login_required" | "provider_missing";
 
@@ -82,91 +78,8 @@ export interface LoopOptions {
 
 /* ---------------------------------------------------------- history hygiene */
 
-const interruptedResult = (id: string): ToolMessage => ({
-  role: "tool",
-  tool_call_id: id,
-  content: JSON.stringify({ ok: false, error: "No result recorded (the run was interrupted)." }),
-});
-
-/** Make tool_calls / tool results pair up exactly, as providers require. */
-export function repairTranscript(messages: TranscriptMessage[]): TranscriptMessage[] {
-  const out: TranscriptMessage[] = [];
-  for (let i = 0; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m.role === "tool") continue; // orphan: real ones are consumed below
-    out.push(m);
-    if (m.role !== "assistant" || !m.tool_calls?.length) continue;
-    const results = new Map<string, ToolMessage>();
-    let j = i + 1;
-    while (j < messages.length) {
-      const next = messages[j];
-      if (next.role !== "tool") break;
-      results.set(next.tool_call_id, next);
-      j += 1;
-    }
-    for (const call of m.tool_calls) out.push(results.get(call.id) ?? interruptedResult(call.id));
-    i = j - 1;
-  }
-  return out;
-}
-
-/** Cap stored history; start on a user message so no tool result is orphaned. */
-export function capTranscript(messages: TranscriptMessage[], max = MAX_STORED_MESSAGES): TranscriptMessage[] {
-  if (messages.length <= max) return messages;
-  const sliced = messages.slice(-max);
-  const firstUser = sliced.findIndex((m) => m.role === "user");
-  return firstUser === -1 ? [] : sliced.slice(firstUser);
-}
-
-function callNames(messages: WireMessage[]): Map<string, string> {
-  const names = new Map<string, string>();
-  for (const m of messages) {
-    if (m.role === "assistant") for (const c of m.tool_calls ?? []) names.set(c.id, c.function.name);
-  }
-  return names;
-}
-
-function charSize(m: WireMessage): number {
-  const base = m.content?.length ?? 0;
-  return m.role === "assistant" ? base + JSON.stringify(m.tool_calls ?? []).length : base;
-}
-
-/** Wire messages for the model: no notices, paired tool calls, stale snapshots dropped, bounded size. */
-export function toWire(transcript: TranscriptMessage[]): WireMessage[] {
-  const wire = repairTranscript(transcript).filter((m): m is WireMessage => m.role !== "notice");
-  const names = callNames(wire);
-  const carriesSnapshot = (m: WireMessage): boolean =>
-    m.role === "tool" &&
-    (names.get(m.tool_call_id) === "page_snapshot" || (names.get(m.tool_call_id) === "open_tool" && m.content.includes('"snapshot":')));
-  let lastSnapshot = -1;
-  wire.forEach((m, i) => {
-    if (carriesSnapshot(m)) lastSnapshot = i;
-  });
-  const slim = wire.map((m, i): WireMessage => {
-    if (m.role !== "tool" || !carriesSnapshot(m) || i === lastSnapshot) return m;
-    if (names.get(m.tool_call_id) === "page_snapshot") return { ...m, content: OMITTED_SNAPSHOT };
-    try {
-      const body = JSON.parse(m.content) as Record<string, unknown>;
-      body.snapshot = "omitted (older page snapshot)";
-      return { ...m, content: JSON.stringify(body) };
-    } catch {
-      return m;
-    }
-  });
-
-  let start = slim.length;
-  let chars = 0;
-  while (start > 0 && slim.length - start < CONTEXT_MESSAGES && chars + charSize(slim[start - 1]) <= CONTEXT_CHARS) {
-    start -= 1;
-    chars += charSize(slim[start]);
-  }
-  while (start < slim.length && slim[start].role !== "user") start += 1;
-  if (start >= slim.length) {
-    const lastUser = slim.map((m) => m.role).lastIndexOf("user");
-    start = Math.max(0, lastUser);
-  }
-  return slim.slice(start);
-}
+// Pairing repair, the stored-transcript cap and what the model sees of a long chat live in context.ts.
+export { capTranscript, repairTranscript, toWire } from "./context";
 
 /* --------------------------------------------------------------- tool calls */
 
@@ -300,6 +213,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     for (const content of texts) append({ role: "user", content });
     return texts.length > 0;
   };
+  /** The "older messages shortened" notice is shown once per turn. */
+  let shortenedNoted = false;
   /** One model call with the whole (slimmed) history. `extra` (the wrap-up note) is sent but not kept in the transcript. */
   const callModel = async (
     base: Omit<ChatRequest, "messages">,
@@ -307,7 +222,12 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     handlers: StreamHandlers | null,
     extra: WireMessage[] = [],
   ): Promise<ApiResult<ChatReply>> => {
-    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system }, ...toWire(working), ...extra] };
+    const context = buildContext(working);
+    if (context.shortened && !shortenedNoted) {
+      shortenedNoted = true;
+      notice("info", msg("Older messages were shortened to fit the model's context; the latest answers are kept in full."));
+    }
+    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system + summarySection(context.summary) }, ...context.messages, ...extra] };
     const result = await (handlers ? chatStream(request, handlers, signal) : chat(request, signal));
     if (result.ok && result.value.untrusted) stickyUntrusted = true;
     return result;

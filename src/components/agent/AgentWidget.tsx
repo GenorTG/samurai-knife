@@ -251,7 +251,7 @@ function WidgetShell() {
 
   const panelStyle = { "--aw": `${prefs.width}px`, "--ah": `${prefs.height}px` } as CSSProperties;
   // Tokens spent in this conversation (sum of the per-turn footers kept in the transcript).
-  const chatTokens = agent.messages.reduce((sum, m) => (m.role === "notice" && m.usage ? sum + m.usage.promptTokens + m.usage.completionTokens : sum), 0);
+  const chatTokens = agent.messages.reduce((sum, m) => (m.role === "notice" && m.level === "usage" && m.usage ? sum + m.usage.promptTokens + m.usage.completionTokens : sum), 0);
   const subtitle =
     account.kind === "ready"
       ? `${account.account.displayName}${account.account.provider ? ` · ${account.account.provider.model}` : ` · ${t("no model yet")}`}${chatTokens > 0 ? ` · ${t("{tokens} tokens", { tokens: formatTokens(chatTokens) })}` : ""}`
