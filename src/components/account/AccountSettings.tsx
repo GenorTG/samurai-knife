@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Badge, Button, Field, KeyValues, Notice, Panel, StorageMeter, TextInput } from "@/components/ui";
+import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { Badge, Button, CopyButton, Field, KeyValues, Notice, Panel, Select, StorageMeter, TextInput } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
 import type { StorageUsage } from "@/lib/storage/quota";
 import type { PublicAccount } from "@/lib/accounts/store";
@@ -12,6 +12,7 @@ import { GithubLink } from "./GithubLink";
 import { useT } from "@/lib/i18n/react";
 import { LanguageChoice } from "@/components/LanguageSwitcher";
 import { msg } from "@/lib/i18n/msg";
+import { mcpClientConfigs, type McpClientId } from "@/lib/mcp/client-configs";
 
 type Note = { tone: "good" | "error"; text: string } | null;
 
@@ -195,24 +196,35 @@ function Sessions({ username }: { username: string }) {
   );
 }
 
-type McpKeyRow = { id: string; name: string; hint: string; createdAt: string; lastUsedAt: string | null };
+type McpKeyScope = "full" | "read-only";
+type McpKeyRow = { id: string; name: string; hint: string; createdAt: string; lastUsedAt: string | null; scope: McpKeyScope };
+type McpKeysReply = { keys: McpKeyRow[]; username: string; origin: string | null; keyRequired: boolean };
 
 /** UTC, minute precision: the same text on the server and in every browser locale. */
 const when = (iso: string | null): string => (iso ? `${iso.slice(0, 16).replace("T", " ")} UTC` : "never");
+
+const noSubscribe = () => () => {};
+const pageOrigin = () => window.location.origin;
+const serverOrigin = () => "";
 
 /** Per-account MCP credentials (docs/MCP.md): an agent outside the browser acts on this account only. */
 function McpKeys({ username }: { username: string }) {
   const { t } = useT();
   const [keys, setKeys] = useState<McpKeyRow[] | null>(null);
+  const [info, setInfo] = useState<{ origin: string | null; keyRequired: boolean }>({ origin: null, keyRequired: true });
   const [name, setName] = useState("");
-  const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
+  const [scope, setScope] = useState<McpKeyScope>("full");
+  const [created, setCreated] = useState<{ key: string; name: string; scope: McpKeyScope } | null>(null);
   const [note, setNote] = useState<Note>(null);
   const [working, setWorking] = useState(false);
+  const ownOrigin = useSyncExternalStore(noSubscribe, pageOrigin, serverOrigin);
 
   const load = useCallback(() => {
-    void call<{ keys: McpKeyRow[] }>("GET", "/api/account/mcp-keys").then((reply) => {
-      if (reply.ok) setKeys(reply.body.keys);
-      else setNote({ tone: "error", text: reply.message });
+    void call<McpKeysReply>("GET", "/api/account/mcp-keys").then((reply) => {
+      if (reply.ok) {
+        setKeys(reply.body.keys);
+        setInfo({ origin: reply.body.origin, keyRequired: reply.body.keyRequired });
+      } else setNote({ tone: "error", text: reply.message });
     });
   }, []);
   useEffect(load, [load]);
@@ -221,14 +233,15 @@ function McpKeys({ username }: { username: string }) {
     event.preventDefault();
     setWorking(true);
     setNote(null);
-    const reply = await call<{ key: string; keyInfo: McpKeyRow }>("POST", "/api/account/mcp-keys", { action: "create", name });
+    const reply = await call<{ key: string; keyInfo: McpKeyRow }>("POST", "/api/account/mcp-keys", { action: "create", name, scope });
     setWorking(false);
     if (!reply.ok) {
       setNote({ tone: "error", text: reply.message });
       return;
     }
-    setCreated({ key: reply.body.key, name: reply.body.keyInfo.name });
+    setCreated({ key: reply.body.key, name: reply.body.keyInfo.name, scope: reply.body.keyInfo.scope });
     setName("");
+    setScope("full");
     load();
   }
 
@@ -243,17 +256,41 @@ function McpKeys({ username }: { username: string }) {
     }
   }
 
-  const endpoint = typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`;
+  const origin = info.origin ?? ownOrigin;
+  const endpoint = `${origin}/api/mcp`;
+  const personalUrl = `${origin}/api/mcp/u/${encodeURIComponent(username)}`;
+  const configLabels: Record<McpClientId, string> = {
+    openclaw: t("OpenClaw (terminal)"),
+    claude: t("Claude Code (terminal)"),
+    cursor: t("Cursor (mcp.json)"),
+  };
   return (
     <Panel title={t("MCP keys")}>
       <div className="space-y-3">
-        <p className="text-sm text-muted">
-          {t("Let an agent outside the browser (OpenClaw, Claude, Cursor…) use this account's tools at")}{" "} <code className="font-mono">{endpoint}</code>{t(". It sends your username")}{" "} <code className="font-mono">{username}</code> {" "}{t("and a key (HTTP Basic auth, or")}{" "} <code className="font-mono">Authorization: Bearer &lt;key&gt;</code> {" "}{t("with")}{" "} <code className="font-mono">X-Knife-User: {username}</code>{t(") and only ever reaches this account's data.")}
+        <p className="text-sm text-muted">{t("Let an agent outside the browser (OpenClaw, Claude Code, Cursor…) use this account's tools. Your personal MCP address needs only a key, sent as Authorization: Bearer <key>, and only ever reaches this account's data:")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <code data-testid="mcp-personal-url" className="min-w-0 flex-1 break-all rounded-lg border border-line bg-raised/50 px-3 py-2 font-mono text-xs text-ink">{origin ? personalUrl : t("Detecting site address…")}</code>
+          <CopyButton text={origin ? personalUrl : ""} label={t("Copy address")} />
+        </div>
+        <p className="text-xs text-muted">
+          {t("Older settings keep working: {endpoint} with your username {username} and a key (HTTP Basic auth, or a Bearer key with the X-Knife-User header).", { endpoint, username })}
+          {info.keyRequired ? "" : ` ${t("On this private server that address also answers without a key, as the default account (KNIFE_MCP_REQUIRE_KEY=1 turns that off).")}`}
         </p>
         {created ? (
           <Notice tone="good">
             <span className="block">{t("Key \"{name}\" created. Copy it now: it is not shown again.", { name: created.name })}</span>
             <code data-testid="mcp-key-value" className="mt-2 block font-mono text-[13px] break-all select-all">{created.key}</code>
+            {created.scope === "read-only" ? <span className="mt-2 block">{t("This key is read-only: the agent sees and can call only tools that change nothing.")}</span> : null}
+            <span className="mt-3 block font-medium">{t("Ready-made settings with this key:")}</span>
+            {mcpClientConfigs(personalUrl, created.key).map((config) => (
+              <span key={config.id} className="mt-2 block" data-mcp-config={config.id}>
+                <span className="flex items-center justify-between gap-2 text-xs">
+                  <span>{configLabels[config.id]}</span>
+                  <CopyButton text={config.text} label={t("Copy")} />
+                </span>
+                <pre className="mt-1 overflow-x-auto rounded-lg border border-line bg-raised/50 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-ink">{config.text}</pre>
+              </span>
+            ))}
           </Notice>
         ) : null}
         <Status note={note} />
@@ -267,7 +304,8 @@ function McpKeys({ username }: { username: string }) {
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span className="min-w-0">
                   <span className="font-medium text-ink">{row.name}</span>{" "}
-                  <span className="font-mono text-faint">{t(row.hint)}</span>
+                  <span className="font-mono text-faint">{t(row.hint)}</span>{" "}
+                  <span data-mcp-scope={row.scope}><Badge tone={row.scope === "read-only" ? "accent" : "neutral"}>{row.scope === "read-only" ? t("read-only") : t("full access")}</Badge></span>
                   <span className="block text-xs text-muted">{t("created {createdAt} · last used", { createdAt: when(row.createdAt) })}{" "} {when(row.lastUsedAt)}</span>
                 </span>
                 <Button size="sm" variant="danger" onClick={() => void revoke(row)} aria-label={t("Revoke {name}", { name: row.name })}>{t("Revoke")}</Button>
@@ -278,6 +316,12 @@ function McpKeys({ username }: { username: string }) {
         <form onSubmit={create} className="flex flex-wrap items-end gap-2" aria-label={t("New MCP key")}>
           <Field label={t("Key name")} hint={t("Where it is used, e.g. laptop OpenClaw.")} className="min-w-0 flex-1">
             <TextInput value={name} maxLength={60} onChange={(e) => setName(e.target.value)} required />
+          </Field>
+          <Field label={t("What the key may do")} className="min-w-0 sm:w-64">
+            <Select value={scope} onChange={(e) => setScope(e.target.value === "read-only" ? "read-only" : "full")} aria-label={t("What the key may do")}>
+              <option value="full">{t("Everything this account may do")}</option>
+              <option value="read-only">{t("Read only (tools that change nothing)")}</option>
+            </Select>
           </Field>
           <Button type="submit" disabled={working || !name.trim()}>{working ? t("Creating…") : t("Create key")}</Button>
         </form>

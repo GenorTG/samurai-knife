@@ -6,8 +6,9 @@
   matching /api/cv/showcase/* routes are 403; the admin gets all of them;
 - a user cannot control sidecars (every lifecycle action, the lazy start of a stopped one), read op logs, rebuild the
   course data or read the server queue; the 401 body names no account;
-- MCP keys: create/list/revoke on /account (the UI shows the key once), Basic and Bearer + X-Knife-User, a wrong
-  username, a malformed header, a revoked key, no key at all;
+- MCP keys: create/list/revoke on /account (the UI shows the key once, with the personal URL and ready-made client
+  settings; a read-only key from the page lists no write tool), Basic and Bearer + X-Knife-User, a wrong username, a
+  malformed header, a revoked key, no key at all, another account's key on a personal URL;
 - cross-account isolation over MCP: alice's CV offers and documents are invisible to bob, and knife_ui_state /
   knife_ui_show reach only the caller's own open tabs;
 - the CV studio tells a user that an administrator has to run the GitHub showcase; logging out clears the account's
@@ -64,17 +65,17 @@ class Mcp:
         self.api = api
         self.rpc = 0
 
-    def call(self, method: str, params: dict | None, headers: dict[str, str] | None, ip: str = "203.0.113.50") -> tuple[int, object]:
+    def call(self, method: str, params: dict | None, headers: dict[str, str] | None, ip: str = "203.0.113.50", path: str = "/api/mcp") -> tuple[int, object]:
         self.rpc += 1
-        status, body, _ = self.api.call("POST", "/api/mcp", {"jsonrpc": "2.0", "id": self.rpc, "method": method, "params": params or {}}, ip=ip,
+        status, body, _ = self.api.call("POST", path, {"jsonrpc": "2.0", "id": self.rpc, "method": method, "params": params or {}}, ip=ip,
                                         headers={"Accept": "application/json, text/event-stream", **(headers or {})})
         if isinstance(body, str):  # SSE framing
             data = [line[6:] for line in body.split("\n") if line.startswith("data: ")]
             body = json.loads(data[0]) if data else body
         return status, body
 
-    def tools(self, headers: dict[str, str]) -> set[str]:
-        status, body = self.call("tools/list", {}, headers)
+    def tools(self, headers: dict[str, str], path: str = "/api/mcp") -> set[str]:
+        status, body = self.call("tools/list", {}, headers, path=path)
         if status != 200 or not isinstance(body, dict):
             return set()
         return {tool["name"] for tool in body.get("result", {}).get("tools", [])}
@@ -251,6 +252,28 @@ def run(server: ScratchServer, browser: Browser) -> None:
     expect(shown_key).to_be_visible(timeout=15_000)
     ui_key = shown_key.inner_text().strip()
     check("account page creates a key and shows it once", ui_key.startswith("skm_") and "knife_cv_get" in mcp.tools(basic("alice", ui_key)), ui_key[:8])
+    personal = page_a.get_by_test_id("mcp-personal-url").inner_text().strip()
+    check("account page shows the personal MCP URL", personal.startswith("http") and personal.endswith("/api/mcp/u/alice"), personal)
+    openclaw = page_a.locator("[data-mcp-config=openclaw] pre").inner_text()
+    claude = page_a.locator("[data-mcp-config=claude] pre").inner_text()
+    cursor = json.loads(page_a.locator("[data-mcp-config=cursor] pre").inner_text())
+    check("ready-made OpenClaw / Claude Code / Cursor settings carry the personal URL and the new key",
+          f"--url {personal} --transport streamable-http --header \"Authorization=Bearer {ui_key}\"" in openclaw
+          and f"claude mcp add --transport http samurai-knife {personal} --header \"Authorization: Bearer {ui_key}\"" in claude
+          and cursor["mcpServers"]["samurai-knife"] == {"url": personal, "headers": {"Authorization": f"Bearer {ui_key}"}}, (openclaw, claude))
+    check("the personal URL takes the key alone", "knife_cv_patch" in mcp.tools({"Authorization": f"Bearer {ui_key}"}, path="/api/mcp/u/alice"))
+    status, _ = mcp.call("tools/list", {}, {"Authorization": f"Bearer {ui_key}"}, path="/api/mcp/u/bob")
+    check("alice's key on bob's personal URL -> 401", status == 401, status)
+    form.get_by_label("Key name").fill("reader")
+    form.get_by_role("combobox", name="What the key may do").select_option("read-only")
+    form.get_by_role("button", name="Create key").click()
+    expect(page_a.get_by_text('Key "reader" created')).to_be_visible(timeout=15_000)
+    reader_key = page_a.get_by_test_id("mcp-key-value").inner_text().strip()
+    expect(page_a.locator("[data-mcp-scope=read-only]")).to_have_count(1, timeout=15_000)
+    reader_tools = mcp.tools({"Authorization": f"Bearer {reader_key}"}, path="/api/mcp/u/alice")
+    check("a read-only key from the page lists read tools only", "knife_cv_get" in reader_tools and "knife_cv_patch" not in reader_tools and "knife_cv_job_save" not in reader_tools, sorted(reader_tools)[:10])
+    ok, text = mcp.tool("knife_cv_job_save", {"title": "x", "company": "y", "text": "z"}, basic("alice", reader_key))
+    check("a read-only key cannot call a write tool", not ok, text[:200])
     page_a.reload(wait_until="networkidle")
     check("the key is not shown again after a reload", page_a.get_by_test_id("mcp-key-value").count() == 0 and ui_key not in page_a.content())
     page_a.get_by_role("button", name="Revoke from the page").click()

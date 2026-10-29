@@ -12,7 +12,8 @@
 //   npm run accounts -- remove <id>
 //   npm run accounts -- set-default <id>
 //   npm run accounts -- set-provider <id> --base-url URL --model NAME
-//        [--key-prompt | --key-env VAR | --key-stdin] [--header "K: V"]... [--clear-headers]
+//        [--key-prompt | --key-env VAR | --key-stdin] [--header "K: V"]... [--clear-headers] [--vision native|none]
+//        (keeps the reasoning effort and vision helper; "Sees images" is kept while the URL and model stay the same)
 //   npm run accounts -- set-provider <id> --preset openclaw-gateway --agent openclaw/<agentId>
 //        [--backend-model provider/model] [--gateway-url URL] [--allow-main] [--key-prompt | --key-env VAR | --key-stdin]
 //   npm run accounts -- set-network <id> private|public   (public mode: may an ADMIN's provider reach loopback/LAN?)
@@ -225,7 +226,7 @@ function hashPassword(password) {
   return `scrypt$${N}$${r}$${p}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 
-const KNOWN_FLAGS = ["name", "email", "role", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main", "clear", "github-id"];
+const KNOWN_FLAGS = ["name", "email", "role", "password-prompt", "base-url", "model", "key-env", "key-stdin", "key-prompt", "header", "clear-headers", "preset", "agent", "backend-model", "gateway-url", "allow-main", "clear", "github-id", "vision"];
 const BOOLEAN_FLAGS = ["password-prompt", "key-stdin", "key-prompt", "clear-headers", "allow-main", "clear"];
 
 function parseArgs(argv) {
@@ -521,6 +522,8 @@ const commands = {
     if (typeof baseUrlFlag !== "string") fail("--base-url is required (or --preset)");
     if (typeof model !== "string" || !model.trim()) fail("--model is required (or --preset)");
     if (["key-env", "key-stdin", "key-prompt"].filter((f) => flags.has(f)).length > 1) fail("use only one of --key-prompt / --key-env / --key-stdin");
+    const visionFlag = flags.get("vision")?.[0];
+    if (flags.has("vision") && visionFlag !== "native" && visionFlag !== "none") fail("--vision takes native (the model sees images) or none (text only)");
 
     let apiKey = account.provider?.apiKey ?? "";
     if (flags.has("key-env")) {
@@ -554,11 +557,20 @@ const commands = {
       }
     }
 
+    // Settings made in the app survive a CLI change (they used to be dropped): the reasoning effort and the vision helper
+    // always, "Sees images" while the endpoint and model stay the same (it describes that model), --vision sets it.
+    const previous = account.provider ?? null;
+    const baseUrl = normalizeBaseUrl(baseUrlFlag);
+    const sameModel = previous !== null && previous.baseUrl === baseUrl && previous.model === model.trim();
+    const vision = visionFlag ?? (sameModel ? previous.vision : undefined);
     account.provider = {
-      baseUrl: normalizeBaseUrl(baseUrlFlag),
+      baseUrl,
       apiKey,
       model: model.trim(),
       ...(extraHeaders && Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
+      ...(previous?.reasoningEffort ? { reasoningEffort: previous.reasoningEffort } : {}),
+      ...(vision ? { vision } : {}),
+      ...(previous?.visionHelper ? { visionHelper: previous.visionHelper } : {}),
     };
     // `provider` is the active saved profile's config (src/lib/accounts/store.ts): keep that profile in step, or make one.
     const profiles = Array.isArray(account.providerProfiles) ? account.providerProfiles : [];

@@ -282,6 +282,30 @@ test("describe: the helper model gets the picture as an image part; without one 
   await assert.rejects(callKnifeTool("knife_vision_describe", { image: "../../x" }, { accountId: "desc", admin: false }), /screenshot id/);
 });
 
+test("describe: a reasoning model cut off before writing is retried once with a larger budget, then told plainly", async () => {
+  store.mutateStore((s) => {
+    s.accounts.push(store.newAccountRecord({ id: "think", displayName: "Think" }));
+  });
+  const mockCfg = (model) => ({ baseUrl: `http://127.0.0.1:${mockPort}/v1`, apiKey: "mock-key", model, vision: "native" });
+  assert.equal(describe.describeInput(mockCfg("m"), { mime: "image/png", bytes: PNG }).maxTokens, describe.DESCRIBE_MAX_TOKENS);
+  assert.ok(describe.DESCRIBE_MAX_TOKENS >= 6_000, "room for a reasoning model's thinking");
+  await fetch(`http://127.0.0.1:${mockPort}/__log`, { method: "DELETE" });
+  // Needs 3,000 tokens: the first round (8,000) is enough, no retry.
+  store.setProvider("think", mockCfg("mock-thinker-3000"));
+  assert.match((await describe.describeImage("think", { mime: "image/png", bytes: PNG })).text, /^VISION: saw 1 image/);
+  assert.equal((await (await fetch(`http://127.0.0.1:${mockPort}/__log`)).json()).length, 1);
+  // Needs 10,000: 8,000 is cut off empty, the retry with 16,000 answers.
+  await fetch(`http://127.0.0.1:${mockPort}/__log`, { method: "DELETE" });
+  store.setProvider("think", mockCfg("mock-thinker-10000"));
+  assert.match((await describe.describeImage("think", { mime: "image/png", bytes: PNG })).text, /^VISION: saw 1 image/);
+  assert.equal((await (await fetch(`http://127.0.0.1:${mockPort}/__log`)).json()).length, 2);
+  const last = await (await fetch(`http://127.0.0.1:${mockPort}/__last`)).json();
+  assert.equal(last.body.max_tokens, describe.DESCRIBE_RETRY_MAX_TOKENS);
+  // Needs more than any budget: a clear error, not "empty description".
+  store.setProvider("think", mockCfg("mock-thinker-50000"));
+  await assert.rejects(describe.describeImage("think", { mime: "image/png", bytes: PNG }), /whole token budget reasoning/);
+});
+
 test("tools: registered with the right effects, offered to MCP and the assistant, screenshot refused off-site", async () => {
   const screenshotTool = KNIFE_TOOLS.find((t) => t.name === "knife_site_screenshot");
   assert.equal(screenshotTool.effect, "outbound");

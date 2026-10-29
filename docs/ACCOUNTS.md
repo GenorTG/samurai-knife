@@ -16,7 +16,8 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | Pages without a session | everything | only `/`, `/login`, `/register`, `/verify`, `/forgot-password`, `/reset-password`, in the public frame (`src/components/shell/PublicShell.tsx`: no sidebar, palette, assistant or UI bridge); `/tools/*` and `/account*` redirect to `/login?next=<path+query>` (`requireSignIn`, `src/lib/accounts/viewer.ts`, called by each page: layouts are not re-rendered on client navigation, so a layout can only pick the frame); a signed-in visitor on `/login` or `/register` goes straight on to `next` |
 | Session cookie | `SameSite=Strict` | `SameSite=Lax` |
 | Roles | every account may do everything | `admin` / `user` (see Roles) |
-| MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
+| MCP `POST /api/mcp` | default account without credentials (unless `KNIFE_MCP_REQUIRE_KEY=1`); an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
+| MCP `POST /api/mcp/u/<username>` | Bearer key of that account required | the same |
 | Mail transport default | `outbox` | `smtp` |
 
 `src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public, and so is an empty value with
@@ -67,6 +68,19 @@ SHA-256 of the raw token only).
   advertised `supported_parameters` such as tools, reasoning, JSON output, streaming or audio. A missing field is shown as
   unknown; capabilities are never guessed from model names. Selecting an entry with explicit image modality updates the
   profile's vision flag. Workflow AI nodes pick any profile.
+- Anthropic (`api.anthropic.com/v1`, the settings' Anthropic preset; `isAnthropicBaseUrl` in
+  `src/lib/accounts/provider.ts`, exact host only): chat goes through Anthropic's OpenAI-compatible
+  `/v1/chat/completions` (Bearer key, tools, streaming, `image_url` parts; `max_tokens` optional there), but its native
+  `GET /v1/models` (Test, Load models) answers 400 without `anthropic-version`. For that host every request also carries
+  `anthropic-version: 2023-06-01` and `x-api-key: <key>`; an extra header of the same name set by the user wins.
+  `/models` is read in Anthropic's native shape (`display_name`, `created_at`, `max_input_tokens`,
+  `capabilities.image_input/thinking/structured_outputs/pdf_input.supported`), paged with `after_id` (`has_more` /
+  `last_id`, at most 5 pages of 1,000, the list keeps 400). Requests to that host never carry `temperature` (Claude 4.7
+  and later answer 400 to any value below 1 there): the assistant's 0.2, the describer's 0.2 and the probe's 0 are left
+  out. Errors `{type:"error", error:{type, message}}` read as `message (type)`. Tests: the mock provider's
+  `/anthropic/v1` plays the host when the server or test sets `KNIFE_ANTHROPIC_TEST_BASE` to that base URL (test seam
+  only; it adds the same headers to that one address). Workflow AI nodes call `/chat/completions` themselves with
+  Bearer only and still send their temperature.
 - Vision (`src/lib/vision/config.ts`): each profile's config may carry `vision` (`native` = the model accepts
   OpenAI-style `image_url` parts; unset or `none` = text-only, which is what every profile saved before 2026-10-28 is,
   so nothing changes for them) and `visionHelper` (the id of another saved profile, any OpenAI-compatible vision model:
@@ -79,9 +93,40 @@ SHA-256 of the raw token only).
   the helper's text description in the tool result instead; without either it gets neither and the result says how to
   set one up. An image never goes to a text-only model. On request (`describe:true`, a `question`,
   `knife_vision_describe`) the describer is the active profile's helper, else the active model when it is `native`
-  (`describerFor`). The helper call goes through the same provider path as the assistant (host rules, provider budget,
+  (`describerFor`). A description may use 8,000 completion tokens (reasoning models think first: a 1440x900 screenshot
+  took one ~3,400 reasoning tokens); an answer cut off at the limit with no text is retried once with 16,000, and if it
+  is still empty the error says the model spent its budget reasoning (pick a non-reasoning vision helper). The helper call goes through the same provider path as the assistant (host rules, provider budget,
   SSRF-safe transport, usage ledger); its answer describes third-party pixels and is wrapped in the untrusted-content
   envelope. The rendered file exists in a per-job temporary directory until the screenshot job finishes; the returned image is cached in server memory for 30 minutes, never in the account's files.
+- Vision detection (`src/lib/vision/probe.ts`, `capabilities.ts`, `POST /api/account/provider/vision-probe`): most
+  OpenAI-compatible providers (OpenCode Go among them) list models without saying whether they take images, so the
+  model picker shows "vision unknown". The Provider settings show the vision choice next to the model (always visible),
+  with **Detect** (the typed model) and **Check all models for vision** (every listed model still unknown, 3 per request,
+  at most 60 per press, Stop button). Each check is one real chat completion: a 64x32 PNG whose two halves have two
+  different colours picked at random by the server, `max_tokens` 2,000 (retried once with 8,000 when a reasoning model
+  stops at the limit before writing anything), temperature 0, asking for the two colours or
+  `NO_IMAGE`. Naming both in order = sees images (a guessing text model has a 1-in-30 chance); an HTTP 4xx about images /
+  multimodal input / content types (not 401/403/404/408/409/429), or an answer saying there is no image = text only;
+  anything else (timeouts, 5xx, auth, rate limits, wrong colours, an empty reasoning answer) = unknown and never cached.
+  Requests go through `providerPost` (the same SSRF-safe transport, host rules and stored-key rule as `/models`: the
+  stored key only for the stored address), each counted on the account's `provider` budget, at most 3 of an account at
+  once, 60 s per model (`KNIFE_VISION_PROBE_TIMEOUT_MS`, 5-180 s). Definite answers go to `model-capabilities.json` in
+  the data dir: one shared, non-personal file keyed by the base URL's host + path and the model id (no key, query,
+  credentials or account), with `checkedAt` and a 30-day expiry, expired entries pruned, at most 5,000. The route
+  answers a remembered model from that file unless `force`. `/provider/test` and `/provider/models` merge it into
+  `modelDetails` (`visionSource`: `advertised` from `/models` wins, else `detected` with `visionCheckedAt`, else null);
+  picking a model with a known answer (either source) sets the vision choice, saved with Connect. Why a shared file is
+  fine: it holds what an endpoint's model did with a generated picture, never who asked; an account can only teach it
+  answers its own provider address gave (the colours are the server's secret), and nothing is sent to a model because
+  of it: the user still saves "Sees images". The privacy notice (edition 6) mentions the test picture and the list.
+- The accounts CLI `set-provider` keeps the reasoning effort and vision helper the app saved, keeps "Sees images" while
+  the base URL and model stay the same, and takes `--vision native|none` (it used to rebuild the provider without
+  them, which silently turned vision off).
+- Assistant preferences (`src/lib/agent-client/turn-limits.ts`, `PUT /api/account/assistant`): the per-turn budget of
+  the in-page assistant, `{maxRounds 4-100 (default 24), maxToolCalls 4-200 (default 40)}` or `{reset: true}`, stored as
+  `assistant` on the account (null = defaults; an out-of-bounds hand edit reads as null rather than breaking the
+  file). The public account always carries `assistant: {maxRounds, maxToolCalls, custom}`; the loop
+  (`src/lib/agent-client/loop.ts`) reads it, and its limit notice names the numbers in use. Settings > "Turn limit".
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.
@@ -134,7 +179,7 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/account` | `POST /api/account/password {currentPassword, newPassword}` | Ends every session; this browser gets a new one; revokes every MCP key and mails a notice. |
 | `/account` | `POST /api/account/email {password, email}` -> 202 | Link to the NEW address; the address changes when it is opened. Address in use: same answer, its owner is told. |
 | `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here; everywhere also has an explicit option to revoke MCP keys. The page (and the assistant's log out) first clears this account's browser storage: transcript, message queue, run lease, SQL lab schema/dialect, trust mode (`src/lib/client-account.ts`). |
-| `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets, create (201, the key once; 20 per hour, 10 kept), revoke (404 for another account's id). |
+| `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name, scope?}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets (with each key's scope, the username, `origin` for the personal URL and whether `/api/mcp` needs a key), create (201, the key once; scope `full` or `read-only`; 20 per hour, 10 kept), revoke (404 for another account's id). The page shows the personal URL `/api/mcp/u/<username>` and, once, ready-made OpenClaw / Claude Code / Cursor settings for the new key. |
 | `/account` | `POST /api/account/delete {password}` | Removes the account and all its data (below); refused for the only active admin. Mails a notice. |
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 

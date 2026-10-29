@@ -353,9 +353,9 @@ test("provider Test: listed models expose only advertised metadata and preserve 
     assert.equal(result.ok, true);
     assert.deepEqual(result.models, ["text-model", "unknown-model", "vision-model"]);
     assert.deepEqual(result.modelDetails, [
-      { id: "text-model", contextLength: 32000, vision: false, features: [] },
-      { id: "unknown-model", contextLength: null, vision: null, features: [] },
-      { id: "vision-model", contextLength: 128000, vision: true, features: ["max_tokens", "temperature", "tools", "vision"] },
+      { id: "text-model", contextLength: 32000, vision: false, visionSource: "advertised", features: [] },
+      { id: "unknown-model", contextLength: null, vision: null, visionSource: null, features: [] },
+      { id: "vision-model", contextLength: 128000, vision: true, visionSource: "advertised", features: ["max_tokens", "temperature", "tools", "vision"] },
     ]);
   } finally {
     server.close();
