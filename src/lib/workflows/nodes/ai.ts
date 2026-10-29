@@ -63,6 +63,15 @@ async function providerOf(ctx: ExecuteContext): Promise<Provider> {
   return { name: credential.name, baseUrl, apiKey: String(data.apiKey ?? ""), model, headers, ...(typeof data.reasoningEffort === "string" && data.reasoningEffort ? { reasoningEffort: data.reasoningEffort } : {}) };
 }
 
+/** Anthropic's API wants `anthropic-version` and `x-api-key` (same rule as the assistant's provider path). */
+function isAnthropicHost(baseUrl: string): boolean {
+  try {
+    return new URL(baseUrl).hostname.toLowerCase() === "api.anthropic.com";
+  } catch {
+    return false;
+  }
+}
+
 function upstreamError(status: number, text: string, provider: Provider): NodeError {
   let detail = text.slice(0, 400);
   try {
@@ -82,11 +91,18 @@ async function chat(ctx: ExecuteContext, provider: Provider, messages: ChatMessa
   const used = (rounds.get(ctx.services) ?? 0) + 1;
   rounds.set(ctx.services, used);
   if (used > MAX_ROUNDS_PER_RUN) throw new NodeError(`The run made more than ${MAX_ROUNDS_PER_RUN} model calls (a looping agent?).`);
+  const anthropic = isAnthropicHost(provider.baseUrl);
   const payload: Record<string, unknown> = { model: provider.model, messages, stream: false };
-  if (options.temperature !== undefined && Number.isFinite(options.temperature)) payload.temperature = options.temperature;
+  // Newer Claude models reject temperature on Anthropic's OpenAI-compatible endpoint (src/lib/accounts/provider.ts).
+  if (!anthropic && options.temperature !== undefined && Number.isFinite(options.temperature)) payload.temperature = options.temperature;
   if (options.tools?.length) payload.tools = options.tools;
   if (provider.reasoningEffort) payload.reasoning_effort = provider.reasoningEffort;
-  const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json", ...provider.headers };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    accept: "application/json",
+    ...(anthropic ? { "anthropic-version": "2023-06-01", ...(provider.apiKey ? { "x-api-key": provider.apiKey } : {}) } : {}),
+    ...provider.headers,
+  };
   if (provider.apiKey) headers.authorization = `Bearer ${provider.apiKey}`;
   const started = Date.now();
   let failed = true;
