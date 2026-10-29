@@ -302,8 +302,10 @@ function WidgetShell() {
             </svg>
           </button>
 
-          <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2.5 pl-5">
-            <div className="min-w-0 flex-1">
+          {/* Narrow panels (the default 400px) put the controls on a second row so the title is never squeezed. */}
+          <header className="@container border-b border-line bg-surface px-3 py-2.5 pl-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 @[34rem]:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="col-start-1 row-start-1 min-w-0">
               <h2 className="flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-ai" />
                 {t("Assistant")}
@@ -313,7 +315,7 @@ function WidgetShell() {
               </p>
             </div>
             {account.kind === "ready" ? (
-              <>
+              <div className="col-span-2 row-start-2 flex items-center justify-end gap-2 @[34rem]:col-span-1 @[34rem]:col-start-2 @[34rem]:row-start-1">
                 <IconButton label={view === "goals" ? t("Back to chat") : t("Goals")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
                   <span aria-hidden="true">☷</span>
                 </IconButton>
@@ -350,11 +352,14 @@ function WidgetShell() {
                 >
                   <GearIcon />
                 </IconButton>
-              </>
+              </div>
             ) : null}
-            <IconButton label={t("Close assistant")} onClick={close}>
-              <CloseIcon />
-            </IconButton>
+            <div className="col-start-2 row-start-1 flex @[34rem]:col-start-3">
+              <IconButton label={t("Close assistant")} onClick={close}>
+                <CloseIcon />
+              </IconButton>
+            </div>
+            </div>
           </header>
 
           {view === "loading" ? <p className="p-4 text-sm text-muted">{t("Loading…")}</p> : null}

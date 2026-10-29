@@ -772,19 +772,19 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
         <p className="text-[11px] leading-snug text-faint">
           {tr("One message to the assistant may take several model rounds (each round can call tools). When either limit is reached, the assistant stops and summarises what is done and what is left. Higher limits allow longer jobs and cost more tokens.")}
         </p>
-        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+        <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted" data-turn-limit-row>
           <span className="min-w-0">
             {tr("Model rounds per message")}
             <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxRounds.min), max: String(bounds.maxRounds.max), value: String(bounds.maxRounds.default) })}</span>
           </span>
-          <TextInput type="number" inputMode="numeric" min={bounds.maxRounds.min} max={bounds.maxRounds.max} step={1} value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label={tr("Model rounds per message")} className="h-8 w-20 shrink-0 text-xs" />
+          <TextInput type="number" inputMode="numeric" min={bounds.maxRounds.min} max={bounds.maxRounds.max} step={1} value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label={tr("Model rounds per message")} className="h-8 text-xs tabular-nums" />
         </label>
-        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+        <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted" data-turn-limit-row>
           <span className="min-w-0">
             {tr("Tool calls per message")}
             <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxToolCalls.min), max: String(bounds.maxToolCalls.max), value: String(bounds.maxToolCalls.default) })}</span>
           </span>
-          <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 w-20 shrink-0 text-xs" />
+          <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 text-xs tabular-nums" />
         </label>
         {!valid ? <p className="text-[11px] text-danger">{tr("Enter whole numbers within the limits shown.")}</p> : null}
         <div className="flex flex-wrap items-center gap-1.5">
