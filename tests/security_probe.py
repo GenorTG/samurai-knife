@@ -225,8 +225,9 @@ def main() -> int:
         status, body = mcp_at(api, path, "tools/list", {}, headers, "198.51.100.30")
         named = isinstance(body, dict) and ("tools" in str(body.get("result", "")))
         check(f"personal URL: {what} -> 401", status in (401, 404) and not named, (status, str(body)[:200]))
-    status, _ = mcp_at(api, "/api/mcp/u/../mcp", "tools/list", {}, bearer_a, "198.51.100.30")
-    check("personal URL: /api/mcp/u/../mcp normalises to the shared endpoint, which still wants a username", status == 401, status)
+    status, body = mcp_at(api, "/api/mcp/u/../mcp", "tools/list", {}, bearer_a, "198.51.100.30")
+    check("personal URL: /api/mcp/u/../mcp reaches no tools (404, or 401 at the shared endpoint without a username)",
+          status in (401, 404) and not (isinstance(body, dict) and "result" in body), (status, str(body)[:200]))
 
     # Read-only key: write tools are neither listed nor callable, on either endpoint.
     kr = mcp_key(api, bob, "198.51.100.20", "read-only")
