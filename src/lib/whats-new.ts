@@ -13,8 +13,9 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
     version: "0.13.0",
-    date: "2026-10-28",
+    date: "2026-10-29",
     items: [
+      "Durable assistant goals: knife_goal_list/create/update/checkpoint save account-private projects and tasks with editable ordered steps, active/paused/completed status, next action and checkpoint history; the assistant's Goals panel lets the user review, edit, pause, resume and complete them across chats and providers.",
       "Vision detection: when GET /models does not say whether a model takes images, Provider settings can ask it (Detect, or \"Check all models for vision\": one tiny generated test picture per model); definite answers are remembered per provider address and model for 30 days and shown as \"detected\" in the model list, and picking a model that sees images sets \"Sees images\". Not an agent tool: the user runs it in the assistant's settings.",
       "knife_vision_describe and describe:true give a reasoning vision model room to think (8,000 completion tokens, one retry with 16,000 when it stopped before writing); if it still writes nothing the error says so, and a non-reasoning vision helper profile is the fix. The vision probe likewise retries a cut-off answer and never calls a model text-only because it ran out of tokens.",
       "Anthropic works as a provider (preset api.anthropic.com/v1): Test and Load models read Anthropic's own model list (display names, context window, image input), and chat rounds go through its OpenAI-compatible endpoint without temperature (newer Claude models refuse it).",

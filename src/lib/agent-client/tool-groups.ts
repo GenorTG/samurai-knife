@@ -20,6 +20,7 @@ export interface ToolGroup {
 }
 
 export const TOOL_GROUPS: readonly ToolGroup[] = [
+  { id: "goals", prefixes: ["knife_goal_"], pagePattern: /(?!)/, summary: "durable goals and projects: create, list, update, pause/resume, checkpoint progress and next actions" },
   { id: "sql", prefixes: ["knife_sql_"], pagePattern: /^\/tools\/sql-lab(\/|$)/, summary: "SQL: compile a JSON query spec for 14 dialects, transpile between dialects, validate, format, DDL to schema, check SQL against a schema" },
   { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: the bilingual (PL/EN) master CV (read, edit, undo, audit), job offers matched against it, per-job CV versions with rewording and an ATS check, applications, projects from GitHub links" },
   { id: "site", prefixes: ["knife_site_", "knife_vision_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "the user's website: audit scores, screenshots, repo files, changes as a pull request" },

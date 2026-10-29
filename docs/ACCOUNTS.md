@@ -210,6 +210,7 @@ removed:
 - `conversations/<id>/` (assistant transcripts)
 - `docs/<id>/` (office library: documents, `folders.json`, kept versions, trash)
 - `learn/<id>.json` (course progress)
+- `goals/<id>.json` (assistant goals, ordered steps, status and checkpoint history)
 - `usage/<id>.json` (token ledger)
 - `workspace/<id>.json.enc` (browser-tool drafts, see "Tool drafts" below)
 - `site/<id>.json` (website studio: repository connection with its token, work branch, audit history; docs/WEBSITE-STUDIO.md)

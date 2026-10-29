@@ -23,6 +23,7 @@ import { InteractionCards, TrustModeSwitch } from "./InteractionCards";
 import { QueuePanel } from "./QueuePanel";
 import { LoginView } from "./LoginView";
 import { SettingsView } from "./SettingsView";
+import { GoalsView } from "./GoalsView";
 import { MIN_HEIGHT, MIN_WIDTH, loadPrefs, savePrefs, subscribePrefs, type UiPrefs } from "./storage";
 import { formatTokens } from "@/lib/usage";
 import { starterPrompts } from "./starters";
@@ -75,6 +76,7 @@ function WidgetShell() {
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs);
   const [chatId, setChatId] = useState("default");
   const [settingsRequested, setSettingsRequested] = useState(false);
+  const [goalsRequested, setGoalsRequested] = useState(false);
   const [draft, setDraft] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -166,8 +168,8 @@ function WidgetShell() {
   }, [agent.busy, prefs.chatIds.length, switchChat]);
 
   const firstRun = account.kind === "ready" && account.account.provider === null;
-  const view: "chat" | "settings" | "login" | "loading" | "error" =
-    account.kind === "ready" ? (firstRun || settingsRequested ? "settings" : "chat") : account.kind;
+  const view: "chat" | "goals" | "settings" | "login" | "loading" | "error" =
+    account.kind === "ready" ? (firstRun || settingsRequested ? "settings" : goalsRequested ? "goals" : "chat") : account.kind;
 
   const setOpen = useCallback((open: boolean) => setPrefs((p) => (p.open === open ? p : { ...p, open })), []);
 
@@ -312,6 +314,9 @@ function WidgetShell() {
             </div>
             {account.kind === "ready" ? (
               <>
+                <IconButton label={view === "goals" ? t("Back to chat") : t("Goals")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
+                  <span aria-hidden="true">☷</span>
+                </IconButton>
                 <select
                   aria-label={t("Assistant conversation")}
                   value={chatId}
@@ -381,6 +386,11 @@ function WidgetShell() {
               onLogout={agent.logout}
             />
           ) : null}
+          {view === "goals" ? <GoalsView onContinue={(goalId, goalTitle) => {
+            setSettingsRequested(false);
+            setGoalsRequested(false);
+            agent.send(`Resume saved goal "${goalTitle}" (id: ${goalId}). Read its current checkpoint with knife_goal_list and continue from the saved next action; do not ask me to restate the goal.`);
+          }} /> : null}
           {view === "chat" ? (
             <>
               <TrustModeSwitch chatId={chatId} />

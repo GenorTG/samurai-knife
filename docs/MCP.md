@@ -120,6 +120,8 @@ docs/WEBSITE-STUDIO.md.
   apps); the assistant reads the page through `page_snapshot`/`read_text`, and the Craft apps have `craft_screenshot`.
 
 ## What's new (`knife_whats_new`, `src/lib/whats-new.ts`)
+Durable work tracking is available through `knife_goal_list`, `knife_goal_create`, `knife_goal_update`, and `knife_goal_checkpoint`; goals, ordered steps, statuses, next actions and checkpoint history are account-private and are also shown in the assistant's Goals panel.
+
 One entry per release that changes what agents can do, newest first, naming the tools. `knife_whats_new {count?}`
 returns the server's version and the entries; the MCP instructions point to it, and the in-app assistant's system
 prompt carries the version its tab was loaded with plus the newest three entries, so "do you have new tools?" is

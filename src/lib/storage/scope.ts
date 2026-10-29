@@ -68,6 +68,8 @@ export interface AccountScope {
   /** `conversations/<id>/`. */
   readonly conversations: string;
   readonly learnFile: string;
+  /** Durable assistant goals and task checkpoints. */
+  readonly goalsFile: string;
   readonly usageFile: string;
   /** Encrypted account-owned drafts for browser tools. */
   readonly workspaceFile: string;
@@ -106,6 +108,7 @@ export function accountScope(accountId: string): AccountScope {
     docs,
     conversations,
     learnFile: safeJoin(root, "learn", `${accountId}.json`),
+    goalsFile: safeJoin(root, "goals", `${accountId}.json`),
     usageFile: safeJoin(root, "usage", `${accountId}.json`),
     workspaceFile: safeJoin(root, "workspace", `${accountId}.json.enc`),
     siteFile: safeJoin(root, "site", `${accountId}.json`),
@@ -115,7 +118,7 @@ export function accountScope(accountId: string): AccountScope {
       return parts.length ? safeJoin(base === "docs" ? docs : conversations, ...parts) : base === "docs" ? docs : conversations;
     },
     locations() {
-      return [conversations, docs, scope.learnFile, scope.usageFile, scope.workspaceFile, scope.siteFile, scope.craftFiles, scope.workflows];
+      return [conversations, docs, scope.learnFile, scope.goalsFile, scope.usageFile, scope.workspaceFile, scope.siteFile, scope.craftFiles, scope.workflows];
     },
   };
   return scope;
