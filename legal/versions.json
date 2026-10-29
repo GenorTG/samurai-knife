@@ -2,6 +2,12 @@
   "about": "Editions of the default legal texts (legal/*.md). Changing any of the four files is a new edition: copy the outgoing files to legal/editions/<old edition>/, add an entry on top (published = the day, app = the release it ships in, digest = what tests/legal.test.mjs prints), describe the change in the texts' change history (terms § 17 / privacy § 15), and update `covers`. docs/LEGAL.md 'Changing the texts'.",
   "editions": [
     {
+      "edition": 6,
+      "published": "2026-10-29",
+      "app": "0.13.0",
+      "digest": "4164d326470741bf"
+    },
+    {
       "edition": 5,
       "published": "2026-10-28",
       "app": "0.13.0",

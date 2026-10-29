@@ -82,6 +82,34 @@ SHA-256 of the raw token only).
   (`describerFor`). The helper call goes through the same provider path as the assistant (host rules, provider budget,
   SSRF-safe transport, usage ledger); its answer describes third-party pixels and is wrapped in the untrusted-content
   envelope. The rendered file exists in a per-job temporary directory until the screenshot job finishes; the returned image is cached in server memory for 30 minutes, never in the account's files.
+- Vision detection (`src/lib/vision/probe.ts`, `capabilities.ts`, `POST /api/account/provider/vision-probe`): most
+  OpenAI-compatible providers (OpenCode Go among them) list models without saying whether they take images, so the
+  model picker shows "vision unknown". The Provider settings show the vision choice next to the model (always visible),
+  with **Detect** (the typed model) and **Check all models for vision** (every listed model still unknown, 3 per request,
+  at most 60 per press, Stop button). Each check is one real chat completion: a 64x32 PNG whose two halves have two
+  different colours picked at random by the server, `max_tokens` 400, temperature 0, asking for the two colours or
+  `NO_IMAGE`. Naming both in order = sees images (a guessing text model has a 1-in-30 chance); an HTTP 4xx about images /
+  multimodal input / content types (not 401/403/404/408/409/429), or an answer saying there is no image = text only;
+  anything else (timeouts, 5xx, auth, rate limits, wrong colours, an empty reasoning answer) = unknown and never cached.
+  Requests go through `providerPost` (the same SSRF-safe transport, host rules and stored-key rule as `/models`: the
+  stored key only for the stored address), each counted on the account's `provider` budget, at most 3 of an account at
+  once, 60 s per model (`KNIFE_VISION_PROBE_TIMEOUT_MS`, 5-180 s). Definite answers go to `model-capabilities.json` in
+  the data dir: one shared, non-personal file keyed by the base URL's host + path and the model id (no key, query,
+  credentials or account), with `checkedAt` and a 30-day expiry, expired entries pruned, at most 5,000. The route
+  answers a remembered model from that file unless `force`. `/provider/test` and `/provider/models` merge it into
+  `modelDetails` (`visionSource`: `advertised` from `/models` wins, else `detected` with `visionCheckedAt`, else null);
+  picking a model with a known answer (either source) sets the vision choice, saved with Connect. Why a shared file is
+  fine: it holds what an endpoint's model did with a generated picture, never who asked; an account can only teach it
+  answers its own provider address gave (the colours are the server's secret), and nothing is sent to a model because
+  of it: the user still saves "Sees images". The privacy notice (edition 6) mentions the test picture and the list.
+- The accounts CLI `set-provider` keeps the reasoning effort and vision helper the app saved, keeps "Sees images" while
+  the base URL and model stay the same, and takes `--vision native|none` (it used to rebuild the provider without
+  them, which silently turned vision off).
+- Assistant preferences (`src/lib/agent-client/turn-limits.ts`, `PUT /api/account/assistant`): the per-turn budget of
+  the in-page assistant, `{maxRounds 4-100 (default 24), maxToolCalls 4-200 (default 40)}` or `{reset: true}`, stored as
+  `assistant` on the account (null = defaults; an out-of-bounds hand edit reads as null rather than breaking the
+  file). The public account always carries `assistant: {maxRounds, maxToolCalls, custom}`; the loop
+  (`src/lib/agent-client/loop.ts`) reads it, and its limit notice names the numbers in use. Settings > "Turn limit".
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.
