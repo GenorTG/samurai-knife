@@ -192,6 +192,8 @@ function parseModelDetails(value: unknown): ProviderModelDetails[] | undefined {
       visionSource: entry.visionSource === "advertised" || entry.visionSource === "detected" ? entry.visionSource : null,
       ...(typeof entry.visionCheckedAt === "string" ? { visionCheckedAt: entry.visionCheckedAt } : {}),
       features,
+      ...(typeof entry.displayName === "string" && entry.displayName.length <= 120 ? { displayName: entry.displayName } : {}),
+      ...(typeof entry.createdAt === "string" && entry.createdAt.length <= 40 ? { createdAt: entry.createdAt } : {}),
     });
   }
   return out;
