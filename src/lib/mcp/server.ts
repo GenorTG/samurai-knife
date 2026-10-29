@@ -29,11 +29,18 @@ export function annotationsFor(tool: KnifeToolEffectInfo): { readOnlyHint: boole
  *  bytes (the built-in assistant holds files in its chain, and base64 never belongs in its context). */
 export const MCP_ONLY_TOOLS = [...UI_BRIDGE_TOOLS, ...CRAFT_FILE_TOOLS];
 
-/** One server per request, for one caller: only the tools its role may use are registered (listed and callable). */
+/** The tools one MCP caller gets: its role's, and with a read-only key only those that change nothing (readOnlyHint). */
+export function mcpToolsFor(ctx: KnifeToolContext): typeof MCP_TOOLS {
+  return MCP_TOOLS.filter((candidate) => toolAllowed(candidate, ctx) && (!ctx.readOnly || annotationsFor(candidate).readOnlyHint));
+}
+
+const MCP_TOOLS = [...KNIFE_TOOLS, ...MCP_ONLY_TOOLS];
+
+/** One server per request, for one caller: only the tools it may use are registered (listed and callable). */
 export function createKnifeMcpServer(ctx: KnifeToolContext): McpServer {
   const server = new McpServer({ name: "samurai-knife", version: appVersion() }, { instructions: MCP_INSTRUCTIONS });
 
-  for (const tool of [...KNIFE_TOOLS, ...MCP_ONLY_TOOLS].filter((candidate) => toolAllowed(candidate, ctx))) {
+  for (const tool of mcpToolsFor(ctx)) {
     server.registerTool(
       tool.name,
       { description: modelDescription(tool), inputSchema: tool.schema, annotations: annotationsFor(tool) },

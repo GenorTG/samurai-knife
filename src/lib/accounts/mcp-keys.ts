@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { accountUsable } from "@/lib/accounts/session";
@@ -7,7 +7,8 @@ import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
  * Per-account MCP credentials (docs/MCP.md "Connecting"). An agent outside the browser sends its username and one of that
- * account's keys; the tools then act on that account only. `$KNIFE_DATA_DIR/mcp-keys.json` (0600) stores the SHA-256 of
+ * account's keys (or only the key, on the account's own URL `/api/mcp/u/<username>`); the tools then act on that account
+ * only, and a `read-only` key gets only the tools that change nothing. `$KNIFE_DATA_DIR/mcp-keys.json` (0600) stores the SHA-256 of
  * each key (32 random bytes, so a plain hash is enough), never the key: it is shown once, at creation. Written only by
  * this server process, synchronously (same pattern as sessions.json).
  */
@@ -16,6 +17,10 @@ export const MCP_KEY_PREFIX = "skm_";
 export const MAX_KEYS_PER_ACCOUNT = 10;
 const TOUCH_EVERY_MS = 60_000;
 const KEY_PATTERN = /^skm_[A-Za-z0-9_-]{43}$/;
+
+/** What a key may do: every tool of the account's role, or only those with readOnlyHint (effect "read"). */
+export const MCP_KEY_SCOPES = ["full", "read-only"] as const;
+export type McpKeyScope = (typeof MCP_KEY_SCOPES)[number];
 
 interface McpKeyRecord {
   id: string;
@@ -26,6 +31,8 @@ interface McpKeyRecord {
   hint: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /** Missing on keys made before scopes existed: full. */
+  scope?: McpKeyScope;
 }
 
 interface McpKeyFile {
@@ -40,6 +47,13 @@ export interface McpKeyView {
   hint: string;
   createdAt: string;
   lastUsedAt: string | null;
+  scope: McpKeyScope;
+}
+
+/** The account an MCP request acts on and what its key may do. */
+export interface McpCaller {
+  account: Account;
+  scope: McpKeyScope;
 }
 
 export class McpKeyError extends Error {
@@ -61,7 +75,8 @@ function isRecord(value: unknown): value is McpKeyRecord {
   if (typeof value !== "object" || value === null) return false;
   const r = value as Record<string, unknown>;
   return ["id", "accountId", "name", "hash", "hint", "createdAt"].every((key) => typeof r[key] === "string")
-    && (r.lastUsedAt === null || typeof r.lastUsedAt === "string");
+    && (r.lastUsedAt === null || typeof r.lastUsedAt === "string")
+    && (r.scope === undefined || (MCP_KEY_SCOPES as readonly unknown[]).includes(r.scope));
 }
 
 function readKeys(): McpKeyFile {
@@ -91,7 +106,7 @@ function hashKey(key: string): string {
 }
 
 function toView(record: McpKeyRecord): McpKeyView {
-  return { id: record.id, name: record.name, hint: record.hint, createdAt: record.createdAt, lastUsedAt: record.lastUsedAt };
+  return { id: record.id, name: record.name, hint: record.hint, createdAt: record.createdAt, lastUsedAt: record.lastUsedAt, scope: record.scope ?? "full" };
 }
 
 export function listMcpKeys(accountId: string): McpKeyView[] {
@@ -99,7 +114,7 @@ export function listMcpKeys(accountId: string): McpKeyView[] {
 }
 
 /** Creates a key; the raw key is in the return value only (show it once). */
-export function createMcpKey(accountId: string, name: string): { key: string; view: McpKeyView } {
+export function createMcpKey(accountId: string, name: string, scope: McpKeyScope = "full"): { key: string; view: McpKeyView } {
   const label = name.trim();
   if (!label || label.length > 60) throw new McpKeyError(msg("Give the key a name (1-60 characters)."), 400);
   if (listMcpKeys(accountId).length >= MAX_KEYS_PER_ACCOUNT) {
@@ -114,6 +129,7 @@ export function createMcpKey(accountId: string, name: string): { key: string; vi
     hint: `${key.slice(0, MCP_KEY_PREFIX.length + 4)}…`,
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
+    scope,
   };
   writeKeys((keys) => [...keys, record]);
   return { key, view: toView(record) };
@@ -163,19 +179,51 @@ export function mcpCredentials(request: Request): McpCredentials | null | "malfo
   return "malformed";
 }
 
-/** The account the key belongs to, when it matches the given username and the account may act; else null. */
-export function accountForMcpKey(credentials: McpCredentials): Account | null {
-  if (!KEY_PATTERN.test(credentials.key)) return null;
-  const hash = hashKey(credentials.key);
-  const record = readKeys().keys.find((k) => k.hash === hash);
+/** The key's record, by hash, comparing every record in constant time per comparison (no early exit on a prefix). */
+function recordForKey(key: string): McpKeyRecord | null {
+  if (!KEY_PATTERN.test(key)) return null;
+  const hash = Buffer.from(hashKey(key), "hex");
+  let found: McpKeyRecord | null = null;
+  for (const record of readKeys().keys) {
+    const stored = Buffer.from(record.hash, "hex");
+    if (stored.length === hash.length && timingSafeEqual(stored, hash) && !found) found = record;
+  }
+  return found;
+}
+
+/**
+ * The account the key belongs to and the key's scope, when it belongs to exactly `username` (an account id, compared as
+ * is: callers lowercase a typed username, the per-user URL does not) and the account may act; else null. Every failure
+ * is the same null, so a caller cannot tell a wrong key from a key of another account.
+ */
+export function callerForMcpKey(credentials: McpCredentials): McpCaller | null {
+  const record = recordForKey(credentials.key);
   if (!record || record.accountId !== credentials.username) return null;
   const account = getAccount(record.accountId);
   if (!account || !accountUsable(account)) return null;
   const now = Date.now();
   if (!record.lastUsedAt || now - Date.parse(record.lastUsedAt) > TOUCH_EVERY_MS) {
-    writeKeys((keys) => keys.map((k) => (k.hash === hash ? { ...k, lastUsedAt: new Date(now).toISOString() } : k)));
+    writeKeys((keys) => keys.map((k) => (k.hash === record.hash ? { ...k, lastUsedAt: new Date(now).toISOString() } : k)));
   }
-  return account;
+  return { account, scope: record.scope ?? "full" };
+}
+
+/** Back-compat: only the account (callers that do not care about the scope). */
+export function accountForMcpKey(credentials: McpCredentials): Account | null {
+  return callerForMcpKey(credentials)?.account ?? null;
+}
+
+/** The key of `Authorization: Bearer <key>` (the per-user URL needs nothing else); null = none, "malformed" = other. */
+export function bearerKey(request: Request): string | null | "malformed" {
+  const header = request.headers.get("authorization")?.trim();
+  if (!header) return null;
+  const match = /^bearer\s+(\S+)$/i.exec(header);
+  return match ? match[1] : "malformed";
+}
+
+/** KNIFE_MCP_REQUIRE_KEY=1: private mode refuses MCP requests without a key too (public mode always does). */
+export function mcpKeyRequired(publicMode: boolean): boolean {
+  return publicMode || /^(1|true|yes|on)$/i.test(process.env.KNIFE_MCP_REQUIRE_KEY?.trim() ?? "");
 }
 
 /** Account rename (scripts/storage.ts rename-account): the keys move to the new id; returns how many. */

@@ -16,7 +16,8 @@ pages `src/app/{login,register,verify,forgot-password,reset-password,account}/`,
 | Pages without a session | everything | only `/`, `/login`, `/register`, `/verify`, `/forgot-password`, `/reset-password`, in the public frame (`src/components/shell/PublicShell.tsx`: no sidebar, palette, assistant or UI bridge); `/tools/*` and `/account*` redirect to `/login?next=<path+query>` (`requireSignIn`, `src/lib/accounts/viewer.ts`, called by each page: layouts are not re-rendered on client navigation, so a layout can only pick the frame); a signed-in visitor on `/login` or `/register` goes straight on to `next` |
 | Session cookie | `SameSite=Strict` | `SameSite=Lax` |
 | Roles | every account may do everything | `admin` / `user` (see Roles) |
-| MCP `POST /api/mcp` | default account without credentials; an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
+| MCP `POST /api/mcp` | default account without credentials (unless `KNIFE_MCP_REQUIRE_KEY=1`); an MCP key selects its account | username + MCP key required (docs/MCP.md); none = 401 |
+| MCP `POST /api/mcp/u/<username>` | Bearer key of that account required | the same |
 | Mail transport default | `outbox` | `smtp` |
 
 `src/lib/accounts/mode.ts` fails closed: any value other than empty/`private` is public, and so is an empty value with
@@ -178,7 +179,7 @@ Every route is behind the Host/Origin guard and reads JSON through `readJsonBody
 | `/account` | `POST /api/account/password {currentPassword, newPassword}` | Ends every session; this browser gets a new one; revokes every MCP key and mails a notice. |
 | `/account` | `POST /api/account/email {password, email}` -> 202 | Link to the NEW address; the address changes when it is opened. Address in use: same answer, its owner is told. |
 | `/account` (both modes) | `POST /api/account/sessions`, `POST /api/account/logout` | Log out everywhere / here; everywhere also has an explicit option to revoke MCP keys. The page (and the assistant's log out) first clears this account's browser storage: transcript, message queue, run lease, SQL lab schema/dialect, trust mode (`src/lib/client-account.ts`). |
-| `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets, create (201, the key once; 20 per hour, 10 kept), revoke (404 for another account's id). |
+| `/account` (both modes) | `GET /api/account/mcp-keys`, `POST /api/account/mcp-keys {action:"create", name, scope?}` / `{action:"revoke", id}` | MCP keys (docs/MCP.md): list without secrets (with each key's scope, the username, `origin` for the personal URL and whether `/api/mcp` needs a key), create (201, the key once; scope `full` or `read-only`; 20 per hour, 10 kept), revoke (404 for another account's id). The page shows the personal URL `/api/mcp/u/<username>` and, once, ready-made OpenClaw / Claude Code / Cursor settings for the new key. |
 | `/account` | `POST /api/account/delete {password}` | Removes the account and all its data (below); refused for the only active admin. Mails a notice. |
 | `/account/admin` (both modes) | `GET /api/admin/users`, `POST /api/admin/users/<id> {action}` | Admins only. `disable` (ends sessions), `enable`, `delete`, `quota {bytes\|null}`, `role {admin\|user}`, `resend-verification`. An admin cannot disable, demote or delete themselves there, nor the last active admin. |
 

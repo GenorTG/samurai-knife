@@ -80,7 +80,7 @@ export function guardPolicy({ mode = "public", scale = 1 } = {}) {
 // Paths only scanners ask for. Answered 404 at once (public mode) and scored +10.
 const PROBE = /^\/(?:\.env|\.git|\.aws|\.ssh|\.svn|\.hg|\.ds_store|\.vscode|\.idea|wp-|wordpress|phpmyadmin|pma|myadmin|cgi-bin|actuator|server-status|server-info|vendor\/phpunit|boaform|hnap1|solr|console|manager\/html|owa|autodiscover|xmlrpc\.php|\S*\.php(?:$|\/)|\S*\.(?:asp|aspx|jsp|cgi)(?:$|\/))/i;
 const AUTH = /^\/api\/account\/(?:register|forgot|resend|reset|verify|login)\/?$/;
-const TOOL = /^\/api\/(?:mcp|agent\/tool)\/?$/;
+const TOOL = /^\/api\/(?:mcp(?:\/u\/[^/]+)?|agent\/tool)\/?$/;
 const DS = /^\/api\/office\/ds\//;
 const SCORED_STATUS = new Set([400, 401, 403, 404, 405, 413, 415, 422]);
 

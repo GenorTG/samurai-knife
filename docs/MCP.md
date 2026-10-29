@@ -11,23 +11,47 @@ The app has two agent surfaces that share one tool set:
 Both can be used at the same time; edits are atomic per call and every CV save is undoable.
 
 ## Connecting
-- URL: `<app origin>/api/mcp`, transport `streamable-http`. The route checks Host (and Origin when a browser sends one).
-- Credentials (per account): create a key on `/account` ("MCP keys": name, created, last used; the key is shown once and
-  stored only as its SHA-256 in `$KNIFE_DATA_DIR/mcp-keys.json`; at most 10 per account; revoke any time). Send the
-  username with it, either way:
+- Personal URL (preferred): `<app origin>/api/mcp/u/<username>`, transport `streamable-http`, with only
+  `Authorization: Bearer <key>`. The key must be one of exactly that account's keys: another account's key, no key, Basic
+  auth, a username in another case (`Alice`), an encoded or traversal name (`%61lice`, `..%2Fbob`), an unknown user and a
+  revoked key all get the same 401 (`WWW-Authenticate: Bearer`, `invalid_mcp_key` / `mcp_key_required`), counted on the
+  same per-address limit as `/api/mcp`. `X-Knife-User` is ignored there (the path names the account). It needs a key in
+  both modes. `/account` shows the URL (`KNIFE_PUBLIC_URL`'s origin when set, else the page's own) and, right after a key
+  is created (the only time it is shown), copyable settings for OpenClaw
+  (`openclaw mcp add samurai-knife --url <url> --transport streamable-http --header "Authorization=Bearer <key>"`),
+  Claude Code (`claude mcp add --transport http samurai-knife <url> --header "Authorization: Bearer <key>"`) and Cursor
+  (`mcp.json`: `{"mcpServers":{"samurai-knife":{"url":"<url>","headers":{"Authorization":"Bearer <key>"}}}}`)
+  (`src/lib/mcp/client-configs.ts`).
+- Shared URL (kept for existing clients): `<app origin>/api/mcp`. The route checks Host (and Origin when a browser sends
+  one); both URLs go through `src/lib/mcp/http.ts`.
+- Credentials (per account): create a key on `/account` ("MCP keys": name, scope, created, last used; the key is shown
+  once and stored only as its SHA-256 in `$KNIFE_DATA_DIR/mcp-keys.json`; at most 10 per account; revoke any time). On the
+  shared URL send the username with it, either way:
   - `Authorization: Basic base64(<username>:<key>)`
   - `Authorization: Bearer <key>` plus `X-Knife-User: <username>`
+- Lookups go by the key's hash, compared with `timingSafeEqual` against every record; the answer never says whether the
+  key exists for another account. Keys carry no username (`skm_` + 32 random bytes).
 - Every tool then runs as that account: its CV, documents, course progress, and `knife_ui_*` reach only its own open
   tabs. A key works only with its own username; a revoked key, a key of a disabled or deleted account, or a wrong
   username is a 401 (`WWW-Authenticate: Basic`); 30 failed attempts per client address per 15 min are a 429. Keys are
   independent of passwords and browser sessions ("log out everywhere" does not revoke them; deleting the account does).
 - Modes (docs/ACCOUNTS.md): public mode requires a key (no key = 401, a session cookie is not accepted here). Private mode
-  without an Authorization header acts on the **default account** as before (the Tailscale bind is the boundary); with
-  one, the key decides the account, exactly as in public mode.
+  without an Authorization header acts on the **default account** as before (the Tailscale bind is the boundary), unless
+  `KNIFE_MCP_REQUIRE_KEY=1` (then no key = 401 there too; default off so an existing local OpenClaw integration keeps
+  working); with one, the key decides the account, exactly as in public mode.
 - Roles: the tool list and every call are filtered by the caller's role (tool scopes below). A user's `tools/list` never
   contains admin tools, and calling one is an error.
-- OpenClaw: `openclaw mcp add samurai-knife --url <app origin>/api/mcp --transport streamable-http` with the
-  Authorization header (Basic or Bearer + `X-Knife-User`), then `openclaw mcp doctor samurai-knife --probe`.
+- OpenClaw: `openclaw mcp add samurai-knife --url <app origin>/api/mcp/u/<username> --transport streamable-http --header
+  "Authorization=Bearer <key>"`, then `openclaw mcp doctor samurai-knife --probe` (the shared URL with Basic or Bearer +
+  `X-Knife-User` still works).
+
+## Key scopes
+- Each key is `full` (default; every tool of the account's role) or `read-only` (chosen when it is created; shown in the
+  list). A read-only key's `tools/list` holds only tools whose annotations say `readOnlyHint: true` (effect `read`), and
+  calling any other tool is an error ("tool not found"): no writes, no destructive or publishing tools, no outbound
+  calls, no `knife_ui_call`. Keys made before scopes existed are `full`; a record with an unknown scope is ignored (the
+  key stops working) rather than read as full. The scope applies on both URLs (`KnifeToolContext.readOnly`,
+  `mcpToolsFor` in `src/lib/mcp/server.ts`).
 
 ## Tool scopes (`src/lib/mcp/define.ts`)
 Every `defineTool` declares `scope` (no default, so a new tool must choose):

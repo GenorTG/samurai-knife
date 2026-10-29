@@ -56,6 +56,8 @@ export interface KnifeToolContext {
    * (knife_site_screenshot: an image for a model that sees, a description for one that does not).
    */
   surface?: "assistant" | "mcp";
+  /** A read-only MCP key (docs/MCP.md "Key scopes"): only tools whose effect is "read" are listed and callable. */
+  readOnly?: boolean;
 }
 
 export interface KnifeToolDefinition extends KnifeToolEffectInfo {

@@ -10,7 +10,8 @@ live one), the way tests/prod_smoke.py documents:
 
 Covers: guests reach no tool, account or API (pages redirect to /login, APIs answer 401/403); the Origin guard; the open
 redirect shapes (`/\\t/evil.com`) on /login and the GitHub start route; cross-account isolation over MCP (CV offers,
-office documents, UI bridge, Craft files kept by craft_file_save and read over MCP); the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
+office documents, UI bridge, Craft files kept by craft_file_save and read over MCP); the personal MCP URL takes only a
+Bearer key of that very account (wrong user, case, encoded and traversal names refused) and read-only keys write nothing; the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
 login brute force is limited; security headers; path tricks on document ids. Exit 1 on any failure.
 """
 from __future__ import annotations
@@ -85,6 +86,16 @@ def mcp(api: Api, name: str, args: dict, headers: dict[str, str], ip: str) -> tu
     return not result.get("isError", False), "".join(p.get("text", "") for p in result.get("content", [])), took
 
 
+def mcp_at(api: Api, path: str, method: str, params: dict, headers: dict[str, str], ip: str) -> tuple[int, object]:
+    """One JSON-RPC call to any MCP path (the personal URL /api/mcp/u/<username> included); SSE answers decoded."""
+    status, body, _ = api.call("POST", path, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+                               ip=ip, headers={"Accept": "application/json, text/event-stream", **headers})
+    if isinstance(body, str):
+        data = [line[6:] for line in body.split("\n") if line.startswith("data: ")]
+        body = json.loads(data[0]) if data else body
+    return status, body
+
+
 def register(api: Api, box: Outbox, name: str, ip: str) -> str:
     api.call("POST", "/api/account/register", {"username": name, "email": f"{name}@example.org", "password": f"{name} password 1"}, ip=ip)
     mails = box.wait(f"{name}@example.org", 1)
@@ -95,8 +106,8 @@ def register(api: Api, box: Outbox, name: str, ip: str) -> str:
     return cookie or ""
 
 
-def mcp_key(api: Api, cookie: str, ip: str) -> str:
-    status, body, _ = api.call("POST", "/api/account/mcp-keys", {"action": "create", "name": "probe"}, cookie=cookie, ip=ip)
+def mcp_key(api: Api, cookie: str, ip: str, scope: str = "full") -> str:
+    status, body, _ = api.call("POST", "/api/account/mcp-keys", {"action": "create", "name": f"probe {scope}", "scope": scope}, cookie=cookie, ip=ip)
     return body.get("key", "") if status == 201 and isinstance(body, dict) else ""
 
 
@@ -195,6 +206,40 @@ def main() -> int:
     status, _, _ = raw("POST", "/api/mcp", json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(),
                        {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **basic("bob", ka)})
     check("alice's MCP key with bob's username -> refused", status == 401, status)
+
+    # Personal MCP URL /api/mcp/u/<username>: only a Bearer key of exactly that account (docs/MCP.md "Connecting").
+    bearer_a = {"Authorization": f"Bearer {ka}"}
+    status, body = mcp_at(api, "/api/mcp/u/alice", "tools/list", {}, bearer_a, "198.51.100.30")
+    names = [t["name"] for t in body.get("result", {}).get("tools", [])] if isinstance(body, dict) else []
+    check("personal URL: alice's key on /api/mcp/u/alice lists her tools", status == 200 and "knife_cv_patch" in names, (status, str(body)[:200]))
+    for what, path, headers in [
+        ("alice's key on /api/mcp/u/bob", "/api/mcp/u/bob", bearer_a),
+        ("no key on /api/mcp/u/alice", "/api/mcp/u/alice", {}),
+        ("Basic auth on the personal URL", "/api/mcp/u/alice", basic("alice", ka)),
+        ("case variant /api/mcp/u/Alice", "/api/mcp/u/Alice", bearer_a),
+        ("encoded name /api/mcp/u/%61lice", "/api/mcp/u/%61lice%2f..", bearer_a),
+        ("traversal /api/mcp/u/..%2Fbob", "/api/mcp/u/..%2Fbob", bearer_a),
+        ("double-encoded /api/mcp/u/bob%252f", "/api/mcp/u/bob%252f", bearer_a),
+        ("X-Knife-User cannot switch the account", "/api/mcp/u/bob", {**bearer_a, "X-Knife-User": "alice"}),
+    ]:
+        status, body = mcp_at(api, path, "tools/list", {}, headers, "198.51.100.30")
+        named = isinstance(body, dict) and ("tools" in str(body.get("result", "")))
+        check(f"personal URL: {what} -> 401", status in (401, 404) and not named, (status, str(body)[:200]))
+    status, _ = mcp_at(api, "/api/mcp/u/../mcp", "tools/list", {}, bearer_a, "198.51.100.30")
+    check("personal URL: /api/mcp/u/../mcp normalises to the shared endpoint, which still wants a username", status == 401, status)
+
+    # Read-only key: write tools are neither listed nor callable, on either endpoint.
+    kr = mcp_key(api, bob, "198.51.100.20", "read-only")
+    check("read-only MCP key created", bool(kr))
+    status, body = mcp_at(api, "/api/mcp/u/bob", "tools/list", {}, {"Authorization": f"Bearer {kr}"}, "198.51.100.20")
+    names = [t["name"] for t in body.get("result", {}).get("tools", [])] if isinstance(body, dict) else []
+    check("read-only key: no write tool listed", status == 200 and "knife_cv_job_save" not in names and "knife_cv_get" in names, (status, len(names)))
+    for path, headers in [("/api/mcp/u/bob", {"Authorization": f"Bearer {kr}"}), ("/api/mcp", basic("bob", kr))]:
+        status, body = mcp_at(api, path, "tools/call", {"name": "knife_cv_job_save", "arguments": {"title": "ro", "company": "ReadOnlyWrite", "text": "x"}}, headers, "198.51.100.20")
+        refused = isinstance(body, dict) and ("error" in body or body.get("result", {}).get("isError"))
+        check(f"read-only key: a write tool call is refused on {path}", status == 200 and bool(refused), (status, str(body)[:200]))
+    ok, text, _ = mcp(api, "knife_cv_job_list", {}, hb, "198.51.100.20")
+    check("read-only key: nothing was written", ok and "ReadOnlyWrite" not in text, text[:200])
 
     ok, text, _ = mcp(api, "knife_cv_job_save", {"title": "Secret role at Acme", "company": "AcmeAliceOnly", "text": "alice private offer"}, ha, "198.51.100.10")
     check("alice saves a job offer", ok, text[:200])
