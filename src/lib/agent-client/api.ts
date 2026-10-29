@@ -262,6 +262,47 @@ export async function saveConversation(content: ConversationContent, chatId = "d
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
+/** A provider-scoped transcript of an older release that no chat took over (GET /api/agent/conversation/earlier). */
+export interface EarlierChatInfo {
+  file: string;
+  model: string | null;
+  host: string | null;
+  chatId: string | null;
+  modifiedAt: string;
+  messages: number;
+  preview: string;
+  untrusted: boolean;
+}
+
+export async function fetchEarlierChats(chatIds: readonly string[]): Promise<ApiResult<EarlierChatInfo[]>> {
+  const r = await call(`/api/agent/conversation/earlier?chats=${encodeURIComponent(chatIds.join(","))}`);
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok || !isRecord(r.body) || !Array.isArray(r.body.chats)) return { ok: false, failure: failureFrom(r.res, r.body) };
+  const chats = r.body.chats.filter(isRecord).flatMap((c): EarlierChatInfo[] => {
+    const file = str(c.file);
+    const modifiedAt = str(c.modifiedAt);
+    if (!file || !modifiedAt) return [];
+    return [{
+      file,
+      model: str(c.model),
+      host: str(c.host),
+      chatId: str(c.chatId),
+      modifiedAt,
+      messages: typeof c.messages === "number" ? c.messages : 0,
+      preview: str(c.preview) ?? "",
+      untrusted: c.untrusted === true,
+    }];
+  });
+  return { ok: true, value: chats };
+}
+
+/** "Open as a new chat": the server copies the earlier transcript (journal and taint) into `chatId`. */
+export async function importEarlierChat(file: string, chatId: string): Promise<ApiResult<null>> {
+  const r = await call("/api/agent/conversation/earlier", { method: "POST", body: { file, chatId } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
+}
+
 export async function resetConversation(chatId = "default"): Promise<ApiResult<null>> {
   const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "DELETE" });
   if ("failure" in r) return { ok: false, failure: r.failure };

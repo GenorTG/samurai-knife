@@ -158,6 +158,16 @@ function WidgetShell() {
     setDraft("");
   }, [agent.busy, prefs.chatIds, switchChat]);
 
+  /** An earlier chat was copied into a new chat id on the server (Settings > Recover earlier chats): show it. */
+  const openImportedChat = useCallback((id: string) => {
+    if (agent.busy) return;
+    setPrefs((current) => ({ ...current, chatIds: [...current.chatIds.filter((c) => c !== id), id].slice(-50) }));
+    switchChat(id);
+    setChatId(id);
+    setDraft("");
+    setSettingsRequested(false);
+  }, [agent.busy, switchChat]);
+
   const createChat = useCallback(() => {
     if (agent.busy || prefs.chatIds.length >= 50) return;
     const id = crypto.randomUUID().replaceAll("-", "");
@@ -389,6 +399,8 @@ function WidgetShell() {
               }}
               onBack={() => setSettingsRequested(false)}
               onLogout={agent.logout}
+              chatIds={prefs.chatIds}
+              onOpenChat={openImportedChat}
             />
           ) : null}
           {view === "goals" ? <GoalsView onContinue={(goalId, goalTitle) => {

@@ -3,7 +3,8 @@ import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http
 import {
   conversationContentSchema,
   chatConversationId,
-  readConversation,
+  legacySourcesOf,
+  openChatConversation,
   resetConversation,
   saveConversationContent,
   type ConversationContent,
@@ -21,7 +22,7 @@ function scope(accountId: string, request: Request) {
   if (!provider) return null;
   const chatId = new URL(request.url).searchParams.get("chat") ?? "default";
   if (!CHAT_ID.test(chatId)) return null;
-  return { provider, id: chatConversationId(chatId) };
+  return { provider, chatId, id: chatConversationId(chatId) };
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -31,7 +32,8 @@ export async function GET(request: Request): Promise<Response> {
   if (!current && getAccount(auth.account.id)?.provider) return jsonError("invalid_chat_id", 400);
   if (!current) return jsonError("provider_not_configured", 409);
   try {
-    return json(readConversation(auth.account.id, current.id));
+    const account = getAccount(auth.account.id);
+    return json(openChatConversation(auth.account.id, current.chatId, account ? legacySourcesOf(account) : []));
   } catch {
     return jsonError("conversation_store_unavailable", 500);
   }
@@ -58,7 +60,7 @@ export async function PUT(request: Request): Promise<Response> {
   const content = conversationContentSchema.safeParse(parsed.data);
   if (!content.success) return jsonError("invalid_conversation", 400);
   try {
-    saveConversationContent(auth.account.id, current.id, content.data as ConversationContent);
+    saveConversationContent(auth.account.id, current.id, content.data as ConversationContent, current.chatId);
     return json({ ok: true });
   } catch (error) {
     return quotaErrorResponse(error) ?? jsonError("conversation_store_unavailable", 500);
@@ -72,7 +74,7 @@ export async function DELETE(request: Request): Promise<Response> {
   if (!current && getAccount(auth.account.id)?.provider) return jsonError("invalid_chat_id", 400);
   if (!current) return jsonError("provider_not_configured", 409);
   try {
-    resetConversation(auth.account.id, current.id);
+    resetConversation(auth.account.id, current.id, current.chatId);
     return json({ ok: true });
   } catch {
     return jsonError("conversation_store_unavailable", 500);

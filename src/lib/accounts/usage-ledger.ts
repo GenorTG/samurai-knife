@@ -71,6 +71,17 @@ export function recordRound(accountId: string, round: RoundRecord, now = new Dat
   }
 }
 
+/** Model names this account has run rounds with (the ledger keeps them per model); [] when there is no ledger. */
+export function usedModels(accountId: string): string[] {
+  const path = ledgerPath(accountId);
+  if (!path || !existsSync(path)) return [];
+  try {
+    return Object.keys(read(accountId, path).models).filter((model) => model !== "unknown");
+  } catch {
+    return [];
+  }
+}
+
 function sumBuckets(buckets: UsageBucket[]): UsageBucket {
   return buckets.reduce<UsageBucket>((acc, b) => ({ ...addUsage(acc, b), requests: acc.requests + b.requests, errors: acc.errors + b.errors, ms: acc.ms + b.ms }), EMPTY_BUCKET);
 }
