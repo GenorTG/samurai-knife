@@ -975,7 +975,7 @@
   "characters to leave literal": "znaki do zostawienia dosłownie",
   "Chars": "Znaki",
   "Chat {number}": "Czat {number}",
-  "Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta, dostawcy i rozmowy; dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
+  "Chat history is kept on this server per account and conversation, shared across providers and models. Switching sends that history to the selected provider. The action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta i rozmowy, wspólna dla dostawców i modeli. Po zmianie dostawcy ta historia jest mu przekazywana. Dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
   "Chat with the assistant: it asks about your work and fills the profile in as you go.": "Porozmawiaj z asystentem: pyta o Twoją pracę i na bieżąco uzupełnia profil.",
   "Check": "Sprawdź",
   "Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps.": "Sprawdź działającą stronę (przekierowania, nagłówki bezpieczeństwa, robots.txt, mapa witryny, nagłówki, linki, SEO), zbuduj CSP i cURL, rozbierz adresy URL, napisz robots.txt i mapy witryny.",

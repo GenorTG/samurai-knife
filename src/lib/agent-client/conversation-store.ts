@@ -57,9 +57,15 @@ export function providerConversationId(baseUrl: string, model: string, chatId = 
   return hash.digest("hex").slice(0, 32);
 }
 
+/** Stable server scope for a chat, deliberately independent of provider/model. */
+export function chatConversationId(chatId = "default"): string {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(chatId)) throw new Error("invalid chat id");
+  return createHash("sha256").update("samurai-knife-chat\0").update(chatId).digest("hex").slice(0, 32);
+}
+
 /**
- * One file per provider/chat under `conversations/<account>/` (path from `accountScope`). Retention is bounded to the
- * widget's 50-chat limit; creating a new chat evicts only the least recently used files beyond that bound.
+ * One file per account/chat under `conversations/<account>/`, using chatConversationId rather than providerConversationId.
+ * Retention is bounded to the widget's 50-chat limit; creating a new chat evicts the least recently used chats.
  */
 export const KEEP_CONVERSATIONS = 50;
 const PROVIDER_ID = /^[a-f0-9]{32}$/;

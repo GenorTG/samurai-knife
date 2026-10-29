@@ -56,7 +56,7 @@ const SHARED_KEYS = ["sk.sql.schema.v1", "sk.sql.dialect.v1", "sk.agent.mode.v1"
 
 /**
  * Removes what this browser holds for the account (call before the logout/delete request navigates away). A key also
- * matches with a `:` suffix: the widget keeps one transcript per account and provider (`sk.agent.chat.v1.<id>:<url>:<model>`).
+ * matches with a `:` suffix: current transcripts use the account/chat id, and old provider-scoped transcripts are also removed.
  */
 export function clearAccountStorage(accountId: string | null | undefined): void {
   try {

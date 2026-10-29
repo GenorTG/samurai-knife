@@ -136,6 +136,45 @@ export function readChat(accountId: string): TranscriptMessage[] {
   }
 }
 
+function isLegacyChatKey(key: string, accountId: string, chatId: string): boolean {
+  const prefix = `${chatKey(accountId)}:`;
+  if (!key.startsWith(prefix) || key.startsWith(`${prefix}chat:`)) return false;
+  const scope = key.slice(prefix.length);
+  if (chatId !== "default") return scope.endsWith(`:${chatId}`);
+  // Older default-chat keys were <account>:<encoded-url>:<encoded-model> (no chat suffix).
+  return scope.split(":").length === 2;
+}
+
+/** Recover a matching provider-scoped transcript left by an older release after switching models. */
+export function readLegacyChat(accountId: string, chatId: string): TranscriptMessage[] {
+  try {
+    const candidates: TranscriptMessage[][] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !isLegacyChatKey(key, accountId, chatId)) continue;
+      const transcript = parseChat(window.localStorage.getItem(key));
+      if (transcript.length > 0) candidates.push(transcript);
+    }
+    // Provider-scoped snapshots are not timestamped. Prefer the fullest tail, then last storage entry.
+    return candidates.reduce((best, item) => item.length >= best.length ? item : best, []);
+  } catch {
+    return [];
+  }
+}
+
+export function clearLegacyChat(accountId: string, chatId: string): void {
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && isLegacyChatKey(key, accountId, chatId)) keys.push(key);
+    }
+    for (const key of keys) window.localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Append to the shared transcript: read what is stored now, add, write. Never replaces, so a tab that
  * was idle (or loaded earlier) cannot overwrite what another tab appended in the meantime.

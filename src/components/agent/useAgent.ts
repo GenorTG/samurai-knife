@@ -20,7 +20,7 @@ import {
 import { announceRun, runHeldElsewhere, subscribeRunAnnouncements, tryAcquireRun } from "@/lib/agent-client/run-lock";
 import { runtime, useRuntime } from "@/lib/agent-client/runtime-store";
 import type { AccountChoice, AccountInfo, TranscriptMessage } from "@/lib/agent-client/types";
-import { appendChat, clearChat, readChat, replaceChat, saveChat, subscribeChat } from "./storage";
+import { appendChat, clearChat, clearLegacyChat, readChat, readLegacyChat, replaceChat, saveChat, subscribeChat } from "./storage";
 
 export type AccountState =
   | { kind: "loading" }
@@ -92,11 +92,11 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
   const activity = useRuntime((s) => s.activity);
   const accountId = account.kind === "ready" ? account.account.id : null;
   const localChatScope = account.kind === "ready"
-    ? `${account.account.id}:${encodeURIComponent(account.account.provider?.baseUrl ?? "")}:${encodeURIComponent(account.account.provider?.model ?? "")}${chatId === "default" ? "" : `:${chatId}`}`
+    ? `${account.account.id}:chat:${chatId}`
     : null;
 
   const applyAccount = useCallback((info: AccountInfo) => {
-    const scopeId = `${info.id}:${encodeURIComponent(info.provider?.baseUrl ?? "")}:${encodeURIComponent(info.provider?.model ?? "")}${chatId === "default" ? "" : `:${chatId}`}`;
+    const scopeId = `${info.id}:chat:${chatId}`;
     accountIdRef.current = info.id;
     if (scopeIdRef.current !== scopeId) {
       scopeIdRef.current = scopeId;
@@ -115,7 +115,7 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
       const info = result.value;
       applyAccount(info);
       if (info.provider) {
-        const scopeId = `${info.id}:${encodeURIComponent(info.provider.baseUrl)}:${encodeURIComponent(info.provider.model)}${chatId === "default" ? "" : `:${chatId}`}`;
+        const scopeId = `${info.id}:chat:${chatId}`;
         const local = readChat(scopeId);
         const remote = await fetchConversation(requestedChatId);
         if (selectedChatId.current !== requestedChatId) return;
@@ -126,10 +126,17 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
             const restored = remote.value.messages as TranscriptMessage[];
             saveChat(scopeId, restored);
             setMessages(restored);
-          } else if (local.length > 0) {
-            const saved = await saveConversation({ version: 1, messages: local, actions: [] }, chatId);
-            if (saved.ok) setMessages(local);
-          } else setMessages([]);
+          } else {
+            const legacy = local.length > 0 ? local : readLegacyChat(info.id, requestedChatId);
+            if (legacy.length > 0) {
+              saveChat(scopeId, legacy);
+              const saved = await saveConversation({ version: 1, messages: legacy, actions: [] }, requestedChatId);
+              if (saved.ok) {
+                clearLegacyChat(info.id, requestedChatId);
+                setMessages(legacy);
+              } else setMessages(legacy);
+            } else setMessages([]);
+          }
         }
       }
       return;
@@ -154,9 +161,7 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
   const switchChat = useCallback((nextChatId: string) => {
     if (busy || !/^[a-zA-Z0-9_-]{1,64}$/.test(nextChatId)) return;
     const info = account.kind === "ready" ? account.account : null;
-    const scopeId = info
-      ? `${info.id}:${encodeURIComponent(info.provider?.baseUrl ?? "")}:${encodeURIComponent(info.provider?.model ?? "")}${nextChatId === "default" ? "" : `:${nextChatId}`}`
-      : null;
+    const scopeId = info ? `${info.id}:chat:${nextChatId}` : null;
     setMessages(scopeId ? readChat(scopeId) : []);
   }, [account, busy]);
 
@@ -379,7 +384,10 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
       abortRef.current.abort();
     }
     const scopeId = scopeIdRef.current;
-    if (scopeId) clearChat(scopeId);
+    if (scopeId) {
+      clearChat(scopeId);
+      if (accountIdRef.current) clearLegacyChat(accountIdRef.current, chatId);
+    }
     actionsRef.current = [];
     loadedRef.current = false;
     persistQueueRef.current = persistQueueRef.current.then(async () => { await resetConversation(chatId); });

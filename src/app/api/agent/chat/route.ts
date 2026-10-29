@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { forwardChat, forwardChatStream } from "@/lib/accounts/provider";
 import { getAccount } from "@/lib/accounts/store";
-import { noteUntrusted, providerConversationId } from "@/lib/agent-client/conversation-store";
+import { chatConversationId, noteUntrusted } from "@/lib/agent-client/conversation-store";
 import { recordRound } from "@/lib/accounts/usage-ledger";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 import { toolContextFor } from "@/lib/accounts/authz";
@@ -107,13 +107,13 @@ export async function POST(request: Request): Promise<Response> {
     temperature: parsed.data.temperature,
     maxTokens: parsed.data.maxTokens,
   };
-  const providerId = providerConversationId(provider.baseUrl, provider.model, parsed.data.chatId ?? "default");
+  const conversationId = chatConversationId(parsed.data.chatId ?? "default");
   // The conversation's taint is server-owned (never written by the browser): every round's messages are checked and
   // the sticky flag goes back as a header, so the widget's approval policy holds across turns and reloads.
   const seen = carriesUntrusted(parsed.data.messages, getToolEffects(toolContextFor(auth.account)));
   let untrusted = seen;
   try {
-    untrusted = noteUntrusted(accountId, providerId, seen);
+    untrusted = noteUntrusted(accountId, conversationId, seen);
   } catch {
     // An unreadable store: this round's own messages still decide.
   }

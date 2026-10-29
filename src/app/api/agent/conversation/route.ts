@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import {
   conversationContentSchema,
-  providerConversationId,
+  chatConversationId,
   readConversation,
   resetConversation,
   saveConversationContent,
@@ -21,7 +21,7 @@ function scope(accountId: string, request: Request) {
   if (!provider) return null;
   const chatId = new URL(request.url).searchParams.get("chat") ?? "default";
   if (!CHAT_ID.test(chatId)) return null;
-  return { provider, id: providerConversationId(provider.baseUrl, provider.model, chatId) };
+  return { provider, id: chatConversationId(chatId) };
 }
 
 export async function GET(request: Request): Promise<Response> {

@@ -707,7 +707,7 @@ function ProviderForm({
       </Button>
 
       <p className="text-[11px] leading-snug text-faint">
-        {tr("Chat history is kept on this server per account, provider, and conversation; the action journal keeps page paths and tool names only. Clear conversation deletes it.")}
+        {tr("Chat history is kept on this server per account and conversation, shared across providers and models. Switching sends that history to the selected provider. The action journal keeps page paths and tool names only. Clear conversation deletes it.")}
       </p>
 
       {!firstRun ? <TurnLimitPanel account={account} onSaved={onSaved} /> : null}
