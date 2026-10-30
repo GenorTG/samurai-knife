@@ -452,7 +452,7 @@ export async function changes(accountId: string, detail = false) {
   const compare = {
     ...rawCompare,
     commits: rawCompare.commits.slice(-10),
-    files: detail ? rawCompare.files : rawCompare.files.map(({ patch: _patch, ...file }) => file),
+    files: detail ? rawCompare.files : rawCompare.files.map(({ path, status, additions, deletions }) => ({ path, status, additions, deletions })),
   };
   const pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
   if (pull?.merged) {
@@ -462,7 +462,9 @@ export async function changes(accountId: string, detail = false) {
     });
   }
   const checks = await github.commitChecks(x.token, x.c.repo, head);
-  return { work: { ...work, head }, compare, pull, checks, lastAction: site.lastAction };
+  // Keep CI evidence ahead of potentially large comparison metadata in tools
+  // that apply a final response-size budget.
+  return { work: { ...work, head }, pull, checks, compare, lastAction: site.lastAction };
 }
 
 /**

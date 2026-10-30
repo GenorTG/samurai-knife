@@ -178,16 +178,24 @@ test("writing a tracked executable preserves its Git mode", async () => {
   }
 });
 
-test("pull request, changes with the preview URL, publish only at the reviewed head", async () => {
+test("pull request, compact 60-commit changes keep checks and preview URL, publish only at the reviewed head", async () => {
   const pr = await service.openPull("genor", "Projects page", "Adds /projekty and Finetune Studio.");
   assert.equal(pr.number, 1);
   const again = await service.openPull("genor", "Projects page v2", "");
   assert.equal(again.number, 1, "a second call updates the same pull request");
+  for (let i = 0; i < 58; i += 1) {
+    await service.writeFiles("genor", `Add file ${i}`, [{ path: `generated/page-${i}.txt`, content: `file ${i}` }]);
+  }
   const ch = await service.changes("genor");
-  assert.equal(ch.compare.aheadBy, 2);
-  assert.deepEqual(ch.compare.files.map((f) => f.path).sort(), ["app/projekty/page.tsx", "lib/site-data.ts"]);
+  assert.equal(ch.compare.aheadBy, 60);
+  assert.equal(ch.compare.commits.length, 10);
+  assert.equal(ch.compare.files.length, 60);
+  assert.ok(ch.compare.files.every((f) => !("patch" in f)), "patches are omitted by default");
   assert.match(ch.checks.previewUrl, /^https:\/\/preview-[0-9a-f]{7}\.example\.test$/);
   assert.equal(ch.checks.state, "success");
+  assert.ok(JSON.stringify(ch).length < 12_000, `summary remains compact with checks intact (${JSON.stringify(ch).length} chars)`);
+  const detailed = await service.changes("genor", true);
+  assert.ok(detailed.compare.files.some((f) => typeof f.patch === "string"), "detail:true opts into patches");
   await assert.rejects(service.publish("genor", "0".repeat(40)), /moved on since you reviewed/);
   const done = await service.publish("genor", ch.work.head);
   assert.equal(done.pull, 1);

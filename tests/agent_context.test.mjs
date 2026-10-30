@@ -2,6 +2,7 @@
 // the stored transcript is bounded. Regression: a 10-round tool-heavy turn followed by "tak tak." used to reach the model
 // as the single message "tak tak." (the trim snapped forward to the next user message and dropped the previous answer).
 import { test } from "node:test";
+import { clipToolResult } from "../src/lib/agent-client/loop.ts";
 import assert from "node:assert/strict";
 import {
   CONTEXT_CHARS,
@@ -16,6 +17,21 @@ import {
 } from "../src/lib/agent-client/context.ts";
 
 const PROPOSAL = "Raport gotowy.\n1. Popraw nagłówki.\n2. Dodaj opisy.\nZrobić to wszystko…?";
+
+test("large JSON tool results stay valid and preserve checks when compacted", () => {
+  const original = JSON.stringify({
+    work: { head: "abc123" },
+    pull: { number: 12 },
+    checks: { state: "failure", runs: [{ name: "CI", conclusion: "failure" }] },
+    compare: { commits: Array.from({ length: 60 }, (_, i) => ({ sha: String(i), message: "commit ".repeat(50) })), files: Array.from({ length: 60 }, (_, i) => ({ path: `src/${i}.tsx`, patch: "diff ".repeat(200) })) },
+  });
+  const clipped = clipToolResult(original);
+  assert.ok(clipped.length <= 12_000);
+  const parsed = JSON.parse(clipped);
+  assert.equal(parsed.checks.state, "failure");
+  assert.equal(parsed.checks.runs[0].name, "CI");
+  assert.equal(parsed.work.head, "abc123");
+});
 
 test("malformed persisted tool arguments are repaired before provider replay", () => {
   const repaired = repairTranscript([
