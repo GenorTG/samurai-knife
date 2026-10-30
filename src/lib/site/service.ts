@@ -433,7 +433,7 @@ export async function openPull(accountId: string, title: string, body: string) {
 }
 
 /** Everything the Changes view shows: work branch vs base (commits, files with patches), the PR, checks, preview URL. */
-export async function changes(accountId: string) {
+export async function changes(accountId: string, detail = false) {
   const site = loadSite(accountId);
   if (!site.connection) throw new SiteError("no repository connected", 409);
   const x = await ctx(accountId);
@@ -448,7 +448,12 @@ export async function changes(accountId: string) {
     });
     return { work: null, compare: null, pull: null, checks: null, lastAction: loadSite(accountId).lastAction };
   }
-  const compare = await github.compare(x.token, x.c.repo, x.c.baseBranch, work.branch);
+  const rawCompare = await github.compare(x.token, x.c.repo, x.c.baseBranch, work.branch);
+  const compare = {
+    ...rawCompare,
+    commits: rawCompare.commits.slice(-10),
+    files: detail ? rawCompare.files : rawCompare.files.map(({ patch: _patch, ...file }) => file),
+  };
   const pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
   if (pull?.merged) {
     mutateSite(accountId, (s) => {

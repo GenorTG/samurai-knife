@@ -262,10 +262,10 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_changes",
     scope: "account",
     effect: "read",
-    description: "State of the prepared changes: work branch vs base (commits, changed files with patches), the pull request (number, URL, mergeable), commit checks and the preview deployment URL.",
-    schema: z.object({}).strict(),
-    run(_input, ctx) {
-      return guarded(() => service.changes(account(ctx)));
+    description: "State of prepared changes: ahead/behind, up to the 10 latest commits, changed file names, the pull request, commit checks and preview URL. Set detail:true only when patches are needed.",
+    schema: z.object({ detail: z.boolean().optional() }).strict(),
+    run({ detail }, ctx) {
+      return guarded(() => service.changes(account(ctx), detail));
     },
   }),
   defineTool({
