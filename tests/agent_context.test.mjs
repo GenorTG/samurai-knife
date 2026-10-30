@@ -37,6 +37,15 @@ function toolTurn(prefix, rounds, size, answer) {
   return out;
 }
 
+test("a failed turn's request and reason reach the next model context", () => {
+  const context = buildContext([
+    { role: "user", content: "finish the website fixes" },
+    { role: "notice", level: "error", content: "Model request failed: network timeout" },
+    { role: "user", content: "back to work!" },
+  ]);
+  assert.ok(context.messages.some((message) => message.role === "assistant" && message.content.includes("previous turn ended: Model request failed: network timeout") && message.content.includes("unfinished request: finish the website fixes")));
+});
+
 test("a short follow-up after a tool-heavy turn still carries the previous answer", () => {
   const transcript = [...toolTurn("t1", 10, 12_000, PROPOSAL), { role: "user", content: "tak tak." }];
   const context = buildContext(transcript);

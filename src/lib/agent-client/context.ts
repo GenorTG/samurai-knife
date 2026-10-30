@@ -206,9 +206,23 @@ function compactTurn(turn: WireMessage[]): WireMessage[] {
 /** What the model receives: the running turn whole, earlier turns whole / compacted / summarised (see the file comment). */
 export function buildContext(transcript: TranscriptMessage[]): ModelContext {
   const stored = transcript.filter(isSummaryNotice).map((n) => n.content);
-  const wire = slimSnapshots(repairTranscript(transcript).filter((m): m is WireMessage => m.role !== "notice"));
-  const { turns } = splitTurns(wire);
-  if (turns.length === 0) return { messages: wire, summary: stored.length ? boundSummary(stored) : null, shortened: false };
+  const repaired = repairTranscript(transcript);
+  const wire: WireMessage[] = [];
+  let lastUser = "";
+  for (const message of repaired) {
+    if (message.role === "user") {
+      lastUser = message.content;
+      wire.push(message);
+    } else if (message.role !== "notice") {
+      wire.push(message);
+    } else if (message.level === "error" || (message.level === "info" && message.content.startsWith("Reached the per-turn limit"))) {
+      const reason = oneLine(message.content, 240);
+      wire.push({ role: "assistant", content: `[Toolbox note] previous turn ended: ${reason}; unfinished request: ${oneLine(lastUser || "(request unavailable)", 400)}` });
+    }
+  }
+  const slimmed = slimSnapshots(wire);
+  const { turns } = splitTurns(slimmed);
+  if (turns.length === 0) return { messages: slimmed, summary: stored.length ? boundSummary(stored) : null, shortened: false };
   const current = turns[turns.length - 1];
   let chars = current.reduce((sum, m) => sum + sizeOf(m), 0);
   let count = current.length;
