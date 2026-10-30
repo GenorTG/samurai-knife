@@ -138,6 +138,19 @@ SHA-256 of the raw token only).
 - Why one file: at this scale (hundreds of accounts) a whole-file rewrite is cheap, and the unique username/email checks
   need every record anyway; per-account files would need a separate index with the same locking problem.
 
+## "What's new" window (account field `seen`)
+
+`seen = {version: MAJOR.MINOR.PATCH, legalEdition, at}`: the release notes and default-legal edition the user last
+confirmed. New accounts are created at the current values (`newAccountRecord` -> `src/lib/accounts/seen.ts`), so a first
+login shows nothing; accounts from before 0.13.0 have `null` and see the current minor's notes and the current edition's
+summary once. `GET /api/account/seen` -> `{seen, current}`; `PUT /api/account/seen {}` (Origin guard) records the
+current ones. The shell's `WhatsNewModal` (AppShell only: never for guests, never over /privacy, /terms, /changelog or
+the auth pages) asks once per page load (so also after the UpdateBanner's reload), shows the notes newer than `seen`
+from `src/lib/release-notes.ts` (plain words, Polish through the catalogue) and, when the edition changed, the per-edition
+summaries `LEGAL_EDITION_NOTES` with links to /privacy and /terms. "Got it" and "See all changes" (-> `/changelog`, a
+public page of every release) both record it. `tests/release_notes.test.mjs` requires notes for the package.json
+release and a summary for every edition from 6 on; `tests/whats_new_modal_e2e.py` covers the window.
+
 ## Sessions (`$KNIFE_DATA_DIR/sessions.json`)
 
 Cookie `knife_session` = 32 random bytes (base64url), `HttpOnly`, `Path=/`, 30 days, `Secure` when the request is HTTPS

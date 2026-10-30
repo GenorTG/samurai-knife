@@ -358,6 +358,10 @@ def main() -> int:
         check("alice's task is untouched", status == 200 and "alice task secret" in json.dumps(body) and '"archived"' not in json.dumps(body) and "bob was here" not in json.dumps(body), str(body)[:300])
     status, _, _ = raw("GET", "/api/agent/goals")
     check("a guest cannot list tasks", status in (401, 403), status)
+    status, _, _ = raw("GET", "/api/account/seen")
+    check("a guest has no \"What's new\" state", status in (401, 403), status)
+    status, _, _ = raw("PUT", "/api/account/seen", b"{}", {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
+    check("a cross-origin \"What's new\" confirmation is refused by the Origin guard", status == 403, status)
 
     # --------------------------------------------------------------------------------------------- workflows
     status, hdrs, text = raw("POST", "/api/hooks/" + "A" * 24 + "/x", b"{}", {"Content-Type": "application/json"})

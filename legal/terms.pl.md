@@ -124,6 +124,7 @@ Zabronione jest w szczególności:
 
 ## § 17. Historia zmian {#history}
 
+- **Wydanie 7** (30 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; Polityka prywatności opisuje zapisane zadania Asystenta, okno „Co nowego” oraz to, że programy połączone kluczem MCP Użytkownika mogą czytać jego rozmowy z Asystentem.
 - **Wydanie 6** (29 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; Polityka prywatności opisuje wykrywanie obrazów (wygenerowany obrazek testowy wysyłany do Dostawcy AI wybranego przez Użytkownika) i limit tury Asystenta.
 - **Wydanie 5** (28 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; Polityka prywatności opisuje zrzuty ekranu stron wysyłane do Dostawcy AI wybranego przez Użytkownika.
 - **Wydanie 4** (28 października 2026, {{siteName}} 0.13.0): bez zmian postanowień; studio strony może opcjonalnie współpracować z projektem Vercel Użytkownika, co opisuje Polityka prywatności.

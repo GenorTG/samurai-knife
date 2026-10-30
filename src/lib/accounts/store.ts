@@ -1,3 +1,4 @@
+import { seenNow } from "./seen";
 import * as z from "zod/v4";
 import {
   chmodSync,
@@ -133,6 +134,11 @@ const accountSchema = z.object({
    * of bounds (a hand edit) reads as null rather than breaking the whole file.
    */
   assistant: turnLimitsSchema.nullable().default(null).catch(null),
+  /**
+   * The release notes and legal edition the user last confirmed in the "What's new" window (src/lib/release-notes.ts).
+   * null = an account from before 0.13.0 (it sees the current notes once); new accounts start at the current release.
+   */
+  seen: z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/), legalEdition: z.number().int().min(0).nullable(), at: z.string().max(40) }).nullable().default(null).catch(null),
 });
 
 const storeSchema = z.object({
@@ -192,7 +198,17 @@ export function normalizeEmail(email: string): string {
 
 /** Fills the v2 defaults for a new account record (the CLI writes the same shape). */
 export function newAccountRecord(fields: Pick<Account, "id" | "displayName"> & Partial<Account>): Account {
-  return accountSchema.parse({ provider: null, createdAt: new Date().toISOString(), ...fields });
+  return accountSchema.parse({ provider: null, createdAt: new Date().toISOString(), seen: seenNow(), ...fields });
+}
+
+/** Records that the user saw the current release notes and legal edition. Returns the account, or undefined. */
+export function markSeen(id: string): Account | undefined {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) return undefined;
+    account.seen = seenNow();
+    return account;
+  });
 }
 
 function initialStore(): AccountStore {
