@@ -32,6 +32,7 @@ const { alignCvWithSite, fold } = await import("../src/lib/site/audit/align.ts")
 const { parsePsi } = await import("../src/lib/site/audit/lighthouse.ts");
 const github = await import("../src/lib/site/github.ts");
 const service = await import("../src/lib/site/service.ts");
+const { SITE_KNIFE_TOOLS } = await import("../src/lib/mcp/tools-site.ts");
 const store = await import("../src/lib/site/store.ts");
 const { runAudit, normalizePaths, siteTargetProblem } = await import("../src/lib/site/audit/run.ts");
 const cvStore = await import("../src/lib/cv/store.ts");
@@ -141,8 +142,24 @@ test("status, files, read, search: the repo's AGENTS.md reaches the agent", asyn
   assert.match(s.instructions[0].text, /lib\/site-data\.ts/);
   const root = await service.listFiles("genor");
   assert.ok(root.entries.some((e) => e.path === "lib" && e.type === "dir" && e.files === 1));
+  const recursive = await service.listFiles("genor", "", undefined, true);
+  assert.ok(recursive.entries.some((e) => e.path === "lib/site-data.ts" && e.type === "file"));
   const file = await service.readFile("genor", "lib/site-data.ts");
   assert.match(file.text, /Samurai Knife/);
+  const batch = await service.readFiles("genor", ["lib/site-data.ts", "AGENTS.md"], undefined, 1, 1);
+  assert.equal(batch.files.length, 2);
+  assert.match(batch.files[0].text, /^export const hero/);
+  assert.equal(batch.files[0].fromLine, 1);
+  assert.ok(batch.files[0].totalLines > 1);
+  const toolContext = { accountId: "genor", admin: true, surface: "mcp" };
+  const recursiveTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_files");
+  const readTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_read");
+  assert.ok(recursiveTool && readTool);
+  const toolTree = await recursiveTool.execute({ recursive: true }, toolContext);
+  assert.ok(toolTree.entries.some((entry) => entry.path === "lib/site-data.ts"));
+  const toolRead = await readTool.execute({ paths: ["lib/site-data.ts", "AGENTS.md"], from: 1, to: 1 }, toolContext);
+  assert.equal(toolRead.files.length, 2);
+  assert.equal(toolRead.files[0].fromLine, 1);
   const found = await service.search("genor", "hero");
   assert.equal(found.hits[0].path, "lib/site-data.ts");
 });
@@ -155,6 +172,16 @@ test("write + replace go to a work branch; main is untouched; secrets and workfl
   const r = await service.replaceText("genor", "lib/site-data.ts", '["Samurai Knife"]', '["Samurai Knife", "Finetune Studio"]', "List Finetune Studio");
   assert.equal(r.branch, w.branch, "the same work branch collects every change");
   assert.match(gh.fileAt(w.branch, "lib/site-data.ts"), /Finetune Studio/);
+  const beforeBatch = gh.commits.size;
+  const editTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_edit");
+  assert.ok(editTool);
+  const batch = await editTool.execute({ message: "Refine project labels", edits: [
+    { path: "lib/site-data.ts", find: "Finetune Studio", replace: "Finetune Studio 2" },
+    { path: "app/projekty/page.tsx", find: "Projekty", replace: "Moje projekty" },
+  ] }, { accountId: "genor", admin: true, surface: "mcp" });
+  assert.equal(gh.commits.size - beforeBatch, 1, "multi-file text edits produce exactly one commit");
+  assert.equal(batch.files.length, 2);
+  assert.match(gh.fileAt(w.branch, "lib/site-data.ts"), /Finetune Studio 2/);
   await assert.rejects(service.replaceText("genor", "lib/site-data.ts", "does-not-exist", "x", "m"), /not found/);
   await assert.rejects(service.replaceText("genor", "lib/site-data.ts", "export const", "x", "m"), /occurs 2 times/);
   await assert.rejects(service.writeFiles("genor", "m", [{ path: ".env", content: "SECRET=1" }]), /secrets/);
@@ -187,13 +214,16 @@ test("pull request, compact 60-commit changes keep checks and preview URL, publi
     await service.writeFiles("genor", `Add file ${i}`, [{ path: `generated/page-${i}.txt`, content: `file ${i}` }]);
   }
   const ch = await service.changes("genor");
-  assert.equal(ch.compare.aheadBy, 60);
+  assert.equal(ch.compare.aheadBy, 61);
   assert.equal(ch.compare.commits.length, 10);
   assert.equal(ch.compare.files.length, 60);
   assert.ok(ch.compare.files.every((f) => !("patch" in f)), "patches are omitted by default");
   assert.match(ch.checks.previewUrl, /^https:\/\/preview-[0-9a-f]{7}\.example\.test$/);
   assert.equal(ch.checks.state, "success");
-  assert.ok(JSON.stringify(ch).length < 12_000, `summary remains compact with checks intact (${JSON.stringify(ch).length} chars)`);
+  const summary = await service.changes("genor", false, true);
+  assert.equal(summary.checks.state, "success");
+  assert.equal(summary.compare.omittedFiles, 40);
+  assert.ok(JSON.stringify(summary).length < 6000, `summary remains compact with checks intact (${JSON.stringify(summary).length} chars)`);
   const detailed = await service.changes("genor", true);
   assert.ok(detailed.compare.files.some((f) => typeof f.patch === "string"), "detail:true opts into patches");
   await assert.rejects(service.publish("genor", "0".repeat(40)), /moved on since you reviewed/);
@@ -295,6 +325,11 @@ test("audit run: pages, site checks, Lighthouse, CV alignment, scores, history; 
   assert.ok(ids.includes("content.thin"), "the short /projekty page is thin");
   assert.ok(ids.includes("security.headers"));
   assert.ok(run.alignment.items.find((i) => i.label === "Finetune Studio").onSite);
+  const auditIssuesTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_audit_get");
+  assert.ok(auditIssuesTool);
+  const compactIssues = await auditIssuesTool.execute({ id: run.id, section: "issues" }, { accountId: "genor", admin: true, surface: "mcp" });
+  assert.ok(compactIssues.length <= run.issues.length, "identical findings across pages are grouped");
+  assert.ok(compactIssues.every((issue) => issue.id && issue.severity && issue.category && Array.isArray(issue.pages) && issue.finding.includes("<<<UNTRUSTED_CONTENT")));
   assert.ok(psiServer.requests.some((u) => u.includes("strategy=mobile")) && psiServer.requests.some((u) => u.includes("strategy=desktop")));
   const view = store.siteView(store.loadSite("genor"));
   assert.equal(view.latest.id, run.id);
@@ -302,6 +337,11 @@ test("audit run: pages, site checks, Lighthouse, CV alignment, scores, history; 
   const second = await runAudit("genor", { lighthouse: false });
   assert.equal(second.lighthouse.length, 0);
   assert.equal(store.siteView(store.loadSite("genor")).history[0].id, second.id, "newest first");
+  const auditTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_audit");
+  assert.ok(auditTool);
+  const compared = await auditTool.execute({ compareTo: "previous", lighthouse: false }, { accountId: "genor", admin: true, surface: "mcp" });
+  assert.equal(compared.comparison.previousId, second.id);
+  assert.equal(typeof compared.comparison.scoreDeltas.seo, "number");
 });
 
 test("disconnect forgets the token and the work branch; accounts are separate", async () => {

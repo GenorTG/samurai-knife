@@ -61,13 +61,14 @@ const SCREENSHOT = defineTool({
   urlArgs: ["url"],
   untrustedOutput: true,
   description:
-    "Open a project-related page in a real browser and return its screenshot. target production (default: the connected live site or saved website), preview (the READY deployment of the linked Vercel project, including protected previews), or url (only a page on that site, a Vercel deployment confirmed to belong to the linked project, the repository's GitHub Pages, or a page inside the connected public GitHub repository). This is not a general web crawler: unrelated sites are refused. Use production/preview to inspect the live site or work-in-progress; use GitHub API tools for private repository contents. path is relative to the selected site (e.g. /about). viewport desktop (1280x800) or mobile; fullPage captures at most 4000 px. For Vercel dashboard data use knife_site_previews/deploy_logs; dashboard pages are not opened in an unauthenticated browser. Vision: an MCP client receives the image itself (image:false omits it); describe:true or a question (or a vision helper set up by the user) adds a text description. The result's imageArtifact id (kept 30 minutes) works with knife_vision_describe.",
+    "Open a project-related page in a real browser and return its screenshot. target production (default: the connected live site or saved website), preview (the READY deployment of the linked Vercel project, including protected previews), or url (only a page on that site, a Vercel deployment confirmed to belong to the linked project, the repository's GitHub Pages, or a page inside the connected public GitHub repository). This is not a general web crawler: unrelated sites are refused. Use production/preview to inspect the live site or work-in-progress; use GitHub API tools for private repository contents. path is relative to the selected site (e.g. /about). viewport desktop (1280x800) or mobile; fullPage captures at most 4000 px per tile. If image.truncated is true, call again with offsetY set to image.nextOffsetY to inspect the next tile. For Vercel dashboard data use knife_site_previews/deploy_logs; dashboard pages are not opened in an unauthenticated browser. Vision: an MCP client receives the image itself (image:false omits it); describe:true or a question (or a vision helper set up by the user) adds a text description. The result's imageArtifact id (kept 30 minutes) works with knife_vision_describe.",
   schema: z.object({
     target: z.enum(["production", "preview", "url"]).default("production"),
     path: z.string().max(300).optional().describe("Page path on the target, e.g. /about (default /)"),
     url: z.string().max(500).optional().describe("Absolute URL, only with target \"url\""),
     viewport: z.enum(["desktop", "mobile"]).default("desktop"),
     fullPage: z.boolean().optional(),
+    offsetY: z.number().int().min(0).max(1_000_000).optional().describe("Vertical offset for the next full-page screenshot tile (use image.nextOffsetY)"),
     format: z.enum(["png", "jpeg"]).optional(),
     describe: z.boolean().optional().describe("Also return a text description from the user's vision model"),
     question: z.string().max(1_000).optional().describe("A question for the vision model about the screenshot (implies describe)"),
@@ -79,7 +80,7 @@ const SCREENSHOT = defineTool({
       const a = getAccount(acc);
       if (!a) throw new VisionError("unknown account", 404);
       const target = await resolveScreenshotTarget(acc, { target: input.target, path: input.path, url: input.url });
-      const shot = await takeScreenshot(acc, target, { viewport: input.viewport, fullPage: input.fullPage, format: input.format });
+      const shot = await takeScreenshot(acc, target, { viewport: input.viewport, fullPage: input.fullPage, offsetY: input.offsetY, format: input.format });
       const base = {
         imageArtifact: shot.image.id,
         target: target.kind,
@@ -87,7 +88,7 @@ const SCREENSHOT = defineTool({
         finalUrl: shot.finalUrl,
         status: shot.status,
         viewport: { name: shot.viewport, ...VIEWPORTS[shot.viewport] },
-        image: { mime: shot.image.mime, width: shot.image.width, height: shot.image.height, bytes: shot.image.bytes.byteLength, truncated: shot.truncated },
+        image: { mime: shot.image.mime, width: shot.image.width, height: shot.image.height, bytes: shot.image.bytes.byteLength, truncated: shot.truncated, nextOffsetY: shot.nextOffsetY },
         page: wrapUntrusted(`web page ${shot.finalUrl}`, JSON.stringify({ title: shot.title })),
         requests: { made: shot.requests, blocked: shot.blockedRequests, refusedByNetworkPolicy: shot.refusedConnections },
       };

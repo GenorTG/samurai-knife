@@ -95,7 +95,7 @@ test("publishing writes ask after third-party text in Risky mode; MCP annotation
   const clean = { userTexts: ["update my site copy"], untrustedSeen: false };
   const tainted = { ...clean, untrustedSeen: true };
   assert.equal(policy.assessServerCall("knife_site_write", write, { message: "m", files: [] }, "destructive", clean).ask, false, "no third-party text: Risky lets it run");
-  for (const name of ["knife_site_write", "knife_site_replace", "knife_site_pr"]) {
+  for (const name of ["knife_site_write", "knife_site_replace", "knife_site_edit", "knife_site_pr"]) {
     const verdict = policy.assessServerCall(name, write, { message: "m" }, "destructive", tainted);
     assert.equal(verdict.ask, true, name);
     assert.equal(verdict.destructive, true, `${name} is not waived by "allow this run"`);
@@ -106,7 +106,7 @@ test("publishing writes ask after third-party text in Risky mode; MCP annotation
   const { KNIFE_TOOLS } = await import("../src/lib/mcp/tools.ts");
   const { annotationsFor } = await import("../src/lib/mcp/server.ts");
   const byName = Object.fromEntries(KNIFE_TOOLS.map((t) => [t.name, t]));
-  for (const name of ["knife_site_write", "knife_site_replace", "knife_site_pr"]) {
+  for (const name of ["knife_site_write", "knife_site_replace", "knife_site_edit", "knife_site_pr"]) {
     assert.equal(byName[name].publishes, true, name);
     assert.equal(annotationsFor(byName[name]).openWorldHint, true, name);
   }

@@ -89,9 +89,9 @@ types; never secrets: the user enters keys in the Credentials tab). An open edit
 ## Website (`knife_site_*`, group `site`)
 Score and improve the user's own website from its GitHub repository: `knife_site_status` (start here: connection, the
 repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,
-security headers, Lighthouse via PageSpeed), `knife_site_audit_get`, `knife_site_page`, `knife_site_files`,
-`knife_site_read`, `knife_site_search`, `knife_site_replace` / `knife_site_write` (commit to the `knife/...` work branch,
-never the base branch), `knife_site_pr`, `knife_site_changes` (diff, checks, preview URL), `knife_site_screenshot` (see "Vision"). With Vercel connected in the
+security headers, Lighthouse via PageSpeed), `knife_site_audit {compareTo:"previous"}` returns score deltas plus new/resolved findings; `knife_site_audit_get` reads stored sections. `knife_site_page`, `knife_site_files` (recursive listing),
+`knife_site_read` (multi-file and line ranges), `knife_site_search`, `knife_site_replace` / `knife_site_edit` / `knife_site_write` (commit to the `knife/...` work branch,
+never the base branch; `knife_site_edit` applies multiple exact replacements in one commit), `knife_site_pr`, `knife_site_changes` (compact checks-first summary; `detail:true` includes expanded comparison/patches), `knife_site_screenshot` (see "Vision"). With Vercel connected in the
 Website tab: `knife_site_previews` (the work branch's previews and the head commit's state), `knife_site_deploy_logs`,
 `knife_site_deploy` (a preview build of the work branch, never production); previews behind Deployment Protection are
 read with the stored bypass. Publishing and discarding are the user's buttons in the studio. Contract:
@@ -253,7 +253,7 @@ widget route and MCP).
 ## Tool effects and third-party text
 
 Every `defineTool` must declare an `effect`: `read`, `write`, `destructive`, or `outbound`; a write that leaves the
-account (commits and pull requests on the user's repository: `knife_site_write`, `knife_site_replace`, `knife_site_pr`)
+account (commits and pull requests on the user's repository: `knife_site_write`, `knife_site_replace`, `knife_site_edit`, `knife_site_pr`)
 also declares `publishes`. The widget derives its approval from this metadata (`src/lib/agent-client/server-tool-policy.ts`,
 not tool names): writes and URL-bearing outbound requests are shown with arguments and ask in All/Most; destructive
 actions ask one-by-one in All/Most/Risky; None explicitly disables prompts. Outbound destinations are visible to the user.

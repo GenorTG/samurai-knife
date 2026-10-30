@@ -116,8 +116,12 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         # the access type resets the repository field).
         access = page.get_by_role("radiogroup", name="GitHub access")
         if access.count():
-            access.get_by_text("Personal token", exact=True).click()
-        page.get_by_label("GitHub repository").fill("genor/website")
+            personal_token = access.get_by_role("radio", name="Personal token")
+            personal_token.click()
+            expect(personal_token).to_have_attribute("aria-checked", "true")
+        repository = page.get_by_label("GitHub repository")
+        expect(repository).to_be_visible(timeout=10_000)
+        repository.fill("genor/website")
         page.get_by_label("Production URL").fill(site_url)
         page.get_by_label("GitHub token").fill(TOKEN)
         page.get_by_text("More settings").click()

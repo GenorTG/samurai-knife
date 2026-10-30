@@ -115,12 +115,15 @@ async def capture(req: dict) -> dict:
     width = int_field(viewport, "width", 320, 1920, 1280)
     height = int_field(viewport, "height", 320, 1600, 800)
     max_height = int_field(req, "maxHeight", height, 8000, 4000)
+    offset_y = int_field(req, "offsetY", 0, 1_000_000, 0)
     timeout_ms = int_field(req, "timeoutMs", 5000, 90000, 30000)
     max_requests = int_field(req, "maxRequests", 1, 2000, 300)
     quality = int_field(req, "quality", 30, 95, 80)
     max_bytes = int_field(req, "maxBytes", 50_000, 20_000_000, 4_000_000)
     fmt = "jpeg" if req.get("format") == "jpeg" else "png"
     full_page = req.get("fullPage") is True
+    if offset_y and not full_page:
+        raise ToolError("offsetY is only supported for full-page screenshot tiles.")
     out_file = req.get("outFile")
     socket_path = req.get("proxySocket")
     chromium = req.get("chromium")
@@ -211,9 +214,13 @@ async def capture(req: dict) -> dict:
                 shot_height = height
                 truncated = False
                 if full_page:
-                    shot_height = max(height, min(int(doc_height or height), max_height))
-                    truncated = int(doc_height or 0) > max_height
-                options = {"type": fmt, "clip": {"x": 0, "y": 0, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
+                    doc_height = int(doc_height or height)
+                    if offset_y >= doc_height:
+                        raise ToolError("offsetY is beyond the end of the page.")
+                    remaining = doc_height - offset_y
+                    shot_height = max(1, min(max_height, remaining if offset_y else max(height, remaining)))
+                    truncated = offset_y + shot_height < doc_height
+                options = {"type": fmt, "clip": {"x": 0, "y": offset_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
                 if fmt == "jpeg":
                     options["quality"] = quality
                 data = await page.screenshot(**options)
@@ -226,7 +233,7 @@ async def capture(req: dict) -> dict:
                     if attempts >= 3:
                         shot_height = max(height, int(shot_height * 0.6))
                         truncated = True
-                    options = {"type": "jpeg", "quality": quality, "clip": {"x": 0, "y": 0, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
+                    options = {"type": "jpeg", "quality": quality, "clip": {"x": 0, "y": offset_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
                     data = await page.screenshot(**options)
                 if len(data) > max_bytes:
                     raise ToolError("the screenshot is larger than the size limit.")
@@ -241,6 +248,7 @@ async def capture(req: dict) -> dict:
                     "title": title,
                     "status": response.status if response else None,
                     "truncated": truncated,
+                    "nextOffsetY": offset_y + shot_height if truncated else None,
                     "requests": counters["requests"],
                     "blocked": counters["blocked"],
                 }

@@ -56,6 +56,24 @@ export function auditDigest(run: AuditRun, maxIssues = 30) {
 
 const PATH = z.string().min(1).max(400);
 
+function compactAuditIssues(issues: Array<{ id: string; severity: string; category: string; title: string; detail: string; fix: string; page?: string }>) {
+  const groups = new Map<string, { id: string; severity: string; category: string; pages: Set<string>; finding: string }>();
+  for (const issue of issues) {
+    const prose = `Title: ${issue.title}\nDetail: ${issue.detail}\nFix: ${issue.fix}`;
+    const key = JSON.stringify([issue.id, issue.severity, issue.category, prose]);
+    const group = groups.get(key) ?? {
+      id: issue.id,
+      severity: issue.severity,
+      category: issue.category,
+      pages: new Set<string>(),
+      finding: wrapUntrusted(`website audit finding ${issue.id}`, prose),
+    };
+    if (issue.page) group.pages.add(issue.page);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(({ pages, ...group }) => ({ ...group, pages: [...pages] }));
+}
+
 /**
  * Page text is third-party content (docs/MCP.md "Untrusted content"): the readable parts go in one envelope, the
  * numbers stay structured. Headings, CTAs, alt texts and the visible text are what an injected instruction would use.
@@ -99,16 +117,18 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     urlArgs: ["url"],
     untrustedOutput: true,
     description:
-      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`; with Vercel connected that is the READY preview of the work branch's head commit, read through Deployment Protection with the stored bypass) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend). Pass HTML pages: robots.txt, sitemap.xml and llms.txt are checked as files (skippedAsNotHtml), never as pages. Known noise: resource.* findings, a missing llms.txt (optional), a single-run mobile Lighthouse performance score (compare medians: runs/spread), perf.ttfb.cold (cold start, typical on a preview), content.js-only on a deliberately client-rendered page. Compare with the previous audit by id (knife_site_audit_get) instead of re-explaining every finding.",
+      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`; with Vercel connected that is the READY preview of the work branch's head commit, read through Deployment Protection with the stored bypass) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend). Pass HTML pages: robots.txt, sitemap.xml and llms.txt are checked as files (skippedAsNotHtml), never as pages. Known noise: resource.* findings, a missing llms.txt (optional), a single-run mobile Lighthouse performance score (compare medians: runs/spread), perf.ttfb.cold (cold start, typical on a preview), content.js-only on a deliberately client-rendered page. Set `compareTo:\"previous\"` to return score deltas and new/resolved findings against the prior audit.",
     schema: z.object({
       url: z.string().max(500).optional(),
       target: z.enum(["production", "preview"]).optional(),
       pages: z.array(z.string().max(300)).max(10).optional(),
       lighthouse: z.boolean().optional().describe("false skips PageSpeed (faster, no performance scores)"),
+      compareTo: z.enum(["previous"]).optional(),
     }).strict(),
-    run({ url, target, pages, lighthouse }, ctx) {
+    run({ url, target, pages, lighthouse, compareTo }, ctx) {
       return guarded(async () => {
         const acc = account(ctx);
+        const previous = compareTo === "previous" ? loadSite(acc).audits[0] ?? null : null;
         let base = url;
         const vercelLinked = !!loadSite(acc).vercel?.projectId;
         if (!base && target === "preview" && !vercelLinked) {
@@ -119,7 +139,24 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
         // With Vercel linked: the READY head preview of the work branch, read through Deployment Protection when needed.
         const { options, note } = await vercelService.withVercelAudit(acc, { url: base, target: target ?? (url ? "custom" : "production"), pages, lighthouse });
         const run = await runAudit(acc, options);
-        return note ? { ...auditDigest(run), vercel: note } : auditDigest(run);
+        const digest = auditDigest(run);
+        if (!compareTo) return note ? { ...digest, vercel: note } : digest;
+        const prior = new Set((previous?.issues ?? []).map((issue) => JSON.stringify([issue.id, issue.page])));
+        const current = new Set(run.issues.map((issue) => JSON.stringify([issue.id, issue.page])));
+        const scores = Object.fromEntries(Object.entries(run.scores).map(([key, value]) => {
+          const priorScore = previous?.scores[key as keyof NonNullable<typeof previous>["scores"]];
+          return [key, typeof value === "number" && typeof priorScore === "number" ? value - priorScore : null];
+        }));
+        return {
+          ...digest,
+          ...(note ? { vercel: note } : {}),
+          comparison: previous ? {
+            previousId: previous.id,
+            scoreDeltas: scores,
+            newFindings: compactAuditIssues(run.issues.filter((issue) => !prior.has(JSON.stringify([issue.id, issue.page])))),
+            resolvedFindings: compactAuditIssues(previous.issues.filter((issue) => !current.has(JSON.stringify([issue.id, issue.page])))),
+          } : { previousId: null, note: "There was no earlier audit to compare with.", scoreDeltas: null, newFindings: [], resolvedFindings: [] },
+        };
       });
     },
   }),
@@ -128,7 +165,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "read",
     untrustedOutput: true,
-    description: "Read a stored audit (default the newest): `section` all (digest) | issues (every issue) | pages (per-page facts + copy metrics + the first 4000 characters of text) | lighthouse (full failing-audit lists) | alignment (every CV item with onSite) | history (scores of every kept run, newest first).",
+    description: "Read a stored audit (default the newest): `section` all (digest) | issues (distinct findings grouped by identical text, stable id/severity/category, pages[], and one untrusted guidance envelope) | pages (per-page facts + copy metrics + first 4000 text chars) | lighthouse (full failing-audit lists) | alignment (every CV item) | history (scores, newest first).",
     schema: z.object({ id: z.string().max(40).optional(), section: z.enum(["all", "issues", "pages", "lighthouse", "alignment", "history"]).default("all") }).strict(),
     run({ id, section }, ctx) {
       return guarded(() => {
@@ -136,7 +173,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
         if (section === "history") return siteView(site).history;
         const run = id ? site.audits.find((a) => a.id === id) : site.audits[0];
         if (!run) throw new SiteError(id ? `no stored audit ${id}` : "no audit yet: run knife_site_audit");
-        if (section === "issues") return wrapUntrustedStrings("website audit findings", run.issues);
+        if (section === "issues") return compactAuditIssues(run.issues);
         if (section === "pages") return run.pages.map((p) => wrapUntrustedStrings(`web page ${p.finalUrl}`, p));
         if (section === "lighthouse") return wrapUntrustedStrings("PageSpeed audit results", run.lighthouse);
         if (section === "alignment") return wrapUntrustedStrings("website and CV alignment", run.alignment);
@@ -174,10 +211,10 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_files",
     scope: "account",
     effect: "read",
-    description: "List the website repository one directory level at a time (`path` = directory, empty = root; sub-directories come with their file count). Reads the work branch when it exists (it has the latest changes), else the base branch; `ref` overrides.",
-    schema: z.object({ path: z.string().max(400).default(""), ref: z.string().max(200).optional() }).strict(),
-    run({ path, ref }, ctx) {
-      return guarded(() => service.listFiles(account(ctx), path, ref));
+    description: "List the website repository (`path` = directory, empty = root). Set recursive:true to return nested paths in one call. Reads the work branch when it exists, else the base branch; `ref` overrides.",
+    schema: z.object({ path: z.string().max(400).default(""), ref: z.string().max(200).optional(), recursive: z.boolean().optional() }).strict(),
+    run({ path, ref, recursive }, ctx) {
+      return guarded(() => service.listFiles(account(ctx), path, ref, recursive ?? false));
     },
   }),
   defineTool({
@@ -185,12 +222,13 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "read",
     untrustedOutput: true,
-    description: "Read one text file of the website repository (up to 1 MB) from the work branch if it exists, else the base branch (`ref` overrides). Always read a file before changing it.",
-    schema: z.object({ path: PATH, ref: z.string().max(200).optional() }).strict(),
-    run({ path, ref }, ctx) {
+    description: "Read 1–20 text files (each up to 1 MB) from the work branch if it exists, else the base branch (`ref` overrides). Use optional `from` and `to` together for a 1-based inclusive line range (max 1001 lines). Always read files before changing them.",
+    schema: z.object({ path: PATH.optional(), paths: z.array(PATH).min(1).max(20).optional(), from: z.number().int().min(1).optional(), to: z.number().int().min(1).optional(), ref: z.string().max(200).optional() }).strict(),
+    run({ path, paths, from, to, ref }, ctx) {
       return guarded(async () => {
-        const file = await service.readFile(account(ctx), path, ref);
-        return { ...file, text: wrapUntrustedOptional(`repository file ${file.path}`, file.text) };
+        if (Boolean(path) === Boolean(paths)) throw new Error("provide exactly one of path or paths");
+        const result = await service.readFiles(account(ctx), paths ?? [path!], ref, from, to);
+        return { ...result, files: result.files.map((file) => ({ ...file, text: wrapUntrustedOptional(`repository file ${file.path}`, file.text) })) };
       });
     },
   }),
@@ -220,6 +258,20 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
       return guarded(() => {
         refuseMarkers([find, replace]);
         return service.replaceText(account(ctx), path, find, replace, message, all ?? false);
+      });
+    },
+  }),
+  defineTool({
+    name: "knife_site_edit",
+    scope: "account",
+    effect: "write",
+    publishes: true,
+    description: "Apply 1–25 exact text replacements across website files and save them in ONE commit to the work branch. Every `find` must occur exactly once unless `all:true`; read current files first. Then open/update the PR with knife_site_pr.",
+    schema: z.object({ message: z.string().min(1).max(500), edits: z.array(z.object({ path: PATH, find: z.string().min(1).max(50_000), replace: z.string().max(200_000), all: z.boolean().optional() }).strict()).min(1).max(25) }).strict(),
+    run({ message, edits }, ctx) {
+      return guarded(() => {
+        refuseMarkers(edits.flatMap((edit) => [edit.find, edit.replace]));
+        return service.editFiles(account(ctx), message, edits);
       });
     },
   }),
@@ -262,10 +314,10 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_changes",
     scope: "account",
     effect: "read",
-    description: "State of prepared changes: ahead/behind, up to the 10 latest commits, changed file names, the pull request, commit checks and preview URL. Set detail:true only when patches are needed.",
+    description: "Compact state of prepared changes: ahead/behind, five latest commits, up to 20 changed file names, pull request, commit checks and preview URL. Set detail:true for the expanded comparison and patches.",
     schema: z.object({ detail: z.boolean().optional() }).strict(),
     run({ detail }, ctx) {
-      return guarded(() => service.changes(account(ctx), detail));
+      return guarded(() => service.changes(account(ctx), detail ?? false, !detail));
     },
   }),
   defineTool({

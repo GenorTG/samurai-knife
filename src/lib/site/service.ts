@@ -346,13 +346,17 @@ export async function status(accountId: string) {
   return { ...view, repo, ref, instructions };
 }
 
-export async function listFiles(accountId: string, prefix = "", ref?: string) {
+export async function listFiles(accountId: string, prefix = "", ref?: string, recursive = false) {
   const x = await ctx(accountId);
   const r = ref || (await readRef(accountId, x));
   const p = prefix.trim().replace(/^\/+|\/+$/g, "");
   if (p) github.checkPath(p);
   const { entries, truncated } = await github.getTree(x.token, x.c.repo, r);
   const under = entries.filter((e) => !p || e.path === p || e.path.startsWith(`${p}/`));
+  if (recursive) {
+    const recursiveEntries = under.slice(0, 500);
+    return { ref: r, prefix: p, entries: recursiveEntries, totalFiles: under.filter((e) => e.type === "file").length, truncated: truncated || under.length > 500 };
+  }
   // Directly inside the prefix only, plus a file count per sub-directory: a big repo stays readable.
   const depth = p ? p.split("/").length + 1 : 1;
   const direct = under.filter((e) => e.path.split("/").length === depth);
@@ -364,6 +368,24 @@ export async function listFiles(accountId: string, prefix = "", ref?: string) {
 export async function readFile(accountId: string, path: string, ref?: string) {
   const x = await ctx(accountId);
   return github.getFile(x.token, x.c.repo, path, ref || (await readRef(accountId, x)));
+}
+
+export async function readFiles(accountId: string, paths: string[], ref?: string, from?: number, to?: number) {
+  if (paths.length < 1 || paths.length > 20) throw new SiteError("read between 1 and 20 files per call");
+  if ((from !== undefined || to !== undefined) && (from === undefined || to === undefined || from < 1 || to < from || to - from > 1000)) {
+    throw new SiteError("line ranges need from/to, start at 1, and span at most 1001 lines");
+  }
+  const files = [];
+  for (const path of [...new Set(paths)]) {
+    const file = await readFile(accountId, path, ref);
+    if (file.text === null || from === undefined || to === undefined) {
+      files.push(file);
+      continue;
+    }
+    const lines = file.text.split("\n");
+    files.push({ ...file, text: lines.slice(from - 1, to).join("\n"), fromLine: from, toLine: Math.min(to, lines.length), totalLines: lines.length });
+  }
+  return { ref: files[0]?.ref ?? ref ?? "", files };
 }
 
 export async function search(accountId: string, query: string) {
@@ -417,6 +439,33 @@ export async function replaceText(accountId: string, path: string, find: string,
   return { ...result, replaced: all ? count : 1 };
 }
 
+export interface TextEdit { path: string; find: string; replace: string; all?: boolean }
+
+/** Apply exact replacements across files and commit the whole batch once. */
+export async function editFiles(accountId: string, message: string, edits: TextEdit[]) {
+  if (!edits.length || edits.length > 25) throw new SiteError("provide between 1 and 25 edits per call");
+  const contents = new Map<string, string>();
+  const counts = new Map<string, number>();
+  for (const edit of edits) {
+    if (!edit.find) throw new SiteError("`find` must not be empty");
+    let content = contents.get(edit.path);
+    if (content === undefined) {
+      const file = await readFile(accountId, edit.path);
+      if (file.text === null) throw new SiteError(msgf("{path} cannot be edited as text ({note})", { path: edit.path, note: file.note }));
+      content = file.text;
+    }
+    const occurrences = content.split(edit.find).length - 1;
+    if (!occurrences) throw new SiteError(msgf("the text to replace was not found in {path} (read the file again: it may have changed)", { path: edit.path }), 409);
+    if (occurrences > 1 && !edit.all) throw new SiteError(msgf("the text occurs {count} times in {path}: give a longer, unique snippet or set all=true", { count: occurrences, path: edit.path }), 409);
+    const replaced = edit.all ? occurrences : 1;
+    content = edit.all ? content.split(edit.find).join(edit.replace) : content.replace(edit.find, () => edit.replace);
+    contents.set(edit.path, content);
+    counts.set(edit.path, (counts.get(edit.path) ?? 0) + replaced);
+  }
+  const result = await writeFiles(accountId, message, [...contents].map(([path, content]) => ({ path, content })));
+  return { ...result, replaced: Object.fromEntries(counts) };
+}
+
 export async function openPull(accountId: string, title: string, body: string) {
   const x = await ctx(accountId);
   const work = loadSite(accountId).work;
@@ -433,7 +482,7 @@ export async function openPull(accountId: string, title: string, body: string) {
 }
 
 /** Everything the Changes view shows: work branch vs base (commits, files with patches), the PR, checks, preview URL. */
-export async function changes(accountId: string, detail = false) {
+export async function changes(accountId: string, detail = false, compact = false) {
   const site = loadSite(accountId);
   if (!site.connection) throw new SiteError("no repository connected", 409);
   const x = await ctx(accountId);
@@ -451,8 +500,11 @@ export async function changes(accountId: string, detail = false) {
   const rawCompare = await github.compare(x.token, x.c.repo, x.c.baseBranch, work.branch);
   const compare = {
     ...rawCompare,
-    commits: rawCompare.commits.slice(-10),
-    files: detail ? rawCompare.files : rawCompare.files.map(({ path, status, additions, deletions }) => ({ path, status, additions, deletions })),
+    commits: rawCompare.commits.slice(compact ? -5 : -10).map((commit) => compact ? { ...commit, message: commit.message.slice(0, 160) } : commit),
+    files: compact
+      ? rawCompare.files.slice(0, 20).map(({ path, status, additions, deletions }) => ({ path: path.slice(0, 180), status, additions, deletions }))
+      : detail ? rawCompare.files : rawCompare.files.map(({ path, status, additions, deletions }) => ({ path, status, additions, deletions })),
+    ...(compact && rawCompare.files.length > 20 ? { omittedFiles: rawCompare.files.length - 20 } : {}),
   };
   const pull = work.pull ? await github.getPull(x.token, x.c.repo, work.pull) : await github.openPullFor(x.token, x.c.repo, work.branch);
   if (pull?.merged) {

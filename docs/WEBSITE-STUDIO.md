@@ -142,11 +142,11 @@ commits and audits show up by themselves.
 ## Tools (`src/lib/mcp/tools-site.ts`, group `site`, scope `account`)
 
 `knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
-`knife_site_page {url}`, `knife_site_files {path?, ref?}`, `knife_site_read {path, ref?}`, `knife_site_search {query}`,
-`knife_site_replace {path, find, replace, message, all?}`, `knife_site_write {message, files, delete?}`,
-`knife_site_pr {title, body}`, `knife_site_changes`, `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
-`knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. The assistant preloads the group on `site-studio` and
-`cv-studio`; its system prompt has the workflow (status -> audit -> read -> replace/write -> pr -> audit the preview;
+`knife_site_page {url}`, `knife_site_files {path?, ref?, recursive?}`, `knife_site_read {path? | paths[], from?, to?, ref?}`, `knife_site_search {query}`,
+`knife_site_replace {path, find, replace, message, all?}`, `knife_site_edit {message, edits[]}` (multi-file exact replacements in one commit), `knife_site_write {message, files, delete?}`,
+`knife_site_pr {title, body}`, `knife_site_changes {detail?}` (compact checks-first summary by default; expanded patches on request), `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
+`knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. Recursive listings are capped at 500 entries; reads accept up to 20 files and optional 1-based inclusive line ranges. The assistant preloads the group on `site-studio` and
+`cv-studio`; its system prompt has the workflow (status -> audit -> read -> edit/write -> pr -> audit the preview;
 copy in the site's language, facts only from the CV). Its click guard treats buttons labelled publish/deploy as
 destructive (confirmed in every trust mode but None).
 
