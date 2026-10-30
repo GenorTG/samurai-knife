@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
-import { AgentGoalError, createAgentGoal, listAgentGoals, updateAgentGoal, type GoalStatus, type GoalStepStatus } from "@/lib/agent-work/goals";
+import { AgentGoalError, createAgentGoal, deleteAgentGoal, listAgentGoals, updateAgentGoal, type GoalStatus, type GoalStepStatus } from "@/lib/agent-work/goals";
 import { quotaErrorResponse } from "@/lib/storage/http";
 
 export const runtime = "nodejs";
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const step = z.object({ id: z.string().max(64).optional(), title: z.string().trim().min(1).max(160), status: z.enum(["pending", "in_progress", "completed"]) }).strict();
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), title: z.string().trim().min(1).max(160), objective: z.string().trim().min(1).max(4000), project: z.string().max(160).optional(), nextAction: z.string().max(1000).optional(), steps: z.array(z.string().trim().min(1).max(160)).max(50).optional() }).strict(),
+  z.object({ action: z.literal("delete"), id: z.string().min(1).max(64) }).strict(),
   z.object({ action: z.literal("update"), id: z.string().min(1).max(64), title: z.string().trim().min(1).max(160).optional(), objective: z.string().trim().min(1).max(4000).optional(), project: z.string().max(160).optional(), nextAction: z.string().max(1000).optional(), status: z.enum(["active", "paused", "completed", "archived"]).optional(), steps: z.array(step).max(50).optional() }).strict(),
 ]);
 
@@ -39,6 +40,10 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const input = parsed.data;
     if (input.action === "create") return json({ goal: createAgentGoal(auth.account.id, input) }, 201);
+    if (input.action === "delete") {
+      deleteAgentGoal(auth.account.id, input.id);
+      return json({ ok: true });
+    }
     return json({ goal: updateAgentGoal(auth.account.id, input.id, {
       title: input.title,
       objective: input.objective,

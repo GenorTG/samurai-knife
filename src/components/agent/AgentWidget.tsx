@@ -326,7 +326,7 @@ function WidgetShell() {
             </div>
             {account.kind === "ready" ? (
               <div className="col-span-2 row-start-2 flex items-center justify-end gap-2 @[34rem]:col-span-1 @[34rem]:col-start-2 @[34rem]:row-start-1">
-                <IconButton label={view === "goals" ? t("Back to chat") : t("Goals")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
+                <IconButton label={view === "goals" ? t("Back to chat") : t("Tasks")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
                   <span aria-hidden="true">☷</span>
                 </IconButton>
                 <select

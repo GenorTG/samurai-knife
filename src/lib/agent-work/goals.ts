@@ -130,3 +130,11 @@ export function checkpointAgentGoal(accountId: string, id: string, input: {
   writeFile(accountId, file);
   return goal;
 }
+
+/** Deletes one goal with its history (the user's choice in the Tasks panel; tools archive instead). */
+export function deleteAgentGoal(accountId: string, id: string): void {
+  const file = readFile(accountId);
+  const kept = file.goals.filter((item) => item.id !== id);
+  if (kept.length === file.goals.length) throw new AgentGoalError("Goal not found.");
+  writeFile(accountId, { ...file, goals: kept });
+}
