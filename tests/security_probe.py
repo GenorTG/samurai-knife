@@ -321,6 +321,48 @@ def main() -> int:
     ok, text, _ = mcp(api, "knife_craft_file_read", {"id": "../../accounts"}, ha, "198.51.100.10")
     check("a path as a Craft file id is refused", not ok and "accounts" not in text.replace("../../accounts", ""), text[:200])
 
+    # --------------------------------------------------------------------------------------------- assistant chats + tasks
+    # alice's chat and task are hers: bob's agent (MCP, HTTP) neither lists nor reads nor changes them.
+    status, body, _ = api.call("PUT", "/api/account/provider", {"baseUrl": "https://api.openai.com/v1", "model": "probe-model"}, cookie=alice, ip="198.51.100.10")
+    check("alice saves a provider (needed for a chat)", status == 200, (status, str(body)[:200]))
+    transcript = {"version": 1, "messages": [{"role": "user", "content": "alice chat secret"}, {"role": "assistant", "content": "noted"}], "actions": []}
+    status, body, _ = api.call("PUT", "/api/agent/conversation?chat=alicechat", transcript, cookie=alice, ip="198.51.100.10")
+    check("alice stores a chat", status == 200, (status, str(body)[:200]))
+    ok, text, _ = mcp(api, "knife_chat_list", {}, ha, "198.51.100.10")
+    check("alice's agent lists her chat (title enveloped)", ok and "alicechat" in text and "UNTRUSTED_CONTENT" in text, text[:300])
+    ok, text, _ = mcp(api, "knife_chat_list", {}, hb, "198.51.100.20")
+    check("bob's knife_chat_list never lists alice's chat", ok and "alicechat" not in text and "alice chat secret" not in text, text[:200])
+    for chat in ("alicechat", "../alice/alicechat", "default"):
+        ok, text, _ = mcp(api, "knife_chat_read", {"chatId": chat}, hb, "198.51.100.20")
+        check(f"bob cannot read alice's chat ({chat!r})", (not ok) and "alice chat secret" not in text, text[:200])
+    ok, text, _ = mcp(api, "knife_chat_read", {"chatId": "alicechat"}, ha, "198.51.100.10")
+    check("alice's agent reads her chat, enveloped", ok and "alice chat secret" in text and "UNTRUSTED_CONTENT" in text, text[:300])
+    status, body, _ = api.call("POST", "/api/agent/goals", {"action": "create", "title": "alice task secret", "objective": "ship it", "steps": ["one"]}, cookie=alice, ip="198.51.100.10")
+    goal_id = body.get("goal", {}).get("id", "") if isinstance(body, dict) else ""
+    check("alice saves a task", status == 201 and bool(goal_id), (status, str(body)[:200]))
+    ok, text, _ = mcp(api, "knife_goal_list", {}, hb, "198.51.100.20")
+    check("bob's knife_goal_list never shows alice's task", ok and "alice task secret" not in text, text[:200])
+    status, body, _ = api.call("GET", "/api/agent/goals", cookie=bob, ip="198.51.100.20")
+    check("bob's GET /api/agent/goals never shows alice's task", status == 200 and "alice task secret" not in json.dumps(body), str(body)[:200])
+    if goal_id:
+        ok, text, _ = mcp(api, "knife_goal_update", {"id": goal_id, "status": "archived"}, hb, "198.51.100.20")
+        check("bob's agent cannot change alice's task by id", (not ok) and "not found" in text.lower(), text[:200])
+        ok, text, _ = mcp(api, "knife_goal_checkpoint", {"id": goal_id, "note": "bob was here"}, hb, "198.51.100.20")
+        check("bob's agent cannot checkpoint alice's task", (not ok) and "not found" in text.lower(), text[:200])
+        for payload in ({"action": "update", "id": goal_id, "status": "archived"}, {"action": "delete", "id": goal_id}):
+            status, body, _ = api.call("POST", "/api/agent/goals", payload, cookie=bob, ip="198.51.100.20")
+            check(f"bob cannot {payload['action']} alice's task over HTTP", status == 422, (status, str(body)[:160]))
+        status, _, _ = raw("POST", "/api/agent/goals", json.dumps({"action": "delete", "id": goal_id}).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice, "X-Forwarded-For": "198.51.100.77"})
+        check("a cross-origin task delete is refused by the Origin guard", status == 403, status)
+        status, body, _ = api.call("GET", "/api/agent/goals", cookie=alice, ip="198.51.100.10")
+        check("alice's task is untouched", status == 200 and "alice task secret" in json.dumps(body) and '"archived"' not in json.dumps(body) and "bob was here" not in json.dumps(body), str(body)[:300])
+    status, _, _ = raw("GET", "/api/agent/goals", None, {"X-Forwarded-For": "198.51.100.78"})
+    check("a guest cannot list tasks", status in (401, 403), status)
+    status, _, _ = raw("GET", "/api/account/seen", None, {"X-Forwarded-For": "198.51.100.78"})
+    check("a guest has no \"What's new\" state", status in (401, 403), status)
+    status, _, _ = raw("PUT", "/api/account/seen", b"{}", {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice, "X-Forwarded-For": "198.51.100.77"})
+    check("a cross-origin \"What's new\" confirmation is refused by the Origin guard", status == 403, status)
+
     # --------------------------------------------------------------------------------------------- workflows
     status, hdrs, text = raw("POST", "/api/hooks/" + "A" * 24 + "/x", b"{}", {"Content-Type": "application/json"})
     check("guest webhook call with an unknown token -> 404, sandboxed answer", status == 404 and hdrs.get("content-security-policy", "").startswith("sandbox"), (status, text[:120]))

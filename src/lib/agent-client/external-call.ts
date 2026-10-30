@@ -5,7 +5,7 @@ import { LIVE_TOOL_DEFS, isLiveTool, liveStatusNote, liveToolAvailable } from ".
 import { tryAcquireRun } from "./run-lock";
 import { activeCraft } from "@/lib/craft/live";
 import { craftGuide } from "@/lib/craft/guides";
-import { runtime } from "./runtime-store";
+import { runningChats, runtime } from "./runtime-store";
 import { runUiTool } from "./ui-tools";
 
 /**
@@ -77,7 +77,8 @@ export async function runExternalCall(call: ExternalCall, approve: ApproveFn, si
   if (!available(call.tool)) {
     return { status: "unavailable", ok: false, content: `${call.tool} is not available on this page now. ${liveNote() || "Open a document in the office editor or a Craft app with an agent API first."}` };
   }
-  if (runtime.get().run !== "idle") return { status: "busy", ok: false, content: "The in-page assistant is running in this tab; try again when it finishes." };
+  // Any running chat may reach for the page at any moment (the foreground one directly, a background one after asking).
+  if (runningChats().length > 0) return { status: "busy", ok: false, content: "The in-page assistant is running in this tab; try again when it finishes." };
   const accountId = runtime.get().accountId;
   const lease = accountId ? await tryAcquireRun(accountId, runtime.get().chatId) : null;
   if (accountId && !lease) return { status: "busy", ok: false, content: "The in-page assistant is running in another tab of this account; try again when it finishes." };

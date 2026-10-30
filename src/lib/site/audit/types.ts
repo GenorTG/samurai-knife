@@ -41,7 +41,18 @@ export interface PageFacts {
   favicon: boolean;
   headings: HeadingItem[];
   images: { count: number; missingAlt: number };
-  links: { internal: number; external: number; emptyText: number; genericText: number; contacts: string[]; profiles: string[] };
+  links: {
+    internal: number;
+    external: number;
+    emptyText: number;
+    genericText: number;
+    contacts: string[];
+    profiles: string[];
+    /** Every absolute http(s) link target of the page (anchors), capped; optional in runs stored before 0.13. */
+    all?: string[];
+    /** http(s) URLs named in JSON-LD (url, sameAs, any string value), capped. */
+    jsonLd?: string[];
+  };
   scripts: { external: number; inlineBytes: number };
   stylesheets: number;
   /** Visible text (header, nav, footer and buttons included: CTAs live there), capped. */
@@ -71,7 +82,10 @@ export interface CopyMetrics {
 }
 
 export interface AlignmentItem {
-  kind: "name" | "headline" | "role" | "project" | "skill" | "link" | "email";
+  /** link = a profile (LinkedIn, GitHub account...); projectLink = any other page the CV links (a github.io demo, an app). */
+  kind: "name" | "headline" | "role" | "project" | "skill" | "link" | "projectLink" | "email";
+  /** The URL behind a link item, so a finding can name it. */
+  url?: string;
   label: string;
   onSite: boolean;
 }
@@ -93,6 +107,19 @@ export interface LighthouseResult {
   metrics: Partial<Record<"fcp" | "lcp" | "tbt" | "cls" | "si", string>>;
   /** Failing audits, heaviest first. */
   failing: { id: string; title: string; display: string; score: number }[];
+  /** PageSpeed runs behind this result (the median one is kept); 1 when absent. */
+  runs?: number;
+  /** Lowest and highest performance score over those runs. */
+  spread?: { min: number; max: number };
+}
+
+/** An audited path that is not a web page (robots.txt, a sitemap, llms.txt, any other file): checked as a file only. */
+export interface ResourceCheck {
+  path: string;
+  url: string;
+  kind: "html" | "robots" | "sitemap" | "llms" | "file";
+  status: number;
+  contentType: string;
 }
 
 export interface SiteFacts {
@@ -120,4 +147,6 @@ export interface AuditRun {
   lighthouse: LighthouseResult[];
   alignment: Alignment | null;
   notes: string[];
+  /** Audited paths answered by something other than HTML: no page/copy/accessibility checks, no effect on those scores. */
+  resources?: ResourceCheck[];
 }

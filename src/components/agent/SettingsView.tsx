@@ -1,10 +1,10 @@
 "use client";
 
 import { msgf } from "@/lib/i18n/msg";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
-import { changeProfile, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider } from "@/lib/agent-client/api";
+import { changeProfile, fetchEarlierChats, importEarlierChat, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider, type EarlierChatInfo } from "@/lib/agent-client/api";
 import { UsagePanel } from "./UsagePanel";
 import type { AccountInfo, ProviderInput, ProviderModelDetails, VisionProbeResult } from "@/lib/agent-client/types";
 import { TURN_LIMIT_BOUNDS } from "@/lib/agent-client/turn-limits";
@@ -62,6 +62,10 @@ type Status = { tone: "good" | "error" | "info"; text: string } | null;
 interface SettingsProps {
   account: AccountInfo;
   firstRun: boolean;
+  /** Chat ids this browser knows (their own files are never offered as earlier chats). */
+  chatIds: string[];
+  /** An earlier chat was imported into this new chat id: show it. */
+  onOpenChat: (chatId: string) => void;
   onSaved: () => Promise<void>;
   onBack: () => void;
   onLogout: () => Promise<void>;
@@ -221,6 +225,8 @@ function ProviderForm({
   onSaved,
   onBack,
   onLogout,
+  chatIds,
+  onOpenChat,
   status,
   setStatus,
 }: SettingsProps & { status: Status; setStatus: (status: Status) => void }) {
@@ -710,6 +716,8 @@ function ProviderForm({
         {tr("Chat history is kept on this server per account and conversation, shared across providers and models. Switching sends that history to the selected provider. The action journal keeps page paths and tool names only. Clear conversation deletes it.")}
       </p>
 
+      {!firstRun ? <EarlierChatsPanel chatIds={chatIds} onOpenChat={onOpenChat} /> : null}
+
       {!firstRun ? <TurnLimitPanel account={account} onSaved={onSaved} /> : null}
 
       {!firstRun ? (
@@ -772,19 +780,19 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
         <p className="text-[11px] leading-snug text-faint">
           {tr("One message to the assistant may take several model rounds (each round can call tools). When either limit is reached, the assistant stops and summarises what is done and what is left. Higher limits allow longer jobs and cost more tokens.")}
         </p>
-        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+        <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted" data-turn-limit-row>
           <span className="min-w-0">
             {tr("Model rounds per message")}
             <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxRounds.min), max: String(bounds.maxRounds.max), value: String(bounds.maxRounds.default) })}</span>
           </span>
-          <TextInput type="number" inputMode="numeric" min={bounds.maxRounds.min} max={bounds.maxRounds.max} step={1} value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label={tr("Model rounds per message")} className="h-8 w-20 shrink-0 text-xs" />
+          <TextInput type="number" inputMode="numeric" min={bounds.maxRounds.min} max={bounds.maxRounds.max} step={1} value={rounds} onChange={(e) => setRounds(e.target.value)} aria-label={tr("Model rounds per message")} className="h-8 text-xs tabular-nums" />
         </label>
-        <label className="flex items-center justify-between gap-3 text-xs text-muted">
+        <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted" data-turn-limit-row>
           <span className="min-w-0">
             {tr("Tool calls per message")}
             <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxToolCalls.min), max: String(bounds.maxToolCalls.max), value: String(bounds.maxToolCalls.default) })}</span>
           </span>
-          <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 w-20 shrink-0 text-xs" />
+          <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 text-xs tabular-nums" />
         </label>
         {!valid ? <p className="text-[11px] text-danger">{tr("Enter whole numbers within the limits shown.")}</p> : null}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -797,6 +805,72 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
             </Button>
           ) : null}
         </div>
+        {note ? (
+          <div role="status">
+            <Notice tone={note.tone}>{note.text}</Notice>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+/**
+ * "Recover earlier chats": transcripts saved by releases before 0.13.0.22 (one per provider and model) that no chat took
+ * over automatically. Opening one copies it into a new chat; the server keeps its untrusted-content mark.
+ */
+function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenChat: (chatId: string) => void }) {
+  const { t: tr, tn, m, date } = useT();
+  const [chats, setChats] = useState<EarlierChatInfo[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<Status>(null);
+  const known = chatIds.join(",");
+  const load = useCallback(async () => {
+    const result = await fetchEarlierChats(known ? known.split(",") : []);
+    setChats(result.ok ? result.value : []);
+    if (!result.ok) setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not load earlier chats.") });
+  }, [known, m, tr]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+  if (!chats || chats.length === 0) return null;
+  const open = async (file: string) => {
+    setBusy(file);
+    setNote(null);
+    const chatId = crypto.randomUUID().replaceAll("-", "");
+    const result = await importEarlierChat(file, chatId);
+    setBusy(null);
+    if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not open that chat.") });
+    onOpenChat(chatId);
+  };
+  return (
+    <details className="rounded-lg border border-line px-3 py-2" data-earlier-chats>
+      <summary className="cursor-pointer text-xs text-muted select-none">
+        {tn("Recover earlier chats ({n} found)", "Recover earlier chats ({n} found)", chats.length)}
+      </summary>
+      <div className="mt-2 space-y-2">
+        <p className="text-[11px] leading-snug text-faint">
+          {tr("Chats saved before history was shared across providers, one per model. Open one to continue it as a new chat; the original stays until it is removed with the oldest chats.")}
+        </p>
+        <ul className="space-y-2">
+          {chats.map((chat) => (
+            <li key={chat.file} data-earlier-chat={chat.file} className="rounded-md border border-line bg-raised/40 px-2.5 py-2 text-xs">
+              <p className="truncate text-ink" title={chat.preview}>{chat.preview || tr("(no message text)")}</p>
+              <p className="mt-0.5 text-[11px] text-faint">
+                {chat.model ? tr("{model} at {host}", { model: chat.model, host: chat.host ?? "?" }) : tr("Unknown model")}
+                {" · "}
+                {tn("{n} message", "{n} messages", chat.messages)}
+                {" · "}
+                {date(chat.modifiedAt, { dateStyle: "medium", timeStyle: "short" })}
+                {chat.untrusted ? <> · {tr("contains text from outside sources")}</> : null}
+              </p>
+              <Button size="sm" variant="ghost" className="mt-1" disabled={busy !== null} onClick={() => void open(chat.file)}>
+                {busy === chat.file ? tr("Opening…") : tr("Open as a new chat")}
+              </Button>
+            </li>
+          ))}
+        </ul>
         {note ? (
           <div role="status">
             <Notice tone={note.tone}>{note.text}</Notice>

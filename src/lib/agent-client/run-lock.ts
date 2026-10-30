@@ -1,5 +1,5 @@
 /**
- * One assistant turn per account across all browser tabs.
+ * One assistant turn per CHAT across all browser tabs (different chats of an account may run at once, up to a cap).
  *
  * Preferred backend: the Web Locks API (`navigator.locks`), which the browser releases for us even when a
  * tab crashes. It only exists in secure contexts, and this app is normally served over plain HTTP on the
@@ -127,6 +127,34 @@ export function tryAcquireRun(accountId: string, chatId = "default"): Promise<Ru
 /** Is another tab running a turn for this account? (Ask only while this tab holds no lock of its own.) */
 export async function runHeldElsewhere(accountId: string, chatId = "default"): Promise<boolean> {
   return lockBackend() === "web-locks" ? webLockHeld(accountId, chatId) : liveElsewhere(readLease(accountId, chatId));
+}
+
+/** Chats of this account running in any tab of this browser (Web Locks held, or live leases). */
+export async function runningChatCount(accountId: string): Promise<number> {
+  const prefix = lockName(accountId, "default");
+  const mine = (name: string) => name === prefix || name.startsWith(`${prefix}-`);
+  if (lockBackend() === "web-locks") {
+    try {
+      const snapshot = await navigator.locks.query();
+      return new Set((snapshot.held ?? []).map((l) => l.name ?? "").filter(mine)).size;
+    } catch {
+      return 0;
+    }
+  }
+  try {
+    const base = leaseKey(accountId, "default");
+    let n = 0;
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) ?? "";
+      if (key !== base && !key.startsWith(`${base}-`)) continue;
+      const raw = window.localStorage.getItem(key);
+      const lease = raw ? (JSON.parse(raw) as Partial<Lease>) : null;
+      if (lease && typeof lease.at === "number" && Date.now() - lease.at < LEASE_TTL_MS) n += 1;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
 }
 
 /* ------------------------------------------------------------ announcements */

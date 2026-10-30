@@ -9,6 +9,7 @@ import { SITE_KNIFE_TOOLS } from "./tools-site";
 import { VISION_KNIFE_TOOLS } from "./tools-vision";
 import { NOSQL_KNIFE_TOOLS } from "./tools-nosql";
 import { SQL_KNIFE_TOOLS } from "./tools-sql";
+import { GOAL_KNIFE_TOOLS } from "./tools-goals";
 import { computeDiff, MAX_DIFF_LINES } from "@/lib/diff";
 import type { AnchorMode } from "@/lib/regexgen";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
@@ -292,7 +293,7 @@ const BASE_KNIFE_TOOLS: KnifeToolDefinition[] = [
   }),
 ];
 
-export const KNIFE_TOOLS: KnifeToolDefinition[] = [...BASE_KNIFE_TOOLS, ...SQL_KNIFE_TOOLS, ...NOSQL_KNIFE_TOOLS, ...CV_KNIFE_TOOLS, ...DOC_KNIFE_TOOLS, ...LEARN_KNIFE_TOOLS, ...SITE_KNIFE_TOOLS, ...VISION_KNIFE_TOOLS, ...WORKFLOW_KNIFE_TOOLS];
+export const KNIFE_TOOLS: KnifeToolDefinition[] = [...BASE_KNIFE_TOOLS, ...SQL_KNIFE_TOOLS, ...NOSQL_KNIFE_TOOLS, ...CV_KNIFE_TOOLS, ...DOC_KNIFE_TOOLS, ...LEARN_KNIFE_TOOLS, ...SITE_KNIFE_TOOLS, ...VISION_KNIFE_TOOLS, ...WORKFLOW_KNIFE_TOOLS, ...GOAL_KNIFE_TOOLS];
 
 /** The tools this caller may see and call (`scope`, define.ts). Every listing and every dispatch goes through it. */
 export function toolsFor(ctx: KnifeToolContext | undefined): KnifeToolDefinition[] {

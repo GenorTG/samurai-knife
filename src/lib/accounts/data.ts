@@ -12,6 +12,7 @@ import { removeAccountTriggers } from "@/lib/workflows/server/trigger-index";
  *   conversations/<id>/                                                                 assistant transcripts
  *   docs/<id>/                                                                          office library
  *   learn/<id>.json                                                                     course progress
+ *   goals/<id>.json                                                                     assistant goals, task steps and checkpoints
  *   usage/<id>.json                                                                     token ledger
  *   workspace/<id>.json.enc                                                             tool drafts
  *   site/<id>.json                                                                      website studio

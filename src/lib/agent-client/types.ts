@@ -40,7 +40,18 @@ export interface NoticeMessage {
   usage?: RunUsage;
 }
 
-export type TranscriptMessage = WireMessage | NoticeMessage;
+/**
+ * Stored summary of messages that fell off the capped transcript (context.ts): always first, shown as "Older messages
+ * summarised", sent to the model inside the system prompt. `summarised` = how many earlier turns it stands for.
+ */
+export interface SummaryNotice {
+  role: "notice";
+  level: "summary";
+  content: string;
+  summarised?: number;
+}
+
+export type TranscriptMessage = WireMessage | NoticeMessage | SummaryNotice;
 
 export interface FunctionToolDef {
   type: "function";

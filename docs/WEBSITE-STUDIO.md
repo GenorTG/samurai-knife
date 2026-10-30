@@ -43,6 +43,19 @@ One run per account at a time; progress is readable while it runs (`GET /api/sit
   canonical, robots meta, H1 count and heading order, images without alt, links without a name or with "read more"
   text, Open Graph, Twitter card, JSON-LD types, hreflang, favicon, visible words (header, nav, footer and buttons
   included: calls to action live there), calls to action, mailto/tel contacts, profile links (LinkedIn, GitHub...).
+- **Files, not pages** (`resource.ts`): an audited path whose answer is not HTML (`text/html`, `application/xhtml+xml`;
+  well-known names first: `robots.txt`, `sitemap*.xml`, `llms.txt` / `llms-full.txt`, so a host's HTML 404 page for a
+  missing file is still that file; without a Content-Type the extension decides) gets no page, copy or accessibility
+  checks and no effect on those scores. robots.txt: served as text with rules; a sitemap: XML with `<urlset>` /
+  `<sitemapindex>`, closed, `<url><loc>` entries, absolute URLs; llms.txt: plain text starting with an H1, and its
+  absence (404) is an optional-file note (low). These `resource.*` findings never move the SEO score (the site-wide
+  robots/sitemap checks score those once). The run lists them in `resources` and in a note; MCP digests carry
+  `skippedAsNotHtml`. `seo.sitemap.short` compares the sitemap with the audited HTML pages only.
+- **JavaScript-only pages**: fewer than 10 words in the served HTML with scripts present (a 3D scene, a client-only
+  app) give one high finding `content.js-only` ("content renders only with JavaScript", naming what is missing) instead
+  of separate no-H1 / thin-content findings; copy checks need 30+ words anyway.
+- **Cold starts**: a page answering after more than 1.5 s is fetched once more; if the second answer is fast the run
+  keeps the warm time and reports `perf.ttfb.cold` (low; a preview deployment waking up is labelled as such).
 - **Site** (`site.ts`): robots.txt (blocks everything?), sitemap (URL count; relative Sitemap lines resolved), http ->
   https redirect, a real 404 for an unknown path, security headers (HSTS, CSP, nosniff, Referrer-Policy,
   Permissions-Policy, frame protection).
@@ -50,11 +63,19 @@ One run per account at a time; progress is readable while it runs (`GET /api/sit
   for English), long sentences, the first screen (H1 of 3-12 words with a line under it), calls to action and a direct
   contact, proof (numbers with units, results, project links), reader focus ("you" words vs "I/we"), buzzwords,
   substance (enough text), stale years and copyright. Word matching uses Unicode boundaries (`\b` misses ę/ń/ó).
-- **CV fit** (`align.ts`): the CV studio profile against all audited text: name, headline, current roles (no end
-  date), projects (name or URL), skills, LinkedIn/GitHub links, email; accent- and case-insensitive; plus tech words
-  the site names that the CV does not list.
+- **CV fit** (`align.ts`, `links.ts`): the CV studio profile against all audited text and links: name, headline, current
+  roles (no end date), projects (name or URL), skills, contact links, email; accent- and case-insensitive; plus tech
+  words the site names that the CV does not list. Links are compared after normalising (scheme, `www.`, host case,
+  trailing slash, fragment and tracking parameters ignored; a deeper page of a profile counts) against every anchor
+  target AND every http(s) URL in JSON-LD (`url`, `sameAs`, any string value) of every audited page, or the URL
+  written out in the text. Contact links split in two: profiles (LinkedIn, `github.com/<user>`, GitLab, X...) =
+  `align.links` (medium), and project pages (a `*.github.io` demo, a repository, a live app) = `align.project-links`
+  (low); a link to the audited site itself is not checked. Both findings name the missing links with their URLs.
 - **Lighthouse** (`lighthouse.ts`): PageSpeed Insights runs Lighthouse on Google's machines (mobile + desktop of the
-  home page): the four category scores, Core Web Vitals lab metrics, the failing audits by weight. Google's anonymous
+  home page): the four category scores, Core Web Vitals lab metrics, the failing audits by weight. Mobile performance
+  is noisy (49 to 95 between near-identical commits was observed): with a PageSpeed key the mobile run is repeated 3
+  times in parallel and the median kept (`runs`, `spread` min-max on the result; `KNIFE_PSI_MOBILE_RUNS` 1-5
+  overrides); the anonymous quota gets one run, and the finding says so. A single run below 50 is medium, not high. Google's anonymous
   quota is shared and often used up: set `KNIFE_PSI_API_KEY` (server) or the account's own key in Connect (a free key
   of the "PageSpeed Insights API" in Google Cloud). A failure is a note; the rest of the audit still runs.
 - **Scores** (`run.ts`, 0-100): technical SEO (100 minus a penalty per distinct problem kind: high 15, medium 7, low
@@ -77,6 +98,20 @@ administrator approves the site for the account (`npm run accounts -- approve-si
 `POST /api/admin/users/<id> {action:"site-url", url}`). Verification is re-checked on every Connect; the view reports
 `connection.productionVerified`. The production URL is user-typed: without this proof the audit would scan any site. GitHub App operations
 must still pass the linked user's current repository-with-push authorization check.
+
+## Known noise and how the assistant works through a site
+
+Told to the assistant (system prompt "Website" line) and to outside agents (`knife_site_audit` description):
+- Findings that are noise or need a second look: `resource.*` (files, not pages), `resource.llms.missing` (optional),
+  single-run Lighthouse performance (compare medians), `perf.ttfb.cold` and a slow first byte on a preview (cold start),
+  `content.js-only` on a deliberately client-rendered page (a fix is server-rendered fallback text, not a rewrite),
+  `align.*` items when the CV itself is out of date.
+- Audit the HTML pages (leave robots.txt / sitemap.xml / llms.txt out of `pages` unless they are the point), and compare
+  a new audit with the previous one by its id (`knife_site_audit_get {id}` or `section:"history"`) instead of
+  re-explaining every finding.
+- Multi-step site work is a durable goal (`knife_goal_create`): the numbered proposal goes in the goal's steps, so a
+  short "yes" continues it; checkpoint (`knife_goal_checkpoint`) after every push, preview and audit, with the audit id,
+  so the work survives a lost context.
 
 ## Storage
 
@@ -201,6 +236,8 @@ screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, too
 provider), `tests/vision_engine.test.mjs` (a real Chromium behind the proxy against a local fake site; needs a Python with
 `playwright` in `KNIFE_VISION_PYTHON`; `KNIFE_VISION_BWRAP=1` runs it inside bubblewrap).
 `tests/site_vercel.test.mjs` (unit: the whole Vercel flow against a fake Vercel API and the mock GitHub).
+`tests/site_audit_quality.test.mjs` (unit: files vs pages, link normalisation and JSON-LD links, JavaScript-only
+pages, PageSpeed median; the real false positives of an audited personal site as regressions),
 `tests/site_studio.test.mjs` (unit: analyzers, PageSpeed parsing, path rules, the whole GitHub flow and an audit
 against `tests/mock_site_world.mjs`), `tests/functional/site_studio_e2e.py` (Chromium + Firefox, the mock world as
 separate servers, an agent over MCP, publish).

@@ -28,15 +28,17 @@ import {
   stepFinished,
   stepStarted,
 } from "./feedback";
-import { runtime } from "./runtime-store";
+import { runtimeFor } from "./runtime-store";
 import { UI_TOOL_DEFS, isUiTool, runUiTool, type UiToolContext } from "./ui-tools";
 import { liveToolAvailable } from "./office-live-tools";
 import { craftToolAvailable } from "./craft-live-tools";
 import { assessCall } from "./approval-policy";
 import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
-import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
+import { getTrustMode, isRunAllowed, requestApproval, requestForeground, resetRunTrust } from "./interaction";
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
+import { buildContext, summarySection } from "./context";
+import { msg } from "@/lib/i18n/msg";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -47,17 +49,11 @@ import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-
 /** Defaults of the per-turn budget; the account's own setting (turn-limits.ts, LoopOptions.limits) wins. */
 export const MAX_ROUNDS = DEFAULT_TURN_LIMITS.maxRounds;
 export const MAX_TOOL_CALLS = DEFAULT_TURN_LIMITS.maxToolCalls;
-export const MAX_STORED_MESSAGES = 200;
+export { MAX_STORED_MESSAGES } from "./context";
 
 const TOOL_RESULT_LIMIT = 12000;
 /** Per-round completion cap (reasoning included). Normal rounds are <500 tokens; a runaway round (copying base64, looping reasoning) otherwise burns minutes. */
 const ROUND_MAX_TOKENS = 8000;
-const CONTEXT_MESSAGES = 80;
-const CONTEXT_CHARS = 120_000;
-const OMITTED_SNAPSHOT = JSON.stringify({
-  ok: true,
-  omitted: "Older page snapshot dropped to save context. Call page_snapshot for the current page.",
-});
 
 export type LoopOutcome = "done" | "aborted" | "error" | "limit" | "login_required" | "provider_missing";
 
@@ -78,95 +74,17 @@ export interface LoopOptions {
   takeSteering?: () => string[];
   /** The account's per-turn budget (Settings: "Turn limit"); omitted = the defaults. */
   limits?: TurnLimits;
+  /**
+   * Is this chat the one shown in the widget? Only that chat may use the page tools (open_tool, page_snapshot, fill_field,
+   * click, upload_file, doc_live_*, craft_*...); a chat running in the background asks the user first. Omitted = always.
+   */
+  isForeground?: () => boolean;
 }
 
 /* ---------------------------------------------------------- history hygiene */
 
-const interruptedResult = (id: string): ToolMessage => ({
-  role: "tool",
-  tool_call_id: id,
-  content: JSON.stringify({ ok: false, error: "No result recorded (the run was interrupted)." }),
-});
-
-/** Make tool_calls / tool results pair up exactly, as providers require. */
-export function repairTranscript(messages: TranscriptMessage[]): TranscriptMessage[] {
-  const out: TranscriptMessage[] = [];
-  for (let i = 0; i < messages.length; i += 1) {
-    const m = messages[i];
-    if (m.role === "tool") continue; // orphan: real ones are consumed below
-    out.push(m);
-    if (m.role !== "assistant" || !m.tool_calls?.length) continue;
-    const results = new Map<string, ToolMessage>();
-    let j = i + 1;
-    while (j < messages.length) {
-      const next = messages[j];
-      if (next.role !== "tool") break;
-      results.set(next.tool_call_id, next);
-      j += 1;
-    }
-    for (const call of m.tool_calls) out.push(results.get(call.id) ?? interruptedResult(call.id));
-    i = j - 1;
-  }
-  return out;
-}
-
-/** Cap stored history; start on a user message so no tool result is orphaned. */
-export function capTranscript(messages: TranscriptMessage[], max = MAX_STORED_MESSAGES): TranscriptMessage[] {
-  if (messages.length <= max) return messages;
-  const sliced = messages.slice(-max);
-  const firstUser = sliced.findIndex((m) => m.role === "user");
-  return firstUser === -1 ? [] : sliced.slice(firstUser);
-}
-
-function callNames(messages: WireMessage[]): Map<string, string> {
-  const names = new Map<string, string>();
-  for (const m of messages) {
-    if (m.role === "assistant") for (const c of m.tool_calls ?? []) names.set(c.id, c.function.name);
-  }
-  return names;
-}
-
-function charSize(m: WireMessage): number {
-  const base = m.content?.length ?? 0;
-  return m.role === "assistant" ? base + JSON.stringify(m.tool_calls ?? []).length : base;
-}
-
-/** Wire messages for the model: no notices, paired tool calls, stale snapshots dropped, bounded size. */
-export function toWire(transcript: TranscriptMessage[]): WireMessage[] {
-  const wire = repairTranscript(transcript).filter((m): m is WireMessage => m.role !== "notice");
-  const names = callNames(wire);
-  const carriesSnapshot = (m: WireMessage): boolean =>
-    m.role === "tool" &&
-    (names.get(m.tool_call_id) === "page_snapshot" || (names.get(m.tool_call_id) === "open_tool" && m.content.includes('"snapshot":')));
-  let lastSnapshot = -1;
-  wire.forEach((m, i) => {
-    if (carriesSnapshot(m)) lastSnapshot = i;
-  });
-  const slim = wire.map((m, i): WireMessage => {
-    if (m.role !== "tool" || !carriesSnapshot(m) || i === lastSnapshot) return m;
-    if (names.get(m.tool_call_id) === "page_snapshot") return { ...m, content: OMITTED_SNAPSHOT };
-    try {
-      const body = JSON.parse(m.content) as Record<string, unknown>;
-      body.snapshot = "omitted (older page snapshot)";
-      return { ...m, content: JSON.stringify(body) };
-    } catch {
-      return m;
-    }
-  });
-
-  let start = slim.length;
-  let chars = 0;
-  while (start > 0 && slim.length - start < CONTEXT_MESSAGES && chars + charSize(slim[start - 1]) <= CONTEXT_CHARS) {
-    start -= 1;
-    chars += charSize(slim[start]);
-  }
-  while (start < slim.length && slim[start].role !== "user") start += 1;
-  if (start >= slim.length) {
-    const lastUser = slim.map((m) => m.role).lastIndexOf("user");
-    start = Math.max(0, lastUser);
-  }
-  return slim.slice(start);
-}
+// Pairing repair, the stored-transcript cap and what the model sees of a long chat live in context.ts.
+export { capTranscript, repairTranscript, toWire } from "./context";
 
 /* --------------------------------------------------------------- tool calls */
 
@@ -227,6 +145,16 @@ function journalAction(name: string, label: string): string {
   return name.replace(/_/g, " ");
 }
 
+/** UI tools that read or drive the live page (everything but the catalogue and a plain pause). */
+export function needsPage(name: string): boolean {
+  return isUiTool(name) && name !== "list_tools" && name !== "wait";
+}
+
+const SKIPPED_PAGE = JSON.stringify({
+  ok: false,
+  error: "Skipped by the user: this step needs the page, and this chat was running in the background while the user worked in another chat. Continue with what does not need the page, or ask the user to open this chat and try again.",
+});
+
 const DENIED = JSON.stringify({
   ok: false,
   error: "The user declined this action. Do not retry it; tell them what you wanted to do and ask how they would like to proceed.",
@@ -265,6 +193,12 @@ async function executeCall(
   if (!parsed.ok) return { ok: false, content: JSON.stringify({ ok: false, error: parsed.error }) };
   const name = call.function.name;
   if (isUiTool(name)) {
+    // Only the chat the user is looking at may drive the page: a chat in the background waits for the user to open it.
+    while (needsPage(name) && options.isForeground && !options.isForeground()) {
+      const answer = await requestForeground({ tool: name, label: describeCall(name, call.function.arguments) }, options.signal, options.chatId ?? "default");
+      if (answer === "aborted") return { ok: false, content: JSON.stringify({ ok: false, error: "Cancelled by the user." }) };
+      if (answer === "skip") return { ok: false, content: SKIPPED_PAGE };
+    }
     const blocked = await gateCall(call, parsed.args, options.signal, options.chatId ?? "default");
     if (blocked) return blocked;
     return runUiTool(name, parsed.args, { navigate: options.navigate, signal: options.signal, chatId: options.chatId });
@@ -281,8 +215,10 @@ async function executeCall(
 
 export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const { signal, onMessage } = options;
+  const chatId = options.chatId ?? "default";
+  const rt = runtimeFor(chatId);
   const { maxRounds, maxToolCalls } = resolveTurnLimits(options.limits);
-  const onActivity = runtime.setActivity;
+  const onActivity = rt.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
   /** This turn = the user's message that started the run and everything after it (steering included). */
@@ -300,6 +236,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     for (const content of texts) append({ role: "user", content });
     return texts.length > 0;
   };
+  /** The "older messages shortened" notice is shown once per turn. */
+  let shortenedNoted = false;
   /** One model call with the whole (slimmed) history. `extra` (the wrap-up note) is sent but not kept in the transcript. */
   const callModel = async (
     base: Omit<ChatRequest, "messages">,
@@ -307,7 +245,12 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     handlers: StreamHandlers | null,
     extra: WireMessage[] = [],
   ): Promise<ApiResult<ChatReply>> => {
-    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system }, ...toWire(working), ...extra] };
+    const context = buildContext(working);
+    if (context.shortened && !shortenedNoted) {
+      shortenedNoted = true;
+      notice("info", msg("Older messages were shortened to fit the model's context; the latest answers are kept in full."));
+    }
+    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system + summarySection(context.summary) }, ...context.messages, ...extra] };
     const result = await (handlers ? chatStream(request, handlers, signal) : chat(request, signal));
     if (result.ok && result.value.untrusted) stickyUntrusted = true;
     return result;
@@ -327,8 +270,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     append({ role: "notice", level: "usage", content: describeRunUsage(run), usage: run });
   };
 
-  runStarted();
-  resetRunTrust(options.chatId ?? "default");
+  runStarted(chatId);
+  resetRunTrust(chatId);
   try {
     onActivity("Preparing…");
     const [{ defs: serverDefs, effects }, serverVersion] = await Promise.all([fetchServerToolCatalog(), fetchServerVersion(signal)]);
@@ -349,17 +292,17 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       if (signal.aborted) return "aborted";
       deliverSteering();
       onActivity("Thinking…");
-      roundStarted();
+      roundStarted(chatId);
       const result = await callModel(
         { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
         buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
         {
-          onText: appendDraft,
-          onReasoning: addReasoning,
-          onToolStart: ({ id, name }) => stepStarted(id || `idx_${name}`, name, describeCall(name, "{}")),
+          onText: (delta) => appendDraft(delta, chatId),
+          onReasoning: (delta) => addReasoning(delta, chatId),
+          onToolStart: ({ id, name }) => stepStarted(id || `idx_${name}`, name, describeCall(name, "{}"), chatId),
         },
       );
-      clearSteps();
+      clearSteps(chatId);
       if (signal.aborted) return "aborted";
       if (!result.ok) {
         const f = result.failure;
@@ -404,13 +347,13 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         toolCalls += 1;
         const label = describeCall(call.function.name, call.function.arguments);
         onActivity(label);
-        setPhase("tool");
-        stepStarted(call.id, call.function.name, label);
+        setPhase("tool", chatId);
+        stepStarted(call.id, call.function.name, label, chatId);
         const loading = call.function.name === LOAD_TOOLS_NAME ? parseArgs(call.function.arguments) : null;
         const run = loading
           ? loading.ok ? runLoadTools(loading.args, activeGroups, allTools) : { ok: false, content: JSON.stringify({ ok: false, error: loading.error }) }
           : await executeCall(call, toolNames, serverToolNames, options, serverGate);
-        stepFinished(call.id, run.ok);
+        stepFinished(call.id, run.ok, chatId);
         const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipResult(run.content) };
         append(toolResult);
         if (run.ok && call.function.name !== LOAD_TOOLS_NAME) {
@@ -424,7 +367,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Round or tool budget exhausted: one last call without tools so the user gets a summary.
     notice("info", `Reached the per-turn limit (${maxRounds} model rounds / ${maxToolCalls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.`);
     onActivity("Summarising…");
-    runtime.advance("summarising");
+    rt.advance("summarising");
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
     const wrapUp = await callModel(
       { temperature: 0.2 },
@@ -446,8 +389,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     return "error";
   } finally {
     usageFooter();
-    clearSteps();
-    runEnded();
+    clearSteps(chatId);
+    runEnded(chatId);
     onActivity(null);
   }
 }

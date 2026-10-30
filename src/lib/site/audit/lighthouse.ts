@@ -1,3 +1,4 @@
+import { msg, msgf } from "@/lib/i18n/msg";
 import { apiJson, type NetDeps } from "../net";
 import type { Issue, LighthouseResult } from "./types";
 
@@ -62,21 +63,51 @@ export async function runLighthouse(url: string, strategy: LighthouseResult["str
   }
 }
 
+/**
+ * How many mobile runs an audit asks PageSpeed for: 3 with a PageSpeed key (its own quota), 1 on the anonymous quota.
+ * `KNIFE_PSI_MOBILE_RUNS` (1-5) overrides both.
+ */
+export function mobileRuns(hasKey: boolean): number {
+  const forced = Number(process.env.KNIFE_PSI_MOBILE_RUNS);
+  if (Number.isInteger(forced) && forced >= 1) return Math.min(5, forced);
+  return hasKey ? 3 : 1;
+}
+
+/** The run with the median performance score, carrying how many runs there were and their spread. */
+export function medianResult(results: LighthouseResult[]): LighthouseResult {
+  const ok = results.filter((r) => r.ok && r.scores.performance !== undefined);
+  if (!ok.length) return results.find((r) => r.ok) ?? results[0];
+  const sorted = [...ok].sort((a, b) => (a.scores.performance ?? 0) - (b.scores.performance ?? 0));
+  const median = sorted[Math.floor((sorted.length - 1) / 2)];
+  const scores = sorted.map((r) => r.scores.performance ?? 0);
+  return { ...median, runs: ok.length, spread: { min: scores[0], max: scores[scores.length - 1] } };
+}
+
 export function lighthouseIssues(results: LighthouseResult[], page: string): Issue[] {
   const out: Issue[] = [];
   const mobile = results.find((r) => r.ok && r.strategy === "mobile") ?? results.find((r) => r.ok);
   if (!mobile) return out;
   const label: Record<string, string> = { performance: "Performance", accessibility: "Accessibility", "best-practices": "Best practices", seo: "SEO" };
+  const runs = mobile.runs ?? 1;
+  // PageSpeed's mobile performance is noisy (simulated throttling on shared machines): say so with every score.
+  const noise = runs > 1 && mobile.spread
+    ? msgf("Median of {runs} PageSpeed runs (lowest {min}, highest {max}); compare medians between audits, not single runs.", { runs, min: mobile.spread.min, max: mobile.spread.max })
+    : msg("One PageSpeed run: mobile performance often moves 15-30 points between identical runs, so compare it over several audits before acting on a change.");
   for (const [cat, score] of Object.entries(mobile.scores)) {
     if (score === undefined || score >= 90) continue;
+    const perf = cat === "performance";
+    const metrics = Object.entries(mobile.metrics).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(", ");
     out.push({
       id: `lighthouse.${cat}`,
-      severity: score < 50 ? "high" : "medium",
+      // A single noisy run is never a high finding on its own.
+      severity: score < 50 && (!perf || runs > 1) ? "high" : "medium",
       category: "lighthouse",
-      title: `Lighthouse ${label[cat] ?? cat} ${score}/100 (${mobile.strategy})`,
-      detail: cat === "performance" ? Object.entries(mobile.metrics).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(", ") : "",
+      title: perf && runs > 1
+        ? msgf("Lighthouse {label} {score}/100 ({strategy}, median of {runs} runs)", { label: label[cat] ?? cat, score, strategy: mobile.strategy, runs })
+        : msgf("Lighthouse {label} {score}/100 ({strategy})", { label: label[cat] ?? cat, score, strategy: mobile.strategy }),
+      detail: perf ? [metrics, noise].filter(Boolean).join(" ") : "",
       page,
-      fix: "Start with the failing audits listed under Lighthouse, heaviest first.",
+      fix: msg("Start with the failing audits listed under Lighthouse, heaviest first."),
     });
   }
   return out;

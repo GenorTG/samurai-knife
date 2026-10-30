@@ -36,7 +36,7 @@ function recountMs(): number {
 }
 const CACHE_KEY = Symbol.for("samurai-knife.storage-usage.v1");
 
-export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "usage" | "workspace" | "site" | "craft" | "workflows" | "jobs";
+export type StorageArea = "docs" | "cv" | "conversations" | "learn" | "goals" | "usage" | "workspace" | "site" | "craft" | "workflows" | "jobs";
 
 export interface StorageUsage {
   usedBytes: number;
@@ -127,6 +127,7 @@ function walk(accountId: string): Cached {
       cv: cvPaths(accountId).reduce((sum, p) => sum + pathBytes(p), 0),
       conversations: pathBytes(scope.conversations),
       learn: pathBytes(scope.learnFile),
+      goals: pathBytes(scope.goalsFile),
       usage: pathBytes(scope.usageFile),
       workspace: pathBytes(scope.workspaceFile),
       site: pathBytes(scope.siteFile),
@@ -153,6 +154,7 @@ function areaOf(accountId: string, path: string): Exclude<StorageArea, "jobs"> {
   if (path === scope.docs || path.startsWith(scope.docs + sep)) return "docs";
   if (path === scope.conversations || path.startsWith(scope.conversations + sep)) return "conversations";
   if (path === scope.learnFile) return "learn";
+  if (path === scope.goalsFile) return "goals";
   if (path === scope.usageFile) return "usage";
   if (path === scope.workspaceFile) return "workspace";
   if (path === scope.siteFile) return "site";

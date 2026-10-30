@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { controlElement } from "./dom-bridge";
-import { runtime, type PendingApproval, type PendingWait } from "./runtime-store";
+import { runtime, runtimeFor, type PendingApproval, type PendingWait } from "./runtime-store";
 import { msg } from "@/lib/i18n/msg";
 
 export type { PendingApproval, PendingWait };
@@ -40,10 +40,17 @@ export interface WaitResult {
   message?: string;
 }
 
+/** A chat running in the background reached a step that needs the live page: it waits for the user to open it. */
+export interface PendingPage {
+  tool: string;
+  label: string;
+}
+
 export interface InteractionState {
   mode: TrustMode;
   approval: PendingApproval | null;
   wait: PendingWait | null;
+  page: PendingPage | null;
 }
 
 const modeKey = (chatId: string) => chatId === "default" ? "sk.agent.mode.v1" : `sk.agent.mode.v1.${chatId}`;
@@ -55,13 +62,14 @@ export const AWAIT_ATTR = "data-agent-await";
 /** Risky: the assistant drives the app freely but must confirm anything that discards work. A stored choice wins. */
 export const DEFAULT_TRUST_MODE: TrustMode = "destructive";
 
-const SERVER: InteractionState = { mode: DEFAULT_TRUST_MODE, approval: null, wait: null };
+const SERVER: InteractionState = { mode: DEFAULT_TRUST_MODE, approval: null, wait: null, page: null };
 const modes = new Map<string, TrustMode>();
 const hydratedModes = new Set<string>();
 const modeListeners = new Set<() => void>();
 const snapshots = new Map<string, InteractionState>();
 const pendingApprovals = new Map<string, PendingApproval>();
 const pendingWaits = new Map<string, PendingWait>();
+const pendingPages = new Map<string, PendingPage>();
 
 function ensureMode(chatId: string): void {
   if (hydratedModes.has(chatId) || typeof window === "undefined") return;
@@ -90,10 +98,11 @@ export function getInteraction(chatId = "default"): InteractionState {
   ensureMode(chatId);
   const approval = pendingApprovals.get(chatId) ?? null;
   const wait = pendingWaits.get(chatId) ?? null;
+  const page = pendingPages.get(chatId) ?? null;
   const mode = modes.get(chatId) ?? DEFAULT_TRUST_MODE;
   const previous = snapshots.get(chatId);
-  if (previous && previous.mode === mode && previous.approval === approval && previous.wait === wait) return previous;
-  const next = { mode, approval, wait };
+  if (previous && previous.mode === mode && previous.approval === approval && previous.wait === wait && previous.page === page) return previous;
+  const next = { mode, approval, wait, page };
   snapshots.set(chatId, next);
   return next;
 }
@@ -136,7 +145,7 @@ export function requestApproval(req: PendingApproval, signal?: AbortSignal, chat
     if (signal?.aborted) return resolve("deny");
     // Fail closed: if the run cannot park here (not a running tool step), the action is not allowed.
     pendingApprovals.set(chatId, req);
-    if (!runtime.enterAwaiting("awaiting_approval", req)) {
+    if (!runtimeFor(chatId).enterAwaiting("awaiting_approval", req)) {
       pendingApprovals.delete(chatId);
       return resolve("deny");
     }
@@ -144,7 +153,7 @@ export function requestApproval(req: PendingApproval, signal?: AbortSignal, chat
       approvalResolves.delete(chatId);
       pendingApprovals.delete(chatId);
       signal?.removeEventListener("abort", onAbort);
-      runtime.leaveAwaiting("awaiting_approval");
+      runtimeFor(chatId).leaveAwaiting("awaiting_approval");
       resolve(d);
     };
     const onAbort = () => finish("deny");
@@ -181,7 +190,7 @@ export function requestWait(
       signal?.removeEventListener("abort", onAbort);
       waitResolves.delete(chatId);
       pendingWaits.delete(chatId);
-      runtime.leaveAwaiting("awaiting_user");
+      runtimeFor(chatId).leaveAwaiting("awaiting_user");
       resolve(r);
     };
     const onAbort = () => finish({ resumedBy: "aborted" });
@@ -216,7 +225,7 @@ export function requestWait(
       targetLabel: el ? (el.getAttribute("aria-label") ?? el.getAttribute("name")) : null,
     };
     pendingWaits.set(chatId, pending);
-    if (!runtime.enterAwaiting("awaiting_user", pending)) finish({ resumedBy: "aborted" });
+    if (!runtimeFor(chatId).enterAwaiting("awaiting_user", pending)) finish({ resumedBy: "aborted" });
   });
 }
 
@@ -227,4 +236,42 @@ export function answerWait(r: "continue" | "message", message?: string, chatId =
 
 export function isWaiting(chatId = "default"): boolean {
   return waitResolves.has(chatId);
+}
+
+/* ------------------------------------------------- a background chat needs the page */
+
+export type ForegroundDecision = "open" | "skip" | "aborted";
+const pageResolves = new Map<string, (d: ForegroundDecision) => void>();
+
+/**
+ * A chat running in the background wants a page tool: it parks (awaiting_user) with a card in its own chat ("This step
+ * needs … Open it now?"); the widget shows a badge on that chat. "open" once the user opened the chat and accepted,
+ * "skip" when they declined, "aborted" on Stop.
+ */
+export function requestForeground(req: PendingPage, signal?: AbortSignal, chatId = "default"): Promise<ForegroundDecision> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve("aborted");
+    const rt = runtimeFor(chatId);
+    const finish = (d: ForegroundDecision) => {
+      pageResolves.delete(chatId);
+      pendingPages.delete(chatId);
+      signal?.removeEventListener("abort", onAbort);
+      rt.leaveAwaiting("awaiting_user");
+      resolve(d);
+    };
+    const onAbort = () => finish("aborted");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    pendingPages.set(chatId, req);
+    pageResolves.set(chatId, finish);
+    if (!rt.enterAwaiting("awaiting_user", { message: req.label, targetId: null, targetLabel: null })) finish("aborted");
+  });
+}
+
+export function answerForeground(decision: "open" | "skip", chatId = "default"): void {
+  pageResolves.get(chatId)?.(decision);
+}
+
+/** Chats (of `chatIds`) that wait for the user: an approval, a wait_for_user or a page step. */
+export function chatsNeedingUser(chatIds: readonly string[]): string[] {
+  return chatIds.filter((id) => pendingApprovals.has(id) || pendingWaits.has(id) || pendingPages.has(id));
 }

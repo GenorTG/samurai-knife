@@ -16,6 +16,7 @@ import { Sidebar } from "./Sidebar";
 import { emitShell, SHELL_EVENTS, setSidebarCollapsed, useSidebarCollapsed } from "./shell-store";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { UpdateBanner } from "./UpdateBanner";
+import { WhatsNewModal } from "./WhatsNewModal";
 import { useT } from "@/lib/i18n/react";
 
 function isTyping(target: EventTarget | null) {
@@ -216,6 +217,7 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
 
       <CommandPalette />
       <UpdateBanner version={version} />
+      <WhatsNewModal />
       <ShortcutsHelp />
     </div>
   );

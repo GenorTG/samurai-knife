@@ -2,7 +2,7 @@ import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { forwardChat, forwardChatStream } from "@/lib/accounts/provider";
 import { getAccount } from "@/lib/accounts/store";
-import { chatConversationId, noteUntrusted } from "@/lib/agent-client/conversation-store";
+import { chatConversationId, noteRoundModel, noteUntrusted } from "@/lib/agent-client/conversation-store";
 import { recordRound } from "@/lib/accounts/usage-ledger";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 import { toolContextFor } from "@/lib/accounts/authz";
@@ -114,6 +114,7 @@ export async function POST(request: Request): Promise<Response> {
   let untrusted = seen;
   try {
     untrusted = noteUntrusted(accountId, conversationId, seen);
+    noteRoundModel(accountId, conversationId, parsed.data.chatId ?? "default", { host: hostOfBase(provider.baseUrl), model: provider.model });
   } catch {
     // An unreadable store: this round's own messages still decide.
   }
@@ -131,4 +132,13 @@ export async function POST(request: Request): Promise<Response> {
   const outcome = await forwardChat(provider, input, net);
   recordRound(accountId, { model: provider.model, usage: outcome.ok ? outcome.result.usage ?? null : null, ms: Date.now() - started, failed: !outcome.ok });
   return outcome.ok ? mark(json(outcome.result)) : jsonError(outcome.error, outcome.status);
+}
+
+/** The provider's host only (never a path or credentials) for the chat's "last model" line. */
+function hostOfBase(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return "";
+  }
 }

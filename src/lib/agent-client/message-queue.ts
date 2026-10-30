@@ -1,12 +1,15 @@
-import { runtime, type PauseReason, type QueuedMessage } from "./runtime-store";
+import { runtimeFor, type PauseReason, type QueuedMessage } from "./runtime-store";
 
 /**
  * The message queue: texts typed while a run is active (or while another tab runs the conversation).
  * Persisted per account and chat so it survives navigation and reload, shared only by tabs on that chat
  * (`storage` events keep the store in sync), and edited only by
  * read-modify-write against what is stored right now, never by replacing from a stale copy.
- * The runtime store mirrors it for the UI; this module is the only writer of both.
+ * Each chat's runtime store (runtimeFor) mirrors its queue for the UI; this module is the only writer of both.
  */
+
+/** The signed-in account whose queues this tab edits (set by attachQueue). */
+let currentAccount: string | null = null;
 
 interface StoredQueue {
   items: QueuedMessage[];
@@ -64,11 +67,11 @@ function write(accountId: string, chatId: string, queue: StoredQueue): void {
   } catch {
     memoryOnly.set(key, clean);
   }
-  if (runtime.get().accountId === accountId && runtime.get().chatId === chatId) runtime.setQueue(clean.items, clean.paused);
+  if (accountId === currentAccount) runtimeFor(chatId).setQueue(clean.items, clean.paused);
 }
 
 function mutate(chatId: string, fn: (q: StoredQueue) => StoredQueue): void {
-  const accountId = runtime.get().accountId;
+  const accountId = currentAccount;
   if (!accountId) return;
   write(accountId, chatId, fn(read(accountId, chatId)));
 }
@@ -81,14 +84,16 @@ const newId = (): string => {
 
 /** Point the store at an account's queue and keep it in sync with other tabs. Call again on account change; returns the detach function. */
 export function attachQueue(accountId: string | null, chatId = "default"): () => void {
-  runtime.setAccount(accountId, chatId);
+  currentAccount = accountId;
+  const rt = runtimeFor(chatId);
+  rt.setAccount(accountId, chatId);
   if (!accountId) {
-    runtime.setQueue([], null);
+    rt.setQueue([], null);
     return () => {};
   }
   const sync = (): void => {
     const q = read(accountId, chatId);
-    runtime.setQueue(q.items, q.paused);
+    rt.setQueue(q.items, q.paused);
   };
   sync();
   const onStorage = (event: StorageEvent): void => {
@@ -128,12 +133,12 @@ export function editQueued(id: string, text: string, chatId = "default"): void {
  * tab may have just written; an explicit "send now" ignores it.
  */
 export function takeQueued(id: string, options: { unlessPaused?: boolean } = {}, chatId = "default"): QueuedMessage | null {
-  const accountId = runtime.get().accountId;
+  const accountId = currentAccount;
   if (!accountId) return null;
   const q = read(accountId, chatId);
   const item = q.items.find((i) => i.id === id);
   if (!item || (options.unlessPaused && q.paused)) {
-    if (runtime.get().accountId === accountId && runtime.get().chatId === chatId) runtime.setQueue(q.items, q.paused);
+    runtimeFor(chatId).setQueue(q.items, q.paused);
     return null;
   }
   write(accountId, chatId, { ...q, items: q.items.filter((i) => i.id !== id) });
@@ -150,34 +155,41 @@ export function resumeQueue(chatId = "default"): void {
 
 export function clearQueue(chatId = "default"): void {
   mutate(chatId, () => EMPTY);
-  if (runtime.get().chatId === chatId) runtime.setSteering([]);
+  runtimeFor(chatId).setSteering([]);
+}
+
+/** The first queued message of a chat, when its queue may drain by itself (not paused). */
+export function nextQueued(chatId = "default"): QueuedMessage | null {
+  if (!currentAccount) return null;
+  const q = read(currentAccount, chatId);
+  return q.paused ? null : q.items[0] ?? null;
 }
 
 /* ----------------------------------------------------------------- steering */
 
 /** "Send now" on a chip: it leaves the queue and waits in the steering inbox for the loop's next round boundary. */
 export function moveToSteering(id: string, chatId = "default"): boolean {
-  if (runtime.get().chatId !== chatId) return false;
+  const rt = runtimeFor(chatId);
   const item = takeQueued(id, {}, chatId);
   if (!item) return false;
-  runtime.setSteering([...runtime.get().steering, item]);
+  rt.setSteering([...rt.get().steering, item]);
   return true;
 }
 
 /** The loop's inbox read: everything steered so far, once. */
 export function takeSteeringTexts(chatId = "default"): string[] {
-  if (runtime.get().chatId !== chatId) return [];
-  const items = runtime.get().steering;
+  const rt = runtimeFor(chatId);
+  const items = rt.get().steering;
   if (items.length === 0) return [];
-  runtime.setSteering([]);
+  rt.setSteering([]);
   return items.map((i) => i.text);
 }
 
 /** The run ended before the loop reached a boundary: undelivered steering goes back to the front of the queue, in order. */
 export function reclaimSteering(chatId = "default"): void {
-  if (runtime.get().chatId !== chatId) return;
-  const items = runtime.get().steering;
+  const rt = runtimeFor(chatId);
+  const items = rt.get().steering;
   if (items.length === 0) return;
-  runtime.setSteering([]);
+  rt.setSteering([]);
   mutate(chatId, (q) => ({ ...q, items: [...items, ...q.items] }));
 }

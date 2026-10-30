@@ -15,7 +15,7 @@ import { cx } from "@/lib/format";
 import { usePathname } from "next/navigation";
 import { AGENT_EVENTS, type AgentOpenDetail } from "@/lib/agent-client/bridge";
 import { WIDGET_ATTR } from "@/lib/agent-client/dom-bridge";
-import { answerWait, isWaiting, useInteraction } from "@/lib/agent-client/interaction";
+import { answerWait, chatsNeedingUser, isWaiting, subscribeInteraction, useInteraction } from "@/lib/agent-client/interaction";
 import { findTool, canonicalSlug } from "@/lib/registry";
 import { ChatIcon, CloseIcon, DockIcon, GearIcon, SendIcon, StopIcon, TrashIcon } from "./icons";
 import { FeedbackLayer } from "./FeedbackLayer";
@@ -23,6 +23,7 @@ import { InteractionCards, TrustModeSwitch } from "./InteractionCards";
 import { QueuePanel } from "./QueuePanel";
 import { LoginView } from "./LoginView";
 import { SettingsView } from "./SettingsView";
+import { GoalsView } from "./GoalsView";
 import { MIN_HEIGHT, MIN_WIDTH, loadPrefs, savePrefs, subscribePrefs, type UiPrefs } from "./storage";
 import { formatTokens } from "@/lib/usage";
 import { starterPrompts } from "./starters";
@@ -75,6 +76,7 @@ function WidgetShell() {
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs);
   const [chatId, setChatId] = useState("default");
   const [settingsRequested, setSettingsRequested] = useState(false);
+  const [goalsRequested, setGoalsRequested] = useState(false);
   const [draft, setDraft] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -85,6 +87,11 @@ function WidgetShell() {
   const { account, switchChat } = agent;
   const pathname = usePathname();
   const interaction = useInteraction(chatId);
+  // Chats waiting for the user (an approval, a question, a page step): a background one gets a badge and a notice.
+  const attentionKey = useSyncExternalStore(subscribeInteraction, () => chatsNeedingUser(prefs.chatIds).join(","), () => "");
+  const attention = useMemo(() => (attentionKey ? attentionKey.split(",") : []), [attentionKey]);
+  const backgroundAttention = attention.filter((id) => id !== chatId);
+  const backgroundRunning = agent.runningChats.filter((id) => id !== chatId).length;
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
 
@@ -149,25 +156,35 @@ function WidgetShell() {
       : { ...current, chatIds: updated.chatIds });
   }), []);
 
+  // Switching chats never waits for a run: a running chat carries on in the background (useAgent).
   const selectChat = useCallback((id: string) => {
-    if (agent.busy || !prefs.chatIds.includes(id)) return;
+    if (!prefs.chatIds.includes(id)) return;
     switchChat(id);
     setChatId(id);
     setDraft("");
-  }, [agent.busy, prefs.chatIds, switchChat]);
+  }, [prefs.chatIds, switchChat]);
+
+  /** An earlier chat was copied into a new chat id on the server (Settings > Recover earlier chats): show it. */
+  const openImportedChat = useCallback((id: string) => {
+    setPrefs((current) => ({ ...current, chatIds: [...current.chatIds.filter((c) => c !== id), id].slice(-50) }));
+    switchChat(id);
+    setChatId(id);
+    setDraft("");
+    setSettingsRequested(false);
+  }, [switchChat]);
 
   const createChat = useCallback(() => {
-    if (agent.busy || prefs.chatIds.length >= 50) return;
+    if (prefs.chatIds.length >= 50) return;
     const id = crypto.randomUUID().replaceAll("-", "");
     setPrefs((current) => ({ ...current, chatIds: [...current.chatIds, id] }));
     switchChat(id);
     setChatId(id);
     setDraft("");
-  }, [agent.busy, prefs.chatIds.length, switchChat]);
+  }, [prefs.chatIds.length, switchChat]);
 
   const firstRun = account.kind === "ready" && account.account.provider === null;
-  const view: "chat" | "settings" | "login" | "loading" | "error" =
-    account.kind === "ready" ? (firstRun || settingsRequested ? "settings" : "chat") : account.kind;
+  const view: "chat" | "goals" | "settings" | "login" | "loading" | "error" =
+    account.kind === "ready" ? (firstRun || settingsRequested ? "settings" : goalsRequested ? "goals" : "chat") : account.kind;
 
   const setOpen = useCallback((open: boolean) => setPrefs((p) => (p.open === open ? p : { ...p, open })), []);
 
@@ -249,7 +266,7 @@ function WidgetShell() {
 
   const panelStyle = { "--aw": `${prefs.width}px`, "--ah": `${prefs.height}px` } as CSSProperties;
   // Tokens spent in this conversation (sum of the per-turn footers kept in the transcript).
-  const chatTokens = agent.messages.reduce((sum, m) => (m.role === "notice" && m.usage ? sum + m.usage.promptTokens + m.usage.completionTokens : sum), 0);
+  const chatTokens = agent.messages.reduce((sum, m) => (m.role === "notice" && m.level === "usage" && m.usage ? sum + m.usage.promptTokens + m.usage.completionTokens : sum), 0);
   const subtitle =
     account.kind === "ready"
       ? `${account.account.displayName}${account.account.provider ? ` · ${account.account.provider.model}` : ` · ${t("no model yet")}`}${chatTokens > 0 ? ` · ${t("{tokens} tokens", { tokens: formatTokens(chatTokens) })}` : ""}`
@@ -300,8 +317,10 @@ function WidgetShell() {
             </svg>
           </button>
 
-          <header className="flex items-center gap-2 border-b border-line bg-surface px-3 py-2.5 pl-5">
-            <div className="min-w-0 flex-1">
+          {/* Narrow panels (the default 400px) put the controls on a second row so the title is never squeezed. */}
+          <header className="@container border-b border-line bg-surface px-3 py-2.5 pl-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 @[34rem]:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="col-start-1 row-start-1 min-w-0">
               <h2 className="flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-ai" />
                 {t("Assistant")}
@@ -311,22 +330,35 @@ function WidgetShell() {
               </p>
             </div>
             {account.kind === "ready" ? (
-              <>
-                <select
-                  aria-label={t("Assistant conversation")}
-                  value={chatId}
-                  disabled={agent.busy}
-                  onChange={(event) => selectChat(event.currentTarget.value)}
-                  className="sk-input max-w-28 px-2 py-1 text-xs"
-                >
-                  {prefs.chatIds.map((id, index) => <option key={id} value={id}>{t("Chat {number}", { number: index + 1 })}</option>)}
-                </select>
+              <div className="col-span-2 row-start-2 flex items-center justify-end gap-2 @[34rem]:col-span-1 @[34rem]:col-start-2 @[34rem]:row-start-1">
+                <IconButton label={view === "goals" ? t("Back to chat") : t("Tasks")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
+                  <span aria-hidden="true">☷</span>
+                </IconButton>
+                <span className="relative inline-flex">
+                  <select
+                    aria-label={t("Assistant conversation")}
+                    value={chatId}
+                    onChange={(event) => selectChat(event.currentTarget.value)}
+                    className="sk-input max-w-32 px-2 py-1 text-xs"
+                  >
+                    {prefs.chatIds.map((id, index) => (
+                      <option key={id} value={id} data-chat-state={attention.includes(id) ? "needs-you" : agent.runningChats.includes(id) ? "running" : "idle"}>
+                        {attention.includes(id) && id !== chatId
+                          ? t("Chat {number} · needs you", { number: index + 1 })
+                          : agent.runningChats.includes(id) ? t("Chat {number} · working", { number: index + 1 }) : t("Chat {number}", { number: index + 1 })}
+                      </option>
+                    ))}
+                  </select>
+                  {backgroundRunning > 0 ? (
+                    <span data-background-running={backgroundRunning} title={t("Chats working in the background: {count}", { count: backgroundRunning })} className={cx("absolute -top-1 -right-1 size-2.5 rounded-full ring-2 ring-surface", backgroundAttention.length ? "bg-danger" : "animate-pulse bg-ai")} />
+                  ) : null}
+                </span>
                 {chatId !== "default" ? (
-                  <IconButton label={t("Exit conversation")} onClick={() => selectChat("default")} disabled={agent.busy}>
+                  <IconButton label={t("Exit conversation")} onClick={() => selectChat("default")}>
                     <span aria-hidden="true">↩</span>
                   </IconButton>
                 ) : null}
-                <IconButton label={t("New conversation")} onClick={createChat} disabled={agent.busy || prefs.chatIds.length >= 50}>
+                <IconButton label={t("New conversation")} onClick={createChat} disabled={prefs.chatIds.length >= 50}>
                   <span aria-hidden="true">＋</span>
                 </IconButton>
                 <IconButton
@@ -345,11 +377,14 @@ function WidgetShell() {
                 >
                   <GearIcon />
                 </IconButton>
-              </>
+              </div>
             ) : null}
-            <IconButton label={t("Close assistant")} onClick={close}>
-              <CloseIcon />
-            </IconButton>
+            <div className="col-start-2 row-start-1 flex @[34rem]:col-start-3">
+              <IconButton label={t("Close assistant")} onClick={close}>
+                <CloseIcon />
+              </IconButton>
+            </div>
+            </div>
           </header>
 
           {view === "loading" ? <p className="p-4 text-sm text-muted">{t("Loading…")}</p> : null}
@@ -379,10 +414,23 @@ function WidgetShell() {
               }}
               onBack={() => setSettingsRequested(false)}
               onLogout={agent.logout}
+              chatIds={prefs.chatIds}
+              onOpenChat={openImportedChat}
             />
           ) : null}
+          {view === "goals" ? <GoalsView onContinue={(goalId, goalTitle) => {
+            setSettingsRequested(false);
+            setGoalsRequested(false);
+            agent.send(`Resume saved goal "${goalTitle}" (id: ${goalId}). Read its current checkpoint with knife_goal_list and continue from the saved next action; do not ask me to restate the goal.`);
+          }} /> : null}
           {view === "chat" ? (
             <>
+              {backgroundAttention.length ? (
+                <div role="status" data-background-attention="" className="flex items-center gap-2 border-b border-ai/40 bg-ai/8 px-3 py-1.5 text-xs text-ink">
+                  <span className="min-w-0 flex-1">{t("Chat {number} is waiting for you.", { number: prefs.chatIds.indexOf(backgroundAttention[0]) + 1 })}</span>
+                  <button type="button" autoComplete="off" className="rounded-md bg-accent px-2 py-1 font-semibold text-accent-fg" onClick={() => selectChat(backgroundAttention[0])}>{t("Open chat")}</button>
+                </div>
+              ) : null}
               <TrustModeSwitch chatId={chatId} />
               <Transcript
                 messages={agent.messages}

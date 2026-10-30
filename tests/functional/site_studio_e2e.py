@@ -143,13 +143,24 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
 
         # ---------------------------------------------------------------- 3. copy & CV (CV seeded by an agent)
         ok, text = mcp.tool("knife_cv_import", {"profile": {
-            "contact": {"name": "Jan Kowalski", "headline": {"pl": "Inżynier systemów AI", "en": "AI systems engineer"}, "links": [{"label": "GitHub", "url": "https://github.com/janko"}]},
+            "contact": {"name": "Jan Kowalski", "headline": {"pl": "Inżynier systemów AI", "en": "AI systems engineer"}, "links": [{"label": "GitHub", "url": "https://github.com/janko"}, {"label": "LinkedIn", "url": "https://linkedin.com/in/janko"}, {"label": "Finetune Studio (GitHub Pages)", "url": "https://janko.github.io/finetune-studio/"}]},
             "projects": [{"id": "p1", "name": "Samurai Knife"}, {"id": "p2", "name": "Toberenamed RTS"}],
             "skills": [{"id": "s1", "name": {"pl": "Narzędzia", "en": "Tools"}, "items": ["Docker", "Kubernetes"]}],
         }, "overwrite": True})
         check("an agent seeds the CV over MCP (knife_cv_import)", ok, text[:300])
         ok, text = mcp.tool("knife_site_audit", {"lighthouse": False})
         check("knife_site_audit over MCP returns scores and CV gaps", ok and '"alignment"' in text and "Toberenamed RTS" in text, text[:400])
+        # Files and a client-rendered page in the audited pages (real false positives of an audited personal site).
+        ok, text = mcp.tool("knife_site_audit", {"lighthouse": False, "pages": ["/v2", "/robots.txt", "/sitemap.xml", "/llms.txt"]})
+        check("robots.txt / sitemap.xml / llms.txt are listed as skipped (not HTML), never given page checks",
+              ok and '"skippedAsNotHtml"' in text and '"/llms.txt"' in text and "resource.llms.missing" in text and "No <title>" not in text, text[:600])
+        check("a client-rendered page is one finding (content.js-only), not no-H1 + thin", ok and "content.js-only" in text and "seo.h1.missing" not in text, text[:600])
+        ok, text = mcp.tool("knife_site_audit_get", {"section": "alignment"})
+        check("CV links: LinkedIn (www/trailing slash differ) and the github.io page (JSON-LD sameAs) are found; the github.io page is a project link",
+              ok and "projectLink" in text and '"onSite": false' not in text.split("Finetune Studio (GitHub Pages)")[1][:200] and "align.links" not in text, text[-900:])
+        go(page, "/tools/cv-studio?tab=website&step=score")
+        expect(page.get_by_text("Checked as files, not as web pages")).to_be_visible(timeout=20_000)
+        check("the Score tab names the paths checked as files", "/robots.txt" in (page.locator("main").text_content() or ""))
         go(page, "/tools/cv-studio?tab=website&step=copy")
         expect(page.get_by_text("CV fit ·")).to_be_visible(timeout=20_000)
         badges = page.locator("main").text_content() or ""

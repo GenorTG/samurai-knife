@@ -124,6 +124,7 @@ In particular, you must not:
 
 ## 17. Change history {#history}
 
+- **Edition 7** (30 October 2026, {{siteName}} 0.13.0): no change of the provisions; the privacy notice describes saved assistant tasks, the "What's new" window and that programs connected with the User's MCP key can read the User's assistant conversations.
 - **Edition 6** (29 October 2026, {{siteName}} 0.13.0): no change of the provisions; the privacy notice describes vision detection (a generated test picture sent to the AI provider chosen by the User) and the assistant's turn limit.
 - **Edition 5** (28 October 2026, {{siteName}} 0.13.0): no change of the provisions; the privacy notice describes site screenshots sent to the AI provider chosen by the User.
 - **Edition 4** (28 October 2026, {{siteName}} 0.13.0): no change of the provisions; the website studio can optionally work with the User's Vercel project, described in the privacy notice.

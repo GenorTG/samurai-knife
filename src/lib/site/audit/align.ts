@@ -1,5 +1,6 @@
 import { msg, msgf } from "@/lib/i18n/msg";
 import type { CvData } from "@/lib/cv/schema";
+import { hostOf, isProfileUrl, linkPresent, normalizeUrl } from "./links";
 import type { Alignment, AlignmentItem, Issue } from "./types";
 
 /**
@@ -38,11 +39,23 @@ export const TECH_WORDS = [
   "home assistant", "nextcloud", "n8n", "openai", "claude", "rag", "lora", "fine-tuning", "gguf", "vercel", "supabase", "firebase", "graphql", "kotlin", "android", "ios", "flutter",
 ];
 
-export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[], siteEmails: string[]): Alignment {
+/**
+ * `siteLinks`: every link target the audited pages carry (anchors and JSON-LD url/sameAs), `siteOrigin`: the audited
+ * site, so a CV link to the site itself counts as present.
+ */
+export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[], siteEmails: string[], siteOrigin = ""): Alignment {
   const p = cv.profile;
   const hay = fold(siteText);
   const items: AlignmentItem[] = [];
-  const add = (kind: AlignmentItem["kind"], label: string, onSite: boolean) => items.push({ kind, label, onSite });
+  const add = (kind: AlignmentItem["kind"], label: string, onSite: boolean, url?: string) => items.push(url ? { kind, label, onSite, url } : { kind, label, onSite });
+  const siteHost = hostOf(normalizeUrl(siteOrigin));
+  const linkOnSite = (url: string): boolean => {
+    const n = normalizeUrl(url);
+    if (!n) return false;
+    if (siteHost && n === siteHost) return true;
+    // A URL written out in the page text ("github.com/jan") counts too.
+    return linkPresent(url, siteLinks) || ` ${hay} `.includes(` ${fold(n)} `);
+  };
   if (p.contact.name) add("name", p.contact.name, present(hay, p.contact.name));
   for (const headline of [p.contact.headline.pl, p.contact.headline.en].filter(Boolean)) {
     // A headline matches when at least half of its significant words appear.
@@ -54,11 +67,14 @@ export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[
     add("role", [job.role.en || job.role.pl, job.org].filter(Boolean).join(" @ "), present(hay, job.org) || present(hay, job.role.pl) || present(hay, job.role.en));
   }
   const projects = [...p.projects].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 12);
-  for (const project of projects) add("project", project.name, present(hay, project.name) || (!!project.url && siteLinks.some((l) => l.replace(/\/$/, "") === project.url.replace(/\/$/, ""))));
+  for (const project of projects) add("project", project.name, present(hay, project.name) || (!!project.url && linkPresent(project.url, siteLinks)));
   const groups = [...p.skills].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   for (const skill of groups.flatMap((g) => g.items).slice(0, 30)) add("skill", skill, present(hay, skill));
-  for (const link of p.contact.links.filter((l) => /linkedin|github/i.test(l.url))) {
-    add("link", link.label || link.url, siteLinks.some((l) => fold(l).includes(fold(link.url).replace(/^https? /, ""))));
+  for (const link of p.contact.links.filter((l) => normalizeUrl(l.url))) {
+    // Profiles (a LinkedIn or GitHub account) belong on a personal site; other pages (a github.io demo, a live app) are
+    // project links, reported apart and only when the site names neither the link nor the page.
+    if (isProfileUrl(link.url)) add("link", link.label || link.url, linkOnSite(link.url), link.url);
+    else if (hostOf(normalizeUrl(link.url)) !== siteHost) add("projectLink", link.label || link.url, linkOnSite(link.url), link.url);
   }
   if (p.contact.email) add("email", p.contact.email, siteEmails.some((e) => e.toLowerCase().includes(p.contact.email.toLowerCase())) || hay.includes(fold(p.contact.email)));
 
@@ -67,7 +83,7 @@ export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[
 
   if (!items.length) return { score: 0, items, siteOnly, note: msg("The CV studio profile is empty: fill it (or import your CV) to compare it with the site.") };
   // Weights: who you are and what you do now count most, then projects, then skills.
-  const weight: Record<AlignmentItem["kind"], number> = { name: 3, headline: 3, role: 3, email: 1, link: 1, project: 2, skill: 0.5 };
+  const weight: Record<AlignmentItem["kind"], number> = { name: 3, headline: 3, role: 3, email: 1, link: 1, projectLink: 0.5, project: 2, skill: 0.5 };
   const total = items.reduce((n, i) => n + weight[i.kind], 0);
   const got = items.reduce((n, i) => n + (i.onSite ? weight[i.kind] : 0), 0);
   return { score: Math.round((got / total) * 100), items, siteOnly, note: "" };
@@ -86,8 +102,11 @@ export function alignmentIssues(a: Alignment): Issue[] {
   const skills = missing("skill");
   const skillCount = a.items.filter((i) => i.kind === "skill").length;
   if (skillCount && skills.length / skillCount > 0.5) add("align.skills", "low", msgf("{length} of {skillCount} CV skills are not mentioned", { length: skills.length, skillCount }), skills.slice(0, 15).join(", "), msg("Name the key skills where you describe projects or services."));
-  const links = missing("link");
-  if (links.length) add("align.links", "medium", msg("Profile links from the CV are missing on the site"), links.join(", "), msg("Link LinkedIn and GitHub (also in JSON-LD sameAs)."));
+  const named = (kind: AlignmentItem["kind"]) => a.items.filter((i) => i.kind === kind && !i.onSite).map((i) => (i.url && i.url !== i.label ? `${i.label} (${i.url})` : i.label));
+  const links = named("link");
+  if (links.length) add("align.links", "medium", msg("Profile links from the CV are missing on the site"), links.join(", "), msgf("Link {links} from the site (a visible link, and in JSON-LD sameAs).", { links: links.join(", ") }));
+  const projectLinks = named("projectLink");
+  if (projectLinks.length) add("align.project-links", "low", msg("Project pages linked in the CV are not linked from the site"), projectLinks.join(", "), msgf("Link {links} where you describe that project (optional: they are project pages, not profiles).", { links: projectLinks.join(", ") }));
   if (a.siteOnly.length) add("align.site-only", "low", msgf("The site names tech the CV does not list: {value}", { value: a.siteOnly.slice(0, 8).join(", ") }), msg("Either the CV misses current skills or the site shows old ones."), msg("Add them to the CV skills (CV studio) or update the site copy."));
   return out;
 }

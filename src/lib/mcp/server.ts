@@ -1,6 +1,7 @@
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { KnifeRichResult, toolAllowed, type KnifeToolContext, type KnifeToolEffectInfo } from "@/lib/mcp/define";
 import { KNIFE_TOOLS, modelDescription, serializeKnifeToolResult } from "@/lib/mcp/tools";
+import { CHAT_KNIFE_TOOLS } from "@/lib/mcp/tools-chats";
 import { CRAFT_FILE_TOOLS } from "@/lib/mcp/tools-craft-files";
 import { UI_BRIDGE_TOOLS } from "@/lib/mcp/tools-ui";
 import { UNTRUSTED_RULE } from "@/lib/security/untrusted";
@@ -25,9 +26,10 @@ export function annotationsFor(tool: KnifeToolEffectInfo): { readOnlyHint: boole
   };
 }
 
-/** Tools only MCP clients get: the UI bridge (the built-in assistant navigates the page itself) and the Craft files'
- *  bytes (the built-in assistant holds files in its chain, and base64 never belongs in its context). */
-export const MCP_ONLY_TOOLS = [...UI_BRIDGE_TOOLS, ...CRAFT_FILE_TOOLS];
+/** Tools only MCP clients get: the UI bridge (the built-in assistant navigates the page itself), the Craft files'
+ *  bytes (the built-in assistant holds files in its chain, and base64 never belongs in its context) and the account's
+ *  assistant chats (the built-in assistant has its own chat in context). */
+export const MCP_ONLY_TOOLS = [...UI_BRIDGE_TOOLS, ...CRAFT_FILE_TOOLS, ...CHAT_KNIFE_TOOLS];
 
 /** The tools one MCP caller gets: its role's, and with a read-only key only those that change nothing (readOnlyHint). */
 export function mcpToolsFor(ctx: KnifeToolContext): typeof MCP_TOOLS {

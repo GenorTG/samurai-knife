@@ -31,7 +31,8 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 
 // Agent targets that run the main agent (exec, elevated tools, messaging) when used through the gateway endpoint.
@@ -77,6 +78,28 @@ function unlock() {
 }
 // fail() exits mid-write: release only a lock this process took.
 process.on("exit", unlock);
+
+// A new account has seen the current release notes and legal edition (src/lib/accounts/seen.ts): no "What's new" window
+// on its first login. Read from the checkout this script belongs to.
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+function seenNow() {
+  let version = null;
+  let legalEdition = null;
+  try {
+    const v = readFileSync(join(REPO, "VERSION"), "utf8").trim().split(".");
+    if (v.length >= 3 && v.slice(0, 3).every((p) => /^\d+$/.test(p))) version = v.slice(0, 3).join(".");
+  } catch {
+    /* no VERSION: the window shows once, like for an older account */
+  }
+  try {
+    const editions = JSON.parse(readFileSync(join(REPO, "legal", "versions.json"), "utf8")).editions ?? [];
+    const numbers = editions.map((e) => e.edition).filter((e) => Number.isInteger(e));
+    if (numbers.length) legalEdition = Math.max(...numbers);
+  } catch {
+    /* no legal texts */
+  }
+  return version ? { version, legalEdition, at: new Date().toISOString() } : null;
+}
 
 // v1 accounts (file without a version) get the v2 fields: an account made by the owner is an active admin. In a v2 file a
 // missing role or status fails closed (user, disabled), the same rule as src/lib/accounts/store.ts.
@@ -197,7 +220,7 @@ function readStore() {
     const initial = {
       version: STORE_VERSION,
       defaultAccountId: "genor",
-      accounts: [withV2Fields({ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString() })],
+      accounts: [withV2Fields({ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString(), seen: seenNow() })],
     };
     writeStore(initial);
     return initial;
@@ -349,7 +372,7 @@ const commands = {
     if (typeof name !== "string" || !name.trim()) fail('--name "<display name>" is required');
     const role = flags.get("role")?.[0] ?? "admin";
     if (role !== "admin" && role !== "user") fail("--role must be admin or user");
-    const account = withV2Fields({ id, displayName: name.trim().slice(0, 80), provider: null, createdAt: new Date().toISOString(), role });
+    const account = withV2Fields({ id, displayName: name.trim().slice(0, 80), provider: null, createdAt: new Date().toISOString(), role, seen: seenNow() });
     if (flags.has("email")) Object.assign(account, verifiedEmail(store, id, flags.get("email")[0]));
     if (flags.has("password-prompt")) account.passwordHash = await newPassword();
     store.accounts.push(account);

@@ -2,6 +2,12 @@
   "about": "Editions of the default legal texts (legal/*.md). Changing any of the four files is a new edition: copy the outgoing files to legal/editions/<old edition>/, add an entry on top (published = the day, app = the release it ships in, digest = what tests/legal.test.mjs prints), describe the change in the texts' change history (terms § 17 / privacy § 15), and update `covers`. docs/LEGAL.md 'Changing the texts'.",
   "editions": [
     {
+      "edition": 7,
+      "published": "2026-10-30",
+      "app": "0.13.0",
+      "digest": "3586e65803caab43"
+    },
+    {
       "edition": 6,
       "published": "2026-10-29",
       "app": "0.13.0",
@@ -59,7 +65,8 @@
       "site": "privacy § 3 Content: website/repository connection (GitHub and Vercel tokens)",
       "craft": "privacy § 3 Content: files saved from the Craft apps",
       "workflows": "privacy § 3 Workflows, run history, credentials, webhook requests",
-      "jobs": "privacy § 3 (server jobs: working files deleted when the job ends)"
+      "jobs": "privacy § 3 (server jobs: working files deleted when the job ends)",
+      "goals": "privacy § 3 Content: saved assistant tasks"
     }
   }
 }
