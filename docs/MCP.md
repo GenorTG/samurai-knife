@@ -119,8 +119,30 @@ docs/WEBSITE-STUDIO.md.
   html-to-canvas library) cannot draw cross-origin iframes, which are exactly the visual pages (office editor, Craft
   apps); the assistant reads the page through `page_snapshot`/`read_text`, and the Craft apps have `craft_screenshot`.
 
+## Tasks (`knife_goal_*`, `src/lib/mcp/tools-goals.ts`, group `goals`)
+
+Durable work tracking for the in-page assistant AND outside agents: `knife_goal_list`, `knife_goal_create`,
+`knife_goal_update` (status active/paused/completed/archived, steps, next action) and `knife_goal_checkpoint` (a
+progress note, optionally one step's status and the next action). Goals, ordered steps, statuses, next actions and the
+checkpoint history (last 100) are account-private (`goals/<account>.json`, sealed, inside the storage quota, removed
+with the account) and shown in the assistant's Tasks panel, where the user can also delete a finished one. A read-only
+key gets `knife_goal_list` only. An outside agent doing multi-step work keeps one goal and checkpoints after each
+milestone, the same as the in-page assistant.
+
+## The account's assistant chats (`knife_chat_list`, `knife_chat_read`, MCP only, `src/lib/mcp/tools-chats.ts`)
+
+Read-only (`readOnlyHint`, so a read-only key gets them), own account only (files are looked up under the caller's own
+scope: another account's chat id simply does not exist), never creates a file. Not offered to the in-page assistant
+(it has its chat in context).
+- `knife_chat_list {limit?}`: newest first: `chatId`, `title` (the first user message), `lastActivity`, message counts
+  per role, `lastModel` ({host, model} of the latest round, written by `/api/agent/chat` when it changes; absent for
+  chats not used since 0.13.0), `untrusted` (third-party text entered the chat).
+- `knife_chat_read {chatId, offset?, limit? (20, max 50), fromEnd?}`: a page of messages with `index`, `total`,
+  `nextOffset`; tool calls by name, and every text (user message, reply, tool arguments, tool output named after its
+  tool, notice) inside an untrusted-content envelope, each capped at 4,000 characters. Chats saved before 0.13.0.22
+  (one file per provider) are not listed; the user recovers them in the assistant's Settings.
+
 ## What's new (`knife_whats_new`, `src/lib/whats-new.ts`)
-Durable work tracking is available through `knife_goal_list`, `knife_goal_create`, `knife_goal_update`, and `knife_goal_checkpoint`; goals, ordered steps, statuses, next actions and checkpoint history are account-private and are also shown in the assistant's Goals panel.
 
 One entry per release that changes what agents can do, newest first, naming the tools. `knife_whats_new {count?}`
 returns the server's version and the entries; the MCP instructions point to it, and the in-app assistant's system
@@ -216,6 +238,8 @@ a screenshot is hundreds of KB). To get one:
 
 ## Tests
 `tests/ui_bridge.test.mjs` (store + path rules + calls: targeting, answer ownership, timeouts, bounds),
+`tests/mcp_chats.test.mjs` (knife_chat_list / knife_chat_read: own account only, paging, envelopes, read-only key,
+goal tools listed), `tests/agent_goals.test.mjs` (goals: lifecycle, other accounts, sealed, quota, deletion),
 `tests/mcp_craft_files.test.mjs` (craft_file_save's no-overwrite save, knife_craft_files / knife_craft_file_read: image
 block, envelope, chunks to sha256, other accounts), `tests/craft_e2e.py` (VectorCraft: knife_ui_call craft_screenshot,
 craft_file_save Deny/Allow/replace through the card, the stored PNG read back byte for byte),

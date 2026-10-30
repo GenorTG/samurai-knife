@@ -48,6 +48,8 @@ export const conversationSchema = conversationContentSchema.extend({
   adoptedFrom: z.string().regex(FILE_ID).optional(),
   /** On a provider-scoped file: the chat file that took it over (kept until it is evicted). */
   adoptedInto: z.string().regex(FILE_ID).optional(),
+  /** The provider host and model of the chat's latest round (server-owned; for knife_chat_list). */
+  lastModel: z.object({ host: z.string().max(253), model: z.string().max(200) }).optional(),
 });
 
 export interface ConversationContent {
@@ -63,6 +65,7 @@ export interface DurableConversation extends ConversationContent {
   legacyChecked?: boolean;
   adoptedFrom?: string;
   adoptedInto?: string;
+  lastModel?: { host: string; model: string };
 }
 
 export function emptyConversation(): DurableConversation {
@@ -169,6 +172,55 @@ export function noteUntrusted(accountId: string, providerId: string, seen: boole
     value.untrusted = true;
   });
   return true;
+}
+
+/**
+ * One chat round's bookkeeping: the chat id (stamped once), and the provider host + model that answered (written only
+ * when they change). Never touches the transcript.
+ */
+export function noteRoundModel(accountId: string, providerId: string, chatId: string, model: { host: string; model: string }): void {
+  const current = readConversation(accountId, providerId);
+  if (current.chatId === chatId && current.lastModel?.host === model.host && current.lastModel?.model === model.model) return;
+  updateConversation(accountId, providerId, (value) => {
+    value.chatId = chatId;
+    value.lastModel = { host: model.host.slice(0, 253), model: model.model.slice(0, 200) };
+  });
+}
+
+/* ------------------------------------------------- reading chats from outside (knife_chat_list / knife_chat_read) */
+
+export interface ChatFile {
+  chatId: string;
+  conversation: DurableConversation;
+  updatedAt: string;
+}
+
+/** Every chat file of the account (provider-scoped files from before 0.13.0.22 excluded), newest first. Creates nothing. */
+export function listChatFiles(accountId: string): ChatFile[] {
+  const dir = accountScope(accountId).conversations;
+  if (!existsSync(dir)) return [];
+  const out: ChatFile[] = [];
+  for (const name of readdirSync(dir)) {
+    const id = name.replace(/\.json$/, "");
+    if (!PROVIDER_ID.test(id) || !name.endsWith(".json")) continue;
+    let conversation: DurableConversation;
+    try {
+      conversation = conversationSchema.parse(JSON.parse(readAccountText(accountId, accountScope(accountId).join("conversations", name)))) as DurableConversation;
+    } catch {
+      continue;
+    }
+    const chatId = conversation.chatId;
+    // A chat file is named after its chat id; anything else is an older provider-scoped copy.
+    if (!chatId || chatConversationId(chatId) !== id) continue;
+    out.push({ chatId, conversation, updatedAt: new Date(statSync(accountScope(accountId).join("conversations", name)).mtimeMs).toISOString() });
+  }
+  return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** The chat's file, or null when the account has no such chat. Creates nothing. */
+export function peekChat(accountId: string, chatId: string): ChatFile | null {
+  if (!CHAT_ID.test(chatId)) return null;
+  return listChatFiles(accountId).find((c) => c.chatId === chatId) ?? null;
 }
 
 /* ------------------------------------------------- recovery of provider-scoped chats (before 0.13.0.22) */
