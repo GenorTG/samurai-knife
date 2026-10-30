@@ -28,13 +28,13 @@ import {
   stepFinished,
   stepStarted,
 } from "./feedback";
-import { runtime } from "./runtime-store";
+import { runtimeFor } from "./runtime-store";
 import { UI_TOOL_DEFS, isUiTool, runUiTool, type UiToolContext } from "./ui-tools";
 import { liveToolAvailable } from "./office-live-tools";
 import { craftToolAvailable } from "./craft-live-tools";
 import { assessCall } from "./approval-policy";
 import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
-import { getTrustMode, isRunAllowed, requestApproval, resetRunTrust } from "./interaction";
+import { getTrustMode, isRunAllowed, requestApproval, requestForeground, resetRunTrust } from "./interaction";
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import { buildContext, summarySection } from "./context";
@@ -74,6 +74,11 @@ export interface LoopOptions {
   takeSteering?: () => string[];
   /** The account's per-turn budget (Settings: "Turn limit"); omitted = the defaults. */
   limits?: TurnLimits;
+  /**
+   * Is this chat the one shown in the widget? Only that chat may use the page tools (open_tool, page_snapshot, fill_field,
+   * click, upload_file, doc_live_*, craft_*...); a chat running in the background asks the user first. Omitted = always.
+   */
+  isForeground?: () => boolean;
 }
 
 /* ---------------------------------------------------------- history hygiene */
@@ -140,6 +145,16 @@ function journalAction(name: string, label: string): string {
   return name.replace(/_/g, " ");
 }
 
+/** UI tools that read or drive the live page (everything but the catalogue and a plain pause). */
+export function needsPage(name: string): boolean {
+  return isUiTool(name) && name !== "list_tools" && name !== "wait";
+}
+
+const SKIPPED_PAGE = JSON.stringify({
+  ok: false,
+  error: "Skipped by the user: this step needs the page, and this chat was running in the background while the user worked in another chat. Continue with what does not need the page, or ask the user to open this chat and try again.",
+});
+
 const DENIED = JSON.stringify({
   ok: false,
   error: "The user declined this action. Do not retry it; tell them what you wanted to do and ask how they would like to proceed.",
@@ -178,6 +193,12 @@ async function executeCall(
   if (!parsed.ok) return { ok: false, content: JSON.stringify({ ok: false, error: parsed.error }) };
   const name = call.function.name;
   if (isUiTool(name)) {
+    // Only the chat the user is looking at may drive the page: a chat in the background waits for the user to open it.
+    while (needsPage(name) && options.isForeground && !options.isForeground()) {
+      const answer = await requestForeground({ tool: name, label: describeCall(name, call.function.arguments) }, options.signal, options.chatId ?? "default");
+      if (answer === "aborted") return { ok: false, content: JSON.stringify({ ok: false, error: "Cancelled by the user." }) };
+      if (answer === "skip") return { ok: false, content: SKIPPED_PAGE };
+    }
     const blocked = await gateCall(call, parsed.args, options.signal, options.chatId ?? "default");
     if (blocked) return blocked;
     return runUiTool(name, parsed.args, { navigate: options.navigate, signal: options.signal, chatId: options.chatId });
@@ -194,8 +215,10 @@ async function executeCall(
 
 export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const { signal, onMessage } = options;
+  const chatId = options.chatId ?? "default";
+  const rt = runtimeFor(chatId);
   const { maxRounds, maxToolCalls } = resolveTurnLimits(options.limits);
-  const onActivity = runtime.setActivity;
+  const onActivity = rt.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
   /** This turn = the user's message that started the run and everything after it (steering included). */
@@ -247,8 +270,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     append({ role: "notice", level: "usage", content: describeRunUsage(run), usage: run });
   };
 
-  runStarted();
-  resetRunTrust(options.chatId ?? "default");
+  runStarted(chatId);
+  resetRunTrust(chatId);
   try {
     onActivity("Preparing…");
     const [{ defs: serverDefs, effects }, serverVersion] = await Promise.all([fetchServerToolCatalog(), fetchServerVersion(signal)]);
@@ -269,17 +292,17 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       if (signal.aborted) return "aborted";
       deliverSteering();
       onActivity("Thinking…");
-      roundStarted();
+      roundStarted(chatId);
       const result = await callModel(
         { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
         buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
         {
-          onText: appendDraft,
-          onReasoning: addReasoning,
-          onToolStart: ({ id, name }) => stepStarted(id || `idx_${name}`, name, describeCall(name, "{}")),
+          onText: (delta) => appendDraft(delta, chatId),
+          onReasoning: (delta) => addReasoning(delta, chatId),
+          onToolStart: ({ id, name }) => stepStarted(id || `idx_${name}`, name, describeCall(name, "{}"), chatId),
         },
       );
-      clearSteps();
+      clearSteps(chatId);
       if (signal.aborted) return "aborted";
       if (!result.ok) {
         const f = result.failure;
@@ -324,13 +347,13 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         toolCalls += 1;
         const label = describeCall(call.function.name, call.function.arguments);
         onActivity(label);
-        setPhase("tool");
-        stepStarted(call.id, call.function.name, label);
+        setPhase("tool", chatId);
+        stepStarted(call.id, call.function.name, label, chatId);
         const loading = call.function.name === LOAD_TOOLS_NAME ? parseArgs(call.function.arguments) : null;
         const run = loading
           ? loading.ok ? runLoadTools(loading.args, activeGroups, allTools) : { ok: false, content: JSON.stringify({ ok: false, error: loading.error }) }
           : await executeCall(call, toolNames, serverToolNames, options, serverGate);
-        stepFinished(call.id, run.ok);
+        stepFinished(call.id, run.ok, chatId);
         const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipResult(run.content) };
         append(toolResult);
         if (run.ok && call.function.name !== LOAD_TOOLS_NAME) {
@@ -344,7 +367,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Round or tool budget exhausted: one last call without tools so the user gets a summary.
     notice("info", `Reached the per-turn limit (${maxRounds} model rounds / ${maxToolCalls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.`);
     onActivity("Summarising…");
-    runtime.advance("summarising");
+    rt.advance("summarising");
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
     const wrapUp = await callModel(
       { temperature: 0.2 },
@@ -366,8 +389,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     return "error";
   } finally {
     usageFooter();
-    clearSteps();
-    runEnded();
+    clearSteps(chatId);
+    runEnded(chatId);
     onActivity(null);
   }
 }

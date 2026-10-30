@@ -13,7 +13,8 @@ test("groups cover exactly the database tool prefixes", () => {
   for (const n of ["knife_hash", "list_tools", "load_tools", "knife_json_format"]) assert.equal(groupOf(n), null, n);
   assert.equal(groupOf("doc_live_read")?.id, "office_live");
   assert.equal(groupOf("knife_site_audit")?.id, "site");
-  assert.deepEqual(TOOL_GROUPS.map((g) => g.id), ["sql", "cv", "site", "workflows", "docs", "learn", "nosql", "office_live", "craft_live"]);
+  assert.equal(groupOf("knife_goal_checkpoint")?.id, "goals");
+  assert.deepEqual(TOOL_GROUPS.map((g) => g.id), ["goals", "sql", "cv", "site", "workflows", "docs", "learn", "nosql", "office_live", "craft_live"]);
 });
 
 test("on an ordinary page only the core tools are sent", () => {
@@ -57,7 +58,7 @@ test("loaded groups are appended after the core tools (request prefix stays stab
 test("the load_tools definition is valid function-calling JSON with an enum of the groups", () => {
   const d = loadToolsDef();
   assert.equal(d.function.name, "load_tools");
-  assert.deepEqual(d.function.parameters.properties.group.enum, ["sql", "cv", "site", "workflows", "docs", "nosql"], "office_live and learn are page-only");
+  assert.deepEqual(d.function.parameters.properties.group.enum, ["goals", "sql", "cv", "site", "workflows", "docs", "nosql"], "office_live and learn are page-only");
   assert.deepEqual(d.function.parameters.required, ["group"]);
   assert.ok(d.function.description.length < 1000, `load_tools description is ${d.function.description.length} chars (sent every round: keep it short)`);
 });

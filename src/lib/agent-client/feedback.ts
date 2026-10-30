@@ -10,7 +10,7 @@
  * Nothing here touches the page layout or the tool components.
  */
 
-import { runtime, type LiveStep, type RunState, type RuntimeState, type StepStatus } from "./runtime-store";
+import { foregroundChat, runtime, runtimeFor, type LiveStep, type RunState, type RuntimeState, type RuntimeStore, type StepStatus } from "./runtime-store";
 
 export type { LiveStep, StepStatus };
 export type AgentPhase = "idle" | "thinking" | "writing" | "tool" | "stopping";
@@ -116,62 +116,74 @@ function mirrorPhase(): void {
   }
 }
 
-export function runStarted(): void {
-  runtime.begin();
-  setCues(NO_CUES);
+/**
+ * Every run-state function takes the chat it reports for (several chats can run at once in one tab); without one it
+ * means the foreground chat. Page cues (data-agent-active, toasts, output highlights) follow the foreground chat only.
+ */
+const storeOf = (chatId?: string): RuntimeStore => (chatId === undefined ? runtime : runtimeFor(chatId));
+const isForeground = (chatId?: string): boolean => chatId === undefined || chatId === foregroundChat();
+
+export function runStarted(chatId?: string): void {
+  storeOf(chatId).begin();
+  if (isForeground(chatId)) {
+    setCues(NO_CUES);
+    baselineOutputs();
+  }
   mirrorPhase();
-  baselineOutputs();
 }
 
-export function runEnded(): void {
-  clearHighlight();
-  runtime.end();
-  setCues({ navigating: false, here: null });
+export function runEnded(chatId?: string): void {
+  if (isForeground(chatId)) clearHighlight();
+  storeOf(chatId).end();
+  if (isForeground(chatId)) setCues({ navigating: false, here: null });
   mirrorPhase();
 }
 
 /** Late phase reports (after Stop, after the run ended) are dropped by the store. */
-export function setPhase(phase: AgentPhase): void {
-  if (phase === "idle") runtime.end();
-  else if (phase === "stopping") runtime.stop();
-  else if (phase === "tool") runtime.advance("tool");
-  else if (phase === "writing") runtime.advance("thinking");
-  else runtime.advance("thinking");
+export function setPhase(phase: AgentPhase, chatId?: string): void {
+  const rt = storeOf(chatId);
+  if (phase === "idle") rt.end();
+  else if (phase === "stopping") rt.stop();
+  else if (phase === "tool") rt.advance("tool");
+  else if (phase === "writing") rt.advance("thinking");
+  else rt.advance("thinking");
   mirrorPhase();
 }
 
 /** A new model round begins: drop the previous round's draft, keep the step list. */
-export function roundStarted(): void {
-  if (runtime.advance("thinking")) runtime.newRound();
+export function roundStarted(chatId?: string): void {
+  const rt = storeOf(chatId);
+  if (rt.advance("thinking")) rt.newRound();
   mirrorPhase();
 }
 
-export function appendDraft(delta: string): void {
-  runtime.appendDraft(delta);
+export function appendDraft(delta: string, chatId?: string): void {
+  storeOf(chatId).appendDraft(delta);
   mirrorPhase();
 }
 
-export function addReasoning(delta: string): void {
-  runtime.addReasoning(delta);
+export function addReasoning(delta: string, chatId?: string): void {
+  storeOf(chatId).addReasoning(delta);
 }
 
 /** The model named a tool: show the step immediately, before its arguments finish. */
-export function stepStarted(id: string, name: string, label: string): void {
-  runtime.stepStarted(id, name, label);
-  runtime.advance("tool");
+export function stepStarted(id: string, name: string, label: string, chatId?: string): void {
+  const rt = storeOf(chatId);
+  rt.stepStarted(id, name, label);
+  rt.advance("tool");
   mirrorPhase();
 }
 
-export function stepFinished(id: string, ok: boolean): void {
-  runtime.stepFinished(id, ok);
+export function stepFinished(id: string, ok: boolean, chatId?: string): void {
+  storeOf(chatId).stepFinished(id, ok);
 }
 
-export function clearSteps(): void {
-  runtime.clearSteps();
+export function clearSteps(chatId?: string): void {
+  storeOf(chatId).clearSteps();
 }
 
-export function stopRequested(): void {
-  runtime.stop();
+export function stopRequested(chatId?: string): void {
+  storeOf(chatId).stop();
   mirrorPhase();
 }
 

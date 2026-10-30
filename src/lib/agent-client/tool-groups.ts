@@ -20,12 +20,12 @@ export interface ToolGroup {
 }
 
 export const TOOL_GROUPS: readonly ToolGroup[] = [
-  { id: "goals", prefixes: ["knife_goal_"], pagePattern: /(?!)/, summary: "durable goals and projects: create, list, update, pause/resume, checkpoint progress and next actions" },
+  { id: "goals", prefixes: ["knife_goal_"], pagePattern: /(?!)/, summary: "saved tasks for multi-step work" },
   { id: "sql", prefixes: ["knife_sql_"], pagePattern: /^\/tools\/sql-lab(\/|$)/, summary: "SQL: compile a JSON query spec for 14 dialects, transpile between dialects, validate, format, DDL to schema, check SQL against a schema" },
-  { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: the bilingual (PL/EN) master CV (read, edit, undo, audit), job offers matched against it, per-job CV versions with rewording and an ATS check, applications, projects from GitHub links" },
+  { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: the bilingual (PL/EN) master CV (read, edit, undo, audit), job offers matched against it, per-job CV versions with an ATS check, applications, projects from GitHub" },
   { id: "site", prefixes: ["knife_site_", "knife_vision_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "the user's website: audit scores, screenshots, repo files, changes as a pull request" },
   { id: "workflows", prefixes: ["knife_workflow_"], pagePattern: /^\/tools\/workflows(\/|$)/, summary: "Workflows (automations): node catalog, build, edit, run, run results" },
-  { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list library + folders, read as text (or a version), create, make folders, move, list/restore versions" },
+  { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list, read as text (or a version), create, folders, move, versions" },
   // Tutor tools, preloaded on the course page only (MCP clients get them anyway).
   { id: "learn", prefixes: ["knife_learn_"], pagePattern: /^\/tools\/db-course(\/|$)/, summary: "Database course tutor: lessons, the learner's last query/error, SQL in the course sandbox", loadable: false },
   { id: "nosql", prefixes: ["knife_mongo_", "knife_chroma_", "knife_redis_"], pagePattern: /(?!)/ /* no page of its own since the NoSQL lab was removed (2026-10-25): load_tools only */, summary: "NoSQL and vector: MongoDB, Chroma and Redis operation specs to client code, validation and explanation" },

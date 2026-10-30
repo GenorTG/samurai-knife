@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { cx } from "@/lib/format";
 import {
   answerApproval,
+  answerForeground,
   answerWait,
   setTrustMode,
   useInteraction,
@@ -46,7 +47,7 @@ export function TrustModeSwitch({ chatId = "default" }: { chatId?: string }) {
 /** Approval and waiting prompts, pinned above the composer so they are never scrolled away. */
 export function InteractionCards({ onStop, chatId = "default" }: { onStop: () => void; chatId?: string }) {
   const { t } = useT();
-  const { approval, wait } = useInteraction(chatId);
+  const { approval, wait, page } = useInteraction(chatId);
   const allowRef = useRef<HTMLButtonElement>(null);
   const hasApproval = approval !== null;
 
@@ -99,6 +100,24 @@ export function InteractionCards({ onStop, chatId = "default" }: { onStop: () =>
               {t("Allow rest of this run")}
             </button>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (page) {
+    // A step of this chat that needs the live page, reached while the chat ran in the background.
+    return (
+      <div role="alertdialog" aria-label={t("This step needs the page")} data-agent-page-step="" className="space-y-2 border-t border-ai/40 bg-ai/8 px-3 py-2.5">
+        <p className="text-sm font-medium text-ink">{t("This step needs the page: {label}. Open it now?", { label: page.label })}</p>
+        <p className="text-xs text-faint">{t("This chat worked in the background while you were in another chat; only the chat you are looking at may use the page.")}</p>
+        <div className="flex items-center gap-1.5">
+          <button autoComplete="off" type="button" onClick={() => answerForeground("open", chatId)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg hover:brightness-110">
+            {t("Open")}
+          </button>
+          <button autoComplete="off" type="button" onClick={() => answerForeground("skip", chatId)} className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-xs text-ink hover:bg-raised">
+            {t("Skip")}
+          </button>
         </div>
       </div>
     );

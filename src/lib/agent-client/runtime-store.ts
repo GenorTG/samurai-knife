@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Single source of truth for the assistant's run lifecycle (one per browser tab).
+ * Single source of truth for the assistant's run lifecycle (one per chat; see runtimeFor and the foreground chat).
  *
  *   idle -> preparing -> thinking <-> tool <-> awaiting_approval | awaiting_user
  *                            \-> summarising        any active state -> stopping -> idle
@@ -275,19 +275,90 @@ export function createRuntimeStore(options: RuntimeOptions = {}): RuntimeStore {
   };
 }
 
-/** The tab-wide instance every module shares. */
-export const runtime: RuntimeStore = createRuntimeStore();
+/* ------------------------------------------------------------------ one store per chat */
+
+/**
+ * Several chats can run at once in one tab (a chat keeps running in the background while the user looks at another):
+ * each chat has its own store, and the FOREGROUND chat (the one shown in the widget) is the one the pill, the status
+ * line, the queue panel and the page cues read through `runtime`. The loop of a chat writes to `runtimeFor(chatId)`.
+ */
+const stores = new Map<string, RuntimeStore>();
+const anyListeners = new Set<() => void>();
+let foreground = "default";
+
+function notifyAny(): void {
+  for (const l of anyListeners) l();
+}
+
+export function runtimeFor(chatId: string): RuntimeStore {
+  let store = stores.get(chatId);
+  if (!store) {
+    store = createRuntimeStore();
+    store.subscribe(notifyAny);
+    stores.set(chatId, store);
+  }
+  return store;
+}
+
+export function foregroundChat(): string {
+  return foreground;
+}
+
+/** The widget shows another chat: shell cues follow it. */
+export function setForegroundChat(chatId: string): void {
+  if (foreground === chatId) return;
+  foreground = chatId;
+  notifyAny();
+}
+
+/** Every change of every chat's store, and foreground switches. */
+export function subscribeAllRuntimes(listener: () => void): () => void {
+  anyListeners.add(listener);
+  return () => {
+    anyListeners.delete(listener);
+  };
+}
+
+/** Chats of this tab whose run is not idle. */
+export function runningChats(): string[] {
+  return [...stores.entries()].filter(([, s]) => s.get().run !== "idle").map(([id]) => id);
+}
+
+const fg = (): RuntimeStore => runtimeFor(foreground);
+
+/** The foreground chat's store (what the shell shows). Code that runs FOR a chat uses runtimeFor(chatId). */
+export const runtime: RuntimeStore = {
+  get: () => fg().get(),
+  subscribe: subscribeAllRuntimes,
+  begin: () => fg().begin(),
+  end: () => fg().end(),
+  advance: (to) => fg().advance(to),
+  stop: () => fg().stop(),
+  enterAwaiting: (kind, pending) => fg().enterAwaiting(kind, pending),
+  leaveAwaiting: (kind) => fg().leaveAwaiting(kind),
+  setActivity: (text) => fg().setActivity(text),
+  newRound: () => fg().newRound(),
+  appendDraft: (delta) => fg().appendDraft(delta),
+  addReasoning: (delta) => fg().addReasoning(delta),
+  stepStarted: (id, name, label) => fg().stepStarted(id, name, label),
+  stepFinished: (id, ok) => fg().stepFinished(id, ok),
+  clearSteps: () => fg().clearSteps(),
+  setAccount: (accountId, chatId) => fg().setAccount(accountId, chatId),
+  setQueue: (queue, paused) => fg().setQueue(queue, paused),
+  setSteering: (steering) => fg().setSteering(steering),
+  setLock: (lock, remoteActivity) => fg().setLock(lock, remoteActivity),
+};
 
 export const getServerRuntime = (): RuntimeState => IDLE_RUNTIME;
 
 /**
- * Subscribe to a slice. The selector must return a primitive or an existing object from the state
- * (never a freshly built one), or React sees a new snapshot on every read.
+ * Subscribe to a slice of the foreground chat (or of `chatId`). The selector must return a primitive or an existing
+ * object from the state (never a freshly built one), or React sees a new snapshot on every read.
  */
-export function useRuntime<T>(select: (s: RuntimeState) => T): T {
+export function useRuntime<T>(select: (s: RuntimeState) => T, chatId?: string): T {
   return useSyncExternalStore(
-    runtime.subscribe,
-    () => select(runtime.get()),
+    subscribeAllRuntimes,
+    () => select(chatId === undefined ? runtime.get() : runtimeFor(chatId).get()),
     () => select(IDLE_RUNTIME),
   );
 }

@@ -15,7 +15,7 @@ import { cx } from "@/lib/format";
 import { usePathname } from "next/navigation";
 import { AGENT_EVENTS, type AgentOpenDetail } from "@/lib/agent-client/bridge";
 import { WIDGET_ATTR } from "@/lib/agent-client/dom-bridge";
-import { answerWait, isWaiting, useInteraction } from "@/lib/agent-client/interaction";
+import { answerWait, chatsNeedingUser, isWaiting, subscribeInteraction, useInteraction } from "@/lib/agent-client/interaction";
 import { findTool, canonicalSlug } from "@/lib/registry";
 import { ChatIcon, CloseIcon, DockIcon, GearIcon, SendIcon, StopIcon, TrashIcon } from "./icons";
 import { FeedbackLayer } from "./FeedbackLayer";
@@ -87,6 +87,11 @@ function WidgetShell() {
   const { account, switchChat } = agent;
   const pathname = usePathname();
   const interaction = useInteraction(chatId);
+  // Chats waiting for the user (an approval, a question, a page step): a background one gets a badge and a notice.
+  const attentionKey = useSyncExternalStore(subscribeInteraction, () => chatsNeedingUser(prefs.chatIds).join(","), () => "");
+  const attention = useMemo(() => (attentionKey ? attentionKey.split(",") : []), [attentionKey]);
+  const backgroundAttention = attention.filter((id) => id !== chatId);
+  const backgroundRunning = agent.runningChats.filter((id) => id !== chatId).length;
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [wide, setWide] = useState(false);
 
@@ -151,31 +156,31 @@ function WidgetShell() {
       : { ...current, chatIds: updated.chatIds });
   }), []);
 
+  // Switching chats never waits for a run: a running chat carries on in the background (useAgent).
   const selectChat = useCallback((id: string) => {
-    if (agent.busy || !prefs.chatIds.includes(id)) return;
+    if (!prefs.chatIds.includes(id)) return;
     switchChat(id);
     setChatId(id);
     setDraft("");
-  }, [agent.busy, prefs.chatIds, switchChat]);
+  }, [prefs.chatIds, switchChat]);
 
   /** An earlier chat was copied into a new chat id on the server (Settings > Recover earlier chats): show it. */
   const openImportedChat = useCallback((id: string) => {
-    if (agent.busy) return;
     setPrefs((current) => ({ ...current, chatIds: [...current.chatIds.filter((c) => c !== id), id].slice(-50) }));
     switchChat(id);
     setChatId(id);
     setDraft("");
     setSettingsRequested(false);
-  }, [agent.busy, switchChat]);
+  }, [switchChat]);
 
   const createChat = useCallback(() => {
-    if (agent.busy || prefs.chatIds.length >= 50) return;
+    if (prefs.chatIds.length >= 50) return;
     const id = crypto.randomUUID().replaceAll("-", "");
     setPrefs((current) => ({ ...current, chatIds: [...current.chatIds, id] }));
     switchChat(id);
     setChatId(id);
     setDraft("");
-  }, [agent.busy, prefs.chatIds.length, switchChat]);
+  }, [prefs.chatIds.length, switchChat]);
 
   const firstRun = account.kind === "ready" && account.account.provider === null;
   const view: "chat" | "goals" | "settings" | "login" | "loading" | "error" =
@@ -329,21 +334,31 @@ function WidgetShell() {
                 <IconButton label={view === "goals" ? t("Back to chat") : t("Tasks")} onClick={() => { setSettingsRequested(false); setGoalsRequested(view !== "goals"); }}>
                   <span aria-hidden="true">☷</span>
                 </IconButton>
-                <select
-                  aria-label={t("Assistant conversation")}
-                  value={chatId}
-                  disabled={agent.busy}
-                  onChange={(event) => selectChat(event.currentTarget.value)}
-                  className="sk-input max-w-28 px-2 py-1 text-xs"
-                >
-                  {prefs.chatIds.map((id, index) => <option key={id} value={id}>{t("Chat {number}", { number: index + 1 })}</option>)}
-                </select>
+                <span className="relative inline-flex">
+                  <select
+                    aria-label={t("Assistant conversation")}
+                    value={chatId}
+                    onChange={(event) => selectChat(event.currentTarget.value)}
+                    className="sk-input max-w-32 px-2 py-1 text-xs"
+                  >
+                    {prefs.chatIds.map((id, index) => (
+                      <option key={id} value={id} data-chat-state={attention.includes(id) ? "needs-you" : agent.runningChats.includes(id) ? "running" : "idle"}>
+                        {attention.includes(id) && id !== chatId
+                          ? t("Chat {number} · needs you", { number: index + 1 })
+                          : agent.runningChats.includes(id) ? t("Chat {number} · working", { number: index + 1 }) : t("Chat {number}", { number: index + 1 })}
+                      </option>
+                    ))}
+                  </select>
+                  {backgroundRunning > 0 ? (
+                    <span data-background-running={backgroundRunning} title={t("Chats working in the background: {count}", { count: backgroundRunning })} className={cx("absolute -top-1 -right-1 size-2.5 rounded-full ring-2 ring-surface", backgroundAttention.length ? "bg-danger" : "animate-pulse bg-ai")} />
+                  ) : null}
+                </span>
                 {chatId !== "default" ? (
-                  <IconButton label={t("Exit conversation")} onClick={() => selectChat("default")} disabled={agent.busy}>
+                  <IconButton label={t("Exit conversation")} onClick={() => selectChat("default")}>
                     <span aria-hidden="true">↩</span>
                   </IconButton>
                 ) : null}
-                <IconButton label={t("New conversation")} onClick={createChat} disabled={agent.busy || prefs.chatIds.length >= 50}>
+                <IconButton label={t("New conversation")} onClick={createChat} disabled={prefs.chatIds.length >= 50}>
                   <span aria-hidden="true">＋</span>
                 </IconButton>
                 <IconButton
@@ -410,6 +425,12 @@ function WidgetShell() {
           }} /> : null}
           {view === "chat" ? (
             <>
+              {backgroundAttention.length ? (
+                <div role="status" data-background-attention="" className="flex items-center gap-2 border-b border-ai/40 bg-ai/8 px-3 py-1.5 text-xs text-ink">
+                  <span className="min-w-0 flex-1">{t("Chat {number} is waiting for you.", { number: prefs.chatIds.indexOf(backgroundAttention[0]) + 1 })}</span>
+                  <button type="button" autoComplete="off" className="rounded-md bg-accent px-2 py-1 font-semibold text-accent-fg" onClick={() => selectChat(backgroundAttention[0])}>{t("Open chat")}</button>
+                </div>
+              ) : null}
               <TrustModeSwitch chatId={chatId} />
               <Transcript
                 messages={agent.messages}

@@ -1,4 +1,4 @@
-"""Assistant run state, message queue and multi-tab safety (real browser, scripted mock provider).
+"""Assistant run state, message queue, multi-tab safety and concurrent chats (real browser, scripted mock provider).
 
   node tests/mock_provider.mjs 3299
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3236 npm run dev
@@ -417,6 +417,128 @@ with sync_playwright() as pw:
         settle(b, 6, 60)
         check("the surviving tab can run again", user_msgs(b)[-1] == "after A closed", user_msgs(b)[-2:])
         ctx.close()
+
+    # ------------------------------------------------------------------ 8. concurrent chats in one tab
+    print("# concurrent chats: a running chat keeps going in the background; page steps wait for the user")
+    STREAMED60 = " ".join(f"word{i}" for i in range(1, 61))
+
+    def chat_log(p: Page, chat: str) -> list[dict]:
+        msgs = p.evaluate("c => fetch('/api/agent/conversation?chat=' + c).then(r => r.json()).then(x => x.messages)", chat)
+        return [m for m in msgs if not (m["role"] == "notice" and m.get("level") == "usage")]
+
+    def wait_chat(p: Page, chat: str, pred, timeout: float = 60) -> list[dict]:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            log = chat_log(p, chat)
+            if pred(log):
+                return log
+            time.sleep(0.25)
+        return chat_log(p, chat)
+
+    def select_chat(p: Page, chat: str) -> None:
+        p.select_option("select[aria-label='Assistant conversation']", chat)
+        p.wait_for_function("c => document.querySelector(\"select[aria-label='Assistant conversation']\").value === c", arg=chat)
+
+    def last_answer(log: list[dict]) -> str:
+        return next((m.get("content") or "" for m in reversed(log) if m["role"] == "assistant"), "")
+
+    chats = ["default", "cc2", "cc3", "cc4"]
+    ctx = new_ctx(browser)
+    ctx.add_init_script("if (!localStorage.getItem('sk.agent.ui.v1')) localStorage.setItem('sk.agent.ui.v1', JSON.stringify({open:false,width:420,height:720,dock:false,chatIds:" + json.dumps(chats) + "}))")
+    page = open_panel(ctx)
+    for c in chats:
+        page.evaluate("c => fetch('/api/agent/conversation?chat=' + c, {method: 'DELETE', headers: {Origin: location.origin}})", c)
+    mock("/__log", "DELETE")
+    mock("/__stats", "DELETE")
+    send(page, "STREAM:60 GAP:100 bg-one")
+    wait_running(page)
+    select = page.locator("select[aria-label='Assistant conversation']")
+    check("the chat picker stays usable while a chat runs", select.is_enabled())
+    select_chat(page, "cc2")
+    check("the other chat is idle and empty (no Stop, its own transcript)", not running(page) and "bg-one" not in page.locator("[role=log]").inner_text())
+    page.wait_for_selector("[data-background-running='1']", timeout=5_000)
+    check("a running indicator shows a chat working in the background", page.locator("select[aria-label='Assistant conversation'] option[value=default]").inner_text().endswith("working"))
+    send(page, "STREAM:20 GAP:100 fg-two")
+    wait_running(page)
+    done_two = wait_chat(page, "cc2", lambda log: last_answer(log) == STREAMED20)
+    done_one = wait_chat(page, "default", lambda log: last_answer(log) == STREAMED60)
+    check("both chats got their full answers", last_answer(done_one) == STREAMED60 and last_answer(done_two) == STREAMED20, (last_answer(done_one)[-30:], last_answer(done_two)[-30:]))
+    check("the two chats ran at the same time (peak 2 model requests)", mock("/__stats")["maxConcurrent"] == 2, mock("/__stats"))
+    check("no message leaked between chats", all("bg-one" not in (m.get("content") or "") for m in done_two) and all("fg-two" not in (m.get("content") or "") for m in done_one))
+    page.wait_for_selector("[data-background-running]", state="detached", timeout=10_000)
+    check("the background indicator goes away when the background chat finishes", True)
+
+    print("# a background chat reaching a page tool asks first (Open)")
+    select_chat(page, "default")
+    send(page, 'GAP:2500\nCALL:page_snapshot:{}')
+    wait_running(page)
+    select_chat(page, "cc2")
+    page.wait_for_selector("[data-background-attention]", timeout=15_000)
+    check("the widget says the background chat is waiting", "waiting for you" in page.locator("[data-background-attention]").inner_text())
+    check("the picker marks it", page.locator("select[aria-label='Assistant conversation'] option[value=default]").inner_text().endswith("needs you"))
+    check("the page tool has not run yet", not any(m["role"] == "tool" for m in chat_log(page, "default")[-2:]))
+    page.locator("[data-background-attention]").get_by_role("button", name="Open chat").click()
+    page.wait_for_selector("[data-agent-page-step]", timeout=10_000)
+    check("the card in its own chat names the step", "needs the page" in page.locator("[data-agent-page-step]").inner_text())
+    page.locator("[data-agent-page-step]").get_by_role("button", name="Open", exact=True).click()
+    log = wait_chat(page, "default", lambda log: last_answer(log).startswith("DONE:"))
+    tool = next((m for m in reversed(log) if m["role"] == "tool"), {})
+    check("after Open the page step ran in the foreground", '"ok":true' in tool.get("content", "").replace(" ", "") and last_answer(log).startswith("DONE:"), tool.get("content", "")[:200])
+
+    print("# ... and Skip")
+    send(page, 'GAP:2500\nCALL:page_snapshot:{}')
+    wait_running(page)
+    select_chat(page, "cc2")
+    page.wait_for_selector("[data-background-attention]", timeout=15_000)
+    select_chat(page, "default")
+    page.locator("[data-agent-page-step]").get_by_role("button", name="Skip").click()
+    log = wait_chat(page, "default", lambda log: "Skipped by the user" in (next((m for m in reversed(log) if m["role"] == "tool"), {}).get("content") or "") and last_answer(log).startswith("DONE:"))
+    check("Skip answers the model that the step needs the page", "Skipped by the user" in (next((m for m in reversed(log) if m["role"] == "tool"), {}).get("content") or ""))
+
+    print("# a server tool in the background needs nothing from the user")
+    send(page, 'GAP:2500\nCALL:knife_count_text:{"text":"zażółć"}')
+    wait_running(page)
+    select_chat(page, "cc2")
+    log = wait_chat(page, "default", lambda log: last_answer(log).startswith("DONE:") and "utf8Bytes" in last_answer(log))
+    check("knife_count_text ran in the background chat", "utf8Bytes" in last_answer(log), last_answer(log)[:200])
+    check("no waiting notice for a server tool", page.locator("[data-background-attention]").count() == 0)
+
+    print("# at most 3 chats run at once; a 4th waits in its queue")
+    mock("/__stats", "DELETE")
+    for c in ("default", "cc2", "cc3"):
+        select_chat(page, c)
+        send(page, f"STREAM:50 GAP:100 cap-{c}")
+        wait_running(page)
+    select_chat(page, "cc4")
+    send(page, "cap-cc4")
+    page.wait_for_selector("[data-agent-queued='1']", timeout=10_000)
+    check("the 4th chat's message waits as a chip", chips(page) == ["cap-cc4"], chips(page))
+    log = wait_chat(page, "cc4", lambda log: last_answer(log) == "ECHO: cap-cc4", 90)
+    check("it is delivered once a slot frees", last_answer(log) == "ECHO: cap-cc4", last_answer(log)[:80])
+    check("never more than 3 model requests at once", mock("/__stats")["maxConcurrent"] <= 3, mock("/__stats"))
+    for c in ("default", "cc2", "cc3"):
+        wait_chat(page, c, lambda log: last_answer(log).startswith("word1 "), 60)
+
+    print("# two tabs: different chats run at once, the same chat stays locked")
+    b = open_panel(ctx)
+    select_chat(b, "cc2")
+    mock("/__stats", "DELETE")
+    select_chat(page, "default")
+    send(page, "STREAM:80 GAP:100 tabs-A")
+    wait_running(page)
+    send(b, "STREAM:20 GAP:100 tabs-B")
+    wait_running(b)
+    check("tab B runs another chat while tab A runs its own (no lock banner)", b.locator("[data-agent-lock]").count() == 0)
+    wait_chat(b, "cc2", lambda log: last_answer(log) == STREAMED20)
+    select_chat(b, "default")
+    if running(page):
+        b.wait_for_selector("[data-agent-lock]", timeout=10_000)
+        check("the SAME chat in the other tab is still locked", "Another tab is running this conversation" in b.locator("[data-agent-lock]").inner_text())
+    else:
+        check("the SAME chat in the other tab is still locked (run ended too early to observe)", False)
+    wait_chat(page, "default", lambda log: last_answer(log) == " ".join(f"word{i}" for i in range(1, 81)))
+    check("the model ran both tabs' chats at once", mock("/__stats")["maxConcurrent"] == 2, mock("/__stats"))
+    ctx.close()
 
     no_illegal_transitions("all scenarios")
     bad = [e for e in errors if "Hydration" in e or "hydrat" in e]

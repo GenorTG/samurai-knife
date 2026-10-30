@@ -13,13 +13,14 @@ import {
   clearQueue,
   enqueue,
   moveToSteering,
+  nextQueued,
   pauseQueue,
   reclaimSteering,
   takeQueued,
   takeSteeringTexts,
 } from "@/lib/agent-client/message-queue";
-import { announceRun, runHeldElsewhere, subscribeRunAnnouncements, tryAcquireRun } from "@/lib/agent-client/run-lock";
-import { runtime, useRuntime } from "@/lib/agent-client/runtime-store";
+import { announceRun, runHeldElsewhere, runningChatCount, subscribeRunAnnouncements, tryAcquireRun } from "@/lib/agent-client/run-lock";
+import { runtimeFor, setForegroundChat, useRuntime } from "@/lib/agent-client/runtime-store";
 import type { AccountChoice, AccountInfo, TranscriptMessage } from "@/lib/agent-client/types";
 import { appendChat, clearChat, clearLegacyChat, readChat, readLegacyChat, replaceChat, saveChat, subscribeChat } from "./storage";
 
@@ -32,8 +33,10 @@ export type AccountState =
 export interface AgentController {
   account: AccountState;
   messages: TranscriptMessage[];
-  /** A turn is running or starting in THIS tab. */
+  /** A turn of the SELECTED chat is running or starting in THIS tab. */
   busy: boolean;
+  /** Chats of this tab with a running turn (the selected one included). */
+  runningChats: readonly string[];
   activity: string | null;
   /** Run now when idle; otherwise queue (a run is active here, another tab holds the conversation, or the queue is draining). */
   send: (text: string) => void;
@@ -48,6 +51,19 @@ export interface AgentController {
 }
 
 const LOCK_POLL_MS = 1500;
+/** Chats of one account that may run at once (all tabs of this browser); more wait in their chat's queue. */
+export const MAX_RUNNING_CHATS = 3;
+
+/** Per-chat bookkeeping of this tab: a chat keeps its run, journal and save chain when the user looks at another. */
+interface ChatRun {
+  abort: AbortController | null;
+  /** The running (or starting) turn is being discarded by Clear: no "Stopped." notice, no queue pause. */
+  discard: boolean;
+  actions: string[];
+  /** The server copy of this chat is loaded (nothing to save into before, or right after a Clear). */
+  loaded: boolean;
+  persist: Promise<void>;
+}
 
 /**
  * Owns the account session, one chat's transcript and the running agent turn.
@@ -68,17 +84,24 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
   const router = useRouter();
   const [account, setAccount] = useState<AccountState>({ kind: "loading" });
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [busy, setBusy] = useState(false);
 
   const accountIdRef = useRef<string | null>(null);
   const scopeIdRef = useRef<string | null>(null);
-  const actionsRef = useRef<string[]>([]);
-  /** The server copy of this scope's conversation is loaded (nothing to save into before, or right after a Clear). */
-  const loadedRef = useRef(false);
-  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const abortRef = useRef<AbortController | null>(null);
-  /** The running (or starting) turn is being discarded by Clear: no "Stopped." notice, no queue pause. */
-  const discardRef = useRef(false);
+  const chatsRef = useRef(new Map<string, ChatRun>());
+  const chatRun = useCallback((id: string): ChatRun => {
+    let entry = chatsRef.current.get(id);
+    if (!entry) {
+      entry = { abort: null, discard: false, actions: [], loaded: false, persist: Promise.resolve() };
+      chatsRef.current.set(id, entry);
+    }
+    return entry;
+  }, []);
+  const [runningSet, setRunningSet] = useState<readonly string[]>([]);
+  const markRunning = useCallback((id: string, on: boolean) => {
+    setRunningSet((current) => (on ? (current.includes(id) ? current : [...current, id]) : current.filter((c) => c !== id)));
+  }, []);
+  /** Chats with a message queued while MAX_RUNNING_CHATS were busy: tried again when one finishes. */
+  const waitingForSlot = useRef<string[]>([]);
   const requested = useRef(false);
   const loadedChatId = useRef(chatId);
   const needSettings = useRef(onNeedSettings);
@@ -86,11 +109,14 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
     needSettings.current = onNeedSettings;
   }, [onNeedSettings]);
 
-  const run = useRuntime((s) => s.run);
-  const lock = useRuntime((s) => s.lock);
-  const paused = useRuntime((s) => s.paused);
-  const queueLength = useRuntime((s) => s.queue.length);
-  const activity = useRuntime((s) => s.activity);
+  // The selected chat is the foreground one: the shell's pill, status line and page cues follow it.
+  useLayoutEffect(() => setForegroundChat(chatId), [chatId]);
+  const run = useRuntime((s) => s.run, chatId);
+  const lock = useRuntime((s) => s.lock, chatId);
+  const paused = useRuntime((s) => s.paused, chatId);
+  const queueLength = useRuntime((s) => s.queue.length, chatId);
+  const activity = useRuntime((s) => s.activity, chatId);
+  const busy = runningSet.includes(chatId);
   const accountId = account.kind === "ready" ? account.account.id : null;
   const localChatScope = account.kind === "ready"
     ? `${account.account.id}:chat:${chatId}`
@@ -101,12 +127,16 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
     accountIdRef.current = info.id;
     if (scopeIdRef.current !== scopeId) {
       scopeIdRef.current = scopeId;
-      actionsRef.current = [];
-      loadedRef.current = false;
+      // A chat running in the background keeps its own journal and server state.
+      const entry = chatRun(chatId);
+      if (!entry.abort) {
+        entry.actions = [];
+        entry.loaded = false;
+      }
       setMessages(readChat(scopeId));
     }
     setAccount({ kind: "ready", account: info });
-  }, [chatId]);
+  }, [chatId, chatRun]);
 
   const refreshAccount = useCallback(async () => {
     const requestedChatId = chatId;
@@ -121,10 +151,11 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
         const remote = await fetchConversation(requestedChatId);
         if (selectedChatId.current !== requestedChatId) return;
         if (remote.ok) {
-          actionsRef.current = remote.value.actions;
-          loadedRef.current = true;
+          const entry = chatRun(requestedChatId);
           // A run in this tab owns the transcript until it ends; it reconciles at the next turn start.
-          if (abortRef.current) return;
+          if (entry.abort) return;
+          entry.actions = remote.value.actions;
+          entry.loaded = true;
           // Continue from the copy that holds the most: the server one, unless this browser has more after it (a save
           // that failed during a restart) or an older release left it under a provider-scoped key.
           const remoteMessages = remote.value.messages as TranscriptMessage[];
@@ -138,7 +169,7 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
           saveChat(scopeId, chosen.messages);
           setMessages(chosen.messages);
           if (chosen.from === "local" && extendsTranscript(chosen.messages, remoteMessages)) {
-            const saved = await saveConversation({ version: 1, messages: chosen.messages, actions: actionsRef.current }, requestedChatId);
+            const saved = await saveConversation({ version: 1, messages: chosen.messages, actions: chatRun(requestedChatId).actions }, requestedChatId);
             if (saved.ok) clearLegacyChat(info.id, requestedChatId);
           } else clearLegacyChat(info.id, requestedChatId);
         }
@@ -148,36 +179,33 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
     const f = result.failure;
     if (f.kind === "login_required") setAccount({ kind: "login", accounts: f.accounts });
     else setAccount({ kind: "error", message: f.kind === "error" ? f.message : "Unexpected response." });
-  }, [applyAccount, chatId]);
+  }, [applyAccount, chatId, chatRun]);
 
   useEffect(() => {
     if (loadedChatId.current === chatId) return;
     loadedChatId.current = chatId;
-    actionsRef.current = [];
-    loadedRef.current = false;
-    persistQueueRef.current = Promise.resolve();
-    runtime.setLock("free");
-    runtime.setQueue([], null);
-    runtime.setSteering([]);
+    // Each chat has its own store and bookkeeping: switching never touches the chat left behind (it may still run).
     if (account.kind === "ready") queueMicrotask(() => void refreshAccount());
   }, [account.kind, chatId, localChatScope, refreshAccount]);
 
   const switchChat = useCallback((nextChatId: string) => {
-    if (busy || !/^[a-zA-Z0-9_-]{1,64}$/.test(nextChatId)) return;
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(nextChatId)) return;
     const info = account.kind === "ready" ? account.account : null;
     const scopeId = info ? `${info.id}:chat:${nextChatId}` : null;
+    selectedChatId.current = nextChatId;
     setMessages(scopeId ? readChat(scopeId) : []);
-  }, [account, busy]);
+  }, [account]);
 
   // Transcript + journal only: the taint flag is the server's (/api/agent/chat).
-  const enqueueConversationSave = useCallback((history: TranscriptMessage[], actions: string[]): Promise<void> => {
-    const pending = persistQueueRef.current.then(async () => {
-      // No server copy loaded yet for this scope (or it was just cleared): nothing to save into.
-      if (loadedRef.current) await saveConversation({ version: 1, messages: history, actions }, chatId);
+  const enqueueConversationSave = useCallback((forChat: string, history: TranscriptMessage[], actions: string[]): Promise<void> => {
+    const entry = chatRun(forChat);
+    const pending = entry.persist.then(async () => {
+      // No server copy loaded yet for this chat (or it was just cleared): nothing to save into.
+      if (entry.loaded) await saveConversation({ version: 1, messages: history, actions }, forChat);
     });
-      persistQueueRef.current = pending;
+    entry.persist = pending;
     return pending;
-  }, [chatId]);
+  }, [chatRun]);
 
   // Load the account the first time the panel is shown (never during SSR or hydration).
   useEffect(() => {
@@ -201,44 +229,48 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
   useEffect(() => {
     if (!localChatScope) return;
     const scopeId = localChatScope;
+    const viewed = chatId;
     return subscribeChat(scopeId, (removed) => {
       if (removed) {
-        actionsRef.current = [];
-        loadedRef.current = false;
-        if (abortRef.current) {
-          discardRef.current = true;
-          abortRef.current.abort();
+        const entry = chatRun(viewed);
+        entry.actions = [];
+        entry.loaded = false;
+        if (entry.abort) {
+          entry.discard = true;
+          entry.abort.abort();
         }
         setMessages([]);
       } else {
         setMessages(readChat(scopeId));
       }
     });
-  }, [localChatScope]);
+  }, [chatId, chatRun, localChatScope]);
 
   // Another tab's run: announced instantly, double-checked against the lock (a crashed tab never announces its end).
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
+    const rt = runtimeFor(chatId);
     void runHeldElsewhere(accountId, chatId).then((held) => {
-      if (alive && held && !abortRef.current) runtime.setLock("other");
+      if (alive && held && !chatRun(chatId).abort) rt.setLock("other");
     });
     const off = subscribeRunAnnouncements((a) => {
-      if (a.accountId !== accountId || a.chatId !== chatId || abortRef.current) return;
-      if (a.running) runtime.setLock("other", a.activity);
-      else runtime.setLock("free");
+      if (a.accountId !== accountId || a.chatId !== chatId || chatRun(chatId).abort) return;
+      if (a.running) rt.setLock("other", a.activity);
+      else rt.setLock("free");
     });
     return () => {
       alive = false;
       off();
     };
-  }, [accountId, chatId]);
+  }, [accountId, chatId, chatRun]);
 
   useEffect(() => {
     if (!accountId || lock !== "other") return;
+    const rt = runtimeFor(chatId);
     const timer = setInterval(() => {
-    void runHeldElsewhere(accountId, chatId).then((held) => {
-        if (!held && runtime.get().lock === "other") runtime.setLock("free");
+      void runHeldElsewhere(accountId, chatId).then((held) => {
+        if (!held && rt.get().lock === "other") rt.setLock("free");
       });
     }, LOCK_POLL_MS);
     return () => clearInterval(timer);
@@ -246,54 +278,76 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
 
   /* ---------------------------------------------------------------- a turn */
 
+  // The newest startTurn, for runs that end in the background and drain their own chat's queue.
+  const startTurnRef = useRef<(forChat: string, text: string, queuedId: string | null, automatic: boolean) => Promise<void>>(async () => {});
+
+  /** A chat whose queue may drain by itself (a background chat after its run, or one that waited for a free slot). */
+  const drainChat = useCallback((forChat: string) => {
+    if (chatRun(forChat).abort || runtimeFor(forChat).get().lock === "other") return;
+    const next = nextQueued(forChat);
+    if (next) void startTurnRef.current(forChat, next.text, next.id, true);
+  }, [chatRun]);
+
   const startTurn = useCallback(
-    async (text: string, queuedId: string | null, automatic: boolean): Promise<void> => {
+    async (forChat: string, text: string, queuedId: string | null, automatic: boolean): Promise<void> => {
       const id = accountIdRef.current;
-      if (!id || account.kind !== "ready" || abortRef.current) return;
+      const entry = chatRun(forChat);
+      if (!id || account.kind !== "ready" || entry.abort) return;
+      const rt = runtimeFor(forChat);
       const controller = new AbortController();
-      abortRef.current = controller;
-      setBusy(true);
-      const lease = await tryAcquireRun(id, chatId);
-      const giveUp = (): void => {
+      entry.abort = controller;
+      markRunning(forChat, true);
+      const giveUp = (lease: { release: () => void } | null): void => {
         lease?.release();
-        abortRef.current = null;
-        setBusy(false);
+        entry.abort = null;
+        markRunning(forChat, false);
       };
-      if (!lease) {
-        // Another tab holds the conversation: keep the message (queued) and show the banner.
-        runtime.setLock("other");
-        if (!queuedId) enqueue(text, chatId);
-        abortRef.current = null;
-        setBusy(false);
+      // At most MAX_RUNNING_CHATS chats of the account run at once: this one waits in its queue for a free slot.
+      if ((await runningChatCount(id)) >= MAX_RUNNING_CHATS) {
+        if (!queuedId) enqueue(text, forChat);
+        if (!waitingForSlot.current.includes(forChat)) waitingForSlot.current.push(forChat);
+        giveUp(null);
         return;
       }
-      if (queuedId && !takeQueued(queuedId, { unlessPaused: automatic }, chatId)) {
-        giveUp(); // another tab already delivered it, or the queue was paused / cancelled meanwhile
+      const lease = await tryAcquireRun(id, forChat);
+      if (!lease) {
+        // Another tab holds this chat: keep the message (queued) and show the banner.
+        rt.setLock("other");
+        if (!queuedId) enqueue(text, forChat);
+        giveUp(null);
+        return;
+      }
+      if (queuedId && !takeQueued(queuedId, { unlessPaused: automatic }, forChat)) {
+        giveUp(lease); // another tab already delivered it, or the queue was paused / cancelled meanwhile
         return;
       }
 
-      runtime.setLock("mine");
-      announceRun(id, true, null, chatId);
+      rt.setLock("mine");
+      announceRun(id, true, null, forChat);
       let lastActivity: string | null = null;
-      const offBroadcast = runtime.subscribe(() => {
+      const offBroadcast = rt.subscribe(() => {
         lease.renew();
-        const now = runtime.get().activity;
+        const now = rt.get().activity;
         if (now !== lastActivity) {
           lastActivity = now;
-          announceRun(id, true, now, chatId);
+          announceRun(id, true, now, forChat);
         }
       });
+      const scopeId = `${id}:chat:${forChat}`;
+      // Only the chat on screen updates the visible transcript; a background chat writes to its own stored copy.
+      const show = (history: TranscriptMessage[]): void => {
+        if (selectedChatId.current === forChat) setMessages(history);
+      };
 
       let outcome: LoopOutcome = "error";
       try {
-        await persistQueueRef.current;
-        const durable = await fetchConversation(chatId);
+        await entry.persist;
+        const durable = await fetchConversation(forChat);
         if (durable.ok) {
-          actionsRef.current = durable.value.actions;
-          loadedRef.current = true;
+          entry.actions = durable.value.actions;
+          entry.loaded = true;
         }
         // Under the lock the stored transcript is ours to repair (a crashed run may have left unpaired tool calls).
-        const scopeId = scopeIdRef.current ?? id;
         let stored = readChat(scopeId);
         // The server copy is ahead (another browser, or this tab loaded before a turn elsewhere): continue from it.
         if (durable.ok) {
@@ -303,107 +357,127 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
         const repaired = repairTranscript(stored);
         if (repaired.length !== stored.length) replaceChat(scopeId, repaired);
         const history = appendChat(scopeId, [{ role: "user", content: text }]);
-        setMessages(history);
-        await enqueueConversationSave(history, actionsRef.current);
+        show(history);
+        await enqueueConversationSave(forChat, history, entry.actions);
         outcome = await runAgentTurn({
-          chatId,
+          chatId: forChat,
           history,
           accountName: account.account.displayName,
           signal: controller.signal,
-          recentActions: actionsRef.current,
+          recentActions: entry.actions,
           onAction: (action) => {
-            if (actionsRef.current.at(-1) !== action) actionsRef.current = [...actionsRef.current, action].slice(-40);
-            enqueueConversationSave(readChat(scopeId), actionsRef.current);
+            if (entry.actions.at(-1) !== action) entry.actions = [...entry.actions, action].slice(-40);
+            enqueueConversationSave(forChat, readChat(scopeId), entry.actions);
           },
-          navigate: (href) => router.push(href),
+          navigate: (href) => {
+            if (selectedChatId.current === forChat) router.push(href);
+          },
           onMessage: (m) => {
             const updated = appendChat(scopeId, [m]);
-            setMessages(updated);
-            enqueueConversationSave(updated, actionsRef.current);
+            show(updated);
+            enqueueConversationSave(forChat, updated, entry.actions);
           },
-          takeSteering: () => takeSteeringTexts(chatId),
+          takeSteering: () => takeSteeringTexts(forChat),
           limits: account.account.assistant,
+          isForeground: () => selectedChatId.current === forChat,
         });
-        if (outcome === "aborted" && !discardRef.current) {
+        if (outcome === "aborted" && !entry.discard) {
           const stopped = appendChat(scopeId, [{ role: "notice", level: "info", content: "Stopped." }]);
-          setMessages(stopped);
-          enqueueConversationSave(stopped, actionsRef.current);
+          show(stopped);
+          enqueueConversationSave(forChat, stopped, entry.actions);
         }
       } finally {
         offBroadcast();
         // Everything that decides what happens to the queue must be written BEFORE the lock is released.
-        reclaimSteering(chatId);
-        if (discardRef.current) clearQueue(chatId);
-        else if (outcome === "aborted") pauseQueue("stopped", chatId);
-        else if (outcome === "error" || outcome === "login_required" || outcome === "provider_missing") pauseQueue("failed", chatId);
-        discardRef.current = false;
+        reclaimSteering(forChat);
+        if (entry.discard) clearQueue(forChat);
+        else if (outcome === "aborted") pauseQueue("stopped", forChat);
+        else if (outcome === "error" || outcome === "login_required" || outcome === "provider_missing") pauseQueue("failed", forChat);
+        entry.discard = false;
         lease.release();
-        runtime.setLock("free");
-        announceRun(id, false, null, chatId);
-        abortRef.current = null;
-        setBusy(false);
+        rt.setLock("free");
+        announceRun(id, false, null, forChat);
+        entry.abort = null;
+        markRunning(forChat, false);
       }
       if (outcome === "login_required") void refreshAccount();
       else if (outcome === "provider_missing") needSettings.current();
+      else {
+        // A chat in the background drains its own queue; the selected one is drained by the effect below. Then a chat
+        // that waited for a free slot gets its turn.
+        setTimeout(() => {
+          if (selectedChatId.current !== forChat) drainChat(forChat);
+          const waiting = waitingForSlot.current.shift();
+          if (waiting) drainChat(waiting);
+        }, 0);
+      }
     },
-    [account, chatId, enqueueConversationSave, refreshAccount, router],
+    [account, chatRun, drainChat, enqueueConversationSave, markRunning, refreshAccount, router],
   );
+  useEffect(() => {
+    startTurnRef.current = startTurn;
+  }, [startTurn]);
 
-  // Drain: when idle, not paused and nobody else runs, the oldest queued message starts the next turn.
+  // Drain the selected chat: when idle, not paused and nobody else runs it, its oldest queued message starts the next turn.
   useEffect(() => {
     if (account.kind !== "ready" || busy || run !== "idle" || lock === "other" || paused || queueLength === 0) return;
-    const next = runtime.get().queue[0];
-    if (next) void startTurn(next.text, next.id, true);
-  }, [account.kind, busy, run, lock, paused, queueLength, startTurn]);
+    // Waiting for a free slot (MAX_RUNNING_CHATS): the run that ends first drains it.
+    if (waitingForSlot.current.includes(chatId)) return;
+    const next = runtimeFor(chatId).get().queue[0];
+    if (next) void startTurn(chatId, next.text, next.id, true);
+  }, [account.kind, busy, chatId, run, lock, paused, queueLength, startTurn]);
 
   const stop = useCallback(() => {
-    if (!abortRef.current) return;
-    stopRequested();
-    abortRef.current.abort();
-  }, []);
+    const entry = chatRun(chatId);
+    if (!entry.abort) return;
+    stopRequested(chatId);
+    entry.abort.abort();
+  }, [chatId, chatRun]);
 
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || account.kind !== "ready") return;
-      const s = runtime.get();
-      const mustQueue = abortRef.current !== null || s.lock === "other" || (s.queue.length > 0 && s.paused === null);
+      const s = runtimeFor(chatId).get();
+      const mustQueue = chatRun(chatId).abort !== null || s.lock === "other" || (s.queue.length > 0 && s.paused === null);
       if (mustQueue) enqueue(trimmed, chatId);
-      else void startTurn(trimmed, null, false);
+      else void startTurn(chatId, trimmed, null, false);
     },
-    [account.kind, chatId, startTurn],
+    [account.kind, chatId, chatRun, startTurn],
   );
 
   const sendNow = useCallback(
     (id: string) => {
-      if (abortRef.current) {
+      if (chatRun(chatId).abort) {
         moveToSteering(id, chatId); // a turn is running here: delivered at its next model-round boundary
         return;
       }
-      if (runtime.get().lock === "other") return;
-      const item = runtime.get().queue.find((q) => q.id === id);
-      if (item) void startTurn(item.text, item.id, false);
+      const rt = runtimeFor(chatId);
+      if (rt.get().lock === "other") return;
+      const item = rt.get().queue.find((q) => q.id === id);
+      if (item) void startTurn(chatId, item.text, item.id, false);
     },
-    [chatId, startTurn],
+    [chatId, chatRun, startTurn],
   );
 
   const clear = useCallback(() => {
-    if (abortRef.current) {
-      discardRef.current = true;
-      abortRef.current.abort();
+    const entry = chatRun(chatId);
+    if (entry.abort) {
+      entry.discard = true;
+      entry.abort.abort();
     }
     const scopeId = scopeIdRef.current;
     if (scopeId) {
       clearChat(scopeId);
       if (accountIdRef.current) clearLegacyChat(accountIdRef.current, chatId);
     }
-    actionsRef.current = [];
-    loadedRef.current = false;
-    persistQueueRef.current = persistQueueRef.current.then(async () => { await resetConversation(chatId); });
+    entry.actions = [];
+    entry.loaded = false;
+    entry.persist = entry.persist.then(async () => { await resetConversation(chatId); });
     clearArtifacts();
     clearQueue(chatId);
     setMessages([]);
-  }, [chatId]);
+  }, [chatId, chatRun]);
 
   const login = useCallback(
     async (id: string, password: string): Promise<string | null> => {
@@ -422,35 +496,40 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
     [refreshAccount],
   );
 
+  const abortAll = useCallback(() => {
+    for (const entry of chatsRef.current.values()) entry.abort?.abort();
+  }, []);
+
   const logout = useCallback(async () => {
-    abortRef.current?.abort();
+    abortAll();
     // Nothing of this account stays in the browser for the next person (transcript, queue, SQL schema, trust mode).
     clearAccountStorage(accountIdRef.current);
     await apiLogout();
     accountIdRef.current = null;
     scopeIdRef.current = null;
-    actionsRef.current = [];
-    loadedRef.current = false;
+    chatsRef.current.clear();
     setMessages([]);
     await refreshAccount();
-  }, [refreshAccount]);
+  }, [abortAll, refreshAccount]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => abortAll(), [abortAll]);
 
-  // Reload / tab close mid-run kills the run like Stop would: keep the queue, but do not let another tab fire it unasked.
+  // Reload / tab close mid-run kills the runs like Stop would: keep the queues, but do not let another tab fire them unasked.
   useEffect(() => {
     const onHide = (): void => {
-      if (!abortRef.current) return;
-      reclaimSteering(chatId);
-      pauseQueue("stopped", chatId);
+      for (const [id, entry] of chatsRef.current) {
+        if (!entry.abort) continue;
+        reclaimSteering(id);
+        pauseQueue("stopped", id);
+      }
     };
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
-  }, [chatId]);
+  }, []);
 
   // A live run (here or in another tab) legitimately has tool calls without a result yet; an idle chat shows them as interrupted.
   const live = busy || lock === "other";
   const shown = useMemo(() => (live ? messages : repairTranscript(messages)), [live, messages]);
 
-  return { account, messages: shown, busy, activity, send, sendNow, stop, clear, switchChat, refreshAccount, login, logout };
+  return { account, messages: shown, busy, runningChats: runningSet, activity, send, sendNow, stop, clear, switchChat, refreshAccount, login, logout };
 }
