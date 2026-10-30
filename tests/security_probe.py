@@ -323,7 +323,7 @@ def main() -> int:
 
     # --------------------------------------------------------------------------------------------- assistant chats + tasks
     # alice's chat and task are hers: bob's agent (MCP, HTTP) neither lists nor reads nor changes them.
-    status, body, _ = api.call("PUT", "/api/account/provider", {"baseUrl": "https://api.example.com/v1", "model": "probe-model"}, cookie=alice, ip="198.51.100.10")
+    status, body, _ = api.call("PUT", "/api/account/provider", {"baseUrl": "https://api.openai.com/v1", "model": "probe-model"}, cookie=alice, ip="198.51.100.10")
     check("alice saves a provider (needed for a chat)", status == 200, (status, str(body)[:200]))
     transcript = {"version": 1, "messages": [{"role": "user", "content": "alice chat secret"}, {"role": "assistant", "content": "noted"}], "actions": []}
     status, body, _ = api.call("PUT", "/api/agent/conversation?chat=alicechat", transcript, cookie=alice, ip="198.51.100.10")
@@ -352,15 +352,15 @@ def main() -> int:
         for payload in ({"action": "update", "id": goal_id, "status": "archived"}, {"action": "delete", "id": goal_id}):
             status, body, _ = api.call("POST", "/api/agent/goals", payload, cookie=bob, ip="198.51.100.20")
             check(f"bob cannot {payload['action']} alice's task over HTTP", status == 422, (status, str(body)[:160]))
-        status, _, _ = raw("POST", "/api/agent/goals", json.dumps({"action": "delete", "id": goal_id}).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
+        status, _, _ = raw("POST", "/api/agent/goals", json.dumps({"action": "delete", "id": goal_id}).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice, "X-Forwarded-For": "198.51.100.77"})
         check("a cross-origin task delete is refused by the Origin guard", status == 403, status)
         status, body, _ = api.call("GET", "/api/agent/goals", cookie=alice, ip="198.51.100.10")
         check("alice's task is untouched", status == 200 and "alice task secret" in json.dumps(body) and '"archived"' not in json.dumps(body) and "bob was here" not in json.dumps(body), str(body)[:300])
-    status, _, _ = raw("GET", "/api/agent/goals")
+    status, _, _ = raw("GET", "/api/agent/goals", None, {"X-Forwarded-For": "198.51.100.78"})
     check("a guest cannot list tasks", status in (401, 403), status)
-    status, _, _ = raw("GET", "/api/account/seen")
+    status, _, _ = raw("GET", "/api/account/seen", None, {"X-Forwarded-For": "198.51.100.78"})
     check("a guest has no \"What's new\" state", status in (401, 403), status)
-    status, _, _ = raw("PUT", "/api/account/seen", b"{}", {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
+    status, _, _ = raw("PUT", "/api/account/seen", b"{}", {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice, "X-Forwarded-For": "198.51.100.77"})
     check("a cross-origin \"What's new\" confirmation is refused by the Origin guard", status == 403, status)
 
     # --------------------------------------------------------------------------------------------- workflows
