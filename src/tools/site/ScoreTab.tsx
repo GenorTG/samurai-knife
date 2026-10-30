@@ -196,6 +196,11 @@ export default function ScoreTab() {
                           {Object.entries(l.scores).map(([k, v]) => <Stat key={k} label={k.replace("-", " ")} value={v} />)}
                         </StatGrid>
                         <p className="text-xs text-muted">{Object.entries(l.metrics).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(" · ")}</p>
+                        <p className="text-xs text-faint">
+                          {(l.runs ?? 1) > 1 && l.spread
+                            ? t("Median of {runs} runs (performance {min}-{max}).", { runs: l.runs ?? 1, min: l.spread.min, max: l.spread.max })
+                            : t("One run: mobile performance varies 15-30 points between runs.")}
+                        </p>
                         <ul className="list-disc pl-5 text-xs text-muted">
                           {l.failing.slice(0, 8).map((f) => <li key={f.id}>{f.title}{f.display ? ` (${f.display})` : ""}</li>)}
                         </ul>

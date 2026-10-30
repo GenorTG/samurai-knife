@@ -8,10 +8,11 @@ import { loadSite, mutateSite } from "../store";
 import { siteTargetProblem } from "../ownership";
 import { alignCvWithSite, alignmentIssues } from "./align";
 import { analyzeCopy, copyIssues } from "./copy";
-import { lighthouseIssues, PSI_API, runLighthouse } from "./lighthouse";
+import { lighthouseIssues, medianResult, mobileRuns, PSI_API, runLighthouse } from "./lighthouse";
 import { analyzePage } from "./page";
+import { checkResource, resourceKind } from "./resource";
 import { checkSite, siteIssues, SECURITY_HEADERS } from "./site";
-import type { AuditRun, Issue, LighthouseResult, ScoreKey } from "./types";
+import type { AuditRun, Issue, LighthouseResult, ResourceCheck, ScoreKey } from "./types";
 import { currentProjectId, withCvProject } from "@/lib/cv/projects";
 
 /**
@@ -21,6 +22,8 @@ import { currentProjectId, withCvProject } from "@/lib/cv/projects";
  */
 
 export const MAX_PAGES = 10;
+/** Time to first byte above which a page is asked again before it counts as slow. */
+const SLOW_TTFB_MS = 1500;
 
 /** Where a site fetch may go (verified production origin for public non-admins): src/lib/site/ownership.ts. */
 export { siteTargetProblem };
@@ -93,7 +96,9 @@ export function computeScores(issues: Issue[], copyScores: number[], alignment: 
   const scores: AuditRun["scores"] = {};
   // Technical SEO: 100 minus a penalty per distinct problem kind (a problem on 3 pages counts once, at its worst).
   const worst = new Map<string, Issue["severity"]>();
-  for (const i of issues.filter((x) => x.category === "seo" || x.category === "content" || x.category === "accessibility")) {
+  // Findings about robots.txt / sitemap / llms.txt as files (resource.*) are information about those files: the site-wide
+  // robots and sitemap checks already score them once.
+  for (const i of issues.filter((x) => (x.category === "seo" || x.category === "content" || x.category === "accessibility") && !x.id.startsWith("resource."))) {
     const prev = worst.get(i.id);
     if (!prev || PENALTY[i.severity] > PENALTY[prev]) worst.set(i.id, i.severity);
   }
@@ -171,18 +176,50 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
     const allLinks: string[] = [];
     const allContacts: string[] = [];
     const copyScores: number[] = [];
+    const resources: ResourceCheck[] = [];
+    const htmlPaths: string[] = [];
     for (const p of paths) {
       progress.phase = `Fetching ${p}`;
       const url = new URL(p, origin).href;
       try {
-        const fetched = await fetchPage(url, policy, deps);
+        let fetched = await fetchPage(url, policy, deps);
         if (p === "/") home = fetched;
+        // robots.txt, sitemap.xml, llms.txt and other files are checked as files: page/copy/accessibility checks
+        // (and those scores) are for web pages only. The home page is always treated as a page.
+        if (p !== "/" && resourceKind(p, fetched.contentType) !== "html") {
+          const { check, issues: found } = checkResource(p, fetched);
+          resources.push(check);
+          issues.push(...found);
+          progress.done += 1;
+          continue;
+        }
+        htmlPaths.push(p);
+        // A slow first answer is often a cold start (serverless, a fresh preview): ask once more and keep the warm time.
+        let coldMs = 0;
+        if (fetched.ttfbMs > SLOW_TTFB_MS) {
+          const again = await fetchPage(url, policy, deps).catch(() => null);
+          if (again && again.ttfbMs < fetched.ttfbMs) {
+            coldMs = fetched.ttfbMs;
+            fetched = { ...fetched, ttfbMs: again.ttfbMs };
+          }
+        }
         const { facts, issues: found } = analyzePage(fetched);
         const copy = analyzeCopy(facts);
         issues.push(...found, ...copyIssues(copy, facts.finalUrl));
+        if (coldMs && fetched.ttfbMs <= SLOW_TTFB_MS) {
+          issues.push({
+            id: "perf.ttfb.cold",
+            severity: "low",
+            category: "performance",
+            title: msgf("First answer after {cold} ms, the next after {warm} ms (cold start)", { cold: coldMs, warm: fetched.ttfbMs }),
+            detail: options.target === "preview" ? msg("A preview deployment wakes up on its first request; this is not what visitors of production see.") : msg("The host started the page on the first request; visitors after it get the fast answer."),
+            page: facts.finalUrl,
+            fix: msg("Nothing to change for a preview. On production, keep the page static or cached if many first visits are slow."),
+          });
+        }
         if (copy.words >= 30) copyScores.push(copy.score);
         allText.push(facts.title, facts.metaDescription, facts.text);
-        allLinks.push(...facts.links.profiles);
+        allLinks.push(...facts.links.profiles, ...(facts.links.all ?? []), ...(facts.links.jsonLd ?? []));
         allContacts.push(...facts.links.contacts);
         const { text, ...rest } = facts;
         pages.push({ ...rest, textPreview: text.slice(0, 4000), copy });
@@ -196,7 +233,8 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
 
     progress.phase = "Checking robots.txt, sitemap, redirects and headers";
     const siteFacts = await checkSite(home, policy, deps);
-    issues.push(...siteIssues(siteFacts, paths));
+    issues.push(...siteIssues(siteFacts, htmlPaths));
+    if (resources.length) notes.push(msgf("Checked as files, not as web pages (no page, copy or accessibility checks, no effect on those scores): {list}", { list: resources.map((r) => `${r.path} (${r.status || "no answer"}${r.contentType ? `, ${r.contentType}` : ""})`).join(", ") }));
     progress.done += 1;
 
     let lighthouse: LighthouseResult[] = [];
@@ -213,7 +251,11 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
           if (!admitted.ok) return Promise.resolve({ strategy, ok: false, error: `PageSpeed Insights: ${outboundLimitMessage(admitted.retryAfterSeconds)}`, scores: {}, metrics: {}, failing: [] });
           return runLighthouse(homeUrl, strategy, psi.key, deps);
         };
-        lighthouse = await Promise.all([one("mobile"), one("desktop")]);
+        // Mobile performance swings 15-30 points between identical runs: with a key (own quota) take the median of a
+        // few runs; the anonymous quota gets one run and the finding says it is noisy.
+        const runs = mobileRuns(psi.source !== "none");
+        const [mobile, desktop] = await Promise.all([Promise.all(Array.from({ length: runs }, () => one("mobile"))), one("desktop")]);
+        lighthouse = [medianResult(mobile), desktop];
       }
       for (const r of lighthouse) if (!r.ok) notes.push(`${r.strategy}: ${r.error}`);
       issues.push(...lighthouseIssues(lighthouse, home.finalUrl));
@@ -224,7 +266,7 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
     let alignment = null;
     try {
       const cv = loadCv(accountId);
-      alignment = alignCvWithSite(cv, allText.join("\n"), allLinks, allContacts);
+      alignment = alignCvWithSite(cv, allText.join("\n"), allLinks, allContacts, origin.origin);
       if (alignment.items.length) issues.push(...alignmentIssues(alignment));
       else notes.push(alignment.note);
     } catch (error) {
@@ -247,6 +289,7 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
       lighthouse,
       alignment,
       notes,
+      resources,
     };
     mutateSite(accountId, (s) => {
       s.audits.unshift(run);

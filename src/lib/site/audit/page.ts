@@ -1,6 +1,7 @@
 import { msg, msgf } from "@/lib/i18n/msg";
 import { decodeEntities, findAll, findFirst, parseHtml, plainText, rawText, tidyText, type HtmlElement } from "@/lib/cv/jobs/html";
 import type { FetchedPage } from "../net";
+import { jsonLdUrls } from "./links";
 import type { Issue, PageFacts } from "./types";
 
 /** Technical facts and SEO / accessibility issues of one fetched page. Pure (no network). */
@@ -44,7 +45,10 @@ function linkRel(root: HtmlElement, rel: string): HtmlElement[] {
   return findAll(root, (e) => e.tag === "link" && (e.attrs.rel ?? "").toLowerCase().split(/\s+/).includes(rel));
 }
 
-function jsonLdTypes(root: HtmlElement): string[] {
+/** Link targets kept per page (anchors and JSON-LD each): enough for the CV fit, small enough to store. */
+const MAX_LINKS = 150;
+
+function jsonLdTypes(root: HtmlElement, urls?: Set<string>): string[] {
   const types = new Set<string>();
   for (const script of findAll(root, (e) => e.tag === "script" && (e.attrs.type ?? "").toLowerCase() === "application/ld+json")) {
     try {
@@ -58,7 +62,9 @@ function jsonLdTypes(root: HtmlElement): string[] {
           if (graph) walk(graph);
         }
       };
-      walk(JSON.parse(rawText(script)));
+      const parsed: unknown = JSON.parse(rawText(script));
+      walk(parsed);
+      if (urls) jsonLdUrls(parsed, urls, MAX_LINKS);
     } catch {
       types.add("(invalid JSON-LD)");
     }
@@ -87,6 +93,7 @@ export function analyzePage(page: FetchedPage): { facts: PageFacts; issues: Issu
   const anchors = findAll(root, (e) => e.tag === "a" && typeof e.attrs.href === "string");
   const contacts: string[] = [];
   const profiles = new Set<string>();
+  const all = new Set<string>();
   let internal = 0;
   let external = 0;
   let emptyText = 0;
@@ -105,6 +112,7 @@ export function analyzePage(page: FetchedPage): { facts: PageFacts; issues: Issu
     try {
       const target = new URL(href, url);
       if (!/^https?:$/.test(target.protocol)) continue;
+      if (all.size < MAX_LINKS) all.add(target.href);
       if (target.origin === origin) internal += 1;
       else {
         external += 1;
@@ -120,6 +128,8 @@ export function analyzePage(page: FetchedPage): { facts: PageFacts; issues: Issu
   }
   const scripts = findAll(root, (e) => e.tag === "script");
   const text = visibleText(findFirst(root, (e) => e.tag === "body") ?? root).slice(0, TEXT_CHARS);
+  const ldUrls = new Set<string>();
+  const ldTypes = jsonLdTypes(root, ldUrls);
   const facts: PageFacts = {
     url: page.url,
     finalUrl: url,
@@ -135,12 +145,12 @@ export function analyzePage(page: FetchedPage): { facts: PageFacts; issues: Issu
     viewport: !!meta(root, "viewport"),
     og: Object.fromEntries(["og:title", "og:description", "og:image", "og:url", "og:type", "og:locale"].map((k) => [k.slice(3), meta(root, k)]).filter(([, v]) => v)),
     twitterCard: meta(root, "twitter:card"),
-    jsonLdTypes: jsonLdTypes(root),
+    jsonLdTypes: ldTypes,
     hreflang: linkRel(root, "alternate").filter((l) => l.attrs.hreflang).map((l) => ({ lang: l.attrs.hreflang, href: l.attrs.href ?? "" })),
     favicon: linkRel(root, "icon").length + linkRel(root, "shortcut").length + linkRel(root, "apple-touch-icon").length > 0,
     headings,
     images: { count: images.length, missingAlt: images.filter((i) => i.attrs.alt === undefined).length },
-    links: { internal, external, emptyText, genericText, contacts: [...new Set(contacts)], profiles: [...profiles] },
+    links: { internal, external, emptyText, genericText, contacts: [...new Set(contacts)], profiles: [...profiles], all: [...all], jsonLd: [...ldUrls] },
     scripts: { external: scripts.filter((s) => s.attrs.src).length, inlineBytes: scripts.filter((s) => !s.attrs.src).reduce((n, s) => n + rawText(s).length, 0) },
     stylesheets: linkRel(root, "stylesheet").length,
     text,
@@ -148,6 +158,13 @@ export function analyzePage(page: FetchedPage): { facts: PageFacts; issues: Issu
     ctas: [...ctas].slice(0, 30),
   };
   return { facts, issues: pageIssues(facts, page) };
+}
+
+/** Fewer words than a sentence in the served HTML, and scripts to draw the rest: the content comes from JavaScript. */
+export const JS_ONLY_WORDS = 10;
+
+export function isJsOnly(f: Pick<PageFacts, "wordCount" | "status" | "scripts">): boolean {
+  return f.status < 400 && f.wordCount < JS_ONLY_WORDS && (f.scripts.external > 0 || f.scripts.inlineBytes > 200);
 }
 
 function pageIssues(f: PageFacts, page: FetchedPage): Issue[] {
@@ -168,7 +185,13 @@ function pageIssues(f: PageFacts, page: FetchedPage): Issue[] {
   if (!f.canonical) add("seo.canonical", "low", "seo", msg("No canonical link"), msg("Duplicate URLs (www/apex, trailing slash, query strings) compete with each other."), at, msg("Add <link rel=\"canonical\" href=\"...\"> with the preferred URL."));
   if (/noindex/i.test(f.robotsMeta)) add("seo.noindex", "high", "seo", msg("The page asks not to be indexed"), msgf("robots meta: \"{robotsMeta}\"", { robotsMeta: f.robotsMeta }), at, msg("Remove noindex unless the page must stay out of search."));
   const h1 = f.headings.filter((h) => h.level === 1);
-  if (!h1.length) add("seo.h1.missing", "high", "seo", msg("No H1 heading"), msg("The main topic of the page is not marked up."), at, msg("Give the page exactly one H1 that states the offer or who you are."));
+  // A page whose HTML carries (almost) no text is drawn by JavaScript (a 3D scene, a client-only app): one finding says
+  // so instead of "no H1", "thin content", "no CTA" and "no first screen" for the same cause.
+  const jsOnly = isJsOnly(f);
+  if (jsOnly) {
+    const missing = [h1.length ? "" : msg("no H1"), msg("no visible text"), f.ctas.length ? "" : msg("no call to action")].filter(Boolean).join(", ");
+    add("content.js-only", "high", "content", msgf("Content renders only with JavaScript ({wordCount} words in the HTML)", { wordCount: f.wordCount }), msgf("Search engines, link previews and screen readers before the script runs see: {missing}.", { missing }), at, msg("Render the heading, a short description and the main call to action in the HTML (server or static rendering), and let JavaScript enhance them."));
+  } else if (!h1.length) add("seo.h1.missing", "high", "seo", msg("No H1 heading"), msg("The main topic of the page is not marked up."), at, msg("Give the page exactly one H1 that states the offer or who you are."));
   else if (h1.length > 1) add("seo.h1.multiple", "low", "seo", msgf("{length} H1 headings", { length: h1.length }), h1.map((h) => h.text).join(" | ").slice(0, 300), at, msg("Keep one H1; use H2 for sections."));
   f.headings.forEach((h, i) => {
     const prev = f.headings[i - 1];
@@ -183,7 +206,7 @@ function pageIssues(f: PageFacts, page: FetchedPage): Issue[] {
   if (!f.jsonLdTypes.length) add("seo.structured-data", "low", "seo", msg("No structured data (JSON-LD)"), msg("Search engines cannot tell this is a person/company page."), at, msg("Add JSON-LD Person (and Organization for the company) with name, jobTitle, url and sameAs profile links."));
   else if (f.jsonLdTypes.includes("(invalid JSON-LD)")) add("seo.structured-data.invalid", "medium", "seo", msg("A JSON-LD block does not parse"), "", at, msg("Fix the JSON in the ld+json script."));
   if (!f.favicon) add("seo.favicon", "low", "seo", msg("No favicon link"), "", at, msg("Link an icon (and an apple-touch-icon)."));
-  if (f.wordCount < 120) add("content.thin", "medium", "content", msgf("Only {wordCount} words of visible text in the HTML", { wordCount: f.wordCount }), msg("Either the page says little, or its text appears only after JavaScript runs (search engines and link previews may see none of it)."), at, msg("Render the key copy on the server (or statically) and give each page at least a few short paragraphs."));
+  if (f.wordCount < 120 && !jsOnly) add("content.thin", "medium", "content", msgf("Only {wordCount} words of visible text in the HTML", { wordCount: f.wordCount }), msg("Either the page says little, or its text appears only after JavaScript runs (search engines and link previews may see none of it)."), at, msg("Render the key copy on the server (or statically) and give each page at least a few short paragraphs."));
   if (f.bytes > 1_500_000) add("perf.html-size", "medium", "performance", msgf("HTML document is {value} MB", { value: (f.bytes / 1_000_000).toFixed(1) }), msg("Large inline payloads delay the first paint."), at, msg("Move inline data out of the HTML or load it lazily."));
   if (f.ttfbMs > 1500) add("perf.ttfb", "medium", "performance", msgf("Server answered after {ttfbMs} ms", { ttfbMs: f.ttfbMs }), msg("Time to first byte from this server."), at, msg("Cache or statically render the page."));
   return out;

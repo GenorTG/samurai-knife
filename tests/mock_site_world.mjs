@@ -191,7 +191,7 @@ export const SITE_PAGES = {
   "/": `<!doctype html><html lang="pl"><head><title>Jan Kowalski | Inżynier AI i automatyzacji</title>
 <meta name="description" content="Buduję systemy AI, automatyzację i infrastrukturę dla małych firm. Lokalne modele, Docker, Tailscale. Napisz, a odpowiem w 24 h.">
 <meta name="viewport" content="width=device-width, initial-scale=1"><link rel="canonical" href="/"><link rel="icon" href="/favicon.ico">
-<meta property="og:title" content="Jan Kowalski"><script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Jan Kowalski"}</script></head>
+<meta property="og:title" content="Jan Kowalski"><script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Jan Kowalski","sameAs":["https://www.linkedin.com/in/janko/","https://janko.github.io/finetune-studio/"]}</script></head>
 <body><header><nav><a href="/projekty">Projekty</a> <a href="mailto:jan@example.test">Napisz do mnie</a></nav></header>
 <main><h1>Systemy AI, które działają u Ciebie</h1><p>Pomagam firmom wdrożyć lokalne modele językowe i automatyzację. Zrealizowałem 12 projektów dla klientów z Polski.</p>
 <h2>Projekty</h2><p>Samurai Knife to zestaw narzędzi w przeglądarce. Finetune Studio uczy modele na Twoich plikach. Używam Python, Docker i Next.js.</p>
@@ -199,14 +199,20 @@ export const SITE_PAGES = {
 <a href="https://github.com/janko">GitHub</a> <a href="https://www.linkedin.com/in/janko">LinkedIn</a></main>
 <footer>© 2023 Jan Kowalski</footer></body></html>`,
   "/projekty": `<!doctype html><html lang="pl"><head><title>Projekty</title><meta name="viewport" content="width=device-width"></head><body><h2>Projekty</h2><p>Krótko.</p></body></html>`,
+  // A client-rendered page (a 3D scene): the served HTML has a title and an empty root, the text comes from JavaScript.
+  "/v2": `<!doctype html><html lang="pl"><head><title>Jan Kowalski | Portfolio 3D</title><meta name="description" content="Portfolio 3D Jana Kowalskiego: projekty AI i automatyzacji w interaktywnej scenie."><meta name="viewport" content="width=device-width, initial-scale=1"><script type="module" src="/v2.js"></script></head><body><div id="root"></div></body></html>`,
+};
+/** Non-HTML files of the fake site (robots.txt and the sitemap are answered by createSite). llms.txt is absent: 404 HTML. */
+export const SITE_FILES = {
+  "/robots.txt": ["text/plain", "User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n"],
+  "/sitemap.xml": ["application/xml", "<urlset><url><loc>/</loc></url></urlset>"],
 };
 
 export function createSite() {
   const hits = [];
   function handle(method, url) {
     hits.push(url.pathname);
-    if (url.pathname === "/robots.txt") return [200, "text/plain", "User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n"];
-    if (url.pathname === "/sitemap.xml") return [200, "application/xml", "<urlset><url><loc>/</loc></url></urlset>"];
+    if (SITE_FILES[url.pathname]) return [200, ...SITE_FILES[url.pathname]];
     if (SITE_PAGES[url.pathname] !== undefined) return [200, "text/html; charset=utf-8", SITE_PAGES[url.pathname]];
     return [404, "text/html", "<h1>404</h1>"];
   }

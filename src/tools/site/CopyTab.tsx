@@ -10,7 +10,7 @@ import { useSite } from "./useSite";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
-const KIND_LABEL: Record<AlignmentItem["kind"], string> = { name: msg("Name"), headline: msg("Headline"), role: msg("Current role"), project: msg("Projects"), skill: msg("Skills"), link: msg("Profile links"), email: msg("Email") };
+const KIND_LABEL: Record<AlignmentItem["kind"], string> = { name: msg("Name"), headline: msg("Headline"), role: msg("Current role"), project: msg("Projects"), skill: msg("Skills"), link: msg("Profile links"), projectLink: msg("Project links"), email: msg("Email") };
 const DIMENSIONS: [keyof AuditRun["pages"][number]["copy"]["scores"], string, string][] = [
   ["hero", msg("First screen"), msg("H1 says who you are / what you offer, with a line under it")],
   ["cta", msg("Calls to action"), msg("Asks the visitor to contact you, with a direct channel")],
