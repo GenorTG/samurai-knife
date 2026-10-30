@@ -17,6 +17,15 @@ import {
 
 const PROPOSAL = "Raport gotowy.\n1. Popraw nagłówki.\n2. Dodaj opisy.\nZrobić to wszystko…?";
 
+test("malformed persisted tool arguments are repaired before provider replay", () => {
+  const repaired = repairTranscript([
+    { role: "user", content: "write this" },
+    { role: "assistant", content: null, tool_calls: [{ id: "truncated", type: "function", function: { name: "knife_site_write", arguments: '{"path":"index.html","content":"cut' } }] },
+  ]);
+  assert.equal(repaired[1].tool_calls[0].function.arguments, "{}");
+  assert.equal(toWire(repaired)[1].tool_calls[0].function.arguments, "{}");
+});
+
 function toolTurn(prefix, rounds, size, answer) {
   const out = [{ role: "user", content: `${prefix} request` }];
   for (let i = 0; i < rounds; i += 1) {

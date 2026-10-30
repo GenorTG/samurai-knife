@@ -44,7 +44,19 @@ export function repairTranscript(messages: TranscriptMessage[]): TranscriptMessa
   for (let i = 0; i < messages.length; i += 1) {
     const m = messages[i];
     if (m.role === "tool") continue; // orphan: real ones are consumed below
-    out.push(m);
+    // Older runs may have persisted a provider-truncated tool argument string.
+    // The OpenAI-compatible wire API rejects the entire request if it is replayed.
+    const safeMessage = m.role === "assistant" && m.tool_calls?.length
+      ? { ...m, tool_calls: m.tool_calls.map((call) => {
+          try {
+            const value: unknown = JSON.parse(call.function.arguments || "{}");
+            return typeof value === "object" && value !== null && !Array.isArray(value) ? call : { ...call, function: { ...call.function, arguments: "{}" } };
+          } catch {
+            return { ...call, function: { ...call.function, arguments: "{}" } };
+          }
+        }) }
+      : m;
+    out.push(safeMessage);
     if (m.role !== "assistant" || !m.tool_calls?.length) continue;
     const results = new Map<string, ToolMessage>();
     let j = i + 1;

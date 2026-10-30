@@ -54,6 +54,7 @@ export { MAX_STORED_MESSAGES } from "./context";
 const TOOL_RESULT_LIMIT = 12000;
 /** Per-round completion cap (reasoning included). Normal rounds are <500 tokens; a runaway round (copying base64, looping reasoning) otherwise burns minutes. */
 const ROUND_MAX_TOKENS = 8000;
+const WRITE_ROUND_MAX_TOKENS = 16000;
 
 export type LoopOutcome = "done" | "aborted" | "error" | "limit" | "login_required" | "provider_missing";
 
@@ -294,7 +295,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       onActivity("Thinking…");
       roundStarted(chatId);
       const result = await callModel(
-        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
+        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: serverTools.some((tool) => tool.function.name === "knife_site_write") ? WRITE_ROUND_MAX_TOKENS : ROUND_MAX_TOKENS },
         buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
         {
           onText: (delta) => appendDraft(delta, chatId),
@@ -328,9 +329,30 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         if (round + 1 < maxRounds && deliverSteering()) continue;
         return "done";
       }
-      append({ role: "assistant", content: reply.content, tool_calls: calls });
+      const truncatedRound = result.value.finishReason === "length";
+      const safeCalls = calls.map((call) => {
+        if (truncatedRound) return { ...call, function: { ...call.function, arguments: "{}" } };
+        try {
+          const value: unknown = JSON.parse(call.function.arguments || "{}");
+          return typeof value === "object" && value !== null && !Array.isArray(value)
+            ? call
+            : { ...call, function: { ...call.function, arguments: "{}" } };
+        } catch {
+          return { ...call, function: { ...call.function, arguments: "{}" } };
+        }
+      });
+      append({ role: "assistant", content: reply.content, tool_calls: safeCalls });
 
-      for (const call of calls) {
+      for (const call of safeCalls) {
+        const original = calls.find((candidate) => candidate.id === call.id);
+        if (truncatedRound || (call.function.arguments === "{}" && original?.function.arguments !== "{}")) {
+          append({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify({ ok: false, error: "Tool call was not run because its arguments were truncated or invalid. Split the work into smaller calls; for knife_site_write keep each whole-file write around 6 kB or less, or use knife_site_edit." }),
+          });
+          continue;
+        }
         if (signal.aborted) {
           append({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "Cancelled by the user." }) });
           continue;
