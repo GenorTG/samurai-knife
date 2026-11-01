@@ -5,11 +5,12 @@ import { QuotaExceededError } from "@/lib/storage/quota";
 import { analyzeCopy, copyIssues } from "@/lib/site/audit/copy";
 import { analyzePage } from "@/lib/site/audit/page";
 import { runAudit, siteTargetProblem } from "@/lib/site/audit/run";
-import type { AuditRun, Issue } from "@/lib/site/audit/types";
+import { auditDigest, compactAuditIssues, compareAudits } from "@/lib/site/audit/digest";
 import { fetchPage, sitePolicy, SiteError } from "@/lib/site/net";
 import * as service from "@/lib/site/service";
 import { loadSite, siteView } from "@/lib/site/store";
 import * as vercelService from "@/lib/site/vercel-service";
+import { verifyPreview } from "@/lib/site/verify";
 import { defineTool, type KnifeToolContext, type KnifeToolDefinition } from "./define";
 import { hasUntrustedMarkers, wrapUntrusted, wrapUntrustedOptional, wrapUntrustedStrings } from "@/lib/security/untrusted";
 import { msg } from "@/lib/i18n/msg";
@@ -35,65 +36,7 @@ async function guarded<T>(fn: () => Promise<T> | T): Promise<T> {
   }
 }
 
-/**
- * Findings for a model, grouped by id (docs/WEBSITE-STUDIO.md "Agent output"): the enum fields and the user's own page
- * URLs stay structured, everything written in words (title, detail, fix: page text can flow into them) goes in ONE
- * untrusted envelope per finding instead of one per field. Distinct details are kept (at most 3) with their pages.
- */
-export function compactAuditIssues(issues: Issue[], detailChars = 300) {
-  const groups = new Map<string, { id: string; severity: string; category: string; pages: string[]; title: string; fix: string; details: { text: string; pages: string[] }[] }>();
-  for (const issue of issues) {
-    const group = groups.get(issue.id) ?? { id: issue.id, severity: issue.severity, category: issue.category, pages: [], title: issue.title, fix: issue.fix, details: [] };
-    if (issue.page && !group.pages.includes(issue.page)) group.pages.push(issue.page);
-    const detail = issue.detail.slice(0, detailChars);
-    const known = group.details.find((d) => d.text === detail);
-    if (known) {
-      if (issue.page && !known.pages.includes(issue.page)) known.pages.push(issue.page);
-    } else if (detail) {
-      group.details.push({ text: detail, pages: issue.page ? [issue.page] : [] });
-    }
-    groups.set(issue.id, group);
-  }
-  return [...groups.values()].map((g) => {
-    const shown = g.details.slice(0, 3);
-    const lines = [`Title: ${g.title}`];
-    if (shown.length === 1) lines.push(`Detail: ${shown[0].text}`);
-    else shown.forEach((d, i) => lines.push(`Detail ${i + 1}${d.pages.length ? ` (${d.pages.join(", ")})` : ""}: ${d.text}`));
-    if (g.details.length > shown.length) lines.push(`(${g.details.length - shown.length} more details)`);
-    lines.push(`Fix: ${g.fix}`);
-    return { id: g.id, severity: g.severity, category: g.category, pages: g.pages, finding: wrapUntrusted(`website audit finding ${g.id}`, lines.join("\n")) };
-  });
-}
-
-/** The part of a run an agent needs first: scores, the findings (capped), page copy scores, alignment gaps. */
-export function auditDigest(run: AuditRun, maxIssues = 30) {
-  const findings = compactAuditIssues(run.issues);
-  const pageWords = run.pages.map((p) => ({ url: p.finalUrl, title: p.title, ctas: p.ctas.slice(0, 8) }));
-  const lighthouseFailing = run.lighthouse.filter((l) => l.failing.length || l.error).map((l) => ({ strategy: l.strategy, error: l.error, failing: l.failing.slice(0, 8).map((f) => `${f.title}${f.display ? ` (${f.display})` : ""}`) }));
-  return {
-    id: run.id,
-    finishedAt: run.finishedAt,
-    target: run.target,
-    baseUrl: run.baseUrl,
-    scores: run.scores,
-    findings: findings.slice(0, maxIssues),
-    moreFindings: Math.max(0, findings.length - maxIssues),
-    totalIssues: run.issues.length,
-    pages: run.pages.map((p) => ({ url: p.finalUrl, status: p.status, words: p.wordCount, copyScore: p.copy.score, readability: p.copy.readability })),
-    /** Titles and calls to action are page text: one envelope for all pages. */
-    pageText: pageWords.length ? wrapUntrusted("website audit page titles and calls to action", JSON.stringify(pageWords)) : null,
-    lighthouse: run.lighthouse.map((l) => ({ strategy: l.strategy, ok: l.ok, scores: l.scores, runs: l.runs ?? 1, spread: l.spread ?? null, metrics: l.metrics })),
-    lighthouseFailing: lighthouseFailing.length ? wrapUntrusted("PageSpeed failing audits", JSON.stringify(lighthouseFailing)) : null,
-    alignment: run.alignment ? {
-      score: run.alignment.score,
-      missingOnSite: run.alignment.items.filter((i) => !i.onSite).map((i) => `${i.kind}: ${i.label}`),
-      siteOnly: run.alignment.siteOnly.length ? wrapUntrusted("technologies named on the website only", JSON.stringify(run.alignment.siteOnly)) : [],
-    } : null,
-    notes: run.notes,
-    /** Audited paths that are not web pages (robots.txt, sitemap, llms.txt...): checked as files, not as pages. */
-    skippedAsNotHtml: (run.resources ?? []).map((r) => ({ path: r.path, kind: r.kind, status: r.status, contentType: r.contentType })),
-  };
-}
+export { auditDigest, compactAuditIssues };
 
 const PATH = z.string().min(1).max(400);
 
@@ -140,18 +83,20 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     urlArgs: ["url"],
     untrustedOutput: true,
     description:
-      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`; with Vercel connected that is the READY preview of the work branch's head commit, read through Deployment Protection with the stored bypass) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend). Pass HTML pages: robots.txt, sitemap.xml and llms.txt are checked as files (skippedAsNotHtml), never as pages. Known noise: resource.* findings, a missing llms.txt (optional), a single-run mobile Lighthouse performance score (compare medians: runs/spread), perf.ttfb.cold (cold start, typical on a preview), content.js-only on a deliberately client-rendered page. Set `compareTo:\"previous\"` to return score deltas and new/resolved findings against the prior audit.",
+      "Score the website now (takes 20-90 s): every configured page (or `pages`) of the connected production URL. Private mode and admins may also audit the PR preview (`target: \"preview\"`; with Vercel connected that is the READY preview of the work branch's head commit, read through Deployment Protection with the stored bypass) or another `url`; public non-admin accounts are restricted to their connected production origin. Checks: technical SEO and accessibility (title, description, H1/heading order, alt texts, Open Graph, JSON-LD, canonical, robots/sitemap, 404, https), security headers, copywriting benchmarks in Polish or English (readability FOG-PL/Flesch, sentence length, hero clarity, calls to action, proof with numbers/projects, reader focus, buzzwords, substance, stale years), alignment with the user's CV studio profile (current role, headline, projects, skills, links missing on the site; tech on the site the CV lacks) and Lighthouse via PageSpeed Insights (performance, accessibility, best practices, SEO; mobile + desktop). Returns scores 0-100, issues with a fix each, page summaries. Stored in the studio's history (the Score tab shows the trend). Pass HTML pages: robots.txt, sitemap.xml and llms.txt are checked as files (skippedAsNotHtml), never as pages. Known noise: resource.* findings, a missing llms.txt (optional), a single-run mobile Lighthouse performance score (compare medians: runs/spread), perf.ttfb.cold (cold start, typical on a preview), content.js-only on a deliberately client-rendered page. Set `compareTo:\"previous\"` (or a stored audit id) to add score deltas and new/resolved findings: report those instead of re-explaining every finding. After a push, knife_site_verify does wait + audit + checks in one call.",
     schema: z.object({
       url: z.string().max(500).optional(),
       target: z.enum(["production", "preview"]).optional(),
       pages: z.array(z.string().max(300)).max(10).optional(),
       lighthouse: z.boolean().optional().describe("false skips PageSpeed (faster, no performance scores)"),
-      compareTo: z.enum(["previous"]).optional(),
+      compareTo: z.string().min(1).max(40).optional().describe("\"previous\" (the newest stored audit) or a stored audit id: adds score deltas and new/resolved findings"),
     }).strict(),
     run({ url, target, pages, lighthouse, compareTo }, ctx) {
       return guarded(async () => {
         const acc = account(ctx);
-        const previous = compareTo === "previous" ? loadSite(acc).audits[0] ?? null : null;
+        const stored = loadSite(acc).audits;
+        const previous = !compareTo ? null : compareTo === "previous" ? stored[0] ?? null : stored.find((a) => a.id === compareTo) ?? null;
+        if (compareTo && compareTo !== "previous" && !previous) throw new SiteError(`no stored audit ${compareTo}: see knife_site_audit_get {section:"history"}`);
         let base = url;
         const vercelLinked = !!loadSite(acc).vercel?.projectId;
         if (!base && target === "preview" && !vercelLinked) {
@@ -164,22 +109,30 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
         const run = await runAudit(acc, options);
         const digest = auditDigest(run);
         if (!compareTo) return note ? { ...digest, vercel: note } : digest;
-        const prior = new Set((previous?.issues ?? []).map((issue) => JSON.stringify([issue.id, issue.page])));
-        const current = new Set(run.issues.map((issue) => JSON.stringify([issue.id, issue.page])));
-        const scores = Object.fromEntries(Object.entries(run.scores).map(([key, value]) => {
-          const priorScore = previous?.scores[key as keyof NonNullable<typeof previous>["scores"]];
-          return [key, typeof value === "number" && typeof priorScore === "number" ? value - priorScore : null];
-        }));
-        return {
-          ...digest,
-          ...(note ? { vercel: note } : {}),
-          comparison: previous ? {
-            previousId: previous.id,
-            scoreDeltas: scores,
-            newFindings: compactAuditIssues(run.issues.filter((issue) => !prior.has(JSON.stringify([issue.id, issue.page])))),
-            resolvedFindings: compactAuditIssues(previous.issues.filter((issue) => !current.has(JSON.stringify([issue.id, issue.page])))),
-          } : { previousId: null, note: "There was no earlier audit to compare with.", scoreDeltas: null, newFindings: [], resolvedFindings: [] },
-        };
+        return { ...digest, ...(note ? { vercel: note } : {}), comparison: compareAudits(run, previous) };
+      });
+    },
+  }),
+  defineTool({
+    name: "knife_site_verify",
+    scope: "account",
+    // Reads only the connected repository's own preview (no destination in the arguments) and stores the audit: a write.
+    effect: "write",
+    untrustedOutput: true,
+    description:
+      "After pushing to the work branch: wait on the server (up to `timeoutSec`, default and max 240 s; stops if the request is cancelled) until the preview of the HEAD commit is READY (Vercel when linked, else the host's GitHub deployment), audit its HTML pages (`pages`; Lighthouse off unless `lighthouse:true`), read the commit's checks, and return ONE compact report: verdict (verified | checks-failed | checks-pending | preview-failed | preview-not-ready | no-work-branch), preview state/URL/wait, audit scores and grouped findings, comparison with the previous audit (score deltas, new/resolved findings), pull request and checks, and `next`. Use it instead of chains of knife_site_previews + wait_for/sleep + knife_site_audit + knife_site_changes. Same audit limits as knife_site_audit {target:\"preview\"}.",
+    schema: z.object({
+      timeoutSec: z.number().int().min(0).max(240).optional(),
+      pages: z.array(z.string().max(300)).max(10).optional(),
+      lighthouse: z.boolean().optional(),
+    }).strict(),
+    run({ timeoutSec, pages, lighthouse }, ctx) {
+      return guarded(async () => {
+        const report = await verifyPreview(account(ctx), { timeoutSec, pages, lighthouse, signal: ctx?.signal });
+        if ("preview" in report && report.preview && "error" in report.preview && report.preview.error) {
+          return { ...report, preview: { ...report.preview, error: wrapUntrusted("Vercel deployment error", report.preview.error) } };
+        }
+        return report;
       });
     },
   }),

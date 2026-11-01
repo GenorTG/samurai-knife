@@ -5257,5 +5257,13 @@
   "Complete": "Zakończ",
   "Paused": "Wstrzymany",
   "Completed": "Ukończony",
-  "Archived": "Zarchiwizowany"
+  "Archived": "Zarchiwizowany",
+  "verification stopped: the request was cancelled": "weryfikację przerwano: żądanie zostało anulowane",
+  "Website changes are checked in one step: after a change the assistant waits for the preview, checks it and the automatic tests, and tells you what got better or worse since the last check.": "Zmiany na stronie są sprawdzane w jednym kroku: po zmianie asystent czeka na podgląd, sprawdza go oraz automatyczne testy i mówi, co się poprawiło, a co pogorszyło od ostatniego sprawdzenia.",
+  "a glob is at most {max} characters": "wzorzec glob może mieć najwyżej {max} znaków",
+  "only the first {max} entries: narrow `path` or `glob`": "tylko pierwsze {max} pozycji: zawęź `path` lub `glob`",
+  "read between 1 and {max} files per call": "w jednym wywołaniu czytaj od 1 do {max} plików",
+  "line ranges start at 1 and span at most {max} lines": "zakres wierszy zaczyna się od 1 i obejmuje najwyżej {max} wierszy",
+  "not read: this call already returned its text budget (300,000 characters); read it in another call or with fromLine/toLine": "nie przeczytano: to wywołanie wykorzystało już limit tekstu (300 000 znaków); przeczytaj plik w kolejnym wywołaniu albo z fromLine/toLine",
+  "cut at this call's text budget: read the rest with fromLine/toLine": "ucięto na limicie tekstu tego wywołania: resztę przeczytaj z fromLine/toLine"
 }

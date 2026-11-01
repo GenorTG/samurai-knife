@@ -361,6 +361,47 @@ test("audit run: pages, site checks, Lighthouse, CV alignment, scores, history; 
   assert.equal(typeof compared.comparison.scoreDeltas.seo, "number");
 });
 
+test("knife_site_verify: waits BUILDING -> READY on the server, audits the preview, reads checks, compares; bounded and abortable", async () => {
+  const { verifyPreview } = await import("../src/lib/site/verify.ts");
+  const verifyTool = SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_verify");
+  assert.ok(verifyTool);
+  const previousPreview = process.env.MOCK_PREVIEW_URL;
+  process.env.MOCK_PREVIEW_URL = SITE;
+  gh.checksControl.state = "success";
+  gh.deployControl.pendingReads = 3;
+  try {
+    await service.writeFiles("genor", "Verify me", [{ path: "app/verify.txt", content: "verify" }]);
+    const report = await verifyPreview("genor", { pollMs: 20, timeoutSec: 30 });
+    assert.equal(report.verdict, "verified", JSON.stringify(report).slice(0, 400));
+    assert.equal(report.preview.state, "READY");
+    assert.ok(report.preview.polls >= 3, `polled ${report.preview.polls} times while building`);
+    assert.equal(report.preview.url, SITE);
+    assert.equal(typeof report.audit.scores.overall, "number");
+    assert.ok(report.audit.findings.every((f) => f.finding.includes("<<<UNTRUSTED_CONTENT")));
+    assert.equal(report.checks.state, "success");
+    assert.ok(report.comparison.previousId, "compared with the previous audit");
+    assert.ok(JSON.stringify(report).length < 12_000, `one compact report (${JSON.stringify(report).length} chars)`);
+
+    gh.deployControl.pendingReads = 1000;
+    await service.writeFiles("genor", "Still building", [{ path: "app/verify.txt", content: "again" }]);
+    const started = Date.now();
+    const slow = await verifyTool.execute({ timeoutSec: 0 }, { accountId: "genor", admin: true, surface: "mcp" });
+    assert.equal(slow.verdict, "preview-not-ready");
+    assert.match(slow.next, /knife_site_verify again/);
+    assert.ok(Date.now() - started < 5000, "timeoutSec bounds the wait");
+    const abort = new AbortController();
+    setTimeout(() => abort.abort(), 60);
+    await assert.rejects(verifyPreview("genor", { pollMs: 1000, timeoutSec: 30, signal: abort.signal }), /cancelled/);
+    await assert.rejects(verifyTool.execute({ timeoutSec: 241 }, { accountId: "genor", admin: true, surface: "mcp" }));
+  } finally {
+    gh.deployControl.pendingReads = 0;
+    if (previousPreview === undefined) delete process.env.MOCK_PREVIEW_URL;
+    else process.env.MOCK_PREVIEW_URL = previousPreview;
+  }
+  const compared = await SITE_KNIFE_TOOLS.find((tool) => tool.name === "knife_site_audit").execute({ compareTo: "missing-id", lighthouse: false }, { accountId: "genor", admin: true, surface: "mcp" }).catch((e) => e);
+  assert.match(String(compared.message), /no stored audit missing-id/);
+});
+
 test("disconnect forgets the token and the work branch; accounts are separate", async () => {
   const accounts = await import("../src/lib/accounts/store.ts");
   accounts.mutateStore((s) => {

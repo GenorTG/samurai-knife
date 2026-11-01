@@ -141,7 +141,7 @@ commits and audits show up by themselves.
 
 ## Tools (`src/lib/mcp/tools-site.ts`, group `site`, scope `account`)
 
-`knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
+`knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?, compareTo?}`, `knife_site_verify {timeoutSec?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
 `knife_site_page {url}`, `knife_site_files {path?, ref?, recursive?, glob?}`, `knife_site_read {path? | paths[], fromLine?, toLine?, ref?}`, `knife_site_search {query}`,
 `knife_site_replace {path, find, replace, message, all?}`, `knife_site_edit {message, edits[]}` (multi-file exact replacements in one commit), `knife_site_write {message, files, delete?}`,
 `knife_site_pr {title, body}`, `knife_site_changes {detail?}` (compact checks-first summary by default; expanded patches on request), `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
@@ -159,6 +159,17 @@ page titles/CTAs (`pageText`), PageSpeed failing audits (`lighthouseFailing`) an
 envelope each. On a 5-page, 21-finding fixture this is under half the size of the old per-field wrapping
 (`tests/site_studio.test.mjs`). `compareTo:"previous"` (or an audit id) adds `comparison` with score deltas and
 new/resolved findings in the same shape.
+
+### Verify (`knife_site_verify`, `src/lib/site/verify.ts`)
+
+One call after a push instead of the model's previews -> wait -> previews -> audit -> changes chain: polls every 10 s
+on the server (`timeoutSec` <= 240, default 240; the request's abort signal stops it: assistant route and MCP pass it
+in the tool context) until the work branch's HEAD preview is READY (Vercel deployment of that commit when linked, else
+the commit's GitHub deployment URL), audits its HTML pages (Lighthouse off by default), reads the commit's checks and
+the PR, and returns `{verdict, head, preview{state,url,waitedSec,polls}, audit{scores, findings}, comparison, pull,
+checks, next}`. Verdicts: verified, checks-failed, checks-pending, preview-failed (with the deployment id for the
+logs), preview-not-ready, no-work-branch. Effect `write` (it stores an audit; no destination in the arguments).
+Test: `tests/site_studio.test.mjs` (mock deployment in_progress -> success, timeout, abort).
 
 ## Vercel (optional, 2026-10-28)
 
