@@ -46,9 +46,9 @@ export function createKnifeMcpServer(ctx: KnifeToolContext): McpServer {
     server.registerTool(
       tool.name,
       { description: modelDescription(tool), inputSchema: tool.schema, annotations: annotationsFor(tool) },
-      async (input) => {
+      async (input, extra) => {
         try {
-          const result = await tool.execute(input, ctx);
+          const result = await tool.execute(input, { ...ctx, signal: extra.mcpReq.signal });
           if (result instanceof KnifeRichResult) {
             return { content: [{ type: "text", text: serializeKnifeToolResult(result.value) }, ...result.images] };
           }

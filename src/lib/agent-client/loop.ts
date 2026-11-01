@@ -39,6 +39,7 @@ import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import { buildContext, summarySection } from "./context";
 import { msg } from "@/lib/i18n/msg";
+import { clipJsonText } from "@/lib/json-clip";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -130,61 +131,7 @@ function parseArgs(raw: string): { ok: true; args: Record<string, unknown> } | {
 }
 
 export function clipToolResult(content: string): string {
-  if (content.length <= TOOL_RESULT_LIMIT) return content;
-
-  // Tool results are often JSON. Preserve valid JSON and high-value fields such
-  // as checks instead of slicing the tail off the provider-facing string.
-  let value: unknown;
-  try {
-    value = JSON.parse(content);
-  } catch {
-    return `${content.slice(0, TOOL_RESULT_LIMIT - 80)}\n…[truncated, ${content.length} chars total]`;
-  }
-  const originalLength = content.length;
-  const stringify = () => JSON.stringify(value);
-  const largest = (root: unknown, predicate: (item: unknown) => boolean): { parent: unknown[] | Record<string, unknown>; key: number | string; item: unknown; size: number } | null => {
-    let best: ReturnType<typeof largest> = null;
-    const visit = (current: unknown) => {
-      if (Array.isArray(current)) {
-        current.forEach((item, index) => {
-          if (predicate(item)) {
-            const size = JSON.stringify(item).length;
-            if (!best || size > best.size) best = { parent: current, key: index, item, size };
-          }
-          visit(item);
-        });
-      } else if (current && typeof current === "object") {
-        for (const [key, item] of Object.entries(current)) {
-          if (predicate(item)) {
-            const size = JSON.stringify(item).length;
-            if (!best || size > best.size) best = { parent: current as Record<string, unknown>, key, item, size };
-          }
-          visit(item);
-        }
-      }
-    };
-    visit(root);
-    return best;
-  };
-  while (stringify().length > TOOL_RESULT_LIMIT) {
-    const patch = largest(value, (item) => typeof item === "string" && item.length > 0);
-    const array = largest(value, (item) => Array.isArray(item) && item.length > 1);
-    if (patch && (!array || patch.size > array.size)) {
-      const { parent, key, item } = patch;
-      const text = item as string;
-      const keep = Math.max(80, Math.floor(text.length / 2));
-      (parent as Record<string, unknown>)[key] = `${text.slice(0, keep)}…[${text.length} chars]`;
-    } else if (array) {
-      const items = array.item as unknown[];
-      items.splice(Math.floor(items.length / 2), 1);
-    } else {
-      break;
-    }
-  }
-  const result = stringify();
-  return result.length <= TOOL_RESULT_LIMIT
-    ? result
-    : JSON.stringify({ ok: false, error: `Tool result exceeded ${TOOL_RESULT_LIMIT} characters and could not be compacted safely (${originalLength} original characters).` });
+  return clipJsonText(content, TOOL_RESULT_LIMIT);
 }
 
 /** The durable journal records changes, never user field values or file names. */

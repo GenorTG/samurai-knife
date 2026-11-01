@@ -3,6 +3,7 @@
 // as the single message "tak tak." (the trim snapped forward to the next user message and dropped the previous answer).
 import { test } from "node:test";
 import { clipToolResult } from "../src/lib/agent-client/loop.ts";
+import { clipJsonText } from "../src/lib/json-clip.ts";
 import assert from "node:assert/strict";
 import {
   CONTEXT_CHARS,
@@ -31,6 +32,29 @@ test("large JSON tool results stay valid and preserve checks when compacted", ()
   assert.equal(parsed.checks.state, "failure");
   assert.equal(parsed.checks.runs[0].name, "CI");
   assert.equal(parsed.work.head, "abc123");
+});
+
+test("JSON clipping: knife_site_changes with 60 commits fits 6 kB, keeps checks.state, marks omitted items, terminates on short strings", () => {
+  const changes = JSON.stringify({
+    work: { branch: "knife/x", head: "f".repeat(40) },
+    pull: { number: 7, title: "Update", url: "https://github.com/o/r/pull/7" },
+    compare: { aheadBy: 60, commits: Array.from({ length: 60 }, (_, i) => ({ sha: String(i).padStart(40, "0"), message: `fix: step ${i} `.repeat(12) })) },
+    checks: { state: "pending", items: [{ name: "Vercel", state: "pending" }], previewUrl: "" },
+  });
+  const clipped = clipJsonText(changes, 6000);
+  assert.ok(clipped.length < 6000, `${clipped.length}`);
+  const parsed = JSON.parse(clipped);
+  assert.equal(parsed.checks.state, "pending");
+  assert.ok(parsed.compare.commits.some((c) => typeof c === "string" && /items omitted/.test(c)));
+  const many = JSON.stringify({ rows: Array.from({ length: 20_000 }, (_, i) => ({ i, k: "abc" })), tail: { state: "ok" } });
+  const started = Date.now();
+  const small = JSON.parse(clipJsonText(many, 20_000));
+  assert.ok(Date.now() - started < 3000, "bulk thinning stays fast");
+  assert.equal(small.tail.state, "ok");
+  // Only short strings and no arrays: no growth loop, a bounded error instead.
+  const flat = JSON.stringify(Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`k${i}`, "x".repeat(150)])));
+  assert.match(JSON.parse(clipJsonText(flat, 2000)).error, /could not be compacted/);
+  assert.match(clipJsonText("plain ".repeat(5000), 1000), /truncated, 30000 chars total/);
 });
 
 test("malformed persisted tool arguments are repaired before provider replay", () => {
