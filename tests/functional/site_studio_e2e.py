@@ -24,6 +24,7 @@ Usage: python3 tests/functional/site_studio_e2e.py [--headed]
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -144,6 +145,8 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         issues = page.locator("main").inner_text()
         check("issues with fixes: missing alt text and the stale copyright", "have no alt text" in issues and "Footer says © 2023" in issues and "Fix:" in issues, issues[:400])
         check("Lighthouse and site checks panels", page.get_by_text("Lighthouse (PageSpeed Insights)").is_visible() and page.get_by_text("Site checks").is_visible())
+        fix_all = page.locator("[data-fix-all]")
+        check("a 'Fix all findings' button counts the fixable findings (known noise left out)", fix_all.count() == 1 and re.search(r"Fix (all \d+ findings|1 finding)", fix_all.inner_text() or "") is not None, fix_all.all_inner_texts())
 
         # ---------------------------------------------------------------- 3. copy & CV (CV seeded by an agent)
         ok, text = mcp.tool("knife_cv_import", {"profile": {

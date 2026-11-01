@@ -19,9 +19,19 @@ function delta(now: number | undefined, before: number | undefined): string {
   return now > before ? ` ▲${now - before}` : ` ▼${before - now}`;
 }
 
+/** Findings the assistant is told to treat as noise or low priority (system prompt, knife_site_audit description). */
+function isKnownNoise(id: string): boolean {
+  return id.startsWith("resource.") || id === "perf.ttfb.cold" || id === "content.js-only";
+}
+
+/** "Fix all findings": one prepared request that does the whole job (edits, PR, verify) without asking again. */
+function fixAllPrompt(t: ReturnType<typeof useT>["t"], auditId: string): string {
+  return t("Fix every fixable finding of website audit {id} (knife_site_audit_get {section:\"issues\", id:\"{id}\"}). Skip known noise (resource.* findings, a missing llms.txt, a single-run Lighthouse performance score, perf.ttfb.cold, content.js-only on a deliberately client-rendered page) and anything that needs a fact or a content choice only I can make: list those at the end. Read the related files first, edit on the work branch in as few commits as possible (knife_site_edit), open or update the pull request, then run knife_site_verify and put its evidence (verdict, score changes, new and resolved findings, checks) in the pull request summary. Do the rest without asking me again.", { id: auditId });
+}
+
 /** Score tab: run an audit, see scores (with the change since the previous run), issues, Lighthouse, history. */
 export default function ScoreTab() {
-  const { t, m } = useT();
+  const { t, tn, m } = useT();
   const { view, error } = useSite();
   const [target, setTarget] = useState<"production" | "preview" | "custom">("production");
   const [customUrl, setCustomUrl] = useState("");
@@ -96,6 +106,8 @@ export default function ScoreTab() {
     }
   }
 
+  // Known noise (docs/WEBSITE-STUDIO.md "Known noise") is not counted as something to fix.
+  const fixable = useMemo(() => (run ? new Set(run.issues.filter((i) => !isKnownNoise(i.id)).map((i) => i.id)).size : 0), [run]);
   const issues = useMemo(() => (run ? run.issues.filter((i) => category === "all" || i.category === category) : []), [run, category]);
   const categories = useMemo(() => (run ? [...new Set(run.issues.map((i) => i.category))] : []), [run]);
 
@@ -147,6 +159,9 @@ export default function ScoreTab() {
             </StatGrid>
             {run.notes.length ? <ul className="mt-3 list-disc pl-5 text-xs text-faint">{run.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
             <div className="mt-3 flex flex-wrap gap-2">
+              {fixable > 0 && view?.connected ? (
+                <Button variant="primary" data-fix-all="" onClick={() => openAssistant(fixAllPrompt(t, run.id))}>{tn("Fix {n} finding", "Fix all {n} findings", fixable)}</Button>
+              ) : null}
               <Button onClick={() => openAssistant(t("Look at the latest website audit (knife_site_audit_get) and propose the 5 changes with the biggest effect on my scores. Then make them on the work branch and open a pull request."))}>{t("Ask the assistant to improve it")}</Button>
             </div>
           </Panel>

@@ -23,6 +23,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
       msg("The assistant can tell whether your model sees images (Detect in Provider settings), and you can set how many steps one message may take (Settings > Turn limit)."),
       msg("You can cap how many input tokens one message may use (Settings > Turn limit), and the line under each answer shows how much of the prompt came from the provider's cache."),
       msg("Claude models from Anthropic can be used as the assistant's provider."),
+      msg("Website score: \"Fix all findings\" asks the assistant to fix every finding it can in one go, check the preview and describe the result in the pull request."),
       msg("Website changes are checked in one step: after a change the assistant waits for the preview, checks it and the automatic tests, and tells you what got better or worse since the last check."),
       msg("Your account has its own MCP address for outside AI tools (Claude Code, Cursor, OpenClaw), and an MCP key can be read-only. Outside tools can now also read your assistant chats and tasks."),
     ],

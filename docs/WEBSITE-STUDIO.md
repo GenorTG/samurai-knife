@@ -113,6 +113,9 @@ Told to the assistant (system prompt "Website" line) and to outside agents (`kni
   by label or anchor text; a CV project also counts as on the site when the site links a CV link whose label names the
   project (`tests/site_audit_quality.test.mjs` "alignment by URL").
 - "Do the rest" / "rób resztę" / "fix all": every safe, in-scope, fixable finding is done without asking again.
+- The Score tab's "Fix all N findings" button (N = distinct finding ids without the known noise) opens the assistant with
+  one prepared request: every fixable finding of that audit id, noise and choices only the user can make skipped (and
+  listed), edits in few commits (knife_site_edit), the PR, then knife_site_verify with its evidence in the PR summary.
 - Multi-step site work is a durable goal (`knife_goal_create`): the numbered proposal goes in the goal's steps, so a
   short "yes" continues it; checkpoint (`knife_goal_checkpoint`) after every push, preview and audit, with the audit id,
   so the work survives a lost context.
