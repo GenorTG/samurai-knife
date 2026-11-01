@@ -29,19 +29,20 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
   const [filter, setFilter] = useState<LauncherFilter>("all");
   const [family, setFamily] = useState<ToolFamily | "all">("all");
   const inputRef = useRef<HTMLInputElement>(null);
+  const orderedTools = useMemo(() => tools.map((tool, index) => ({ tool, index })).sort((a, b) => (a.tool.rank ?? 100) - (b.tool.rank ?? 100) || a.index - b.index).map(({ tool }) => tool), [tools]);
   const { favorites, recent, ready, toggleFavorite, clearRecent } = useToolPreferences();
 
   const categoryPool = useMemo(() => {
     if (filter === "favorites") {
-      const bySlug = new Map(tools.map((tool) => [tool.slug, tool]));
+      const bySlug = new Map(orderedTools.map((tool) => [tool.slug, tool]));
       return favorites.map((slug) => bySlug.get(slug)).filter((tool): tool is ToolMeta => Boolean(tool));
     }
     if (filter === "recent") {
-      const bySlug = new Map(tools.map((tool) => [tool.slug, tool]));
+      const bySlug = new Map(orderedTools.map((tool) => [tool.slug, tool]));
       return recent.map((slug) => bySlug.get(slug)).filter((tool): tool is ToolMeta => Boolean(tool));
     }
-    return filter === "all" ? tools : tools.filter((tool) => tool.category === filter);
-  }, [favorites, filter, recent, tools]);
+    return filter === "all" ? orderedTools : orderedTools.filter((tool) => tool.category === filter);
+  }, [favorites, filter, recent, orderedTools]);
 
   const familyOptions = useMemo(() => {
     const available = new Set(categoryPool.map((tool) => tool.family));
@@ -69,14 +70,6 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
     (slug: string) => router.push(`/tools/${slug}`),
     [router],
   );
-
-  const grouped = useMemo(() => {
-    if (query.trim() || filter === "favorites" || filter === "recent") return null;
-    return CATEGORIES.map((cat) => ({
-      ...cat,
-      items: results.filter((tool) => tool.category === cat.id),
-    })).filter((group) => group.items.length > 0);
-  }, [filter, query, results]);
 
   const selectFilter = (next: LauncherFilter) => {
     setFilter(next);
@@ -252,34 +245,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
         </div>
       ) : null}
 
-      {grouped
-        ? grouped.map((group) => (
-            <section key={group.id} className="space-y-3">
-              <h2 className="flex items-center gap-2.5 text-sm font-semibold text-ink">
-                <CategoryTile category={group.id} size="sm" />
-                {t(group.label)}
-                <span className="font-mono text-xs font-normal text-faint">
-                  {group.items.length}
-                </span>
-              </h2>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-3">
-                {group.items.map((tool) => (
-                  <ToolCard
-                    key={tool.slug}
-                    tool={tool}
-                    active={false}
-                    favorite={favorites.includes(tool.slug)}
-                    disabled={!ready}
-                    onOpen={() => open(tool.slug)}
-                    onToggleFavorite={() => toggleFavorite(tool.slug)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
-        : null}
-
-      {!grouped && results.length > 0 ? (
+      {results.length > 0 ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-3">
           {results.map((tool, index) => (
             <ToolCard
