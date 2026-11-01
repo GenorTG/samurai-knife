@@ -4,7 +4,7 @@ import { msgf } from "@/lib/i18n/msg";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
-import { changeProfile, fetchEarlierChats, importEarlierChat, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider, type EarlierChatInfo } from "@/lib/agent-client/api";
+import { changeProfile, deleteEarlierChat, fetchEarlierChats, importEarlierChat, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider, type EarlierChatInfo } from "@/lib/agent-client/api";
 import { UsagePanel } from "./UsagePanel";
 import type { AccountInfo, ProviderInput, ProviderModelDetails, VisionProbeResult } from "@/lib/agent-client/types";
 import { TURN_LIMIT_BOUNDS } from "@/lib/agent-client/turn-limits";
@@ -859,6 +859,15 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
     if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not open that chat.") });
     onOpenChat(chatId);
   };
+  const remove = async (file: string) => {
+    if (!window.confirm(tr("Delete this earlier chat for good?"))) return;
+    setBusy(file);
+    setNote(null);
+    const result = await deleteEarlierChat(file);
+    setBusy(null);
+    if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not delete that chat.") });
+    setChats((current) => (current ?? []).filter((c) => c.file !== file));
+  };
   return (
     <details className="rounded-lg border border-line px-3 py-2" data-earlier-chats>
       <summary className="cursor-pointer text-xs text-muted select-none">
@@ -866,7 +875,7 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
       </summary>
       <div className="mt-2 space-y-2">
         <p className="text-[11px] leading-snug text-faint">
-          {tr("Chats saved before history was shared across providers, one per model. Open one to continue it as a new chat; the original stays until it is removed with the oldest chats.")}
+          {tr("Chats you cleared (the last 10) and chats saved before history was shared across providers. Open one to continue it as a new chat, or delete it for good.")}
         </p>
         <ul className="space-y-2">
           {chats.map((chat) => (
@@ -878,11 +887,17 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
                 {tn("{n} message", "{n} messages", chat.messages)}
                 {" · "}
                 {date(chat.modifiedAt, { dateStyle: "medium", timeStyle: "short" })}
+                {chat.archivedAt ? <> · {tr("cleared")}</> : null}
                 {chat.untrusted ? <> · {tr("contains text from outside sources")}</> : null}
               </p>
-              <Button size="sm" variant="ghost" className="mt-1" disabled={busy !== null} onClick={() => void open(chat.file)}>
-                {busy === chat.file ? tr("Opening…") : tr("Open as a new chat")}
-              </Button>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void open(chat.file)}>
+                  {busy === chat.file ? tr("Opening…") : tr("Open as a new chat")}
+                </Button>
+                <Button size="sm" variant="ghost" data-earlier-delete="" disabled={busy !== null} onClick={() => void remove(chat.file)}>
+                  {tr("Delete")}
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

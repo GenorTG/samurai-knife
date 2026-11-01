@@ -997,7 +997,6 @@
   "Chat history is kept on this server per account and conversation, shared across providers and models. Switching sends that history to the selected provider. The action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta i rozmowy, wspólna dla dostawców i modeli. Po zmianie dostawcy ta historia jest mu przekazywana. Dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
   "Chat history is kept when you switch to another provider or model, and chats saved before can be brought back (Settings > Recover earlier chats).": "Historia czatu zostaje po przełączeniu na innego dostawcę lub model, a wcześniej zapisane czaty można przywrócić (Ustawienia > Przywróć wcześniejsze czaty).",
   "Chat with the assistant: it asks about your work and fills the profile in as you go.": "Porozmawiaj z asystentem: pyta o Twoją pracę i na bieżąco uzupełnia profil.",
-  "Chats saved before history was shared across providers, one per model. Open one to continue it as a new chat; the original stays until it is removed with the oldest chats.": "Czaty zapisane, zanim historia stała się wspólna dla dostawców (osobno dla każdego modelu). Otwórz jeden, żeby kontynuować go jako nowy czat; oryginał zostaje, dopóki nie zostanie usunięty razem z najstarszymi czatami.",
   "Chats working in the background: {count}": "Czaty pracujące w tle: {count}",
   "Check": "Sprawdź",
   "Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps.": "Sprawdź działającą stronę (przekierowania, nagłówki bezpieczeństwa, robots.txt, mapa witryny, nagłówki, linki, SEO), zbuduj CSP i cURL, rozbierz adresy URL, napisz robots.txt i mapy witryny.",
@@ -4226,7 +4225,6 @@
   "Slack": "Slack",
   "Slack — bot OAuth2": "Slack — OAuth2 bota",
   "Slack — bot token": "Slack — token bota",
-  "Small, sharp, single-purpose. Most run in your browser and keep files local. Favorites and recent history stay in this browser. PDFs use local Python; chat-widget messages go to the provider configured for your account.": "Małe, ostre, jednozadaniowe. Większość działa w przeglądarce i trzyma pliki u ciebie. Ulubione i ostatnio używane zostają w tej przeglądarce. PDF-y obsługuje lokalny Python; wiadomości z czatu idą do dostawcy ustawionego na twoim koncie.",
   "Smart Knife": "Smart Knife",
   "Smart Knife · self-hosted": "Smart Knife · na własnym serwerze",
   "Smart Knife · self-hosted · no ads, no tracking": "Smart Knife · na własnym serwerze · bez reklam i śledzenia",
@@ -5298,5 +5296,31 @@
     "{host} / {model} ({n} runda)",
     "{host} / {model} ({n} rundy)",
     "{host} / {model} ({n} rund)"
-  ]
+  ],
+  "Private tools. Practical AI. One workspace.": "Prywatne narzędzia. Praktyczna AI. Jedna przestrzeń pracy.",
+  "Smart Knife brings your work tools and AI together.": "Smart Knife łączy narzędzia do pracy ze sztuczną inteligencją.",
+  "Work across documents, websites, data and creative projects—with an assistant that can use the tools you already have here.": "Pracuj z dokumentami, stronami, danymi i projektami kreatywnymi — z asystentem, który korzysta z dostępnych tu narzędzi.",
+  "Explore the studios": "Poznaj przestrzenie robocze",
+  "Best features": "Najważniejsze funkcje",
+  "Focused workspaces for the jobs people come here to do.": "Przestrzenie robocze do zadań, z którymi użytkownicy tu przychodzą.",
+  "Flagship workspaces first, quick utilities after. Search or filter the full collection.": "Najpierw rozbudowane przestrzenie robocze, potem małe narzędzia. Przeszukaj lub filtruj całą kolekcję.",
+  "Delete this earlier chat for good?": "Czy na pewno trwale usunąć ten wcześniejszy czat?",
+  "Could not delete that chat.": "Nie udało się usunąć tego czatu.",
+  "Chats you cleared (the last 10) and chats saved before history was shared across providers. Open one to continue it as a new chat, or delete it for good.": "Wyczyszczone czaty (ostatnie 10) oraz czaty zapisane przed udostępnianiem historii między dostawcami. Otwórz czat jako nowy, aby go kontynuować, albo trwale go usuń.",
+  "cleared": "wyczyszczono"
+  ,"AI assistant": "Asystent AI"
+  ,"An assistant that can act across the tools, keep several chats and turn requests into trackable tasks.": "Asystent, który korzysta z narzędzi, prowadzi kilka czatów i zamienia prośby w zadania do śledzenia."
+  ,"Create per-job CV versions, check ATS readiness and track each application.": "Twórz wersje CV dopasowane do ofert, sprawdzaj je pod kątem ATS i śledź każdą aplikację."
+  ,"Website studio": "Studio stron internetowych"
+  ,"Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots.": "Audytuj stronę, twórz pull requesty na GitHubie, sprawdzaj podglądy Vercel i przeglądaj zrzuty ekranu."
+  ,"Create and edit Word, Excel and PowerPoint files in your private workspace.": "Twórz i edytuj pliki Word, Excel i PowerPoint w prywatnej przestrzeni roboczej."
+  ,"Connect services and automate repeatable work with visual workflows.": "Łącz usługi i automatyzuj powtarzalne zadania za pomocą wizualnych przepływów pracy."
+  ,"Craft apps": "Aplikacje kreatywne"
+  ,"Make and edit creative assets in a collection of browser-based apps.": "Twórz i edytuj zasoby kreatywne w zestawie aplikacji działających w przeglądarce."
+  ,"MCP for outside agents": "MCP dla zewnętrznych agentów"
+  ,"Give external agents personal tokens to work with your account's tools.": "Przekaż zewnętrznym agentom osobiste tokeny, aby mogli korzystać z narzędzi na Twoim koncie."
+  ,"Database and SQL labs": "Laboratoria baz danych i SQL"
+  ,"Format, validate and run SQL, then learn against a real database.": "Formatuj, waliduj i uruchamiaj SQL, a następnie ucz się na prawdziwej bazie danych."
+  ,"PDF and OCR": "PDF i OCR"
+  ,"Inspect, convert and extract text from PDFs with local processing where available.": "Analizuj i konwertuj pliki PDF oraz wyodrębniaj z nich tekst, korzystając w miarę możliwości z lokalnego przetwarzania."
 }

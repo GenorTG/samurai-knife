@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readdirSync, statSync, utimesSync } from "node:fs";
 import { readAccountText } from "@/lib/storage/sealed";
 import * as z from "zod/v4";
@@ -50,6 +50,9 @@ export const conversationSchema = conversationContentSchema.extend({
   adoptedInto: z.string().regex(FILE_ID).optional(),
   /** The provider host and model of the chat's latest round (server-owned; for knife_chat_list). */
   lastModel: z.object({ host: z.string().max(253), model: z.string().max(200) }).optional(),
+  /** On an archive made by Clear (resetConversation): the chat it was cleared from, and when. */
+  archivedFrom: z.string().regex(CHAT_ID).optional(),
+  archivedAt: z.string().max(40).optional(),
 });
 
 export interface ConversationContent {
@@ -66,6 +69,8 @@ export interface DurableConversation extends ConversationContent {
   adoptedFrom?: string;
   adoptedInto?: string;
   lastModel?: { host: string; model: string };
+  archivedFrom?: string;
+  archivedAt?: string;
 }
 
 export function emptyConversation(): DurableConversation {
@@ -146,9 +151,53 @@ function updateConversation<T>(accountId: string, providerId: string, mutate: (v
   return result;
 }
 
-/** Clear: an empty chat that never adopts an older provider-scoped copy again. */
+/** Cleared chats kept for "Recover earlier chats" (newest first); the oldest goes when a new one is made. */
+export const KEEP_ARCHIVED = 10;
+
+/**
+ * Clear: an empty chat that never adopts an older provider-scoped copy again. A chat that had a transcript is first
+ * kept as an archive (a file of its own under a random id, no chat id: listed by listEarlierChats, taint included), at
+ * most KEEP_ARCHIVED per account, so a Clear by mistake can be undone from Settings > Recover earlier chats.
+ */
 export function resetConversation(accountId: string, providerId: string, chatId?: string): void {
+  const current = readIfPresent(accountId, providerId);
+  if (current && hasTranscript(current.value)) {
+    const archive: DurableConversation = {
+      version: 1,
+      messages: current.value.messages,
+      actions: current.value.actions,
+      untrusted: current.value.untrusted === true,
+      legacyChecked: true,
+      ...(current.value.lastModel ? { lastModel: current.value.lastModel } : {}),
+      ...(chatId ?? current.value.chatId ? { archivedFrom: chatId ?? current.value.chatId } : {}),
+      archivedAt: new Date().toISOString(),
+    };
+    writeConversation(accountId, randomBytes(16).toString("hex"), archive);
+    pruneArchives(accountId);
+  }
   writeConversation(accountId, providerId, { ...emptyConversation(), legacyChecked: true, ...(chatId ? { chatId } : {}) });
+}
+
+function pruneArchives(accountId: string): void {
+  const dir = accountScope(accountId).conversations;
+  if (!existsSync(dir)) return;
+  const archives: { id: string; at: string }[] = [];
+  for (const name of readdirSync(dir)) {
+    const id = name.replace(/\.json$/, "");
+    if (!name.endsWith(".json") || !FILE_ID.test(id)) continue;
+    const file = readIfPresent(accountId, id);
+    if (file?.value.archivedAt && !file.value.chatId) archives.push({ id, at: file.value.archivedAt });
+  }
+  archives.sort((a, b) => b.at.localeCompare(a.at));
+  for (const old of archives.slice(KEEP_ARCHIVED)) removeAccountPath(accountId, accountScope(accountId).join("conversations", `${old.id}.json`));
+}
+
+/** Delete one earlier chat (a cleared archive or an old provider-scoped copy); a live chat's own file never. */
+export function deleteEarlierChat(accountId: string, file: string): void {
+  if (!FILE_ID.test(file)) throw new EarlierChatError("not_found");
+  const found = readIfPresent(accountId, file);
+  if (!found || found.value.chatId) throw new EarlierChatError("not_found");
+  removeAccountPath(accountId, conversationPath(accountId, file));
 }
 
 /** Browser-owned fields only; the taint flag is kept as stored. */
@@ -329,6 +378,8 @@ export interface EarlierChat {
   preview: string;
   /** Third-party text entered it (the taint follows an import). */
   untrusted: boolean;
+  /** Set when the user cleared it (Clear keeps a copy): when. */
+  archivedAt?: string;
 }
 
 function hostOf(baseUrl: string): string | null {
@@ -362,13 +413,14 @@ export function listEarlierChats(accountId: string, sources: readonly LegacySour
     const match = named.get(id);
     out.push({
       file: id,
-      model: match?.source.model ?? null,
-      host: match ? hostOf(match.source.baseUrl) : null,
-      chatId: match?.chatId ?? null,
-      modifiedAt: new Date(file.mtimeMs).toISOString(),
+      model: match?.source.model ?? file.value.lastModel?.model ?? null,
+      host: match ? hostOf(match.source.baseUrl) : file.value.lastModel?.host ?? null,
+      chatId: match?.chatId ?? file.value.archivedFrom ?? null,
+      modifiedAt: file.value.archivedAt ?? new Date(file.mtimeMs).toISOString(),
       messages: file.value.messages.filter((m) => m.role === "user" || m.role === "assistant").length,
       preview: firstUser && typeof firstUser.content === "string" ? firstUser.content.replace(/\s+/g, " ").trim().slice(0, 160) : "",
       untrusted: file.value.untrusted === true,
+      ...(file.value.archivedAt ? { archivedAt: file.value.archivedAt } : {}),
     });
   }
   return out.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));

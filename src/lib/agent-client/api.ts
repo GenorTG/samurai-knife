@@ -273,6 +273,8 @@ export interface EarlierChatInfo {
   messages: number;
   preview: string;
   untrusted: boolean;
+  /** The user cleared this chat at this time (Clear keeps a copy). */
+  archivedAt: string | null;
 }
 
 export async function fetchEarlierChats(chatIds: readonly string[]): Promise<ApiResult<EarlierChatInfo[]>> {
@@ -292,9 +294,17 @@ export async function fetchEarlierChats(chatIds: readonly string[]): Promise<Api
       messages: typeof c.messages === "number" ? c.messages : 0,
       preview: str(c.preview) ?? "",
       untrusted: c.untrusted === true,
+      archivedAt: str(c.archivedAt),
     }];
   });
   return { ok: true, value: chats };
+}
+
+/** Delete an earlier chat for good (Settings > Recover earlier chats). */
+export async function deleteEarlierChat(file: string): Promise<ApiResult<null>> {
+  const r = await call("/api/agent/conversation/earlier", { method: "DELETE", body: { file } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
 /** "Open as a new chat": the server copies the earlier transcript (journal and taint) into `chatId`. */
