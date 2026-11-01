@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
-import { AgentGoalError, createAgentGoal, deleteAgentGoal, listAgentGoals, updateAgentGoal, type GoalStatus, type GoalStepStatus } from "@/lib/agent-work/goals";
+import { AgentGoalError, captureUnfinishedRequest, createAgentGoal, deleteAgentGoal, listAgentGoals, updateAgentGoal, type GoalStatus, type GoalStepStatus } from "@/lib/agent-work/goals";
 import { quotaErrorResponse } from "@/lib/storage/http";
 
 export const runtime = "nodejs";
@@ -10,6 +10,8 @@ const step = z.object({ id: z.string().max(64).optional(), title: z.string().tri
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), title: z.string().trim().min(1).max(160), objective: z.string().trim().min(1).max(4000), project: z.string().max(160).optional(), nextAction: z.string().max(1000).optional(), steps: z.array(z.string().trim().min(1).max(160)).max(50).optional() }).strict(),
   z.object({ action: z.literal("delete"), id: z.string().min(1).max(64) }).strict(),
+  // The widget, when a turn ends by an error or a limit with its request unfinished (agent-work/goals.ts).
+  z.object({ action: z.literal("capture"), request: z.string().trim().min(1).max(4000), reason: z.enum(["error", "limit"]), detail: z.string().max(300).optional() }).strict(),
   z.object({ action: z.literal("update"), id: z.string().min(1).max(64), title: z.string().trim().min(1).max(160).optional(), objective: z.string().trim().min(1).max(4000).optional(), project: z.string().max(160).optional(), nextAction: z.string().max(1000).optional(), status: z.enum(["active", "paused", "completed", "archived"]).optional(), steps: z.array(step).max(50).optional() }).strict(),
 ]);
 
@@ -40,6 +42,10 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const input = parsed.data;
     if (input.action === "create") return json({ goal: createAgentGoal(auth.account.id, input) }, 201);
+    if (input.action === "capture") {
+      const captured = captureUnfinishedRequest(auth.account.id, input);
+      return json(captured, captured.created ? 201 : 200);
+    }
     if (input.action === "delete") {
       deleteAgentGoal(auth.account.id, input.id);
       return json({ ok: true });

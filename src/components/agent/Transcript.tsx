@@ -104,7 +104,7 @@ export function Transcript({
   suggestions: string[];
   onPick: (prompt: string) => void;
 }) {
-  const { t, tn } = useT();
+  const { t, tn, m: tm } = useT();
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -178,7 +178,7 @@ export function Transcript({
         if (m.role === "notice") {
           return (
             <Notice key={i} tone={m.level === "error" ? "error" : "info"}>
-              {m.content}
+              {tm(m.content)}
             </Notice>
           );
         }

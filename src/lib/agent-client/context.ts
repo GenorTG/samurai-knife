@@ -314,3 +314,20 @@ export function pickTranscript(local: TranscriptMessage[], remote: TranscriptMes
   if (remote.length === 0) return { messages: local, from: "local" };
   return preferred === "local" ? { messages: local, from: "local" } : { messages: remote, from: "remote" };
 }
+
+/**
+ * The request a stopped turn leaves unfinished, for the paused task it becomes (useAgent): the message itself, or for
+ * a short follow-up ("tak", "do the rest") the last substantial request before it with the follow-up appended. Null
+ * when there is nothing worth keeping.
+ */
+export function unfinishedRequest(transcript: TranscriptMessage[], text: string): string | null {
+  const current = text.trim();
+  if (!current) return null;
+  if (current.length >= 24) return current.slice(0, 4000);
+  const users = transcript.filter((m): m is Extract<TranscriptMessage, { role: "user" }> => m.role === "user").map((m) => m.content.trim());
+  // The last user message is `current` itself; look before it.
+  for (let i = users.length - 2; i >= 0; i -= 1) {
+    if (users[i].length >= 24) return `${users[i]}\n(then: ${current})`.slice(0, 4000);
+  }
+  return current.length >= 8 ? current : null;
+}

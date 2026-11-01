@@ -303,6 +303,15 @@ export async function importEarlierChat(file: string, chatId: string): Promise<A
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
+/** A turn ended by an error or a limit with its request unfinished: keep it as a paused task (agent-work/goals.ts). */
+export async function captureUnfinished(request: string, reason: "error" | "limit", detail?: string): Promise<ApiResult<{ created: boolean; title: string }>> {
+  const r = await call("/api/agent/goals", { method: "POST", body: { action: "capture", request: request.slice(0, 4000), reason, ...(detail ? { detail: detail.slice(0, 300) } : {}) } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok) return { ok: false, failure: failureFrom(r.res, r.body) };
+  const goal = isRecord(r.body) && isRecord(r.body.goal) ? r.body.goal : {};
+  return { ok: true, value: { created: isRecord(r.body) && r.body.created === true, title: str(goal.title) ?? "" } };
+}
+
 export async function resetConversation(chatId = "default"): Promise<ApiResult<null>> {
   const r = await call(`/api/agent/conversation?chat=${encodeURIComponent(chatId)}`, { method: "DELETE" });
   if ("failure" in r) return { ok: false, failure: r.failure };

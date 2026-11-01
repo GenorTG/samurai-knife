@@ -138,3 +138,45 @@ export function deleteAgentGoal(accountId: string, id: string): void {
   if (kept.length === file.goals.length) throw new AgentGoalError("Goal not found.");
   writeFile(accountId, { ...file, goals: kept });
 }
+
+const CAPTURED = "Saved automatically: the assistant stopped before finishing";
+
+/**
+ * A turn that ended by an error or a turn limit with its request unfinished becomes a PAUSED goal (Tasks panel:
+ * Continue), unless the assistant already kept one itself. The same request again (an active or paused goal with the
+ * same objective) gets a history entry instead of a second goal.
+ */
+export function captureUnfinishedRequest(accountId: string, input: { request: string; reason: "error" | "limit"; detail?: string }): { goal: AgentGoal; created: boolean } {
+  const objective = input.request.trim().slice(0, 4000);
+  if (!objective) throw new AgentGoalError("Nothing to save: the request is empty.");
+  const why = input.reason === "limit" ? "the turn limit was reached" : "the model request failed";
+  const note = `${CAPTURED} (${why}${input.detail ? `: ${input.detail.trim().slice(0, 300)}` : ""}).`;
+  const file = readFile(accountId);
+  const same = file.goals.find((goal) => (goal.status === "active" || goal.status === "paused") && goal.objective === objective);
+  if (same) {
+    addEvent(same, note);
+    writeFile(accountId, file);
+    return { goal: same, created: false };
+  }
+  if (file.goals.length >= MAX_GOALS) throw new AgentGoalError(`At most ${MAX_GOALS} goals can be saved.`);
+  const now = new Date().toISOString();
+  const firstLine = objective.split("\n")[0].trim();
+  const goal = goalSchema.parse({
+    id: randomUUID(),
+    title: firstLine.length > 80 ? `${firstLine.slice(0, 79)}…` : firstLine,
+    objective,
+    project: "",
+    status: "paused",
+    nextAction: input.reason === "limit"
+      ? "Continue where the assistant stopped (raise Settings > Turn limit for a long job)."
+      : "Continue where the assistant stopped (the model request failed: check the provider, then Continue).",
+    steps: [],
+    events: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  addEvent(goal, note);
+  file.goals.push(goal);
+  writeFile(accountId, file);
+  return { goal, created: true };
+}
