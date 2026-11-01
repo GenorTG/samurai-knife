@@ -241,6 +241,12 @@ test("turn limits: bounds, defaults, invalid values fall back", () => {
   // The route is strict about extra fields; the loop reads the public view, whose `custom` flag is ignored.
   assert.equal(limits.turnLimitsSchema.safeParse({ maxRounds: 6, maxToolCalls: 9, custom: true }).success, false);
   assert.deepEqual(limits.resolveTurnLimits({ maxRounds: 6, maxToolCalls: 9, custom: true }), { maxRounds: 6, maxToolCalls: 9 });
+  // Input-token budget: optional, bounded, an out-of-bounds budget alone is dropped (off).
+  assert.deepEqual(limits.resolveTurnLimits({ maxRounds: 6, maxToolCalls: 9, maxInputTokens: 50_000 }), { maxRounds: 6, maxToolCalls: 9, maxInputTokens: 50_000 });
+  assert.deepEqual(limits.resolveTurnLimits({ maxRounds: 6, maxToolCalls: 9, maxInputTokens: 5 }), { maxRounds: 6, maxToolCalls: 9 });
+  assert.equal(limits.turnLimitsSchema.safeParse({ maxRounds: 6, maxToolCalls: 9, maxInputTokens: 9_999 }).success, false);
+  assert.equal(limits.turnLimitsSchema.safeParse({ maxRounds: 6, maxToolCalls: 9, maxInputTokens: 10_000_001 }).success, false);
+  assert.equal(limits.turnLimitsSchema.safeParse({ maxRounds: 6, maxToolCalls: 9, maxInputTokens: 200_000 }).success, true);
 });
 
 test("turn limits: stored per account, public view fills defaults, a hand-edited value never breaks the file", () => {

@@ -215,7 +215,7 @@ export function buildContext(transcript: TranscriptMessage[]): ModelContext {
       wire.push(message);
     } else if (message.role !== "notice") {
       wire.push(message);
-    } else if (message.level === "error" || (message.level === "info" && message.content.startsWith("Reached the per-turn limit"))) {
+    } else if (message.level === "error" || (message.level === "info" && message.content.startsWith("Reached the per-turn"))) {
       const reason = oneLine(message.content, 240);
       wire.push({ role: "assistant", content: `[Toolbox note] previous turn ended: ${reason}; unfinished request: ${oneLine(lastUser || "(request unavailable)", 400)}` });
     }

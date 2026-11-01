@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.union([turnLimitsSchema, z.object({ reset: z.literal(true) }).strict()]);
 
 /**
- * PUT /api/account/assistant { maxRounds, maxToolCalls } | { reset: true } -> the public account. The assistant's
+ * PUT /api/account/assistant { maxRounds, maxToolCalls, maxInputTokens? } | { reset: true } -> the public account. The assistant's
  * per-turn budget (src/lib/agent-client/turn-limits.ts): bounds are checked here, the loop reads them from the account.
  */
 export async function PUT(request: Request): Promise<Response> {

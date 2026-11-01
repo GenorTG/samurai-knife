@@ -21,6 +21,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
       msg("Several assistant chats can work at the same time: switch to another chat while one is still working, and it carries on in the background. A small dot in the chat list shows which chats are running."),
       msg("Tasks: the assistant can keep a saved task list for longer jobs (a website update, a CV for an offer), with steps, the next step and a history, so a lost chat or another model can carry on. Open it with the Tasks button in the assistant."),
       msg("The assistant can tell whether your model sees images (Detect in Provider settings), and you can set how many steps one message may take (Settings > Turn limit)."),
+      msg("You can cap how many input tokens one message may use (Settings > Turn limit), and the line under each answer shows how much of the prompt came from the provider's cache."),
       msg("Claude models from Anthropic can be used as the assistant's provider."),
       msg("Website changes are checked in one step: after a change the assistant waits for the preview, checks it and the automatic tests, and tells you what got better or worse since the last check."),
       msg("Your account has its own MCP address for outside AI tools (Claude Code, Cursor, OpenClaw), and an MCP key can be read-only. Outside tools can now also read your assistant chats and tasks."),

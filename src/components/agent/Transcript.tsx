@@ -8,6 +8,30 @@ import { InlineBold } from "./InlineBold";
 import { LiveStatus } from "./LiveStatus";
 import { describeCall, summarizeResult } from "./summarize";
 import { useT } from "@/lib/i18n/react";
+import type { Translator } from "@/lib/i18n/core";
+import { cacheShare, formatTokens, type RunUsage } from "@/lib/usage";
+
+/**
+ * The quiet footer of a turn, translated: rounds, prompt tokens with the cached share ("no cache" when the provider
+ * reported none: the Anthropic OpenAI-compatible endpoint never caches), completion tokens, time.
+ */
+function usageLine(u: RunUsage, t: Translator["t"], tn: Translator["tn"]): string {
+  const tilde = u.estimated ? "~" : "";
+  const input = `${tilde}${formatTokens(u.promptTokens)}`;
+  const output = `${tilde}${formatTokens(u.completionTokens)}`;
+  return [
+    tn("{n} round", "{n} rounds", u.rounds),
+    u.estimated
+      ? t("{tokens} in", { tokens: input })
+      : u.cachedTokens > 0
+        ? t("{tokens} in ({share}% cached: {cached})", { tokens: input, share: String(cacheShare(u)), cached: formatTokens(u.cachedTokens) })
+        : t("{tokens} in (no cache)", { tokens: input }),
+    u.reasoningTokens > 0
+      ? t("{tokens} out ({share}% reasoning)", { tokens: output, share: String(Math.round((u.reasoningTokens / Math.max(1, u.completionTokens)) * 100)) })
+      : t("{tokens} out", { tokens: output }),
+    t("{seconds} s", { seconds: (u.ms / 1000).toFixed(1) }),
+  ].join(" · ");
+}
 
 function prettyJson(text: string, max: number): string {
   let shown = text;
@@ -135,7 +159,7 @@ export function Transcript({
         if (m.role === "notice" && m.level === "usage") {
           return (
             <p key={i} data-agent-usage className="px-1 text-[11px] text-faint" title={t("Tokens used by this turn (prompt in, completion out)")}>
-              {m.content}
+              {m.usage ? usageLine(m.usage, t, tn) : m.content}
             </p>
           );
         }

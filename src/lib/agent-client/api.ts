@@ -131,7 +131,7 @@ export async function fetchAccount(): Promise<ApiResult<AccountInfo>> {
 }
 
 function parseAssistant(value: unknown): AccountInfo["assistant"] {
-  return { ...resolveTurnLimits(isRecord(value) ? { maxRounds: value.maxRounds, maxToolCalls: value.maxToolCalls } : null), custom: isRecord(value) && value.custom === true };
+  return { ...resolveTurnLimits(isRecord(value) ? { maxRounds: value.maxRounds, maxToolCalls: value.maxToolCalls, maxInputTokens: value.maxInputTokens } : null), custom: isRecord(value) && value.custom === true };
 }
 
 /** PUT /api/account/assistant: the per-turn budget (null = back to the defaults). */

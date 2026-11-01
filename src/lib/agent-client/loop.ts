@@ -2,7 +2,7 @@ import { chat, chatStream, fetchServerToolCatalog, runServerTool, type ChatReque
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
 import { assessServerCall, carriesUntrusted, type TurnContext } from "./server-tool-policy";
 import { installArtifactCapture } from "./artifacts";
-import { EMPTY_USAGE, addUsage, describeRunUsage, type RunUsage, type Usage } from "@/lib/usage";
+import { EMPTY_USAGE, addUsage, describeRunUsage, formatTokens, type RunUsage, type Usage } from "@/lib/usage";
 import { buildSystemPrompt } from "./system-prompt";
 import { clientLocale } from "@/lib/i18n/client-locale";
 import type {
@@ -38,7 +38,7 @@ import { getTrustMode, isRunAllowed, requestApproval, requestForeground, resetRu
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import { buildContext, summarySection } from "./context";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
 import { clipJsonText } from "@/lib/json-clip";
 
 /**
@@ -217,7 +217,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const { signal, onMessage } = options;
   const chatId = options.chatId ?? "default";
   const rt = runtimeFor(chatId);
-  const { maxRounds, maxToolCalls } = resolveTurnLimits(options.limits);
+  const { maxRounds, maxToolCalls, maxInputTokens } = resolveTurnLimits(options.limits);
   const onActivity = rt.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
@@ -287,6 +287,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
 
     let toolCalls = 0;
     let limitHit = false;
+    /** The account's input-token budget (Settings > Turn limit; off unless set): checked after every round. */
+    let tokensHit = false;
 
     for (let round = 0; round < maxRounds; round += 1) {
       if (signal.aborted) return "aborted";
@@ -319,6 +321,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       }
 
       countRound(result.value.usage);
+      if (maxInputTokens && used.promptTokens >= maxInputTokens) tokensHit = true;
       const reply: AssistantMessage = result.value.message;
       const calls = uniqueCallIds(reply.tool_calls ?? [], takenIds(working));
       if (calls.length === 0) {
@@ -382,11 +385,13 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         }
       }
       if (signal.aborted) return "aborted";
-      if (limitHit) break;
+      if (limitHit || tokensHit) break;
     }
 
-    // Round or tool budget exhausted: one last call without tools so the user gets a summary.
-    notice("info", `Reached the per-turn limit (${maxRounds} model rounds / ${maxToolCalls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.`);
+    // Round, tool or token budget exhausted: one last call without tools so the user gets a summary.
+    notice("info", tokensHit && maxInputTokens
+      ? msgf("Reached the per-turn input-token budget ({used} of {budget} prompt tokens; change it in Settings > Turn limit). Asking the model to summarise.", { used: formatTokens(used.promptTokens), budget: formatTokens(maxInputTokens) })
+      : msgf("Reached the per-turn limit ({rounds} model rounds / {calls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.", { rounds: maxRounds, calls: maxToolCalls }));
     onActivity("Summarising…");
     rt.advance("summarising");
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
