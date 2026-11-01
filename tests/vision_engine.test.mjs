@@ -73,11 +73,11 @@ test("a real browser behind the proxy: page rendered, other ports refused, navig
     assert.equal(sniffImage(shot.image.bytes), shot.image.mime);
     assert.ok(shot.image.height > 800 && shot.image.height <= 4000, `full page height ${shot.image.height}`);
     assert.equal(shot.truncated, true);
-    assert.equal(shot.nextOffsetY, 4000);
-    const tile2 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, offsetY: shot.nextOffsetY, policy });
+    assert.equal(shot.nextFromY, 4000);
+    const tile2 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, fromY: shot.nextFromY, policy });
     assert.equal(tile2.image.height, 4000);
-    assert.equal(tile2.nextOffsetY, 8000);
-    const tile3 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, offsetY: tile2.nextOffsetY, policy });
+    assert.equal(tile2.nextFromY, 8000);
+    const tile3 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, fromY: tile2.nextFromY, policy });
     assert.equal(tile3.truncated, false);
     assert.ok(tile3.image.height > 0 && tile3.image.height < 4000);
     assert.equal(getImage("owner", shot.image.id)?.id, shot.image.id);

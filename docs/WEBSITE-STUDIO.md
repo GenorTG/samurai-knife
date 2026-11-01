@@ -204,8 +204,9 @@ the team, the project and `hasBypass`). Code: `src/lib/site/vercel.ts` (REST cal
 
 ## Screenshots (`knife_site_screenshot`, 2026-10-28)
 
-Agents that build or fix the site can SEE it: `knife_site_screenshot {target, path?, url?, viewport, fullPage?, format?,
-describe?, question?, image?}` renders one page in a real browser on the server. Code: `src/lib/vision/` (targets.ts,
+Agents that build or fix the site can SEE it: `knife_site_screenshot {target, path?, url?, viewport, fullPage?, fromY?, format?,
+describe?, question?, image?}` renders one page in a real browser on the server. A full page is cut into tiles of at most 4000 px:
+`image.truncated: true` with `image.nextFromY` = pass it as `fromY` for the next tile (`fromY` past the end is an error). Code: `src/lib/vision/` (targets.ts,
 screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, tool in `src/lib/mcp/tools-vision.ts` (group
 `site` for the assistant). Vision routing (who gets the image, who gets words) is docs/ACCOUNTS.md "Vision".
 

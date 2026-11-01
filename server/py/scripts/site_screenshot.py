@@ -8,7 +8,7 @@ relays 127.0.0.1:<port> (the sandbox's own loopback) to that socket, so Chromium
 
 Request: {url, allowedOrigins[], viewport {width, height}, fullPage, maxHeight, format "png"|"jpeg", quality,
 maxBytes, timeoutMs, maxRequests, chromium (executable), proxySocket, outFile, bypass? {host, headers}}.
-Response: {ok, data: {file, mime, width, height, bytes, finalUrl, title, status, truncated, requests, blocked}}.
+Response: {ok, data: {file, mime, width, height, bytes, finalUrl, title, status, truncated, nextFromY, requests, blocked}}; request `fromY` = document offset of a full-page tile.
 
 Rules enforced here (the proxy enforces the network ones):
 - Top-level navigations of the main frame stay on `allowedOrigins` (a redirect elsewhere is aborted).
@@ -115,15 +115,15 @@ async def capture(req: dict) -> dict:
     width = int_field(viewport, "width", 320, 1920, 1280)
     height = int_field(viewport, "height", 320, 1600, 800)
     max_height = int_field(req, "maxHeight", height, 8000, 4000)
-    offset_y = int_field(req, "offsetY", 0, 1_000_000, 0)
+    from_y = int_field(req, "fromY", 0, 1_000_000, 0)
     timeout_ms = int_field(req, "timeoutMs", 5000, 90000, 30000)
     max_requests = int_field(req, "maxRequests", 1, 2000, 300)
     quality = int_field(req, "quality", 30, 95, 80)
     max_bytes = int_field(req, "maxBytes", 50_000, 20_000_000, 4_000_000)
     fmt = "jpeg" if req.get("format") == "jpeg" else "png"
     full_page = req.get("fullPage") is True
-    if offset_y and not full_page:
-        raise ToolError("offsetY is only supported for full-page screenshot tiles.")
+    if from_y and not full_page:
+        raise ToolError("fromY is only supported for full-page screenshot tiles.")
     out_file = req.get("outFile")
     socket_path = req.get("proxySocket")
     chromium = req.get("chromium")
@@ -215,12 +215,12 @@ async def capture(req: dict) -> dict:
                 truncated = False
                 if full_page:
                     doc_height = int(doc_height or height)
-                    if offset_y >= doc_height:
-                        raise ToolError("offsetY is beyond the end of the page.")
-                    remaining = doc_height - offset_y
-                    shot_height = max(1, min(max_height, remaining if offset_y else max(height, remaining)))
-                    truncated = offset_y + shot_height < doc_height
-                options = {"type": fmt, "clip": {"x": 0, "y": offset_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
+                    if from_y >= doc_height:
+                        raise ToolError("fromY is beyond the end of the page.")
+                    remaining = doc_height - from_y
+                    shot_height = max(1, min(max_height, remaining if from_y else max(height, remaining)))
+                    truncated = from_y + shot_height < doc_height
+                options = {"type": fmt, "clip": {"x": 0, "y": from_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
                 if fmt == "jpeg":
                     options["quality"] = quality
                 data = await page.screenshot(**options)
@@ -233,7 +233,7 @@ async def capture(req: dict) -> dict:
                     if attempts >= 3:
                         shot_height = max(height, int(shot_height * 0.6))
                         truncated = True
-                    options = {"type": "jpeg", "quality": quality, "clip": {"x": 0, "y": offset_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
+                    options = {"type": "jpeg", "quality": quality, "clip": {"x": 0, "y": from_y, "width": width, "height": shot_height}, "full_page": full_page, "animations": "disabled", "timeout": 15000}
                     data = await page.screenshot(**options)
                 if len(data) > max_bytes:
                     raise ToolError("the screenshot is larger than the size limit.")
@@ -248,7 +248,7 @@ async def capture(req: dict) -> dict:
                     "title": title,
                     "status": response.status if response else None,
                     "truncated": truncated,
-                    "nextOffsetY": offset_y + shot_height if truncated else None,
+                    "nextFromY": from_y + shot_height if truncated else None,
                     "requests": counters["requests"],
                     "blocked": counters["blocked"],
                 }
