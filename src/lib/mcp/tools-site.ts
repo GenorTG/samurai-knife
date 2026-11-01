@@ -5,7 +5,7 @@ import { QuotaExceededError } from "@/lib/storage/quota";
 import { analyzeCopy, copyIssues } from "@/lib/site/audit/copy";
 import { analyzePage } from "@/lib/site/audit/page";
 import { runAudit, siteTargetProblem } from "@/lib/site/audit/run";
-import type { AuditRun } from "@/lib/site/audit/types";
+import type { AuditRun, Issue } from "@/lib/site/audit/types";
 import { fetchPage, sitePolicy, SiteError } from "@/lib/site/net";
 import * as service from "@/lib/site/service";
 import { loadSite, siteView } from "@/lib/site/store";
@@ -35,19 +35,60 @@ async function guarded<T>(fn: () => Promise<T> | T): Promise<T> {
   }
 }
 
-/** The part of a run an agent needs first: scores, the issues (capped), page copy scores, alignment gaps. */
+/**
+ * Findings for a model, grouped by id (docs/WEBSITE-STUDIO.md "Agent output"): the enum fields and the user's own page
+ * URLs stay structured, everything written in words (title, detail, fix: page text can flow into them) goes in ONE
+ * untrusted envelope per finding instead of one per field. Distinct details are kept (at most 3) with their pages.
+ */
+export function compactAuditIssues(issues: Issue[], detailChars = 300) {
+  const groups = new Map<string, { id: string; severity: string; category: string; pages: string[]; title: string; fix: string; details: { text: string; pages: string[] }[] }>();
+  for (const issue of issues) {
+    const group = groups.get(issue.id) ?? { id: issue.id, severity: issue.severity, category: issue.category, pages: [], title: issue.title, fix: issue.fix, details: [] };
+    if (issue.page && !group.pages.includes(issue.page)) group.pages.push(issue.page);
+    const detail = issue.detail.slice(0, detailChars);
+    const known = group.details.find((d) => d.text === detail);
+    if (known) {
+      if (issue.page && !known.pages.includes(issue.page)) known.pages.push(issue.page);
+    } else if (detail) {
+      group.details.push({ text: detail, pages: issue.page ? [issue.page] : [] });
+    }
+    groups.set(issue.id, group);
+  }
+  return [...groups.values()].map((g) => {
+    const shown = g.details.slice(0, 3);
+    const lines = [`Title: ${g.title}`];
+    if (shown.length === 1) lines.push(`Detail: ${shown[0].text}`);
+    else shown.forEach((d, i) => lines.push(`Detail ${i + 1}${d.pages.length ? ` (${d.pages.join(", ")})` : ""}: ${d.text}`));
+    if (g.details.length > shown.length) lines.push(`(${g.details.length - shown.length} more details)`);
+    lines.push(`Fix: ${g.fix}`);
+    return { id: g.id, severity: g.severity, category: g.category, pages: g.pages, finding: wrapUntrusted(`website audit finding ${g.id}`, lines.join("\n")) };
+  });
+}
+
+/** The part of a run an agent needs first: scores, the findings (capped), page copy scores, alignment gaps. */
 export function auditDigest(run: AuditRun, maxIssues = 30) {
+  const findings = compactAuditIssues(run.issues);
+  const pageWords = run.pages.map((p) => ({ url: p.finalUrl, title: p.title, ctas: p.ctas.slice(0, 8) }));
+  const lighthouseFailing = run.lighthouse.filter((l) => l.failing.length || l.error).map((l) => ({ strategy: l.strategy, error: l.error, failing: l.failing.slice(0, 8).map((f) => `${f.title}${f.display ? ` (${f.display})` : ""}`) }));
   return {
     id: run.id,
     finishedAt: run.finishedAt,
     target: run.target,
     baseUrl: run.baseUrl,
     scores: run.scores,
-    issues: wrapUntrustedStrings("website audit findings", run.issues.slice(0, maxIssues).map(({ id, severity, category, title, detail, page, fix }) => ({ id, severity, category, title, detail: detail.slice(0, 300), page, fix }))),
-    moreIssues: Math.max(0, run.issues.length - maxIssues),
-    pages: wrapUntrustedStrings("website audit page summaries", run.pages.map((p) => ({ url: p.finalUrl, status: p.status, title: p.title, words: p.wordCount, copyScore: p.copy.score, readability: p.copy.readability, ctas: p.ctas.slice(0, 8) }))),
-    lighthouse: wrapUntrustedStrings("PageSpeed audit results", run.lighthouse.map((l) => ({ strategy: l.strategy, ok: l.ok, error: l.error, scores: l.scores, runs: l.runs ?? 1, spread: l.spread ?? null, metrics: l.metrics, failing: l.failing.slice(0, 8).map((f) => `${f.title}${f.display ? ` (${f.display})` : ""}`) }))),
-    alignment: run.alignment ? wrapUntrustedStrings("website and CV alignment", { score: run.alignment.score, missingOnSite: run.alignment.items.filter((i) => !i.onSite).map((i) => `${i.kind}: ${i.label}`), siteOnly: run.alignment.siteOnly }) : null,
+    findings: findings.slice(0, maxIssues),
+    moreFindings: Math.max(0, findings.length - maxIssues),
+    totalIssues: run.issues.length,
+    pages: run.pages.map((p) => ({ url: p.finalUrl, status: p.status, words: p.wordCount, copyScore: p.copy.score, readability: p.copy.readability })),
+    /** Titles and calls to action are page text: one envelope for all pages. */
+    pageText: pageWords.length ? wrapUntrusted("website audit page titles and calls to action", JSON.stringify(pageWords)) : null,
+    lighthouse: run.lighthouse.map((l) => ({ strategy: l.strategy, ok: l.ok, scores: l.scores, runs: l.runs ?? 1, spread: l.spread ?? null, metrics: l.metrics })),
+    lighthouseFailing: lighthouseFailing.length ? wrapUntrusted("PageSpeed failing audits", JSON.stringify(lighthouseFailing)) : null,
+    alignment: run.alignment ? {
+      score: run.alignment.score,
+      missingOnSite: run.alignment.items.filter((i) => !i.onSite).map((i) => `${i.kind}: ${i.label}`),
+      siteOnly: run.alignment.siteOnly.length ? wrapUntrusted("technologies named on the website only", JSON.stringify(run.alignment.siteOnly)) : [],
+    } : null,
     notes: run.notes,
     /** Audited paths that are not web pages (robots.txt, sitemap, llms.txt...): checked as files, not as pages. */
     skippedAsNotHtml: (run.resources ?? []).map((r) => ({ path: r.path, kind: r.kind, status: r.status, contentType: r.contentType })),
@@ -55,24 +96,6 @@ export function auditDigest(run: AuditRun, maxIssues = 30) {
 }
 
 const PATH = z.string().min(1).max(400);
-
-function compactAuditIssues(issues: Array<{ id: string; severity: string; category: string; title: string; detail: string; fix: string; page?: string }>) {
-  const groups = new Map<string, { id: string; severity: string; category: string; pages: Set<string>; finding: string }>();
-  for (const issue of issues) {
-    const prose = `Title: ${issue.title}\nDetail: ${issue.detail}\nFix: ${issue.fix}`;
-    const key = JSON.stringify([issue.id, issue.severity, issue.category, prose]);
-    const group = groups.get(key) ?? {
-      id: issue.id,
-      severity: issue.severity,
-      category: issue.category,
-      pages: new Set<string>(),
-      finding: wrapUntrusted(`website audit finding ${issue.id}`, prose),
-    };
-    if (issue.page) group.pages.add(issue.page);
-    groups.set(key, group);
-  }
-  return [...groups.values()].map(({ pages, ...group }) => ({ ...group, pages: [...pages] }));
-}
 
 /**
  * Page text is third-party content (docs/MCP.md "Untrusted content"): the readable parts go in one envelope, the
@@ -165,7 +188,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "read",
     untrustedOutput: true,
-    description: "Read a stored audit (default the newest): `section` all (digest) | issues (distinct findings grouped by identical text, stable id/severity/category, pages[], and one untrusted guidance envelope) | pages (per-page facts + copy metrics + first 4000 text chars) | lighthouse (full failing-audit lists) | alignment (every CV item) | history (scores, newest first).",
+    description: "Read a stored audit (default the newest): `section` all (digest) | issues (every finding grouped by id: id/severity/category, pages[], and one untrusted envelope with title, details and fix) | pages (per-page facts + copy metrics + first 4000 text chars) | lighthouse (full failing-audit lists) | alignment (every CV item) | history (scores, newest first).",
     schema: z.object({ id: z.string().max(40).optional(), section: z.enum(["all", "issues", "pages", "lighthouse", "alignment", "history"]).default("all") }).strict(),
     run({ id, section }, ctx) {
       return guarded(() => {

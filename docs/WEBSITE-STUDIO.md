@@ -150,6 +150,16 @@ commits and audits show up by themselves.
 copy in the site's language, facts only from the CV). Its click guard treats buttons labelled publish/deploy as
 destructive (confirmed in every trust mode but None).
 
+### Agent output
+
+The audit digest (`knife_site_audit`, `knife_site_audit_get` section all) and section `issues` group findings by id:
+`{id, severity, category, pages[], finding}` where `finding` is ONE untrusted envelope holding the title, the distinct
+details (at most 3, with their pages) and the fix. Enum fields, scores and the user's own page URLs stay structured;
+page titles/CTAs (`pageText`), PageSpeed failing audits (`lighthouseFailing`) and site-only technologies are one
+envelope each. On a 5-page, 21-finding fixture this is under half the size of the old per-field wrapping
+(`tests/site_studio.test.mjs`). `compareTo:"previous"` (or an audit id) adds `comparison` with score deltas and
+new/resolved findings in the same shape.
+
 ## Vercel (optional, 2026-10-28)
 
 For a site hosted on Vercel the Website tab has a "Vercel (optional)" panel; the link belongs to the CV project's
