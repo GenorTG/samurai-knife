@@ -139,7 +139,9 @@ scope: another account's chat id simply does not exist), never creates a file. N
   chats not used since 0.13.0), `untrusted` (third-party text entered the chat).
 - `knife_chat_read {chatId, offset?, limit? (20, max 50), fromEnd?}`: a page of messages with `index`, `total`,
   `nextOffset`; tool calls by name, and every text (user message, reply, tool arguments, tool output named after its
-  tool, notice) inside an untrusted-content envelope, each capped at 4,000 characters. Chats saved before 0.13.0.22
+  tool, notice) inside an untrusted-content envelope, each capped at 4,000 characters; a turn's usage notice also has
+  `models` ([{host, model, rounds}], from the `x-knife-round-model` header `/api/agent/chat` sets on every round, so a
+  profile switch inside a turn shows). Chats saved before 0.13.0.22
   (one file per provider) are not listed; the user recovers them in the assistant's Settings.
 
 ## What's new (`knife_whats_new`, `src/lib/whats-new.ts`)

@@ -10,6 +10,7 @@ import type {
   AssistantMessage,
   ChatReply,
   FunctionToolDef,
+  RoundModel,
   ToolCall,
   ToolMessage,
   ToolRunResult,
@@ -260,13 +261,19 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const runStartedAt = Date.now();
   let used: Usage = EMPTY_USAGE;
   let rounds = 0;
-  const countRound = (usage: Usage | null | undefined): void => {
+  const models: NonNullable<RunUsage["models"]> = [];
+  const countRound = (usage: Usage | null | undefined, who?: RoundModel): void => {
     rounds += 1;
     if (usage) used = addUsage(used, usage);
+    if (who) {
+      const known = models.find((m) => m.host === who.host && m.model === who.model);
+      if (known) known.rounds += 1;
+      else if (models.length < 5) models.push({ ...who, rounds: 1 });
+    }
   };
   const usageFooter = (): void => {
     if (rounds === 0) return;
-    const run: RunUsage = { ...used, rounds, ms: Date.now() - runStartedAt };
+    const run: RunUsage = { ...used, rounds, ms: Date.now() - runStartedAt, ...(models.length ? { models } : {}) };
     append({ role: "notice", level: "usage", content: describeRunUsage(run), usage: run });
   };
 
@@ -320,7 +327,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         return "error";
       }
 
-      countRound(result.value.usage);
+      countRound(result.value.usage, result.value.roundModel);
       if (maxInputTokens && used.promptTokens >= maxInputTokens) tokensHit = true;
       const reply: AssistantMessage = result.value.message;
       const calls = uniqueCallIds(reply.tool_calls ?? [], takenIds(working));
@@ -402,7 +409,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       [{ role: "user", content: "[Toolbox note, not from the user] The tool budget for this turn is exhausted. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
     );
     if (signal.aborted) return "aborted";
-    if (wrapUp.ok) countRound(wrapUp.value.usage);
+    if (wrapUp.ok) countRound(wrapUp.value.usage, wrapUp.value.roundModel);
     if (wrapUp.ok && wrapUp.value.message.content?.trim()) {
       append({ role: "assistant", content: wrapUp.value.message.content });
     } else if (!wrapUp.ok) {

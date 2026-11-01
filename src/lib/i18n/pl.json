@@ -5293,5 +5293,10 @@
     "Popraw wszystkie {n} znaleziska",
     "Popraw wszystkie {n} znalezisk"
   ],
-  "Website score: \"Fix all findings\" asks the assistant to fix every finding it can in one go, check the preview and describe the result in the pull request.": "Ocena strony: „Popraw wszystkie znaleziska” prosi asystenta, by za jednym razem poprawił wszystko, co może, sprawdził podgląd i opisał wynik w pull requeście."
+  "Website score: \"Fix all findings\" asks the assistant to fix every finding it can in one go, check the preview and describe the result in the pull request.": "Ocena strony: „Popraw wszystkie znaleziska” prosi asystenta, by za jednym razem poprawił wszystko, co może, sprawdził podgląd i opisał wynik w pull requeście.",
+  "{host} / {model} ({n} round)": [
+    "{host} / {model} ({n} runda)",
+    "{host} / {model} ({n} rundy)",
+    "{host} / {model} ({n} rund)"
+  ]
 }

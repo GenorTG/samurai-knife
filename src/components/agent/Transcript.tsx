@@ -30,6 +30,7 @@ function usageLine(u: RunUsage, t: Translator["t"], tn: Translator["tn"]): strin
       ? t("{tokens} out ({share}% reasoning)", { tokens: output, share: String(Math.round((u.reasoningTokens / Math.max(1, u.completionTokens)) * 100)) })
       : t("{tokens} out", { tokens: output }),
     t("{seconds} s", { seconds: (u.ms / 1000).toFixed(1) }),
+    ...(u.models ?? []).map((m) => (u.models ?? []).length > 1 ? tn("{host} / {model} ({n} round)", "{host} / {model} ({n} rounds)", m.rounds, { host: m.host, model: m.model }) : `${m.host} / ${m.model}`),
   ].join(" · ");
 }
 

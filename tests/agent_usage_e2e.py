@@ -80,6 +80,7 @@ with sync_playwright() as pw:
     check("provider-reported cache share arrives (mock caches 40%)", u1.get("promptTokens") and 0.35 <= u1["cachedTokens"] / u1["promptTokens"] <= 0.45, u1)
     check("not flagged as estimated", not u1.get("estimated"), u1)
     check("footer is rendered under the answer", page.locator("[data-agent-usage]").count() == 1 and "1 round" in page.locator("[data-agent-usage]").first.inner_text(), page.locator("[data-agent-usage]").all_inner_texts())
+    check("the footer records who answered (provider host + model)", [m.get("model") for m in u1.get("models", [])] == ["mock-model"] and "/ mock-model" in page.locator("[data-agent-usage]").first.inner_text(), (u1.get("models"), page.locator("[data-agent-usage]").all_inner_texts()))
     check("footer shows the cached share and cached tokens", "% cached:" in page.locator("[data-agent-usage]").first.inner_text(), page.locator("[data-agent-usage]").all_inner_texts())
     check("header shows the conversation token total", "tokens" in page.locator("[role=dialog][aria-label='Toolbox assistant'] header p").first.inner_text(), page.locator("header p").all_inner_texts())
 

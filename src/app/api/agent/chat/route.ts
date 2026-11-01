@@ -6,7 +6,7 @@ import { chatConversationId, noteRoundModel, noteUntrusted } from "@/lib/agent-c
 import { recordRound } from "@/lib/accounts/usage-ledger";
 import { admitProvider, outboundLimitMessage, providerNet } from "@/lib/net/outbound";
 import { toolContextFor } from "@/lib/accounts/authz";
-import { carriesUntrusted, UNTRUSTED_HEADER } from "@/lib/agent-client/server-tool-policy";
+import { carriesUntrusted, ROUND_MODEL_HEADER, UNTRUSTED_HEADER } from "@/lib/agent-client/server-tool-policy";
 import { getToolEffects } from "@/lib/mcp/tools";
 import { visionModeOf } from "@/lib/vision/config";
 import { getImage } from "@/lib/vision/images";
@@ -120,6 +120,8 @@ export async function POST(request: Request): Promise<Response> {
   }
   const mark = (response: Response): Response => {
     if (untrusted) response.headers.set(UNTRUSTED_HEADER, "1");
+    // The usage footer names who answered every round (a profile switch mid-chat, a gateway that changes model).
+    response.headers.set(ROUND_MODEL_HEADER, `${encodeURIComponent(hostOfBase(provider.baseUrl))} ${encodeURIComponent(provider.model)}`);
     return response;
   };
   if (parsed.data.stream) {

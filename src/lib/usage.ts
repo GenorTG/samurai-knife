@@ -93,6 +93,8 @@ export interface RunUsage extends Usage {
   rounds: number;
   /** Wall time of the whole run in milliseconds. */
   ms: number;
+  /** Who answered, in order of first use: the provider host and model of each distinct one (usually one). */
+  models?: { host: string; model: string; rounds: number }[];
 }
 
 /* ------------------------------------------------------------------ formatting (locale-free: SSR safe) */
@@ -119,6 +121,7 @@ export function describeRunUsage(u: RunUsage): string {
     `${tilde}${formatTokens(u.promptTokens)} in${u.estimated ? "" : u.cachedTokens > 0 ? ` (${cacheShare(u)}% cached)` : " (no cache)"}`,
     `${tilde}${formatTokens(u.completionTokens)} out${u.reasoningTokens > 0 ? ` (${Math.round((u.reasoningTokens / Math.max(1, u.completionTokens)) * 100)}% reasoning)` : ""}`,
     `${(u.ms / 1000).toFixed(1)} s`,
+    ...(u.models ?? []).map((m) => `${m.host} / ${m.model}${(u.models ?? []).length > 1 ? ` (${m.rounds})` : ""}`),
   ];
   return parts.join(" · ");
 }

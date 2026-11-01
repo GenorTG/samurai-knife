@@ -1,6 +1,6 @@
 import { parseUsage, type UsageSummary } from "@/lib/usage";
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
-import { UNTRUSTED_HEADER } from "./server-tool-policy";
+import { ROUND_MODEL_HEADER, UNTRUSTED_HEADER } from "./server-tool-policy";
 import type {
   AccountChoice,
   AccountInfo,
@@ -18,6 +18,7 @@ import type {
   WireMessage,
   ProviderProfileInfo,
   VisionProbeResult,
+  RoundModel,
 } from "./types";
 import { resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import type { ConversationContent, DurableConversation } from "./conversation-store";
@@ -338,6 +339,20 @@ function parseToolCalls(value: unknown): ToolCall[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** `<host> <model>` from /api/agent/chat, URI-encoded parts; anything malformed is ignored. */
+function roundModelHeader(res: Response): RoundModel | undefined {
+  const raw = res.headers.get(ROUND_MODEL_HEADER);
+  const parts = raw?.split(" ");
+  if (!parts || parts.length !== 2) return undefined;
+  try {
+    const host = decodeURIComponent(parts[0]).slice(0, 253);
+    const model = decodeURIComponent(parts[1]).slice(0, 200);
+    return host || model ? { host, model } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** /api/agent/chat marks a conversation that holds third-party text (conversation-store.ts `untrusted`). */
 function untrustedHeader(res: Response): boolean {
   return res.headers.get(UNTRUSTED_HEADER) === "1";
@@ -374,6 +389,7 @@ export async function chat(request: ChatRequest, signal?: AbortSignal): Promise<
       finishReason: str(body.finishReason),
       usage: parseUsage(body.usage),
       ...(untrustedHeader(res) ? { untrusted: true } : {}),
+      ...(roundModelHeader(res) ? { roundModel: roundModelHeader(res) } : {}),
     },
   };
 }
@@ -531,7 +547,8 @@ export async function chatStream(
   }
   if (streamError !== null) return { ok: false, failure: { kind: "error", status: 502, message: streamError } };
   if (reply === null) return { ok: false, failure: { kind: "error", status: 502, message: "stream ended without a reply" } };
-  return { ok: true, value: untrustedHeader(res) ? { ...(reply as ChatReply), untrusted: true } : reply };
+  const roundModel = roundModelHeader(res);
+  return { ok: true, value: { ...(reply as ChatReply), ...(untrustedHeader(res) ? { untrusted: true } : {}), ...(roundModel ? { roundModel } : {}) } };
 }
 
 /** This account's token counters from the server-side ledger (today, 7 days, total, per model). */
