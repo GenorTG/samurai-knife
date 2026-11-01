@@ -89,8 +89,8 @@ types; never secrets: the user enters keys in the Credentials tab). An open edit
 ## Website (`knife_site_*`, group `site`)
 Score and improve the user's own website from its GitHub repository: `knife_site_status` (start here: connection, the
 repo's own AGENTS.md / CONTENT_BRIEF.md, work branch, latest scores), `knife_site_audit` (SEO, copy PL/EN, CV fit,
-security headers, Lighthouse via PageSpeed), `knife_site_audit {compareTo:"previous"}` returns score deltas plus new/resolved findings; `knife_site_audit_get` reads stored sections. `knife_site_page`, `knife_site_files` (recursive listing),
-`knife_site_read` (multi-file and line ranges), `knife_site_search`, `knife_site_replace` / `knife_site_edit` / `knife_site_write` (commit to the `knife/...` work branch,
+security headers, Lighthouse via PageSpeed), `knife_site_audit {compareTo:"previous"}` returns score deltas plus new/resolved findings; `knife_site_audit_get` reads stored sections. `knife_site_page`, `knife_site_files` (recursive or glob listing),
+`knife_site_read` (multi-file and `fromLine`/`toLine`), `knife_site_search` (work-branch aware), `knife_site_replace` / `knife_site_edit` / `knife_site_write` (commit to the `knife/...` work branch,
 never the base branch; `knife_site_edit` applies multiple exact replacements in one commit), `knife_site_pr`, `knife_site_changes` (compact checks-first summary; `detail:true` includes expanded comparison/patches), `knife_site_screenshot` (see "Vision"). With Vercel connected in the
 Website tab: `knife_site_previews` (the work branch's previews and the head commit's state), `knife_site_deploy_logs`,
 `knife_site_deploy` (a preview build of the work branch, never production); previews behind Deployment Protection are

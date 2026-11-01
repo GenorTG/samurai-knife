@@ -5,11 +5,13 @@ import { getRunner, runOk } from "@/lib/cv/showcase/runner";
 import { installationToken, repoAccessOf, userInstallationRepos, type UserRepoAccess } from "@/lib/github-app/installations";
 import { recordSecurityEvent } from "@/lib/security/events";
 import { admitOutbound, consumeOutbound, hostGate, outboundLimitMessage } from "@/lib/net/outbound";
+import { globMatch, MAX_GLOB_LENGTH } from "./glob";
 import * as github from "./github";
 import { hasVerificationMeta, pagesHost, verifyProductionUrl, VERIFY_FILE } from "./ownership";
 import { fetchPage, SiteError, sitePolicy, type NetDeps } from "./net";
 import { loadSite, mutateSite, siteView, type LinkedInstallation, type SiteConnection } from "./store";
 import { normalizePaths } from "./audit/run";
+import { runIsolated } from "@/lib/isolate/server";
 import { msg, msgf } from "@/lib/i18n/msg";
 
 /**
@@ -346,16 +348,33 @@ export async function status(accountId: string) {
   return { ...view, repo, ref, instructions };
 }
 
-export async function listFiles(accountId: string, prefix = "", ref?: string, recursive = false) {
+/** Caps of one recursive listing and one multi-file read (knife_site_files / knife_site_read). */
+export const LIST_LIMIT = 500;
+export const READ_FILES_LIMIT = 20;
+export const READ_LINES_LIMIT = 1000;
+export const READ_TOTAL_CHARS = 300_000;
+
+export async function listFiles(accountId: string, prefix = "", ref?: string, recursive = false, glob?: string) {
   const x = await ctx(accountId);
   const r = ref || (await readRef(accountId, x));
   const p = prefix.trim().replace(/^\/+|\/+$/g, "");
   if (p) github.checkPath(p);
+  const pattern = glob?.trim() ?? "";
+  if (pattern.length > MAX_GLOB_LENGTH) throw new SiteError(msgf("a glob is at most {max} characters", { max: MAX_GLOB_LENGTH }));
   const { entries, truncated } = await github.getTree(x.token, x.c.repo, r);
   const under = entries.filter((e) => !p || e.path === p || e.path.startsWith(`${p}/`));
-  if (recursive) {
-    const recursiveEntries = under.slice(0, 500);
-    return { ref: r, prefix: p, entries: recursiveEntries, totalFiles: under.filter((e) => e.type === "file").length, truncated: truncated || under.length > 500 };
+  if (recursive || pattern) {
+    // A glob matches files only (relative to `path`); a plain recursive listing keeps directories too.
+    const matched = pattern ? under.filter((e) => e.type === "file" && globMatch(pattern, p ? e.path.slice(p.length + 1) : e.path)) : under;
+    return {
+      ref: r,
+      prefix: p,
+      ...(pattern ? { glob: pattern } : {}),
+      entries: matched.slice(0, LIST_LIMIT),
+      totalFiles: matched.filter((e) => e.type === "file").length,
+      truncated: truncated || matched.length > LIST_LIMIT,
+      ...(matched.length > LIST_LIMIT ? { note: msgf("only the first {max} entries: narrow `path` or `glob`", { max: LIST_LIMIT }) } : {}),
+    };
   }
   // Directly inside the prefix only, plus a file count per sub-directory: a big repo stays readable.
   const depth = p ? p.split("/").length + 1 : 1;
@@ -370,28 +389,83 @@ export async function readFile(accountId: string, path: string, ref?: string) {
   return github.getFile(x.token, x.c.repo, path, ref || (await readRef(accountId, x)));
 }
 
-export async function readFiles(accountId: string, paths: string[], ref?: string, from?: number, to?: number) {
-  if (paths.length < 1 || paths.length > 20) throw new SiteError("read between 1 and 20 files per call");
-  if ((from !== undefined || to !== undefined) && (from === undefined || to === undefined || from < 1 || to < from || to - from > 1000)) {
-    throw new SiteError("line ranges need from/to, start at 1, and span at most 1001 lines");
+/** 1-20 files in one call, optionally one 1-based inclusive line range each; at most READ_TOTAL_CHARS of text in total. */
+export async function readFiles(accountId: string, paths: string[], ref?: string, fromLine?: number, toLine?: number) {
+  if (paths.length < 1 || paths.length > READ_FILES_LIMIT) throw new SiteError(msgf("read between 1 and {max} files per call", { max: READ_FILES_LIMIT }));
+  const ranged = fromLine !== undefined || toLine !== undefined;
+  const start = fromLine ?? 1;
+  const end = toLine ?? start + READ_LINES_LIMIT - 1;
+  if (ranged && (start < 1 || end < start || end - start >= READ_LINES_LIMIT)) {
+    throw new SiteError(msgf("line ranges start at 1 and span at most {max} lines", { max: READ_LINES_LIMIT }));
   }
-  const files = [];
+  const files: Array<github.RepoFile & { fromLine?: number; toLine?: number; totalLines?: number; skipped?: boolean }> = [];
+  let budget = READ_TOTAL_CHARS;
   for (const path of [...new Set(paths)]) {
+    if (budget <= 0) {
+      files.push({ path, ref: ref ?? "", sha: "", size: 0, text: null, note: msg("not read: this call already returned its text budget (300,000 characters); read it in another call or with fromLine/toLine"), skipped: true });
+      continue;
+    }
     const file = await readFile(accountId, path, ref);
-    if (file.text === null || from === undefined || to === undefined) {
+    if (file.text === null) {
       files.push(file);
       continue;
     }
-    const lines = file.text.split("\n");
-    files.push({ ...file, text: lines.slice(from - 1, to).join("\n"), fromLine: from, toLine: Math.min(to, lines.length), totalLines: lines.length });
+    let text = file.text;
+    let range: { fromLine: number; toLine: number; totalLines: number } | null = null;
+    if (ranged) {
+      const lines = text.split("\n");
+      text = lines.slice(start - 1, end).join("\n");
+      range = { fromLine: start, toLine: Math.min(end, lines.length), totalLines: lines.length };
+    }
+    const clipped = text.length > budget;
+    if (clipped) text = text.slice(0, budget);
+    budget -= text.length;
+    files.push({ ...file, text, ...(range ?? {}), ...(clipped ? { note: msg("cut at this call's text budget: read the rest with fromLine/toLine") } : {}) });
   }
-  return { ref: files[0]?.ref ?? ref ?? "", files };
+  return { ref: files.find((f) => f.ref)?.ref ?? ref ?? "", files };
 }
 
+/** Caps of a work-branch search: changed files read and searched in-process, the rest from GitHub's index. */
+export const SEARCH_CHANGED_FILES = 40;
+export const SEARCH_BYTES = 2_000_000;
+
+/**
+ * GitHub code search indexes the default branch only. With a work branch ahead of it, the files that branch changed are
+ * read from the branch and searched here (isolate pool); GitHub's hits for those paths are dropped (stale), the others kept.
+ */
 export async function search(accountId: string, query: string) {
   if (!query.trim()) throw new SiteError("give a search text");
   const x = await ctx(accountId);
-  return { note: "GitHub's code index covers the default branch only.", hits: await github.searchCode(x.token, x.c.repo, query) };
+  const work = loadSite(accountId).work;
+  const indexed = () => github.searchCode(x.token, x.c.repo, query);
+  if (!work || !(await github.branchSha(x.token, x.c.repo, work.branch))) {
+    return { note: "GitHub's code index covers the default branch only; there is no work branch.", searched: { branch: x.c.baseBranch, workBranchFiles: 0 }, hits: (await indexed()).map((h) => ({ ...h, branch: x.c.baseBranch })) };
+  }
+  const compare = await github.compare(x.token, x.c.repo, x.c.baseBranch, work.branch);
+  if (!compare.aheadBy || !compare.files.length) {
+    return { note: "The work branch has no changes yet: GitHub's index of the default branch is current.", searched: { branch: x.c.baseBranch, workBranchFiles: 0 }, hits: (await indexed()).map((h) => ({ ...h, branch: x.c.baseBranch })) };
+  }
+  const changed = new Set(compare.files.map((f) => f.path));
+  const candidates = compare.files.filter((f) => f.status !== "removed").slice(0, SEARCH_CHANGED_FILES);
+  const files: { path: string; text: string }[] = [];
+  let bytes = 0;
+  const skipped: string[] = compare.files.filter((f) => f.status !== "removed").slice(SEARCH_CHANGED_FILES).map((f) => f.path);
+  for (const f of candidates) {
+    const file = await github.getFile(x.token, x.c.repo, f.path, work.branch).catch(() => null);
+    if (!file || file.text === null || bytes + file.text.length > SEARCH_BYTES) {
+      skipped.push(f.path);
+      continue;
+    }
+    bytes += file.text.length;
+    files.push({ path: file.path, text: file.text });
+  }
+  const own = await runIsolated("searchText", { files, query: query.trim().slice(0, 200), maxHits: 30 }, { owner: accountId });
+  const fromIndex = (await indexed()).filter((h) => !changed.has(h.path));
+  return {
+    note: "Files changed on the work branch were searched on that branch; the other hits come from GitHub's index of the default branch.",
+    searched: { branch: work.branch, workBranchFiles: files.length, ...(skipped.length ? { notSearched: skipped.slice(0, 20) } : {}) },
+    hits: [...own.map((h) => ({ path: h.path, fragments: h.fragments, branch: work.branch })), ...fromIndex.map((h) => ({ ...h, branch: x.c.baseBranch }))],
+  };
 }
 
 async function ensureWorkBranch(accountId: string, x: Ctx): Promise<string> {

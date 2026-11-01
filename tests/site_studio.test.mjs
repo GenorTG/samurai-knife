@@ -157,9 +157,18 @@ test("status, files, read, search: the repo's AGENTS.md reaches the agent", asyn
   assert.ok(recursiveTool && readTool);
   const toolTree = await recursiveTool.execute({ recursive: true }, toolContext);
   assert.ok(toolTree.entries.some((entry) => entry.path === "lib/site-data.ts"));
-  const toolRead = await readTool.execute({ paths: ["lib/site-data.ts", "AGENTS.md"], from: 1, to: 1 }, toolContext);
+  const toolRead = await readTool.execute({ paths: ["lib/site-data.ts", "AGENTS.md"], fromLine: 1, toLine: 1 }, toolContext);
   assert.equal(toolRead.files.length, 2);
   assert.equal(toolRead.files[0].fromLine, 1);
+  const fromOnly = await readTool.execute({ path: "lib/site-data.ts", fromLine: 2 }, toolContext);
+  assert.match(fromOnly.files[0].text, /projects/);
+  assert.doesNotMatch(fromOnly.files[0].text, /hero/);
+  await assert.rejects(readTool.execute({ path: "lib/site-data.ts", fromLine: 1, toLine: 1001 }, toolContext), /at most 1000 lines/);
+  await assert.rejects(readTool.execute({ path: "a", paths: ["b"] }, toolContext), /exactly one of path or paths/);
+  const globbed = await recursiveTool.execute({ glob: "*.ts" }, toolContext);
+  assert.deepEqual(globbed.entries.map((e) => e.path), ["lib/site-data.ts"]);
+  assert.equal((await recursiveTool.execute({ glob: "app/**/page.tsx" }, toolContext)).entries[0].path, "app/page.tsx");
+  assert.equal((await recursiveTool.execute({ path: "lib", glob: "*.md" }, toolContext)).entries.length, 0);
   const found = await service.search("genor", "hero");
   assert.equal(found.hits[0].path, "lib/site-data.ts");
 });
@@ -182,6 +191,14 @@ test("write + replace go to a work branch; main is untouched; secrets and workfl
   assert.equal(gh.commits.size - beforeBatch, 1, "multi-file text edits produce exactly one commit");
   assert.equal(batch.files.length, 2);
   assert.match(gh.fileAt(w.branch, "lib/site-data.ts"), /Finetune Studio 2/);
+  // Search sees the work branch: GitHub's index (the mock searches main only) would miss "Moje projekty".
+  const onWork = await service.search("genor", "moje projekty");
+  assert.equal(onWork.searched.branch, w.branch);
+  assert.deepEqual(onWork.hits.map((h) => [h.path, h.branch]), [["app/projekty/page.tsx", w.branch]]);
+  const mixed = await service.search("genor", "export");
+  assert.ok(mixed.hits.some((h) => h.path === "lib/site-data.ts" && h.branch === w.branch), "a changed file comes from the work branch");
+  assert.ok(mixed.hits.some((h) => h.path === "app/page.tsx" && h.branch === "main"), "an unchanged file still comes from the index");
+  assert.equal(mixed.hits.filter((h) => h.path === "lib/site-data.ts").length, 1, "the stale index hit of a changed file is dropped");
   await assert.rejects(service.replaceText("genor", "lib/site-data.ts", "does-not-exist", "x", "m"), /not found/);
   await assert.rejects(service.replaceText("genor", "lib/site-data.ts", "export const", "x", "m"), /occurs 2 times/);
   await assert.rejects(service.writeFiles("genor", "m", [{ path: ".env", content: "SECRET=1" }]), /secrets/);
@@ -354,4 +371,20 @@ test("disconnect forgets the token and the work branch; accounts are separate", 
   const view = service.disconnect("genor");
   assert.equal(view.connected, false);
   assert.ok(!readFileSync(accountScope("genor").siteFile).includes(Buffer.from(TOKEN)));
+});
+
+test("repository globs and text search are bounded matchers", async () => {
+  const { globMatch } = await import("../src/lib/site/glob.ts");
+  const { searchTexts } = await import("../src/lib/site/text-search.ts");
+  assert.ok(globMatch("*.tsx", "app/blog/page.tsx"));
+  assert.ok(globMatch("app/**/page.tsx", "app/page.tsx"));
+  assert.ok(globMatch("app/**/page.tsx", "app/a/b/page.tsx"));
+  assert.ok(!globMatch("app/*/page.tsx", "app/a/b/page.tsx"));
+  assert.ok(globMatch("lib/?ite-data.ts", "lib/site-data.ts"));
+  assert.ok(!globMatch("*.ts", "lib/site-data.tsx"));
+  const started = Date.now();
+  assert.ok(!globMatch(`${"*a".repeat(50)}b`, `${"a".repeat(180)}`), "pathological pattern stays polynomial");
+  assert.ok(Date.now() - started < 500);
+  const hits = searchTexts([{ path: "a.ts", text: "Hero hero HERO" }, { path: "b.ts", text: "none" }], "hero");
+  assert.deepEqual(hits.map((h) => [h.path, h.matches]), [["a.ts", 3]]);
 });

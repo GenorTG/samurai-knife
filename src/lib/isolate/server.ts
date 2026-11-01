@@ -23,6 +23,7 @@ export const ISOLATE_TIMEOUT_MS = {
   validateJsonSchema: 2_000,
   generateRegex: 2_000,
   extractOfficeText: 10_000,
+  searchText: 5_000,
 } as const satisfies Record<keyof IsolateTasks & string, number>;
 
 // Versioned: a long-running dev server keeps globalThis across HMR, so a changed pool shape needs a new key.
@@ -80,6 +81,7 @@ const WHAT: Record<keyof typeof ISOLATE_TIMEOUT_MS, string> = {
   validateJsonSchema: "JSON Schema validation",
   generateRegex: "Regex generation",
   extractOfficeText: "Reading the document's text",
+  searchText: "Searching the repository files",
 };
 
 /** A task was stopped by the pool's limits. The message names the task and the limit, never input data. */

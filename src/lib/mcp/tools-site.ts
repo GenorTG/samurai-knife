@@ -211,10 +211,10 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     name: "knife_site_files",
     scope: "account",
     effect: "read",
-    description: "List the website repository (`path` = directory, empty = root). Set recursive:true to return nested paths in one call. Reads the work branch when it exists, else the base branch; `ref` overrides.",
-    schema: z.object({ path: z.string().max(400).default(""), ref: z.string().max(200).optional(), recursive: z.boolean().optional() }).strict(),
-    run({ path, ref, recursive }, ctx) {
-      return guarded(() => service.listFiles(account(ctx), path, ref, recursive ?? false));
+    description: "List the website repository (`path` = directory, empty = root): one level with a file count per sub-directory, or every nested path with recursive:true, or only the files matching `glob` under `path` (`*` inside a name, `**` any folders, `?` one character; no `/` = the file name at any depth, e.g. \"*.tsx\" or \"app/**/page.tsx\"). At most 500 entries (truncated + note beyond). Reads the work branch when it exists, else the base branch; `ref` overrides.",
+    schema: z.object({ path: z.string().max(400).default(""), ref: z.string().max(200).optional(), recursive: z.boolean().optional(), glob: z.string().min(1).max(200).optional() }).strict(),
+    run({ path, ref, recursive, glob }, ctx) {
+      return guarded(() => service.listFiles(account(ctx), path, ref, recursive ?? false, glob));
     },
   }),
   defineTool({
@@ -222,12 +222,12 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "read",
     untrustedOutput: true,
-    description: "Read 1–20 text files (each up to 1 MB) from the work branch if it exists, else the base branch (`ref` overrides). Use optional `from` and `to` together for a 1-based inclusive line range (max 1001 lines). Always read files before changing them.",
-    schema: z.object({ path: PATH.optional(), paths: z.array(PATH).min(1).max(20).optional(), from: z.number().int().min(1).optional(), to: z.number().int().min(1).optional(), ref: z.string().max(200).optional() }).strict(),
-    run({ path, paths, from, to, ref }, ctx) {
+    description: "Read text files of the website repository: `path` (one) or `paths` (1-20) from the work branch if it exists, else the base branch (`ref` overrides); each up to 1 MB, 300,000 characters per call in total (later files say they were skipped). `fromLine`/`toLine` (1-based, inclusive, at most 1000 lines; either alone works) read the same line range of each file, with totalLines. Always read files before changing them.",
+    schema: z.object({ path: PATH.optional(), paths: z.array(PATH).min(1).max(20).optional(), fromLine: z.number().int().min(1).optional(), toLine: z.number().int().min(1).optional(), ref: z.string().max(200).optional() }).strict(),
+    run({ path, paths, fromLine, toLine, ref }, ctx) {
       return guarded(async () => {
-        if (Boolean(path) === Boolean(paths)) throw new Error("provide exactly one of path or paths");
-        const result = await service.readFiles(account(ctx), paths ?? [path!], ref, from, to);
+        if (Boolean(path) === Boolean(paths)) throw new SiteError("give exactly one of path or paths");
+        const result = await service.readFiles(account(ctx), paths ?? [path!], ref, fromLine, toLine);
         return { ...result, files: result.files.map((file) => ({ ...file, text: wrapUntrustedOptional(`repository file ${file.path}`, file.text) })) };
       });
     },
@@ -237,12 +237,12 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     scope: "account",
     effect: "read",
     untrustedOutput: true,
-    description: "Find where text (a phrase from the page, a component name) lives in the website repository: GitHub code search, default branch only, returns paths with matching fragments.",
+    description: "Find where text (a phrase from the page, a component name) lives in the website repository: plain text, case-insensitive. GitHub's code index covers the default branch only, so while a work branch has changes the files it changed are searched on the work branch itself (up to 40 files) and the other hits come from the index; each hit names its `branch`. Returns paths with matching fragments.",
     schema: z.object({ query: z.string().min(1).max(200) }).strict(),
     run({ query }, ctx) {
       return guarded(async () => {
         const found = await service.search(account(ctx), query);
-        return { ...found, hits: found.hits.map((h) => ({ path: h.path, fragments: h.fragments.map((f) => wrapUntrusted(`repository file ${h.path}`, f)) })) };
+        return { ...found, hits: found.hits.map((h) => ({ path: h.path, branch: h.branch, fragments: h.fragments.map((f) => wrapUntrusted(`repository file ${h.path}`, f)) })) };
       });
     },
   }),
