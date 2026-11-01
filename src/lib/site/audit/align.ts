@@ -67,10 +67,17 @@ export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[
     add("role", [job.role.en || job.role.pl, job.org].filter(Boolean).join(" @ "), present(hay, job.org) || present(hay, job.role.pl) || present(hay, job.role.en));
   }
   const projects = [...p.projects].sort((a, b) => Number(b.pinned) - Number(a.pinned)).slice(0, 12);
-  for (const project of projects) add("project", project.name, present(hay, project.name) || (!!project.url && linkPresent(project.url, siteLinks)));
+  // A CV link counts by its URL alone, whatever its label says; a project also counts when the site links a CV link
+  // that names the project (contact link "Finetune Studio (demo)" -> github.io page), even if the site calls it otherwise.
+  const contactLinks = p.contact.links.filter((l) => normalizeUrl(l.url));
+  const projectLinked = (name: string): boolean => {
+    const n = fold(name);
+    return !!n && contactLinks.some((l) => ` ${fold(l.label)} `.includes(` ${n} `) && linkOnSite(l.url));
+  };
+  for (const project of projects) add("project", project.name, present(hay, project.name) || (!!project.url && linkOnSite(project.url)) || projectLinked(project.name));
   const groups = [...p.skills].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   for (const skill of groups.flatMap((g) => g.items).slice(0, 30)) add("skill", skill, present(hay, skill));
-  for (const link of p.contact.links.filter((l) => normalizeUrl(l.url))) {
+  for (const link of contactLinks) {
     // Profiles (a LinkedIn or GitHub account) belong on a personal site; other pages (a github.io demo, a live app) are
     // project links, reported apart and only when the site names neither the link nor the page.
     if (isProfileUrl(link.url)) add("link", link.label || link.url, linkOnSite(link.url), link.url);

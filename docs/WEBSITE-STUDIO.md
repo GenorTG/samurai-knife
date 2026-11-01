@@ -107,8 +107,12 @@ Told to the assistant (system prompt "Website" line) and to outside agents (`kni
   `content.js-only` on a deliberately client-rendered page (a fix is server-rendered fallback text, not a rewrite),
   `align.*` items when the CV itself is out of date.
 - Audit the HTML pages (leave robots.txt / sitemap.xml / llms.txt out of `pages` unless they are the point), and compare
-  a new audit with the previous one by its id (`knife_site_audit_get {id}` or `section:"history"`) instead of
-  re-explaining every finding.
+  a new audit with the previous one (`knife_site_audit {compareTo:"previous"}`, or an id) instead of re-explaining every
+  finding; a finding already explained in the chat is not raised again unless it changed.
+- CV alignment matches links by URL only (normalised: scheme, `www.`, case, trailing slash, tracking parameters), never
+  by label or anchor text; a CV project also counts as on the site when the site links a CV link whose label names the
+  project (`tests/site_audit_quality.test.mjs` "alignment by URL").
+- "Do the rest" / "rób resztę" / "fix all": every safe, in-scope, fixable finding is done without asking again.
 - Multi-step site work is a durable goal (`knife_goal_create`): the numbered proposal goes in the goal's steps, so a
   short "yes" continues it; checkpoint (`knife_goal_checkpoint`) after every push, preview and audit, with the audit id,
   so the work survives a lost context.
