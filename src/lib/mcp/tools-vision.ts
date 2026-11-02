@@ -79,8 +79,11 @@ const SCREENSHOT = defineTool({
       const acc = account(ctx);
       const a = getAccount(acc);
       if (!a) throw new VisionError("unknown account", 404);
+      ctx?.progress?.("Resolving the page");
       const target = await resolveScreenshotTarget(acc, { target: input.target, path: input.path, url: input.url });
-      const shot = await takeScreenshot(acc, target, { viewport: input.viewport, fullPage: input.fullPage, fromY: input.fromY, format: input.format });
+      ctx?.progress?.(`Rendering ${target.url} in the browser`);
+      const shot = await takeScreenshot(acc, target, { viewport: input.viewport, fullPage: input.fullPage, fromY: input.fromY, format: input.format }, ctx?.signal);
+      ctx?.progress?.("Screenshot taken");
       const base = {
         imageArtifact: shot.image.id,
         target: target.kind,
@@ -94,6 +97,7 @@ const SCREENSHOT = defineTool({
       };
       const wantsText = input.describe === true || Boolean(input.question?.trim());
       const describe = async (describer = accountDescriber(a)) => {
+        ctx?.progress?.("Describing the screenshot with the vision model");
         const d = await describeImage(acc, { mime: shot.image.mime, bytes: shot.image.bytes }, input.question, describer ?? undefined);
         return { description: wrapUntrusted(`description of a screenshot of ${shot.finalUrl}`, d.text), describedBy: d.model };
       };
@@ -139,6 +143,7 @@ const DESCRIBE = defineTool({
     return guarded(async () => {
       const acc = account(ctx);
       const loaded = loadImage(acc, image);
+      ctx?.progress?.("Describing the image with the vision model");
       const d = await describeImage(acc, loaded, question);
       return { image, describedBy: d.model, description: wrapUntrusted(`description of ${loaded.source}`, d.text) };
     });

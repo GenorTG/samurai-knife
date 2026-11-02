@@ -249,8 +249,10 @@ screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, too
   preview host (checked per request, so never across a redirect to another host), never in the URL (page scripts and
   analytics would see it), never to PageSpeed or anyone else.
 - **Bounds**: viewport desktop 1280x800 or mobile 390x844; full page cut at 4,000 px (`truncated`); PNG, or JPEG at
-  falling quality and then fewer rows until it fits 3.5 MB; page load 30 s (a slow page still gets its picture), job
-  75 s; RLIMIT_AS is lifted for this job only (Chromium reserves tens of GB it never uses), its heap is capped by flags.
+  falling quality and then fewer rows until it fits 3.5 MB; the HTML document 20 s (a slow page still gets its
+  picture), then at most 6 s for the `load` event, 1.5 s for network idle and 1 s for web fonts (analytics, chat widgets
+  and polling never hold the shot), job 60 s; over MCP a shot that is not done in 25 s continues as a background job
+  (docs/MCP.md "Long calls"); RLIMIT_AS is lifted for this job only (Chromium reserves tens of GB it never uses), its heap is capped by flags.
 - **Budget**: outbound purpose `screenshot` (public mode, non-admins): 20 per account per hour, 300 per hour server-wide,
   plus the destination host bucket. Subresources are bounded by the per-job caps, not the shared host buckets.
 - **Result**: `imageArtifact` (`vis_` + 20 hex: the in-memory image store, 8 per account, 30 minutes, 64 MB server-wide;

@@ -1377,7 +1377,7 @@
   "Coverage": "Pokrycie",
   "covered": "pokryte",
   "Crack time @ 10¹⁰/s": "Czas złamania @ 10¹⁰/s",
-  "Craft apps": "Aplikacje Craft",
+  "Craft apps": "Aplikacje kreatywne",
   "Craft apps files": "Pliki aplikacji Craft",
   "Craft apps updates": "Aktualizacje aplikacji Craft",
   "Craft files": "Pliki Craft",
@@ -2433,6 +2433,7 @@
   "Job offers": "Oferty pracy",
   "Job title": "Stanowisko",
   "Job title you want to be seen as": "Stanowisko, z którym chcesz być kojarzony",
+  "Job tools need an account context.": "Narzędzia zadań wymagają kontekstu konta.",
   "Join with a spatial predicate such as ST_Contains.": "Złącz przez predykat przestrzenny, np. ST_Contains.",
   "joins the run at its next step": "dołącza do pracy przy następnym kroku",
   "JPEG, PNG or WebP · cropped in your browser": "JPEG, PNG albo WebP · kadrowane w twojej przeglądarce",
@@ -3278,6 +3279,7 @@
   "Output size": "Rozmiar wyjściowy",
   "Output width (px)": "Szerokość wyjściowa (px)",
   "Outside": "Na zewnątrz",
+  "Outside AI tools no longer give up on long website screenshots and checks: a call that takes longer than about 25 seconds carries on in the background and the tool collects the result when it is ready. Screenshots of sites with analytics or chat widgets are also faster.": "Zewnętrzne narzędzia AI nie przerywają już długich zrzutów ekranu i sprawdzeń strony: wywołanie trwające dłużej niż około 25 sekund działa dalej w tle, a narzędzie odbiera wynik, gdy jest gotowy. Zrzuty stron z analityką lub widżetami czatu są też szybsze.",
   "Over {value} words each.": "Każde ponad {value} słów.",
   "Overall coverage": "Pokrycie ogólne",
   "Overwrite cells in “{doc}”?": "Nadpisać komórki w „{doc}”?",
@@ -4497,6 +4499,7 @@
   "The browser check could not finish: {value}. Try again.": "Sprawdzenie przeglądarki nie mogło się zakończyć: {value}. Spróbuj ponownie.",
   "The browser check did not finish in time. Try again.": "Sprawdzenie przeglądarki nie skończyło się na czas. Spróbuj ponownie.",
   "The browser check did not pass. Try again.": "Sprawdzenie przeglądarki się nie powiodło. Spróbuj ponownie.",
+  "The call ran longer than {minutes} minutes and was stopped.": "Wywołanie trwało dłużej niż {minutes} min i zostało zatrzymane.",
   "The chat assistant opens tools, fills fields and works through a task with you on the model you pick; you approve the risky steps. Your own agents (Claude, Cursor…) connect over MCP.": "Asystent czatu otwiera narzędzia, wypełnia pola i przechodzi z tobą przez zadanie na wybranym przez ciebie modelu; ryzykowne kroki zatwierdzasz ty. Twoi własni agenci (Claude, Cursor…) łączą się przez MCP.",
   "The chat widget in the bottom-right corner is the built-in assistant. Each account configures its own provider (endpoint, key and model) in the widget settings; keys are stored on the server and never sent to the browser.": "Widżet czatu w prawym dolnym rogu to wbudowany asystent. Każde konto konfiguruje własnego dostawcę (adres, klucz i model) w ustawieniach widżetu; klucze są przechowywane na serwerze i nigdy nie trafiają do przeglądarki.",
   "The check did not reach the server.": "Sprawdzenie nie dotarło do serwera.",
@@ -4854,6 +4857,7 @@
   "Unknown node type \"{type}\".": "Nieznany typ węzła „{type}”.",
   "Unknown node type \"{type}\". Call knife_workflow_nodes for the list.": "Nieznany typ węzła „{type}”. Wywołaj knife_workflow_nodes, aby zobaczyć listę.",
   "Unknown or expired image: screenshots are kept for 30 minutes (and not across a server restart). Take a new one.": "Nieznany albo wygasły obraz: zrzuty ekranu są przechowywane przez 30 minut (i nie przetrwają restartu serwera). Zrób nowy.",
+  "Unknown or expired job: results are kept for 15 minutes (and not across a server restart). Start the call again.": "Nieznane lub wygasłe zadanie: wyniki są przechowywane przez 15 minut (i nie po restarcie serwera). Wywołaj ponownie.",
   "Unknown profile.": "Nieznany profil.",
   "Unknown run.": "Nieznane uruchomienie.",
   "Unknown Smart Knife tool: {name}": "Nieznane narzędzie Smart Knife: {name}",
@@ -5177,6 +5181,7 @@
   "You accepted version": "Zaakceptowana wersja:",
   "You already have {depth} jobs in the {lane} work queue. Wait for one to finish, then try again.": "Masz już {depth} zadań w kolejce {lane}. Poczekaj, aż któreś się skończy, i spróbuj ponownie.",
   "You already have {perAccount} uploads in progress. Wait for one to finish, then try again.": "Trwa już {perAccount} twoich wysyłek. Poczekaj, aż któraś się skończy, i spróbuj ponownie.",
+  "You already have {running} tool calls running in the background: wait for them with knife_job_status, then call again.": "W tle działa już {running} wywołań narzędzi: poczekaj na nie przez knife_job_status, a potem wywołaj ponownie.",
   "You are chatting with an AI system; replies can be wrong.": "Rozmawiasz z systemem AI; odpowiedzi mogą być błędne.",
   "You are not logged in.": "Nie jesteś zalogowany.",
   "You are the only administrator. Make someone else an administrator first.": "Jesteś jedynym administratorem. Najpierw nadaj komuś innemu uprawnienia administratora.",
@@ -5307,20 +5312,18 @@
   "Delete this earlier chat for good?": "Czy na pewno trwale usunąć ten wcześniejszy czat?",
   "Could not delete that chat.": "Nie udało się usunąć tego czatu.",
   "Chats you cleared (the last 10) and chats saved before history was shared across providers. Open one to continue it as a new chat, or delete it for good.": "Wyczyszczone czaty (ostatnie 10) oraz czaty zapisane przed udostępnianiem historii między dostawcami. Otwórz czat jako nowy, aby go kontynuować, albo trwale go usuń.",
-  "cleared": "wyczyszczono"
-  ,"AI assistant": "Asystent AI"
-  ,"An assistant that can act across the tools, keep several chats and turn requests into trackable tasks.": "Asystent, który korzysta z narzędzi, prowadzi kilka czatów i zamienia prośby w zadania do śledzenia."
-  ,"Create per-job CV versions, check ATS readiness and track each application.": "Twórz wersje CV dopasowane do ofert, sprawdzaj je pod kątem ATS i śledź każdą aplikację."
-  ,"Website studio": "Studio stron internetowych"
-  ,"Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots.": "Audytuj stronę, twórz pull requesty na GitHubie, sprawdzaj podglądy Vercel i przeglądaj zrzuty ekranu."
-  ,"Create and edit Word, Excel and PowerPoint files in your private workspace.": "Twórz i edytuj pliki Word, Excel i PowerPoint w prywatnej przestrzeni roboczej."
-  ,"Connect services and automate repeatable work with visual workflows.": "Łącz usługi i automatyzuj powtarzalne zadania za pomocą wizualnych przepływów pracy."
-  ,"Craft apps": "Aplikacje kreatywne"
-  ,"Make and edit creative assets in a collection of browser-based apps.": "Twórz i edytuj zasoby kreatywne w zestawie aplikacji działających w przeglądarce."
-  ,"MCP for outside agents": "MCP dla zewnętrznych agentów"
-  ,"Give external agents personal tokens to work with your account's tools.": "Przekaż zewnętrznym agentom osobiste tokeny, aby mogli korzystać z narzędzi na Twoim koncie."
-  ,"Database and SQL labs": "Laboratoria baz danych i SQL"
-  ,"Format, validate and run SQL, then learn against a real database.": "Formatuj, waliduj i uruchamiaj SQL, a następnie ucz się na prawdziwej bazie danych."
-  ,"PDF and OCR": "PDF i OCR"
-  ,"Inspect, convert and extract text from PDFs with local processing where available.": "Analizuj i konwertuj pliki PDF oraz wyodrębniaj z nich tekst, korzystając w miarę możliwości z lokalnego przetwarzania."
+  "cleared": "wyczyszczono",
+  "An assistant that can act across the tools, keep several chats and turn requests into trackable tasks.": "Asystent, który korzysta z narzędzi, prowadzi kilka czatów i zamienia prośby w zadania do śledzenia.",
+  "Create per-job CV versions, check ATS readiness and track each application.": "Twórz wersje CV dopasowane do ofert, sprawdzaj je pod kątem ATS i śledź każdą aplikację.",
+  "Website studio": "Studio stron internetowych",
+  "Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots.": "Audytuj stronę, twórz pull requesty na GitHubie, sprawdzaj podglądy Vercel i przeglądaj zrzuty ekranu.",
+  "Create and edit Word, Excel and PowerPoint files in your private workspace.": "Twórz i edytuj pliki Word, Excel i PowerPoint w prywatnej przestrzeni roboczej.",
+  "Connect services and automate repeatable work with visual workflows.": "Łącz usługi i automatyzuj powtarzalne zadania za pomocą wizualnych przepływów pracy.",
+  "Make and edit creative assets in a collection of browser-based apps.": "Twórz i edytuj zasoby kreatywne w zestawie aplikacji działających w przeglądarce.",
+  "MCP for outside agents": "MCP dla zewnętrznych agentów",
+  "Give external agents personal tokens to work with your account's tools.": "Przekaż zewnętrznym agentom osobiste tokeny, aby mogli korzystać z narzędzi na Twoim koncie.",
+  "Database and SQL labs": "Laboratoria baz danych i SQL",
+  "Format, validate and run SQL, then learn against a real database.": "Formatuj, waliduj i uruchamiaj SQL, a następnie ucz się na prawdziwej bazie danych.",
+  "PDF and OCR": "PDF i OCR",
+  "Inspect, convert and extract text from PDFs with local processing where available.": "Analizuj i konwertuj pliki PDF oraz wyodrębniaj z nich tekst, korzystając w miarę możliwości z lokalnego przetwarzania."
 }

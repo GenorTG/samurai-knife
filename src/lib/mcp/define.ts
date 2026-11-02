@@ -58,8 +58,13 @@ export interface KnifeToolContext {
   surface?: "assistant" | "mcp";
   /** A read-only MCP key (docs/MCP.md "Key scopes"): only tools whose effect is "read" are listed and callable. */
   readOnly?: boolean;
-  /** Aborted when the caller goes away (HTTP request closed): long waits (knife_site_verify) stop early. */
+  /**
+   * Aborted when the work should stop: the caller went away before the call was moved to the background, or a background
+   * call (MCP, src/lib/mcp/jobs.ts) ran past its cap. Long waits (knife_site_verify, a screenshot) stop early.
+   */
   signal?: AbortSignal;
+  /** Long calls say what they are doing (one short line); MCP clients read it from knife_job_status / progress notifications. */
+  progress?: (message: string) => void;
 }
 
 export interface KnifeToolDefinition extends KnifeToolEffectInfo {
@@ -89,6 +94,19 @@ export class KnifeRichResult {
   constructor(value: unknown, images: KnifeImageBlock[]) {
     this.value = value;
     this.images = images;
+  }
+}
+
+/**
+ * A result that is already MCP content (knife_job_status hands back a finished call's own blocks): the MCP server sends
+ * `content` as is, with `isError`. No TypeScript parameter properties (type stripping).
+ */
+export class KnifeCallContent {
+  readonly content: Array<{ type: "text"; text: string } | KnifeImageBlock>;
+  readonly isError: boolean;
+  constructor(content: Array<{ type: "text"; text: string } | KnifeImageBlock>, isError = false) {
+    this.content = content;
+    this.isError = isError;
   }
 }
 

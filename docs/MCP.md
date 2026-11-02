@@ -119,7 +119,31 @@ docs/WEBSITE-STUDIO.md.
   html-to-canvas library) cannot draw cross-origin iframes, which are exactly the visual pages (office editor, Craft
   apps); the assistant reads the page through `page_snapshot`/`read_text`, and the Craft apps have `craft_screenshot`.
 
-## Tasks (`knife_goal_*`, `src/lib/mcp/tools-goals.ts`, group `goals`)
+## Long calls (`knife_job_status`, `src/lib/mcp/jobs.ts`, `src/lib/mcp/tools-jobs.ts`)
+
+MCP clients give up on a call after about 60 s (`-32001 Request timed out`), while a screenshot, an audit of several
+pages or a preview verification can take longer. So EVERY MCP tool call answers within the answer window
+(`KNIFE_MCP_ANSWER_WITHIN_MS`, default 25,000, 200-50,000):
+- done by then: the usual result;
+- else `{status:"running", jobId, tool, elapsedSec, progress?, pollWith:"knife_job_status", hint}` while the work goes
+  on on the server as a background job of this account (it no longer stops when the request ends; a cancel BEFORE the
+  window ends still stops it, as before);
+- `knife_job_status {jobId, waitSeconds? (default 20, max 25)}` (MCP only, `read`, own account): waits, then returns
+  `{status:"running", progress, elapsedSec}` or, once finished, a first text block `{status:"done"|"failed", jobId,
+  tool, elapsedSec}` followed by exactly the blocks the call returns (a screenshot's image block, an audit digest; a
+  failure as an error result). A client that lost an answer may poll again: finished results are kept.
+- Bounds (memory only, never the data dir, gone on restart): `KNIFE_MCP_JOBS_PER_ACCOUNT` (default 4) background calls
+  per account at once (a further call is refused up front, never cut off mid-way), 16 finished results per account,
+  96 MB of results server-wide (oldest first), kept `KNIFE_MCP_JOB_TTL_SEC` (default 900); a background call is
+  stopped after 15 minutes. A job is looked up only with the account that started it (another account's id = "unknown
+  job"), and a read-only key reads only jobs of tools that change nothing.
+- Progress: a call (or a poll) with `_meta.progressToken` gets `notifications/progress` every 5 s while it waits
+  (`message` = the job's progress line: the audit phase, "Rendering <url> in the browser"...). The handler's
+  `responseMode` is `auto`: one JSON body, upgraded to an SSE stream only when such a notification is sent; 2025-era
+  clients get SSE as before.
+- The in-page assistant is unchanged: `/api/agent/tool` has no 60 s cap, so its calls run to the end in one request.
+
+, `src/lib/mcp/tools-goals.ts`, group `goals`)
 
 Durable work tracking for the in-page assistant AND outside agents: `knife_goal_list`, `knife_goal_create`,
 `knife_goal_update` (status active/paused/completed/archived, steps, next action) and `knife_goal_checkpoint` (a

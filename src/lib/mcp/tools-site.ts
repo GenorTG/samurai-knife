@@ -4,7 +4,7 @@ import { admitOutbound, hostGate, outboundLimitMessage } from "@/lib/net/outboun
 import { QuotaExceededError } from "@/lib/storage/quota";
 import { analyzeCopy, copyIssues } from "@/lib/site/audit/copy";
 import { analyzePage } from "@/lib/site/audit/page";
-import { runAudit, siteTargetProblem } from "@/lib/site/audit/run";
+import { currentAudit, runAudit, siteTargetProblem } from "@/lib/site/audit/run";
 import { auditDigest, compactAuditIssues, compareAudits } from "@/lib/site/audit/digest";
 import { fetchPage, sitePolicy, SiteError } from "@/lib/site/net";
 import * as service from "@/lib/site/service";
@@ -37,6 +37,26 @@ async function guarded<T>(fn: () => Promise<T> | T): Promise<T> {
 }
 
 export { auditDigest, compactAuditIssues };
+
+/**
+ * While `fn` runs, tell the caller (ctx.progress: an MCP background job, src/lib/mcp/jobs.ts) what the account's audit is
+ * doing every 2 s; `idle` when no audit runs yet (verify: waiting for the preview).
+ */
+async function withAuditProgress<T>(acc: string, ctx: KnifeToolContext | undefined, idle: string, fn: () => Promise<T>): Promise<T> {
+  const report = ctx?.progress;
+  if (!report) return fn();
+  const tick = () => {
+    const audit = currentAudit(acc);
+    report(audit ? `${audit.phase} (${audit.done}/${audit.total})` : idle);
+  };
+  tick();
+  const timer = setInterval(tick, 2_000);
+  try {
+    return await fn();
+  } finally {
+    clearInterval(timer);
+  }
+}
 
 const PATH = z.string().min(1).max(400);
 
@@ -106,7 +126,7 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
         }
         // With Vercel linked: the READY head preview of the work branch, read through Deployment Protection when needed.
         const { options, note } = await vercelService.withVercelAudit(acc, { url: base, target: target ?? (url ? "custom" : "production"), pages, lighthouse });
-        const run = await runAudit(acc, options);
+        const run = await withAuditProgress(acc, ctx, "Starting the audit", () => runAudit(acc, options));
         const digest = auditDigest(run);
         if (!compareTo) return note ? { ...digest, vercel: note } : digest;
         return { ...digest, ...(note ? { vercel: note } : {}), comparison: compareAudits(run, previous) };
@@ -128,7 +148,8 @@ const SITE_TOOLS: KnifeToolDefinition[] = [
     }).strict(),
     run({ timeoutSec, pages, lighthouse }, ctx) {
       return guarded(async () => {
-        const report = await verifyPreview(account(ctx), { timeoutSec, pages, lighthouse, signal: ctx?.signal });
+        const acc = account(ctx);
+        const report = await withAuditProgress(acc, ctx, "Waiting for the preview of the head commit to be READY", () => verifyPreview(acc, { timeoutSec, pages, lighthouse, signal: ctx?.signal }));
         if ("preview" in report && report.preview && "error" in report.preview && report.preview.error) {
           return { ...report, preview: { ...report.preview, error: wrapUntrusted("Vercel deployment error", report.preview.error) } };
         }

@@ -269,9 +269,27 @@ export function serveGithub(gh, port = 0) {
   return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve({ server, port: server.address().port })));
 }
 
+/** `/slow`: the home page after this many ms (long-call tests: an audit or screenshot that outlasts the MCP answer window). */
+const SLOW_MS = Number(process.env.MOCK_SITE_SLOW_MS || 4000);
+
 export function serveSite(site, port = 0) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://localhost");
+    // `/hang` never answers (an analytics beacon that never finishes); `/never-loads` waits on it, so its `load` event
+    // never fires: a screenshot must not wait for it.
+    if (url.pathname === "/hang") return;
+    if (url.pathname === "/never-loads") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end('<!doctype html><html lang="pl"><head><title>Never loads</title><script src="/hang" async></script></head><body><h1>Analytics never finish</h1><img src="/hang" alt="pixel"></body></html>');
+      return;
+    }
+    if (url.pathname === "/slow") {
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff" });
+        res.end(SITE_PAGES["/"]);
+      }, SLOW_MS);
+      return;
+    }
     const [status, type, body] = site.handle(req.method, url);
     res.writeHead(status, { "content-type": type, "x-content-type-options": "nosniff" });
     res.end(body);
