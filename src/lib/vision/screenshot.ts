@@ -34,10 +34,14 @@ export const SHOT_LIMITS = {
   maxHeight: 4_000,
   /** Encoded image cap: bigger PNGs are re-encoded as JPEG, then cut shorter, until they fit. */
   maxBytes: 3_500_000,
-  /** Page load budget inside the browser (the page still gets its screenshot after it). */
-  loadTimeoutMs: 30_000,
+  /** Budget for the HTML document inside the browser (the page still gets its screenshot after it). */
+  loadTimeoutMs: 20_000,
+  /** Then at most this long for the `load` event: analytics, widgets and lazy media must not hold the shot. */
+  settleMs: 6_000,
+  /** Then at most this long for network idle (pages that poll never idle). */
+  idleMs: 1_500,
   /** The whole job, browser start to file (the queue wait is extra). */
-  jobTimeoutMs: 75_000,
+  jobTimeoutMs: 60_000,
   /** Requests the page may make (subresources included). */
   maxRequests: 300,
 };
@@ -131,6 +135,8 @@ export async function takeScreenshot(accountId: string, target: ScreenshotTarget
       quality: 80,
       maxBytes: limits.maxBytes,
       timeoutMs: limits.loadTimeoutMs,
+      settleMs: limits.settleMs,
+      idleMs: limits.idleMs,
       maxRequests: limits.maxRequests,
       chromium,
       proxySocket: proxy.socketPath,

@@ -28,6 +28,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
       msg("Your account has its own MCP address for outside AI tools (Claude Code, Cursor, OpenClaw), and an MCP key can be read-only. Outside tools can now also read your assistant chats and tasks."),
     ],
     fixes: [
+      msg("Outside AI tools no longer give up on long website screenshots and checks: a call that takes longer than about 25 seconds carries on in the background and the tool collects the result when it is ready. Screenshots of sites with analytics or chat widgets are also faster."),
       msg("When the assistant stops before finishing (an error or the turn limit), your request is kept as a paused task in Tasks, so you can continue it later."),
       msg("Chat history is kept when you switch to another provider or model, and chats saved before can be brought back (Settings > Recover earlier chats)."),
       msg("The assistant no longer loses its previous answer when a long chat is shortened for the model."),

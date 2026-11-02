@@ -7,7 +7,8 @@ loopback, LAN, metadata or Tailscale addresses in public mode) and caps the job'
 relays 127.0.0.1:<port> (the sandbox's own loopback) to that socket, so Chromium can use it as an ordinary proxy.
 
 Request: {url, allowedOrigins[], viewport {width, height}, fullPage, maxHeight, format "png"|"jpeg", quality,
-maxBytes, timeoutMs, maxRequests, chromium (executable), proxySocket, outFile, bypass? {host, headers}}.
+maxBytes, timeoutMs (until the HTML document is parsed), settleMs (then "load", capped), idleMs (then network idle,
+capped), maxRequests, chromium (executable), proxySocket, outFile, bypass? {host, headers}}.
 Response: {ok, data: {file, mime, width, height, bytes, finalUrl, title, status, truncated, nextFromY, requests, blocked}}; request `fromY` = document offset of a full-page tile.
 
 Rules enforced here (the proxy enforces the network ones):
@@ -117,6 +118,8 @@ async def capture(req: dict) -> dict:
     max_height = int_field(req, "maxHeight", height, 8000, 4000)
     from_y = int_field(req, "fromY", 0, 1_000_000, 0)
     timeout_ms = int_field(req, "timeoutMs", 5000, 90000, 30000)
+    settle_ms = int_field(req, "settleMs", 500, 30000, 6000)
+    idle_ms = int_field(req, "idleMs", 0, 10000, 1500)
     max_requests = int_field(req, "maxRequests", 1, 2000, 300)
     quality = int_field(req, "quality", 30, 95, 80)
     max_bytes = int_field(req, "maxBytes", 50_000, 20_000_000, 4_000_000)
@@ -196,14 +199,23 @@ async def capture(req: dict) -> dict:
 
                 await page.route("**/*", route)
                 response = None
+                # Wait for the document, then give the rest of the page a SHORT settle budget: a site with analytics,
+                # chat widgets or long-polling never reaches "load"/"networkidle" in time, and waiting the full budget
+                # for them made a screenshot outlast an MCP client's 60 s cap. A page that is slow to render its HTML
+                # still gets `timeoutMs`.
                 try:
-                    response = await page.goto(url, wait_until="load", timeout=timeout_ms)
+                    response = await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                 except Exception as exc:  # noqa: BLE001 - a slow page still gets its screenshot
                     if "Timeout" not in type(exc).__name__ and "timeout" not in str(exc).lower():
                         raise ToolError(f"the page did not load: {str(exc).splitlines()[0][:300]}") from exc
+                for state, cap in (("load", settle_ms), ("networkidle", idle_ms)):
+                    try:
+                        await page.wait_for_load_state(state, timeout=cap)
+                    except Exception:  # noqa: BLE001 - pages that keep loading or polling are shot as they are
+                        pass
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=4000)
-                except Exception:  # noqa: BLE001 - pages that keep polling never idle
+                    await page.evaluate("() => Promise.race([document.fonts ? document.fonts.ready : null, new Promise(r => setTimeout(r, 1000))])")
+                except Exception:  # noqa: BLE001 - fonts are cosmetic
                     pass
                 await page.wait_for_timeout(300)
                 final_url = page.url

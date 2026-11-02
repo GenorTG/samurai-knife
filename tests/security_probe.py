@@ -11,7 +11,8 @@ live one), the way tests/prod_smoke.py documents:
 Covers: guests reach no tool, account or API (pages redirect to /login, APIs answer 401/403); the Origin guard; the open
 redirect shapes (`/\\t/evil.com`) on /login and the GitHub start route; cross-account isolation over MCP (CV offers,
 office documents, UI bridge, Craft files kept by craft_file_save and read over MCP); the personal MCP URL takes only a
-Bearer key of that very account (wrong user, case, encoded and traversal names refused) and read-only keys write nothing; the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
+Bearer key of that very account (wrong user, case, encoded and traversal names refused) and read-only keys write nothing;
+a call moved to the background (knife_job_status) is readable only by the account that started it; the JSON Schema ReDoS and a crafted XLSX are stopped while the server keeps answering;
 login brute force is limited; security headers; path tricks on document ids. Exit 1 on any failure.
 """
 from __future__ import annotations
@@ -298,6 +299,38 @@ def main() -> int:
     check("alice's agent gets her tab's answer, enveloped, never bob's", ok and "alice answer" in text and "forged by bob" not in text and "UNTRUSTED_CONTENT" in text, text[:300])
     status, _, _ = raw("POST", "/api/ui/call", json.dumps(answer).encode(), {"Content-Type": "application/json", "Origin": "https://evil.example", "Cookie": alice})
     check("a cross-origin call answer is refused by the Origin guard", status == 403, status)
+
+    # --------------------------------------------------------------------------------------------- long calls (knife_job_status)
+    # A call that outlasts the MCP answer window (25 s) answers {status:"running", jobId}; the job is alice's alone.
+    started_call: list[tuple[bool, str, float]] = []
+    caller = threading.Thread(target=lambda: started_call.append(mcp(api, "knife_ui_call", {"tool": "doc_live_read", "timeoutSeconds": 90}, ha, "198.51.100.10")))
+    caller.start()
+    long_call_id = ""
+    while caller.is_alive():
+        status, body, _ = api.call("GET", f"/api/ui/poll?client={tab_a}", cookie=alice, ip="198.51.100.10")
+        long_call_id = long_call_id or next((e["callId"] for e in (body.get("events", []) if isinstance(body, dict) else []) if e.get("kind") == "call"), "")
+        caller.join(1)
+    ok, text, took = started_call[0] if started_call else (False, "no answer", 0)
+    job: dict = {}
+    try:
+        job = json.loads(text) if ok else {}
+    except ValueError:
+        job = {}
+    job_id = str(job.get("jobId", ""))
+    check(f"a call outlasting the answer window answers running + jobId ({took:.0f} s)", job.get("status") == "running" and job_id.startswith("job_") and took < 55, text[:300])
+    if job_id:
+        for who, headers, ip in (("bob's agent", hb, "198.51.100.20"), ("bob's read-only key", basic("bob", kr), "198.51.100.20")):
+            ok, text, _ = mcp(api, "knife_job_status", {"jobId": job_id, "waitSeconds": 0}, headers, ip)
+            check(f"{who} cannot read alice's job", (not ok) and "Unknown or expired job" in text and "doc_live_read" not in text, text[:200])
+        status, body = mcp_at(api, "/api/mcp/u/bob", "tools/call", {"name": "knife_job_status", "arguments": {"jobId": job_id, "waitSeconds": 0}}, {"Authorization": f"Bearer {kb}"}, "198.51.100.20")
+        check("bob's personal URL cannot read alice's job", status == 200 and isinstance(body, dict) and body.get("result", {}).get("isError") is True and "doc_live_read" not in json.dumps(body), str(body)[:200])
+        for bad in ("../" + job_id, job_id.upper(), job_id + "0", "job_" + "0" * 24):
+            ok, text, _ = mcp(api, "knife_job_status", {"jobId": bad, "waitSeconds": 0}, ha, "198.51.100.10")
+            check(f"a forged job id is unknown ({bad[:14]}...)", not ok and "Unknown or expired job" in text, text[:160])
+        status, body, _ = api.call("POST", "/api/ui/call", {"clientId": tab_a, "callId": long_call_id or "00000000-0000-4000-8000-000000000000", "status": "done", "ok": True, "content": "{\"text\":\"late alice answer\"}"}, cookie=alice, ip="198.51.100.10")
+        check("alice's tab answers the background call", status == 200 and isinstance(body, dict) and body.get("taken") is True, (status, body))
+        ok, text, _ = mcp(api, "knife_job_status", {"jobId": job_id, "waitSeconds": 10}, ha, "198.51.100.10")
+        check("alice's agent collects the finished call with knife_job_status", ok and '"status":"done"' in text.replace(" ", "") and "late alice answer" in text, text[:300])
 
     # --------------------------------------------------------------------------------------------- Craft files (craft_file_save + MCP reads)
     # What a tab's craft_file_save posts: alice's own session, never overwriting unless asked; bob's agent reads none of it.

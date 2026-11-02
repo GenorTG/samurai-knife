@@ -16,6 +16,9 @@ GitHub API, a small Polish website, a PageSpeed endpoint), driven like a person 
   protected preview without a bypass secret, the UI creates one, then knife_site_audit target=preview and
   knife_site_page read it with the header (every request that reached it carried it), knife_site_deploy_logs; the
   Changes tab shows the Vercel previews panel. knife_whats_new names the new tools.
+- Long MCP calls (answer window 3 s): an audit of a 6 s page answers {status:"running", jobId}, knife_job_status returns
+  the digest; a progressToken gets notifications/progress; a screenshot of a page whose analytics never finish loading
+  comes back (image block) in well under the old 30 s load wait.
 - Firefox: every tab hydrates without console errors.
 
 Self-contained: own scratch server (tests/scratch_server.py), own mock world on free loopback ports, never the live app.
@@ -75,12 +78,21 @@ def http(method: str, url: str, body: object | None = None, headers: dict[str, s
         return status, raw
 
 
+def running_answer(text: str) -> dict | None:
+    """The {status:"running", jobId} answer of a call moved to the background (docs/MCP.md "Long calls"), else None."""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) and value.get("status") == "running" and value.get("pollWith") == "knife_job_status" else None
+
+
 class Mcp:
     def __init__(self, base: str) -> None:
         self.base = base
         self.rpc = 0
 
-    def tool(self, name: str, args: dict) -> tuple[bool, str]:
+    def tool(self, name: str, args: dict, follow: bool = True) -> tuple[bool, str]:
         self.rpc += 1
         status, body = http("POST", f"{self.base}/api/mcp", {"jsonrpc": "2.0", "id": self.rpc, "method": "tools/call", "params": {"name": name, "arguments": args}},
                             {"Accept": "application/json, text/event-stream", "Origin": self.base})
@@ -89,7 +101,39 @@ class Mcp:
         if "error" in body:
             return False, json.dumps(body["error"])
         result = body.get("result", {})
-        return not result.get("isError", False), "".join(p.get("text", "") for p in result.get("content", []))
+        text = "".join(p.get("text", "") for p in result.get("content", []))
+        running = running_answer(text) if follow and name != "knife_job_status" else None
+        if running:
+            # Like a real client: a call moved to the background is collected with knife_job_status.
+            result = self.poll(running["jobId"])
+            blocks = result.get("content", [])[1:]
+            return not result.get("isError", False), "".join(p.get("text", "") for p in blocks)
+        return not result.get("isError", False), text
+
+    def call(self, name: str, args: dict, meta: dict | None = None) -> tuple[int, str]:
+        """One raw tools/call: (HTTP status, raw body), SSE frames included (progress notifications)."""
+        self.rpc += 1
+        params: dict = {"name": name, "arguments": args, **({"_meta": meta} if meta else {})}
+        req = urllib.request.Request(f"{self.base}/api/mcp", data=json.dumps({"jsonrpc": "2.0", "id": self.rpc, "method": "tools/call", "params": params}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "Origin": self.base})
+        with urllib.request.urlopen(req, timeout=120) as res:
+            return res.status, res.read().decode()
+
+    def poll(self, job_id: str, rounds: int = 12) -> dict:
+        """knife_job_status until the job is no longer running: the final result (content blocks)."""
+        for _ in range(rounds):
+            self.rpc += 1
+            status, body = http("POST", f"{self.base}/api/mcp", {"jsonrpc": "2.0", "id": self.rpc, "method": "tools/call", "params": {"name": "knife_job_status", "arguments": {"jobId": job_id, "waitSeconds": 10}}},
+                                {"Accept": "application/json, text/event-stream", "Origin": self.base})
+            result = body.get("result", {}) if isinstance(body, dict) else {}
+            first = (result.get("content") or [{}])[0].get("text", "")
+            try:
+                state = json.loads(first).get("status")
+            except json.JSONDecodeError:
+                state = None
+            if state != "running":
+                return result
+        return {}
 
 
 def go(page: Page, path: str) -> None:
@@ -142,9 +186,17 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
 
         # ---------------------------------------------------------------- 2. score
         go(page, "/tools/cv-studio?tab=website&step=score")
-        page.get_by_role("button", name="Run audit").click()
-        expect(page.get_by_role("status").filter(has_text="Auditing")).to_be_visible(timeout=10_000)
-        check("audit progress is shown as role=status", True)
+        # A click before hydration is lost (no request is sent): click again until the audit's status line appears.
+        auditing = page.get_by_role("status").filter(has_text="Auditing")
+        for _ in range(4):
+            page.get_by_role("button", name="Run audit").click()
+            try:
+                auditing.wait_for(state="visible", timeout=5_000)
+                break
+            except Exception:  # noqa: BLE001
+                if page.get_by_role("group", name="Scores").count():
+                    break
+        check("audit progress is shown as role=status", auditing.count() > 0 or page.get_by_role("group", name="Scores").count() > 0)
         expect(page.get_by_role("group", name="Scores")).to_be_visible(timeout=90_000)
         scores = page.get_by_role("group", name="Scores").text_content() or ""  # labels are CSS-uppercased in innerText
         check("score tiles: overall, SEO, copywriting, performance 72 from PageSpeed", all(s in scores for s in ("Overall", "Technical SEO", "Copywriting", "Performance")) and "72" in scores, scores)
@@ -267,6 +319,35 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         ok, text = mcp.tool("knife_site_pr", {"title": "x"})
         check("with no work branch a new PR is refused (nothing prepared)", not ok and "no changes yet" in text, text[:200])
         check("no tool can publish or discard", all(n not in json.dumps(http("POST", f"{base}/api/mcp", {"jsonrpc": "2.0", "id": 99, "method": "tools/list", "params": {}}, {"Accept": "application/json, text/event-stream"})[1]) for n in ("knife_site_publish", "knife_site_merge", "knife_site_discard")))
+
+        # ---------------------------------------------------------------- 5b. long MCP calls go to the background
+        # The scratch server answers MCP calls within 3 s (KNIFE_MCP_ANSWER_WITHIN_MS); /slow answers after 6 s.
+        started = time.time()
+        ok, text = mcp.tool("knife_site_audit", {"lighthouse": False, "pages": ["/slow"]}, follow=False)
+        first = json.loads(text) if ok and text.startswith("{") else {}
+        check("a slow audit answers within the window: status running, a jobId, pollWith knife_job_status",
+              first.get("status") == "running" and str(first.get("jobId", "")).startswith("job_") and first.get("pollWith") == "knife_job_status" and time.time() - started < 6, text[:300])
+        final = mcp.poll(first.get("jobId", ""))
+        blocks = final.get("content") or []
+        head = json.loads(blocks[0]["text"]) if blocks else {}
+        check("knife_job_status returns the finished audit digest (status done, then the digest)",
+              head.get("status") == "done" and len(blocks) > 1 and '"scores"' in blocks[1].get("text", "") and "/slow" in blocks[1].get("text", ""), str(blocks)[:400])
+        ok, text = mcp.tool("knife_job_status", {"jobId": "job_" + "0" * 24, "waitSeconds": 0})
+        check("an unknown job id is refused", not ok and "Unknown or expired job" in text, text[:200])
+        status, raw = mcp.call("knife_site_audit", {"lighthouse": False, "pages": ["/slow"]}, {"progressToken": "slow-audit"})
+        check("a client with a progressToken gets notifications/progress while it waits", status == 200 and "notifications/progress" in raw and "slow-audit" in raw, raw[:400])
+        running = next((json.loads(json.loads(line[6:])["result"]["content"][0]["text"]) for line in raw.split("\n") if line.startswith("data: ") and '"result"' in line), {})
+        mcp.poll(running.get("jobId", ""))
+        # A page whose analytics never finish loading: the shot no longer waits for `load` (it used to take 30 s+).
+        started = time.time()
+        ok, text = mcp.tool("knife_site_screenshot", {"target": "production", "path": "/never-loads"}, follow=False)
+        first = json.loads(text) if ok and text.startswith("{") else {}
+        final = mcp.poll(first["jobId"]) if first.get("status") == "running" else {"content": [{"type": "text", "text": text}, {"type": "image"}]}
+        blocks = final.get("content") or []
+        took = time.time() - started
+        check("knife_site_screenshot of a never-loading page: an image, through knife_job_status when it outlasts the window, in under 20 s",
+              any(b.get("type") == "image" for b in blocks) and took < 20 and "Never loads" in json.dumps(blocks), f"{took:.1f}s {str(blocks)[:300]}")
+        print(f"      screenshot of /never-loads took {took:.1f} s", flush=True)
         browser.close()
 
         # ---------------------------------------------------------------- 6. Firefox renders every tab
@@ -285,12 +366,14 @@ def main() -> int:
     gh_port, site_port, psi_port, vercel_port, preview_port = free_ports(5)
     site_url = f"http://127.0.0.1:{site_port}"
     preview_url = f"http://127.0.0.1:{preview_port}"
-    world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url, "MOCK_REPO_HOMEPAGE": site_url})
+    world = subprocess.Popen(["node", str(ROOT / "tests/mock_site_world.mjs"), str(gh_port), str(site_port), str(psi_port)], stdout=subprocess.PIPE, text=True, env={**__import__("os").environ, "MOCK_PREVIEW_URL": site_url, "MOCK_REPO_HOMEPAGE": site_url, "MOCK_SITE_SLOW_MS": "6000"})
     vercel = subprocess.Popen(["node", str(ROOT / "tests/mock_vercel.mjs"), str(vercel_port), str(preview_port)], stdout=subprocess.PIPE, text=True)
     try:
         assert world.stdout is not None and world.stdout.readline().strip() == "READY", "mock world did not start"
         assert vercel.stdout is not None and vercel.stdout.readline().strip() == "READY", "mock Vercel did not start"
-        env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run", "KNIFE_VERCEL_API_URL": f"http://127.0.0.1:{vercel_port}"}
+        env = {"KNIFE_GITHUB_API_URL": f"http://127.0.0.1:{gh_port}", "KNIFE_PSI_API_URL": f"http://127.0.0.1:{psi_port}/run", "KNIFE_VERCEL_API_URL": f"http://127.0.0.1:{vercel_port}",
+               # Long calls: answer within 3 s so the slow page (6 s) goes to the background (docs/MCP.md "Long calls").
+               "KNIFE_MCP_ANSWER_WITHIN_MS": "3000"}
         with ScratchServer() as server:
             server.start(env=env)
             print(f"scratch server {server.url} data {server.data_dir}", flush=True)
