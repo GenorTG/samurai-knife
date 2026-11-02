@@ -110,7 +110,13 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         # ---------------------------------------------------------------- 1. connect
         go(page, "/tools/cv-studio?tab=website&step=connect")
         # The website now lives in the CV studio: the repository path is the second way in (the address alone is the first).
-        page.get_by_role("button", name="Its GitHub repository").click()
+        # A click before hydration is lost (no React handler yet): click until the repository form appears.
+        repo_way = page.get_by_role("button", name="Its GitHub repository")
+        for _ in range(20):
+            repo_way.click()
+            if page.get_by_role("heading", name="Your website's address").count() == 0 or page.get_by_label("GitHub repository").count():
+                break
+            page.wait_for_timeout(500)
         # The tab re-renders its form once the GitHub/connection status arrives: type only after that, or the input is reset.
         page.wait_for_load_state("networkidle")
         # The scratch server can have a GitHub App configured; choose the PAT path this test exercises first (switching
