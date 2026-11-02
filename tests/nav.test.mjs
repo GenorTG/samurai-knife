@@ -41,6 +41,15 @@ test("sections are non-empty, uniquely named, and breadcrumbs find a tool's sect
   assert.equal(navSectionOf("sidecars"), undefined, "setup pages live in the footer");
 });
 
+test("launcher rank puts suites ahead of the utility tail without changing the registry count", () => {
+  const ranked = TOOLS.map((tool, index) => ({ tool, index }))
+    .sort((a, b) => (a.tool.rank ?? 100) - (b.tool.rank ?? 100) || a.index - b.index)
+    .map(({ tool }) => tool);
+  assert.equal(ranked.length, TOOLS.length);
+  assert.deepEqual(ranked.slice(0, 7).map((tool) => tool.slug), ["cv-studio", "office", "workflows", "web", "artcraft", "mcp-connect", "pdf"]);
+  assert.equal(ranked.at(-1).rank, undefined, "single-purpose tools retain the registry-order utility tail");
+});
+
 test("merged suites: the old slug keeps its tab (?tab= carried over), else the old suite's first tab", () => {
   assert.equal(toolHref("css-grid", "clamp"), "/tools/css?tab=clamp");
   assert.equal(toolHref("css-grid"), "/tools/css?tab=grid");

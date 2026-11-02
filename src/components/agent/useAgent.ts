@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { msgf } from "@/lib/i18n/msg";
 import { clearAccountStorage } from "@/lib/client-account";
-import { fetchAccount, fetchConversation, login as apiLogin, logout as apiLogout, resetConversation, saveConversation } from "@/lib/agent-client/api";
+import { captureUnfinished, fetchAccount, fetchConversation, login as apiLogin, logout as apiLogout, resetConversation, saveConversation } from "@/lib/agent-client/api";
 import { clearArtifacts } from "@/lib/agent-client/artifacts";
 import { stopRequested } from "@/lib/agent-client/feedback";
 import { repairTranscript, runAgentTurn, type LoopOutcome } from "@/lib/agent-client/loop";
-import { extendsTranscript, pickTranscript } from "@/lib/agent-client/context";
+import { extendsTranscript, pickTranscript, unfinishedRequest } from "@/lib/agent-client/context";
 import {
   attachQueue,
   clearQueue,
@@ -381,6 +382,23 @@ export function useAgent(options: { active: boolean; chatId?: string; onNeedSett
           limits: account.account.assistant,
           isForeground: () => selectedChatId.current === forChat,
         });
+        if ((outcome === "error" || outcome === "limit") && !entry.discard) {
+          // The request is unfinished: keep it as a paused task unless the assistant already kept one this turn.
+          const turn = readChat(scopeId).slice(history.length - 1);
+          const keptGoal = turn.some((m) => m.role === "assistant" && (m.tool_calls ?? []).some((c) => /^knife_goal_(create|update|checkpoint)$/.test(c.function.name)));
+          const request = unfinishedRequest(readChat(scopeId).slice(0, history.length), text);
+          if (!keptGoal && request) {
+            const lastNotice = [...turn].reverse().find((m) => m.role === "notice" && m.level === "error");
+            const captured = await captureUnfinished(request, outcome, lastNotice?.role === "notice" ? lastNotice.content : undefined);
+            if (captured.ok) {
+              const noted = appendChat(scopeId, [{ role: "notice", level: "info", content: captured.value.created
+                ? msgf("Saved as a paused task \"{title}\" (Tasks): Continue there, or ask again here.", { title: captured.value.title })
+                : msgf("The paused task \"{title}\" (Tasks) records this stop too.", { title: captured.value.title }) }]);
+              show(noted);
+              enqueueConversationSave(forChat, noted, entry.actions);
+            }
+          }
+        }
         if (outcome === "aborted" && !entry.discard) {
           const stopped = appendChat(scopeId, [{ role: "notice", level: "info", content: "Stopped." }]);
           show(stopped);

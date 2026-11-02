@@ -11,6 +11,7 @@ import { extractTextBounded, type ExtractedText } from "../office/text";
 import type { OfficeFormat } from "../office/templates";
 import { buildGeneration, type AnchorMode, type Generation } from "../regexgen";
 import type { HandlersFor } from "../workers/runtime";
+import { searchTexts, type TextSearchFile, type TextSearchHit } from "../site/text-search";
 import { msgf } from "@/lib/i18n/msg";
 
 // A type alias, not an interface: it must be assignable to TaskMap (an index signature) without declaring one.
@@ -20,6 +21,8 @@ export type IsolateTasks = {
   /** Regex generation verifies its pattern against the examples: user-shaped regex work. */
   generateRegex: { payload: { positiveExamples: string; negativeExamples: string; anchorMode: AnchorMode }; result: Generation | null };
   extractOfficeText: { payload: { format: OfficeFormat; bytes: Uint8Array; maxChars: number }; result: ExtractedText };
+  /** knife_site_search over work-branch files: repository text and the query are third-party / user input. */
+  searchText: { payload: { files: TextSearchFile[]; query: string; maxHits: number }; result: TextSearchHit[] };
 };
 
 function parseJson(text: string, what: string): unknown {
@@ -34,4 +37,5 @@ export const ISOLATE_HANDLERS: HandlersFor<IsolateTasks> = {
   validateJsonSchema: ({ schema, value }) => validateJsonSchema(parseJson(schema, "JSON Schema"), parseJson(value, "JSON value")),
   generateRegex: ({ positiveExamples, negativeExamples, anchorMode }) => buildGeneration(positiveExamples, negativeExamples, anchorMode),
   extractOfficeText: ({ format, bytes, maxChars }) => extractTextBounded(format, bytes, maxChars),
+  searchText: ({ files, query, maxHits }) => searchTexts(files, query, maxHits),
 };

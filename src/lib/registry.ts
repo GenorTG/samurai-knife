@@ -73,6 +73,8 @@ export interface SlugAlias {
 export interface ToolMeta {
   /** URL segment and component key. Keep stable: it is a bookmark. */
   slug: string;
+  /** Launcher priority (lower first); metadata only, never affects routing or permissions. */
+  rank?: number;
   name: string;
   /** One line, verb-first, says exactly what it does. */
   tagline: string;
@@ -116,6 +118,7 @@ export const CATEGORIES: { id: ToolCategory; label: string }[] = [
 export const TOOLS: ToolMeta[] = [
   {
     slug: "web",
+    rank: 35,
     name: msg("Web workbench"),
     tagline: msg("Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps."),
     category: "dev",
@@ -269,6 +272,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "sql-lab",
+    rank: 70,
     name: msg("SQL lab"),
     tagline: msg("Format, convert between dialects, validate, build from JSON, check schemas and run SQL on a file."),
     category: "data",
@@ -494,6 +498,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "pdf",
+    rank: 50,
     name: msg("PDF toolkit"),
     tagline: msg("Edit PDFs and image scans, extract text in the browser, or create searchable PDFs with local-server OCR. Merge, split, compress and protect PDFs."),
     category: "documents",
@@ -810,6 +815,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "mcp-connect",
+    rank: 45,
     name: msg("MCP connect"),
     tagline: msg("Copy the MCP endpoint and config so an external agent can call the deterministic tools."),
     category: "dev",
@@ -981,6 +987,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "cv-studio",
+    rank: 10,
     name: msg("CV studio"),
     tagline: msg("Build CVs in Polish and English (several people or CVs per account), tailor them to job offers, export them, track applications and check your website against them."),
     category: "documents",
@@ -998,6 +1005,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "workflows",
+    rank: 30,
     name: msg("Workflows"),
     tagline: msg("n8n-style automations: connect nodes on a canvas and run them by hand, on a schedule or from a webhook. Code runs sandboxed."),
     category: "dev",
@@ -1014,6 +1022,7 @@ export const TOOLS: ToolMeta[] = [
   },
   {
     slug: "office",
+    rank: 20,
     name: msg("Office documents"),
     tagline: msg("Create, upload and edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in a self-hosted editor."),
     category: "sidecars",
@@ -1039,6 +1048,7 @@ export const TOOLS: ToolMeta[] = [
   {
     // Slug kept (slugs are permanent); the visible name avoids the ArtCraft name (their brand terms, docs/LEGAL.md).
     slug: "artcraft",
+    rank: 40,
     name: msg("Craft apps"),
     tagline: msg("Photos, vectors, video, raw, motion graphics, layouts, PDFs, UI design, documents, audio, slides, CAD and spreadsheets in thirteen open-source browser apps."),
     category: "sidecars",

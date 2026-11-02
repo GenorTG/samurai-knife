@@ -997,7 +997,6 @@
   "Chat history is kept on this server per account and conversation, shared across providers and models. Switching sends that history to the selected provider. The action journal keeps page paths and tool names only. Clear conversation deletes it.": "Historia czatu jest przechowywana na tym serwerze osobno dla konta i rozmowy, wspólna dla dostawców i modeli. Po zmianie dostawcy ta historia jest mu przekazywana. Dziennik działań zapisuje tylko ścieżki stron i nazwy narzędzi. „Wyczyść rozmowę” ją usuwa.",
   "Chat history is kept when you switch to another provider or model, and chats saved before can be brought back (Settings > Recover earlier chats).": "Historia czatu zostaje po przełączeniu na innego dostawcę lub model, a wcześniej zapisane czaty można przywrócić (Ustawienia > Przywróć wcześniejsze czaty).",
   "Chat with the assistant: it asks about your work and fills the profile in as you go.": "Porozmawiaj z asystentem: pyta o Twoją pracę i na bieżąco uzupełnia profil.",
-  "Chats saved before history was shared across providers, one per model. Open one to continue it as a new chat; the original stays until it is removed with the oldest chats.": "Czaty zapisane, zanim historia stała się wspólna dla dostawców (osobno dla każdego modelu). Otwórz jeden, żeby kontynuować go jako nowy czat; oryginał zostaje, dopóki nie zostanie usunięty razem z najstarszymi czatami.",
   "Chats working in the background: {count}": "Czaty pracujące w tle: {count}",
   "Check": "Sprawdź",
   "Check a live website (redirects, security headers, robots.txt, sitemap, headings, links, SEO), build CSP and cURL, parse URLs, write robots.txt and sitemaps.": "Sprawdź działającą stronę (przekierowania, nagłówki bezpieczeństwa, robots.txt, mapa witryny, nagłówki, linki, SEO), zbuduj CSP i cURL, rozbierz adresy URL, napisz robots.txt i mapy witryny.",
@@ -4226,7 +4225,6 @@
   "Slack": "Slack",
   "Slack — bot OAuth2": "Slack — OAuth2 bota",
   "Slack — bot token": "Slack — token bota",
-  "Small, sharp, single-purpose. Most run in your browser and keep files local. Favorites and recent history stay in this browser. PDFs use local Python; chat-widget messages go to the provider configured for your account.": "Małe, ostre, jednozadaniowe. Większość działa w przeglądarce i trzyma pliki u ciebie. Ulubione i ostatnio używane zostają w tej przeglądarce. PDF-y obsługuje lokalny Python; wiadomości z czatu idą do dostawcy ustawionego na twoim koncie.",
   "Smart Knife": "Smart Knife",
   "Smart Knife · self-hosted": "Smart Knife · na własnym serwerze",
   "Smart Knife · self-hosted · no ads, no tracking": "Smart Knife · na własnym serwerze · bez reklam i śledzenia",
@@ -5257,5 +5255,72 @@
   "Complete": "Zakończ",
   "Paused": "Wstrzymany",
   "Completed": "Ukończony",
-  "Archived": "Zarchiwizowany"
+  "Archived": "Zarchiwizowany",
+  "verification stopped: the request was cancelled": "weryfikację przerwano: żądanie zostało anulowane",
+  "Website changes are checked in one step: after a change the assistant waits for the preview, checks it and the automatic tests, and tells you what got better or worse since the last check.": "Zmiany na stronie są sprawdzane w jednym kroku: po zmianie asystent czeka na podgląd, sprawdza go oraz automatyczne testy i mówi, co się poprawiło, a co pogorszyło od ostatniego sprawdzenia.",
+  "a glob is at most {max} characters": "wzorzec glob może mieć najwyżej {max} znaków",
+  "only the first {max} entries: narrow `path` or `glob`": "tylko pierwsze {max} pozycji: zawęź `path` lub `glob`",
+  "read between 1 and {max} files per call": "w jednym wywołaniu czytaj od 1 do {max} plików",
+  "line ranges start at 1 and span at most {max} lines": "zakres wierszy zaczyna się od 1 i obejmuje najwyżej {max} wierszy",
+  "not read: this call already returned its text budget (300,000 characters); read it in another call or with fromLine/toLine": "nie przeczytano: to wywołanie wykorzystało już limit tekstu (300 000 znaków); przeczytaj plik w kolejnym wywołaniu albo z fromLine/toLine",
+  "cut at this call's text budget: read the rest with fromLine/toLine": "ucięto na limicie tekstu tego wywołania: resztę przeczytaj z fromLine/toLine",
+  "Turn limit: {rounds} model rounds, {calls} tool calls, {tokens} input tokens per message": "Limit tury: {rounds} rund modelu, {calls} wywołań narzędzi, {tokens} tokenów wejściowych na wiadomość",
+  "Input tokens per message": "Tokeny wejściowe na wiadomość",
+  "Optional: all model rounds of one message together may send at most this many prompt tokens. Empty = no limit; from {min} to {max}.": "Opcjonalnie: wszystkie rundy modelu dla jednej wiadomości mogą razem wysłać najwyżej tyle tokenów promptu. Puste = bez limitu; od {min} do {max}.",
+  "no limit": "bez limitu",
+  "{n} round": [
+    "{n} runda",
+    "{n} rundy",
+    "{n} rund"
+  ],
+  "{tokens} in": "{tokens} wejścia",
+  "{tokens} in ({share}% cached: {cached})": "{tokens} wejścia ({share}% z pamięci podręcznej: {cached})",
+  "{tokens} in (no cache)": "{tokens} wejścia (bez pamięci podręcznej)",
+  "{tokens} out ({share}% reasoning)": "{tokens} wyjścia ({share}% rozumowania)",
+  "{tokens} out": "{tokens} wyjścia",
+  "{seconds} s": "{seconds} s",
+  "Reached the per-turn input-token budget ({used} of {budget} prompt tokens; change it in Settings > Turn limit). Asking the model to summarise.": "Osiągnięto limit tokenów wejściowych na turę ({used} z {budget} tokenów promptu; zmienisz go w Ustawienia > Limit tury). Proszę model o podsumowanie.",
+  "Reached the per-turn limit ({rounds} model rounds / {calls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.": "Osiągnięto limit tury ({rounds} rund modelu / {calls} wywołań narzędzi; zmienisz go w Ustawienia > Limit tury). Proszę model o podsumowanie.",
+  "You can cap how many input tokens one message may use (Settings > Turn limit), and the line under each answer shows how much of the prompt came from the provider's cache.": "Możesz ograniczyć, ile tokenów wejściowych może zużyć jedna wiadomość (Ustawienia > Limit tury), a wiersz pod każdą odpowiedzią pokazuje, jaka część promptu pochodziła z pamięci podręcznej dostawcy.",
+  "Saved as a paused task \"{title}\" (Tasks): Continue there, or ask again here.": "Zapisano jako wstrzymane zadanie „{title}” (Zadania): kontynuuj tam albo zapytaj tu jeszcze raz.",
+  "The paused task \"{title}\" (Tasks) records this stop too.": "Wstrzymane zadanie „{title}” (Zadania) zapisuje również to zatrzymanie.",
+  "When the assistant stops before finishing (an error or the turn limit), your request is kept as a paused task in Tasks, so you can continue it later.": "Gdy asystent zatrzyma się przed końcem (błąd albo limit tury), Twoja prośba zostaje zapisana jako wstrzymane zadanie w Zadaniach, więc możesz ją dokończyć później.",
+  "Fix every fixable finding of website audit {id} (knife_site_audit_get {section:\"issues\", id:\"{id}\"}). Skip known noise (resource.* findings, a missing llms.txt, a single-run Lighthouse performance score, perf.ttfb.cold, content.js-only on a deliberately client-rendered page) and anything that needs a fact or a content choice only I can make: list those at the end. Read the related files first, edit on the work branch in as few commits as possible (knife_site_edit), open or update the pull request, then run knife_site_verify and put its evidence (verdict, score changes, new and resolved findings, checks) in the pull request summary. Do the rest without asking me again.": "Popraw każde możliwe do poprawienia znalezisko audytu strony {id} (knife_site_audit_get {section:\"issues\", id:\"{id}\"}). Pomiń znany szum (znaleziska resource.*, brak llms.txt, pojedynczy pomiar wydajności Lighthouse, perf.ttfb.cold, content.js-only na stronie celowo renderowanej w przeglądarce) oraz wszystko, co wymaga faktu albo decyzji o treści, którą mogę podjąć tylko ja: wypisz je na końcu. Najpierw przeczytaj powiązane pliki, edytuj na gałęzi roboczej w jak najmniejszej liczbie commitów (knife_site_edit), otwórz albo zaktualizuj pull request, potem uruchom knife_site_verify i wpisz jego wyniki (werdykt, zmiany ocen, nowe i rozwiązane znaleziska, testy) do opisu pull requestu. Resztę zrób bez ponownego pytania.",
+  "Fix {n} finding": [
+    "Popraw {n} znalezisko",
+    "Popraw wszystkie {n} znaleziska",
+    "Popraw wszystkie {n} znalezisk"
+  ],
+  "Website score: \"Fix all findings\" asks the assistant to fix every finding it can in one go, check the preview and describe the result in the pull request.": "Ocena strony: „Popraw wszystkie znaleziska” prosi asystenta, by za jednym razem poprawił wszystko, co może, sprawdził podgląd i opisał wynik w pull requeście.",
+  "{host} / {model} ({n} round)": [
+    "{host} / {model} ({n} runda)",
+    "{host} / {model} ({n} rundy)",
+    "{host} / {model} ({n} rund)"
+  ],
+  "Private tools. Practical AI. One workspace.": "Prywatne narzędzia. Praktyczna AI. Jedna przestrzeń pracy.",
+  "Smart Knife brings your work tools and AI together.": "Smart Knife łączy narzędzia do pracy ze sztuczną inteligencją.",
+  "Work across documents, websites, data and creative projects—with an assistant that can use the tools you already have here.": "Pracuj z dokumentami, stronami, danymi i projektami kreatywnymi — z asystentem, który korzysta z dostępnych tu narzędzi.",
+  "Explore the studios": "Poznaj przestrzenie robocze",
+  "Best features": "Najważniejsze funkcje",
+  "Focused workspaces for the jobs people come here to do.": "Przestrzenie robocze do zadań, z którymi użytkownicy tu przychodzą.",
+  "Flagship workspaces first, quick utilities after. Search or filter the full collection.": "Najpierw rozbudowane przestrzenie robocze, potem małe narzędzia. Przeszukaj lub filtruj całą kolekcję.",
+  "Delete this earlier chat for good?": "Czy na pewno trwale usunąć ten wcześniejszy czat?",
+  "Could not delete that chat.": "Nie udało się usunąć tego czatu.",
+  "Chats you cleared (the last 10) and chats saved before history was shared across providers. Open one to continue it as a new chat, or delete it for good.": "Wyczyszczone czaty (ostatnie 10) oraz czaty zapisane przed udostępnianiem historii między dostawcami. Otwórz czat jako nowy, aby go kontynuować, albo trwale go usuń.",
+  "cleared": "wyczyszczono"
+  ,"AI assistant": "Asystent AI"
+  ,"An assistant that can act across the tools, keep several chats and turn requests into trackable tasks.": "Asystent, który korzysta z narzędzi, prowadzi kilka czatów i zamienia prośby w zadania do śledzenia."
+  ,"Create per-job CV versions, check ATS readiness and track each application.": "Twórz wersje CV dopasowane do ofert, sprawdzaj je pod kątem ATS i śledź każdą aplikację."
+  ,"Website studio": "Studio stron internetowych"
+  ,"Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots.": "Audytuj stronę, twórz pull requesty na GitHubie, sprawdzaj podglądy Vercel i przeglądaj zrzuty ekranu."
+  ,"Create and edit Word, Excel and PowerPoint files in your private workspace.": "Twórz i edytuj pliki Word, Excel i PowerPoint w prywatnej przestrzeni roboczej."
+  ,"Connect services and automate repeatable work with visual workflows.": "Łącz usługi i automatyzuj powtarzalne zadania za pomocą wizualnych przepływów pracy."
+  ,"Craft apps": "Aplikacje kreatywne"
+  ,"Make and edit creative assets in a collection of browser-based apps.": "Twórz i edytuj zasoby kreatywne w zestawie aplikacji działających w przeglądarce."
+  ,"MCP for outside agents": "MCP dla zewnętrznych agentów"
+  ,"Give external agents personal tokens to work with your account's tools.": "Przekaż zewnętrznym agentom osobiste tokeny, aby mogli korzystać z narzędzi na Twoim koncie."
+  ,"Database and SQL labs": "Laboratoria baz danych i SQL"
+  ,"Format, validate and run SQL, then learn against a real database.": "Formatuj, waliduj i uruchamiaj SQL, a następnie ucz się na prawdziwej bazie danych."
+  ,"PDF and OCR": "PDF i OCR"
+  ,"Inspect, convert and extract text from PDFs with local processing where available.": "Analizuj i konwertuj pliki PDF oraz wyodrębniaj z nich tekst, korzystając w miarę możliwości z lokalnego przetwarzania."
 }

@@ -44,7 +44,19 @@ export function repairTranscript(messages: TranscriptMessage[]): TranscriptMessa
   for (let i = 0; i < messages.length; i += 1) {
     const m = messages[i];
     if (m.role === "tool") continue; // orphan: real ones are consumed below
-    out.push(m);
+    // Older runs may have persisted a provider-truncated tool argument string.
+    // The OpenAI-compatible wire API rejects the entire request if it is replayed.
+    const safeMessage = m.role === "assistant" && m.tool_calls?.length
+      ? { ...m, tool_calls: m.tool_calls.map((call) => {
+          try {
+            const value: unknown = JSON.parse(call.function.arguments || "{}");
+            return typeof value === "object" && value !== null && !Array.isArray(value) ? call : { ...call, function: { ...call.function, arguments: "{}" } };
+          } catch {
+            return { ...call, function: { ...call.function, arguments: "{}" } };
+          }
+        }) }
+      : m;
+    out.push(safeMessage);
     if (m.role !== "assistant" || !m.tool_calls?.length) continue;
     const results = new Map<string, ToolMessage>();
     let j = i + 1;
@@ -194,9 +206,23 @@ function compactTurn(turn: WireMessage[]): WireMessage[] {
 /** What the model receives: the running turn whole, earlier turns whole / compacted / summarised (see the file comment). */
 export function buildContext(transcript: TranscriptMessage[]): ModelContext {
   const stored = transcript.filter(isSummaryNotice).map((n) => n.content);
-  const wire = slimSnapshots(repairTranscript(transcript).filter((m): m is WireMessage => m.role !== "notice"));
-  const { turns } = splitTurns(wire);
-  if (turns.length === 0) return { messages: wire, summary: stored.length ? boundSummary(stored) : null, shortened: false };
+  const repaired = repairTranscript(transcript);
+  const wire: WireMessage[] = [];
+  let lastUser = "";
+  for (const message of repaired) {
+    if (message.role === "user") {
+      lastUser = message.content;
+      wire.push(message);
+    } else if (message.role !== "notice") {
+      wire.push(message);
+    } else if (message.level === "error" || (message.level === "info" && message.content.startsWith("Reached the per-turn"))) {
+      const reason = oneLine(message.content, 240);
+      wire.push({ role: "assistant", content: `[Toolbox note] previous turn ended: ${reason}; unfinished request: ${oneLine(lastUser || "(request unavailable)", 400)}` });
+    }
+  }
+  const slimmed = slimSnapshots(wire);
+  const { turns } = splitTurns(slimmed);
+  if (turns.length === 0) return { messages: slimmed, summary: stored.length ? boundSummary(stored) : null, shortened: false };
   const current = turns[turns.length - 1];
   let chars = current.reduce((sum, m) => sum + sizeOf(m), 0);
   let count = current.length;
@@ -287,4 +313,21 @@ export function pickTranscript(local: TranscriptMessage[], remote: TranscriptMes
   if (local.length === 0) return { messages: remote, from: "remote" };
   if (remote.length === 0) return { messages: local, from: "local" };
   return preferred === "local" ? { messages: local, from: "local" } : { messages: remote, from: "remote" };
+}
+
+/**
+ * The request a stopped turn leaves unfinished, for the paused task it becomes (useAgent): the message itself, or for
+ * a short follow-up ("tak", "do the rest") the last substantial request before it with the follow-up appended. Null
+ * when there is nothing worth keeping.
+ */
+export function unfinishedRequest(transcript: TranscriptMessage[], text: string): string | null {
+  const current = text.trim();
+  if (!current) return null;
+  if (current.length >= 24) return current.slice(0, 4000);
+  const users = transcript.filter((m): m is Extract<TranscriptMessage, { role: "user" }> => m.role === "user").map((m) => m.content.trim());
+  // The last user message is `current` itself; look before it.
+  for (let i = users.length - 2; i >= 0; i -= 1) {
+    if (users[i].length >= 24) return `${users[i]}\n(then: ${current})`.slice(0, 4000);
+  }
+  return current.length >= 8 ? current : null;
 }

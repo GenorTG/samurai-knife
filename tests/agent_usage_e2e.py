@@ -80,6 +80,8 @@ with sync_playwright() as pw:
     check("provider-reported cache share arrives (mock caches 40%)", u1.get("promptTokens") and 0.35 <= u1["cachedTokens"] / u1["promptTokens"] <= 0.45, u1)
     check("not flagged as estimated", not u1.get("estimated"), u1)
     check("footer is rendered under the answer", page.locator("[data-agent-usage]").count() == 1 and "1 round" in page.locator("[data-agent-usage]").first.inner_text(), page.locator("[data-agent-usage]").all_inner_texts())
+    check("the footer records who answered (provider host + model)", [m.get("model") for m in u1.get("models", [])] == ["mock-model"] and "/ mock-model" in page.locator("[data-agent-usage]").first.inner_text(), (u1.get("models"), page.locator("[data-agent-usage]").all_inner_texts()))
+    check("footer shows the cached share and cached tokens", "% cached:" in page.locator("[data-agent-usage]").first.inner_text(), page.locator("[data-agent-usage]").all_inner_texts())
     check("header shows the conversation token total", "tokens" in page.locator("[role=dialog][aria-label='Toolbox assistant'] header p").first.inner_text(), page.locator("header p").all_inner_texts())
 
     # 2) two rounds (tool call, then answer)
@@ -110,6 +112,22 @@ with sync_playwright() as pw:
     check("the run survives a provider that rejects stream_options", bool(foot4) and (foot4.get("usage") or {}).get("rounds") == 1, foot4)
     last = [m for m in history(page, k) if m["role"] == "assistant" and not m.get("tool_calls")][-1]
     check("and the answer arrived", "REJECT_STREAM_OPTIONS" in (last.get("content") or ""), last)
+
+    # 5b) per-turn input-token budget (Settings > Turn limit): server-validated, stops with the summary path
+    def put_limits(body: dict) -> int:
+        return page.evaluate("b => fetch('/api/account/assistant', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(b)}).then(r => r.status)", body)
+    check("a budget below the minimum is refused", put_limits({"maxRounds": 24, "maxToolCalls": 40, "maxInputTokens": 500}) == 400)
+    check("a budget is saved", put_limits({"maxRounds": 24, "maxToolCalls": 40, "maxInputTokens": 10000}) == 200)
+    acc = page.evaluate("fetch('/api/account').then(r => r.json())")
+    check("the account shows the budget", (acc.get("assistant") or {}).get("maxInputTokens") == 10000, acc.get("assistant"))
+    page.reload(wait_until="networkidle")
+    page.keyboard.press("Control+j")
+    page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
+    k = key(page)
+    run(page, k, "CALL:page_snapshot:{}")
+    notes = [m.get("content", "") for m in history(page, k) if m["role"] == "notice" and m.get("level") == "info"]
+    check("the budget stops the turn with the summary notice", any("input-token budget" in n for n in notes), notes[-3:])
+    check("budget reset", put_limits({"reset": True}) == 200)
 
     # 6) settings table matches the API
     page.get_by_role("button", name="Settings").click()

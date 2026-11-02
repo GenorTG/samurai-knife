@@ -107,8 +107,15 @@ Told to the assistant (system prompt "Website" line) and to outside agents (`kni
   `content.js-only` on a deliberately client-rendered page (a fix is server-rendered fallback text, not a rewrite),
   `align.*` items when the CV itself is out of date.
 - Audit the HTML pages (leave robots.txt / sitemap.xml / llms.txt out of `pages` unless they are the point), and compare
-  a new audit with the previous one by its id (`knife_site_audit_get {id}` or `section:"history"`) instead of
-  re-explaining every finding.
+  a new audit with the previous one (`knife_site_audit {compareTo:"previous"}`, or an id) instead of re-explaining every
+  finding; a finding already explained in the chat is not raised again unless it changed.
+- CV alignment matches links by URL only (normalised: scheme, `www.`, case, trailing slash, tracking parameters), never
+  by label or anchor text; a CV project also counts as on the site when the site links a CV link whose label names the
+  project (`tests/site_audit_quality.test.mjs` "alignment by URL").
+- "Do the rest" / "rób resztę" / "fix all": every safe, in-scope, fixable finding is done without asking again.
+- The Score tab's "Fix all N findings" button (N = distinct finding ids without the known noise) opens the assistant with
+  one prepared request: every fixable finding of that audit id, noise and choices only the user can make skipped (and
+  listed), edits in few commits (knife_site_edit), the PR, then knife_site_verify with its evidence in the PR summary.
 - Multi-step site work is a durable goal (`knife_goal_create`): the numbered proposal goes in the goal's steps, so a
   short "yes" continues it; checkpoint (`knife_goal_checkpoint`) after every push, preview and audit, with the audit id,
   so the work survives a lost context.
@@ -141,14 +148,35 @@ commits and audits show up by themselves.
 
 ## Tools (`src/lib/mcp/tools-site.ts`, group `site`, scope `account`)
 
-`knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
-`knife_site_page {url}`, `knife_site_files {path?, ref?}`, `knife_site_read {path, ref?}`, `knife_site_search {query}`,
-`knife_site_replace {path, find, replace, message, all?}`, `knife_site_write {message, files, delete?}`,
-`knife_site_pr {title, body}`, `knife_site_changes`, `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
-`knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. The assistant preloads the group on `site-studio` and
-`cv-studio`; its system prompt has the workflow (status -> audit -> read -> replace/write -> pr -> audit the preview;
+`knife_site_status`, `knife_site_audit {url?, target?, pages?, lighthouse?, compareTo?}`, `knife_site_verify {timeoutSec?, pages?, lighthouse?}`, `knife_site_audit_get {id?, section}`,
+`knife_site_page {url}`, `knife_site_files {path?, ref?, recursive?, glob?}`, `knife_site_read {path? | paths[], fromLine?, toLine?, ref?}`, `knife_site_search {query}`,
+`knife_site_replace {path, find, replace, message, all?}`, `knife_site_edit {message, edits[]}` (multi-file exact replacements in one commit), `knife_site_write {message, files, delete?}`,
+`knife_site_pr {title, body}`, `knife_site_changes {detail?}` (compact checks-first summary by default; expanded patches on request), `knife_site_screenshot` (see "Screenshots"), and with Vercel connected `knife_site_previews`,
+`knife_site_deploy_logs {id}`, `knife_site_deploy {force?}`. Recursive and glob listings are capped at 500 entries (`glob`: `*` in a name, `**` any folders, `?` one character, no `/` = the file name at any depth; a bounded matcher, no regex, `src/lib/site/glob.ts`); reads accept up to 20 files, 300,000 characters per call (later files come back `skipped`), and one 1-based inclusive line range of at most 1000 lines. Search: GitHub's code index covers the default branch only, so while the work branch has changes the files it changed (up to 40, 2 MB) are read from the work branch and searched in the isolate pool (`searchText`), the index's hits for those paths are dropped and every hit names its `branch`. The assistant preloads the group on `site-studio` and
+`cv-studio`; its system prompt has the workflow (status -> audit -> read -> edit/write -> pr -> audit the preview;
 copy in the site's language, facts only from the CV). Its click guard treats buttons labelled publish/deploy as
 destructive (confirmed in every trust mode but None).
+
+### Agent output
+
+The audit digest (`knife_site_audit`, `knife_site_audit_get` section all) and section `issues` group findings by id:
+`{id, severity, category, pages[], finding}` where `finding` is ONE untrusted envelope holding the title, the distinct
+details (at most 3, with their pages) and the fix. Enum fields, scores and the user's own page URLs stay structured;
+page titles/CTAs (`pageText`), PageSpeed failing audits (`lighthouseFailing`) and site-only technologies are one
+envelope each. On a 5-page, 21-finding fixture this is under half the size of the old per-field wrapping
+(`tests/site_studio.test.mjs`). `compareTo:"previous"` (or an audit id) adds `comparison` with score deltas and
+new/resolved findings in the same shape.
+
+### Verify (`knife_site_verify`, `src/lib/site/verify.ts`)
+
+One call after a push instead of the model's previews -> wait -> previews -> audit -> changes chain: polls every 10 s
+on the server (`timeoutSec` <= 240, default 240; the request's abort signal stops it: assistant route and MCP pass it
+in the tool context) until the work branch's HEAD preview is READY (Vercel deployment of that commit when linked, else
+the commit's GitHub deployment URL), audits its HTML pages (Lighthouse off by default), reads the commit's checks and
+the PR, and returns `{verdict, head, preview{state,url,waitedSec,polls}, audit{scores, findings}, comparison, pull,
+checks, next}`. Verdicts: verified, checks-failed, checks-pending, preview-failed (with the deployment id for the
+logs), preview-not-ready, no-work-branch. Effect `write` (it stores an audit; no destination in the arguments).
+Test: `tests/site_studio.test.mjs` (mock deployment in_progress -> success, timeout, abort).
 
 ## Vercel (optional, 2026-10-28)
 
@@ -183,8 +211,9 @@ the team, the project and `hasBypass`). Code: `src/lib/site/vercel.ts` (REST cal
 
 ## Screenshots (`knife_site_screenshot`, 2026-10-28)
 
-Agents that build or fix the site can SEE it: `knife_site_screenshot {target, path?, url?, viewport, fullPage?, format?,
-describe?, question?, image?}` renders one page in a real browser on the server. Code: `src/lib/vision/` (targets.ts,
+Agents that build or fix the site can SEE it: `knife_site_screenshot {target, path?, url?, viewport, fullPage?, fromY?, format?,
+describe?, question?, image?}` renders one page in a real browser on the server. A full page is cut into tiles of at most 4000 px:
+`image.truncated: true` with `image.nextFromY` = pass it as `fromY` for the next tile (`fromY` past the end is an error). Code: `src/lib/vision/` (targets.ts,
 screenshot.ts, proxy.ts, images.ts), `server/py/scripts/site_screenshot.py`, tool in `src/lib/mcp/tools-vision.ts` (group
 `site` for the assistant). Vision routing (who gets the image, who gets words) is docs/ACCOUNTS.md "Vision".
 

@@ -151,6 +151,13 @@ export interface ChatReply {
   ms?: number;
   /** The server's sticky flag: third-party text has entered this conversation (header `x-knife-untrusted: 1`). */
   untrusted?: boolean;
+  /** Who answered (header `x-knife-round-model`): the provider's host and the model id. */
+  roundModel?: RoundModel;
+}
+
+export interface RoundModel {
+  host: string;
+  model: string;
 }
 
 export type ApiFailure =

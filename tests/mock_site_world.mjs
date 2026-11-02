@@ -24,6 +24,8 @@ export function createGithub(initialFiles, initialModes = {}) {
   const deployments = []; // { id, sha, statuses: [] }
   const calls = [];
   const checksControl = { state: "success" };
+  // A new deployment answers "in_progress" for this many status reads before its success (BUILDING -> READY).
+  const deployControl = { pendingReads: 0 };
   // Repository "Website" and GitHub Pages domain (site ownership proof, src/lib/site/ownership.ts); tests may change them.
   const meta = { homepage: process.env.MOCK_REPO_HOMEPAGE ?? "", pagesCname: process.env.MOCK_PAGES_CNAME ?? "" };
   let seq = 0;
@@ -51,7 +53,7 @@ export function createGithub(initialFiles, initialModes = {}) {
     // Like Vercel: every pushed commit gets a deployment whose success status carries the preview URL.
     const id = deployments.length + 1;
     // MOCK_PREVIEW_URL (e2e): point previews at the mock site so they can be audited.
-    deployments.push({ id, sha: s, environment: "Preview", statuses: [{ state: "success", environment_url: process.env.MOCK_PREVIEW_URL || `https://preview-${s.slice(0, 7)}.example.test` }] });
+    deployments.push({ id, sha: s, environment: "Preview", pendingReads: deployControl.pendingReads, statuses: [{ state: "success", environment_url: process.env.MOCK_PREVIEW_URL || `https://preview-${s.slice(0, 7)}.example.test` }] });
   };
   const pullJson = (p) => ({
     number: p.number, html_url: `https://github.com/${REPO}/pull/${p.number}`, title: p.title, body: p.body, state: p.state,
@@ -181,10 +183,17 @@ export function createGithub(initialFiles, initialModes = {}) {
     if ((m = /^\/commits\/([0-9a-f]+)\/status$/.exec(rest))) return [200, { state: checksControl.state, statuses: checksControl.state === "none" ? [] : [{ context: "CI", state: checksControl.state, target_url: `https://ci.example.test/${m[1].slice(0, 7)}`, description: checksControl.state }] }];
     if ((m = /^\/commits\/([0-9a-f]+)\/check-runs$/.exec(rest))) return [200, { check_runs: [] }];
     if (rest === "/deployments") return [200, deployments.filter((d) => d.sha === url.searchParams.get("sha")).map((d) => ({ id: d.id, sha: d.sha, environment: d.environment }))];
-    if ((m = /^\/deployments\/(\d+)\/statuses$/.exec(rest))) return [200, deployments[Number(m[1]) - 1]?.statuses ?? []];
+    if ((m = /^\/deployments\/(\d+)\/statuses$/.exec(rest))) {
+      const d = deployments[Number(m[1]) - 1];
+      if (d && d.pendingReads > 0) {
+        d.pendingReads -= 1;
+        return [200, [{ state: "in_progress" }]];
+      }
+      return [200, d?.statuses ?? []];
+    }
     return [404, { message: `mock: no route ${method} ${rest}` }];
   }
-  return { handle, branches, commits, pulls, calls, meta, checksControl, treeModes, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
+  return { handle, branches, commits, pulls, calls, meta, checksControl, deployControl, deployments, treeModes, fileAt: (ref, path) => commits.get(resolveRef(ref))?.files.get(path) };
 }
 
 export const SITE_PAGES = {

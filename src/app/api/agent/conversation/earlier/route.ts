@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 import { authenticate, json, jsonError, readJsonBody } from "@/lib/accounts/http";
 import { getAccount } from "@/lib/accounts/store";
-import { EarlierChatError, importEarlierChat, legacySourcesOf, listEarlierChats } from "@/lib/agent-client/conversation-store";
+import { deleteEarlierChat, EarlierChatError, importEarlierChat, legacySourcesOf, listEarlierChats } from "@/lib/agent-client/conversation-store";
 import { quotaErrorResponse } from "@/lib/storage/http";
 
 export const runtime = "nodejs";
@@ -12,7 +12,8 @@ const CHAT_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 /**
  * "Recover earlier chats" (docs/ARCHITECTURE.md "Assistant context"): provider-scoped transcripts of older releases
  * (before 0.13.0.22) that no chat took over. GET ?chats=<id,id…> (the browser's known chat ids, so their own files are
- * never listed) -> { chats: EarlierChat[] }. POST { file, chatId } copies one into an empty chat (taint included).
+ * never listed) -> { chats: EarlierChat[] }; chats the user cleared are listed too (Clear keeps a copy, `archivedAt`).
+ * POST { file, chatId } copies one into an empty chat (taint included); DELETE { file } removes one for good.
  * Own account only: the store reads `conversations/<account>/`.
  */
 export async function GET(request: Request): Promise<Response> {
@@ -46,5 +47,23 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof EarlierChatError) return jsonError(error.code, error.code === "not_found" ? 404 : 409);
     return quotaErrorResponse(error) ?? jsonError("conversation_store_unavailable", 500);
+  }
+}
+
+const deleteSchema = z.object({ file: z.string().regex(/^[a-f0-9]{32}$/) }).strict();
+
+export async function DELETE(request: Request): Promise<Response> {
+  const auth = authenticate(request, true);
+  if ("response" in auth) return auth.response;
+  const read = await readJsonBody(request, 1024);
+  if ("response" in read) return read.response;
+  const parsed = deleteSchema.safeParse(read.body);
+  if (!parsed.success) return jsonError("invalid_request", 400);
+  try {
+    deleteEarlierChat(auth.account.id, parsed.data.file);
+    return json({ ok: true });
+  } catch (error) {
+    if (error instanceof EarlierChatError) return jsonError(error.code, 404);
+    return jsonError("conversation_store_unavailable", 500);
   }
 }

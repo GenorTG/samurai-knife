@@ -93,6 +93,8 @@ export interface RunUsage extends Usage {
   rounds: number;
   /** Wall time of the whole run in milliseconds. */
   ms: number;
+  /** Who answered, in order of first use: the provider host and model of each distinct one (usually one). */
+  models?: { host: string; model: string; rounds: number }[];
 }
 
 /* ------------------------------------------------------------------ formatting (locale-free: SSR safe) */
@@ -108,14 +110,18 @@ export function cacheShare(u: Usage): number {
   return u.promptTokens > 0 ? Math.round((u.cachedTokens / u.promptTokens) * 100) : 0;
 }
 
-/** One line for a turn footer: "3 rounds · 21.4k in (91% cached) · 1.6k out (60% reasoning) · 9.8 s". */
+/**
+ * One line for a turn footer, stored with the notice (English; the widget renders a translated line from `usage`):
+ * "3 rounds · 21.4k in (91% cached) · 1.6k out (60% reasoning) · 9.8 s", "no cache" when nothing was cached.
+ */
 export function describeRunUsage(u: RunUsage): string {
   const tilde = u.estimated ? "~" : "";
   const parts = [
     `${u.rounds} ${u.rounds === 1 ? "round" : "rounds"}`,
-    `${tilde}${formatTokens(u.promptTokens)} in${u.cachedTokens > 0 ? ` (${cacheShare(u)}% cached)` : ""}`,
+    `${tilde}${formatTokens(u.promptTokens)} in${u.estimated ? "" : u.cachedTokens > 0 ? ` (${cacheShare(u)}% cached)` : " (no cache)"}`,
     `${tilde}${formatTokens(u.completionTokens)} out${u.reasoningTokens > 0 ? ` (${Math.round((u.reasoningTokens / Math.max(1, u.completionTokens)) * 100)}% reasoning)` : ""}`,
     `${(u.ms / 1000).toFixed(1)} s`,
+    ...(u.models ?? []).map((m) => `${m.host} / ${m.model}${(u.models ?? []).length > 1 ? ` (${m.rounds})` : ""}`),
   ];
   return parts.join(" · ");
 }

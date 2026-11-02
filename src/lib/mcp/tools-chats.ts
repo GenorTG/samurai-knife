@@ -44,8 +44,11 @@ function readable(m: TranscriptMessage, index: number, toolNames: Map<string, st
       };
     case "tool":
       return { index, role: "tool", toolCallId: m.tool_call_id, tool: toolNames.get(m.tool_call_id) ?? "", content: wrapUntrusted(`assistant chat: output of ${toolNames.get(m.tool_call_id) || "a tool"}`, clip(m.content)) };
-    default:
-      return { index, role: "notice", level: m.level, content: wrapUntrusted("assistant chat: notice", clip(m.content, 1_000)) };
+    default: {
+      // A turn's usage footer also says which provider host and model answered its rounds (the user's own settings).
+      const models = m.level === "usage" && m.usage?.models ? m.usage.models.slice(0, 5).map((x) => ({ host: x.host, model: x.model, rounds: x.rounds })) : null;
+      return { index, role: "notice", level: m.level, content: wrapUntrusted("assistant chat: notice", clip(m.content, 1_000)), ...(models ? { models } : {}) };
+    }
   }
 }
 

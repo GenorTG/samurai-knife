@@ -58,6 +58,8 @@ export interface KnifeToolContext {
   surface?: "assistant" | "mcp";
   /** A read-only MCP key (docs/MCP.md "Key scopes"): only tools whose effect is "read" are listed and callable. */
   readOnly?: boolean;
+  /** Aborted when the caller goes away (HTTP request closed): long waits (knife_site_verify) stop early. */
+  signal?: AbortSignal;
 }
 
 export interface KnifeToolDefinition extends KnifeToolEffectInfo {

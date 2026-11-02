@@ -194,8 +194,8 @@ export async function previews(accountId: string, deps?: NetDeps) {
   const headDeployment = head ? list.find((d) => d.sha === head) ?? null : null;
   let next: string;
   if (!work?.branch) next = "No work branch yet: these are the project's newest deployments. Write changes first; Vercel then builds a preview of the work branch.";
-  else if (!headDeployment) next = "No preview of the work branch's head commit yet: Vercel usually starts one within a minute of a push. Call knife_site_previews again shortly, or knife_site_deploy to start one.";
-  else if (ACTIVE.has(headDeployment.state)) next = "The head preview is still building: call knife_site_previews again in 20-60 s.";
+  else if (!headDeployment) next = "No preview of the work branch's head commit yet: Vercel usually starts one within a minute of a push. Call knife_site_verify (it waits for it), or knife_site_deploy to start one.";
+  else if (ACTIVE.has(headDeployment.state)) next = "The head preview is still building: call knife_site_verify, which waits for it on the server and audits it.";
   else if (FAILED.has(headDeployment.state)) next = "The head preview failed: read knife_site_deploy_logs {id} for the build error, fix it on the work branch, and check again.";
   else next = "The head preview is ready: check it with knife_site_audit {target:\"preview\"} or knife_site_page {url}.";
   return {
@@ -238,11 +238,11 @@ export async function deployWorkBranch(accountId: string, force = false, deps?: 
   }
   if (!force) {
     const existing = (await vercel.listDeployments(scope, v.projectId, { sha: work.head, limit: 5 }, deps)).find((d) => !FAILED.has(d.state));
-    if (existing) return { created: false, deployment: publicDeployment(existing, work.head), next: "Vercel already has this commit: follow it with knife_site_previews." };
+    if (existing) return { created: false, deployment: publicDeployment(existing, work.head), next: "Vercel already has this commit: follow it with knife_site_verify." };
   }
   const d = await vercel.createGitDeployment(scope, project, work.branch, work.head, deps);
   mutateSite(accountId, () => undefined); // revision bump: open pages refresh
-  return { created: true, deployment: publicDeployment(d, work.head), next: "Building: call knife_site_previews in 20-60 s until the head preview is READY (or ERROR: then knife_site_deploy_logs)." };
+  return { created: true, deployment: publicDeployment(d, work.head), next: "Building: call knife_site_verify (it waits up to 240 s for READY, then audits; on ERROR read knife_site_deploy_logs)." };
 }
 
 /** For an audit of the preview: the READY head preview's URL, with the bypass header for its host when one is stored. */

@@ -84,3 +84,38 @@ test("another account's files are invisible", () => {
   assert.throws(() => importEarlierChat("genor", id, "steal"), (e) => e instanceof EarlierChatError);
   assert.deepEqual(readConversation("genor", chatConversationId("steal")).messages, []);
 });
+
+test("Clear keeps the cleared chat as an earlier chat (taint and last model included), at most KEEP_ARCHIVED, deletable", () => {
+  const { KEEP_ARCHIVED, deleteEarlierChat, noteRoundModel } = store;
+  const id = chatConversationId("keepme");
+  saveConversationContent("dora", id, { version: 1, messages: transcript("plan my website"), actions: ["/tools/x: plan"] }, "keepme");
+  noteUntrusted("dora", id, true);
+  noteRoundModel("dora", id, "keepme", { host: "api.example", model: "m-1" });
+  resetConversation("dora", id, "keepme");
+  assert.deepEqual(readConversation("dora", id).messages, [], "the chat itself is empty");
+  const [archived] = listEarlierChats("dora", [], ["keepme"]);
+  assert.ok(archived, "listed under Recover earlier chats");
+  assert.equal(archived.preview, "plan my website");
+  assert.equal(archived.chatId, "keepme");
+  assert.equal(archived.untrusted, true, "the taint stays with the copy");
+  assert.equal(archived.model, "m-1");
+  assert.ok(archived.archivedAt);
+  // Clearing an already empty chat archives nothing.
+  resetConversation("dora", id, "keepme");
+  assert.equal(listEarlierChats("dora", [], ["keepme"]).length, 1);
+  // Bounded: the oldest archives go.
+  for (let i = 0; i < KEEP_ARCHIVED + 3; i += 1) {
+    saveConversationContent("dora", id, { version: 1, messages: transcript(`talk ${i}`), actions: [] }, "keepme");
+    resetConversation("dora", id, "keepme");
+  }
+  const list = listEarlierChats("dora", [], ["keepme"]);
+  assert.equal(list.length, KEEP_ARCHIVED);
+  assert.equal(list[0].preview, `talk ${KEEP_ARCHIVED + 2}`, "newest first");
+  // Open as a new chat works on an archive; delete removes one for good; a live chat file cannot be deleted.
+  const opened = importEarlierChat("dora", list[0].file, "back_again");
+  assert.equal(opened.messages[0].content, `talk ${KEEP_ARCHIVED + 2}`);
+  deleteEarlierChat("dora", list[1].file);
+  assert.ok(!listEarlierChats("dora", [], ["keepme", "back_again"]).some((e) => e.file === list[1].file));
+  assert.throws(() => deleteEarlierChat("dora", chatConversationId("back_again")), (e) => e instanceof EarlierChatError);
+  assert.throws(() => deleteEarlierChat("genor", list[2].file), (e) => e instanceof EarlierChatError, "another account's archive does not exist");
+});

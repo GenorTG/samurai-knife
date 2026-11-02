@@ -2,7 +2,7 @@ import { chat, chatStream, fetchServerToolCatalog, runServerTool, type ChatReque
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
 import { assessServerCall, carriesUntrusted, type TurnContext } from "./server-tool-policy";
 import { installArtifactCapture } from "./artifacts";
-import { EMPTY_USAGE, addUsage, describeRunUsage, type RunUsage, type Usage } from "@/lib/usage";
+import { EMPTY_USAGE, addUsage, describeRunUsage, formatTokens, type RunUsage, type Usage } from "@/lib/usage";
 import { buildSystemPrompt } from "./system-prompt";
 import { clientLocale } from "@/lib/i18n/client-locale";
 import type {
@@ -10,6 +10,7 @@ import type {
   AssistantMessage,
   ChatReply,
   FunctionToolDef,
+  RoundModel,
   ToolCall,
   ToolMessage,
   ToolRunResult,
@@ -38,7 +39,8 @@ import { getTrustMode, isRunAllowed, requestApproval, requestForeground, resetRu
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import { buildContext, summarySection } from "./context";
-import { msg } from "@/lib/i18n/msg";
+import { msg, msgf } from "@/lib/i18n/msg";
+import { clipJsonText } from "@/lib/json-clip";
 
 /**
  * Client-driven agent loop: model call -> run requested tools (UI tools here,
@@ -54,6 +56,7 @@ export { MAX_STORED_MESSAGES } from "./context";
 const TOOL_RESULT_LIMIT = 12000;
 /** Per-round completion cap (reasoning included). Normal rounds are <500 tokens; a runaway round (copying base64, looping reasoning) otherwise burns minutes. */
 const ROUND_MAX_TOKENS = 8000;
+const WRITE_ROUND_MAX_TOKENS = 16000;
 
 export type LoopOutcome = "done" | "aborted" | "error" | "limit" | "login_required" | "provider_missing";
 
@@ -128,10 +131,8 @@ function parseArgs(raw: string): { ok: true; args: Record<string, unknown> } | {
   }
 }
 
-function clipResult(content: string): string {
-  return content.length > TOOL_RESULT_LIMIT
-    ? `${content.slice(0, TOOL_RESULT_LIMIT)}\n…[truncated, ${content.length} chars total]`
-    : content;
+export function clipToolResult(content: string): string {
+  return clipJsonText(content, TOOL_RESULT_LIMIT);
 }
 
 /** The durable journal records changes, never user field values or file names. */
@@ -217,7 +218,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const { signal, onMessage } = options;
   const chatId = options.chatId ?? "default";
   const rt = runtimeFor(chatId);
-  const { maxRounds, maxToolCalls } = resolveTurnLimits(options.limits);
+  const { maxRounds, maxToolCalls, maxInputTokens } = resolveTurnLimits(options.limits);
   const onActivity = rt.setActivity;
   installArtifactCapture();
   const working: TranscriptMessage[] = [...options.history];
@@ -260,13 +261,19 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const runStartedAt = Date.now();
   let used: Usage = EMPTY_USAGE;
   let rounds = 0;
-  const countRound = (usage: Usage | null | undefined): void => {
+  const models: NonNullable<RunUsage["models"]> = [];
+  const countRound = (usage: Usage | null | undefined, who?: RoundModel): void => {
     rounds += 1;
     if (usage) used = addUsage(used, usage);
+    if (who) {
+      const known = models.find((m) => m.host === who.host && m.model === who.model);
+      if (known) known.rounds += 1;
+      else if (models.length < 5) models.push({ ...who, rounds: 1 });
+    }
   };
   const usageFooter = (): void => {
     if (rounds === 0) return;
-    const run: RunUsage = { ...used, rounds, ms: Date.now() - runStartedAt };
+    const run: RunUsage = { ...used, rounds, ms: Date.now() - runStartedAt, ...(models.length ? { models } : {}) };
     append({ role: "notice", level: "usage", content: describeRunUsage(run), usage: run });
   };
 
@@ -287,6 +294,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
 
     let toolCalls = 0;
     let limitHit = false;
+    /** The account's input-token budget (Settings > Turn limit; off unless set): checked after every round. */
+    let tokensHit = false;
 
     for (let round = 0; round < maxRounds; round += 1) {
       if (signal.aborted) return "aborted";
@@ -294,7 +303,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       onActivity("Thinking…");
       roundStarted(chatId);
       const result = await callModel(
-        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: ROUND_MAX_TOKENS },
+        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: serverTools.some((tool) => tool.function.name === "knife_site_write") ? WRITE_ROUND_MAX_TOKENS : ROUND_MAX_TOKENS },
         buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
         {
           onText: (delta) => appendDraft(delta, chatId),
@@ -318,7 +327,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         return "error";
       }
 
-      countRound(result.value.usage);
+      countRound(result.value.usage, result.value.roundModel);
+      if (maxInputTokens && used.promptTokens >= maxInputTokens) tokensHit = true;
       const reply: AssistantMessage = result.value.message;
       const calls = uniqueCallIds(reply.tool_calls ?? [], takenIds(working));
       if (calls.length === 0) {
@@ -328,9 +338,30 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
         if (round + 1 < maxRounds && deliverSteering()) continue;
         return "done";
       }
-      append({ role: "assistant", content: reply.content, tool_calls: calls });
+      const truncatedRound = result.value.finishReason === "length";
+      const safeCalls = calls.map((call) => {
+        if (truncatedRound) return { ...call, function: { ...call.function, arguments: "{}" } };
+        try {
+          const value: unknown = JSON.parse(call.function.arguments || "{}");
+          return typeof value === "object" && value !== null && !Array.isArray(value)
+            ? call
+            : { ...call, function: { ...call.function, arguments: "{}" } };
+        } catch {
+          return { ...call, function: { ...call.function, arguments: "{}" } };
+        }
+      });
+      append({ role: "assistant", content: reply.content, tool_calls: safeCalls });
 
-      for (const call of calls) {
+      for (const call of safeCalls) {
+        const original = calls.find((candidate) => candidate.id === call.id);
+        if (truncatedRound || (call.function.arguments === "{}" && original?.function.arguments !== "{}")) {
+          append({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify({ ok: false, error: "Tool call was not run because its arguments were truncated or invalid. Split the work into smaller calls; for knife_site_write keep each whole-file write around 6 kB or less, or use knife_site_edit." }),
+          });
+          continue;
+        }
         if (signal.aborted) {
           append({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "Cancelled by the user." }) });
           continue;
@@ -354,18 +385,20 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
           ? loading.ok ? runLoadTools(loading.args, activeGroups, allTools) : { ok: false, content: JSON.stringify({ ok: false, error: loading.error }) }
           : await executeCall(call, toolNames, serverToolNames, options, serverGate);
         stepFinished(call.id, run.ok, chatId);
-        const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipResult(run.content) };
+        const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipToolResult(run.content) };
         append(toolResult);
         if (run.ok && call.function.name !== LOAD_TOOLS_NAME) {
           options.onAction?.(`${window.location.pathname}: ${journalAction(call.function.name, label)}`.slice(0, 240));
         }
       }
       if (signal.aborted) return "aborted";
-      if (limitHit) break;
+      if (limitHit || tokensHit) break;
     }
 
-    // Round or tool budget exhausted: one last call without tools so the user gets a summary.
-    notice("info", `Reached the per-turn limit (${maxRounds} model rounds / ${maxToolCalls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.`);
+    // Round, tool or token budget exhausted: one last call without tools so the user gets a summary.
+    notice("info", tokensHit && maxInputTokens
+      ? msgf("Reached the per-turn input-token budget ({used} of {budget} prompt tokens; change it in Settings > Turn limit). Asking the model to summarise.", { used: formatTokens(used.promptTokens), budget: formatTokens(maxInputTokens) })
+      : msgf("Reached the per-turn limit ({rounds} model rounds / {calls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.", { rounds: maxRounds, calls: maxToolCalls }));
     onActivity("Summarising…");
     rt.advance("summarising");
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
@@ -376,7 +409,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       [{ role: "user", content: "[Toolbox note, not from the user] The tool budget for this turn is exhausted. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
     );
     if (signal.aborted) return "aborted";
-    if (wrapUp.ok) countRound(wrapUp.value.usage);
+    if (wrapUp.ok) countRound(wrapUp.value.usage, wrapUp.value.roundModel);
     if (wrapUp.ok && wrapUp.value.message.content?.trim()) {
       append({ role: "assistant", content: wrapUp.value.message.content });
     } else if (!wrapUp.ok) {

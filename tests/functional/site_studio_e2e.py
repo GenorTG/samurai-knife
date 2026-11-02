@@ -24,6 +24,7 @@ Usage: python3 tests/functional/site_studio_e2e.py [--headed]
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -109,15 +110,25 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         # ---------------------------------------------------------------- 1. connect
         go(page, "/tools/cv-studio?tab=website&step=connect")
         # The website now lives in the CV studio: the repository path is the second way in (the address alone is the first).
-        page.get_by_role("button", name="Its GitHub repository").click()
+        # A click before hydration is lost (no React handler yet): click until the repository form appears.
+        repo_way = page.get_by_role("button", name="Its GitHub repository")
+        for _ in range(20):
+            repo_way.click()
+            if page.get_by_role("heading", name="Your website's address").count() == 0 or page.get_by_label("GitHub repository").count():
+                break
+            page.wait_for_timeout(500)
         # The tab re-renders its form once the GitHub/connection status arrives: type only after that, or the input is reset.
         page.wait_for_load_state("networkidle")
         # The scratch server can have a GitHub App configured; choose the PAT path this test exercises first (switching
         # the access type resets the repository field).
         access = page.get_by_role("radiogroup", name="GitHub access")
         if access.count():
-            access.get_by_text("Personal token", exact=True).click()
-        page.get_by_label("GitHub repository").fill("genor/website")
+            personal_token = access.get_by_role("radio", name="Personal token")
+            personal_token.click()
+            expect(personal_token).to_have_attribute("aria-checked", "true")
+        repository = page.get_by_label("GitHub repository")
+        expect(repository).to_be_visible(timeout=10_000)
+        repository.fill("genor/website")
         page.get_by_label("Production URL").fill(site_url)
         page.get_by_label("GitHub token").fill(TOKEN)
         page.get_by_text("More settings").click()
@@ -140,6 +151,8 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         issues = page.locator("main").inner_text()
         check("issues with fixes: missing alt text and the stale copyright", "have no alt text" in issues and "Footer says © 2023" in issues and "Fix:" in issues, issues[:400])
         check("Lighthouse and site checks panels", page.get_by_text("Lighthouse (PageSpeed Insights)").is_visible() and page.get_by_text("Site checks").is_visible())
+        fix_all = page.locator("[data-fix-all]")
+        check("a 'Fix all findings' button counts the fixable findings (known noise left out)", fix_all.count() == 1 and re.search(r"Fix (all \d+ findings|1 finding)", fix_all.inner_text() or "") is not None, fix_all.all_inner_texts())
 
         # ---------------------------------------------------------------- 3. copy & CV (CV seeded by an agent)
         ok, text = mcp.tool("knife_cv_import", {"profile": {

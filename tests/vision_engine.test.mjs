@@ -51,7 +51,7 @@ test("a real browser behind the proxy: page rendered, other ports refused, navig
   const site = await serve((path, req) => {
     if (path === "/") {
       return [200, "text/html", `<!doctype html><html><head><title>Fake site</title><link rel="stylesheet" href="/s.css"></head>
-        <body><h1>Hello vision</h1><img src="http://127.0.0.1:${secret.port}/leak.png"><p style="height:3000px">tall</p></body></html>`];
+        <body><h1>Hello vision</h1><img src="http://127.0.0.1:${secret.port}/leak.png"><p style="height:9000px">tall</p><footer>Footer at bottom</footer></body></html>`];
     }
     if (path === "/s.css") return [200, "text/css", "body{background:#fafafa;font-family:sans-serif} h1{color:#c00}"];
     if (path === "/away") return [200, "text/html", `<script>location.href="http://127.0.0.1:${secret.port}/";</script>`];
@@ -72,11 +72,19 @@ test("a real browser behind the proxy: page rendered, other ports refused, navig
     assert.equal(shot.title, "Fake site");
     assert.equal(sniffImage(shot.image.bytes), shot.image.mime);
     assert.ok(shot.image.height > 800 && shot.image.height <= 4000, `full page height ${shot.image.height}`);
+    assert.equal(shot.truncated, true);
+    assert.equal(shot.nextFromY, 4000);
+    const tile2 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, fromY: shot.nextFromY, policy });
+    assert.equal(tile2.image.height, 4000);
+    assert.equal(tile2.nextFromY, 8000);
+    const tile3 = await takeScreenshot("owner", target, { viewport: "desktop", fullPage: true, fromY: tile2.nextFromY, policy });
+    assert.equal(tile3.truncated, false);
+    assert.ok(tile3.image.height > 0 && tile3.image.height < 4000);
     assert.equal(getImage("owner", shot.image.id)?.id, shot.image.id);
     assert.equal(getImage("someone-else", shot.image.id), null);
     assert.equal(secret.hits.size, 0, "the browser reached a port the policy does not allow");
     assert.ok(shot.refusedConnections >= 1, "the proxy refused the off-policy image");
-    assert.equal(site.hits.get("/s.css"), 1);
+    assert.equal(site.hits.get("/s.css"), 3, "each screenshot tile renders in its own isolated browser run");
 
     await assert.rejects(
       takeScreenshot("owner", { url: `${origin}/away`, kind: "url", allowedOrigins: [origin] }, { viewport: "mobile", policy }),

@@ -124,6 +124,30 @@ test("regression: a github.io project link from the CV that the site carries (JS
   assert.match(project.detail, /Demo/);
 });
 
+test("alignment by URL: a CV link the site carries counts whatever its label or anchor text, and lends it to its project", () => {
+  const cv = emptyCvData();
+  cv.profile.contact.name = "Jan Kowalski";
+  cv.profile.projects = [{ id: "p1", name: "Finetune Studio", url: "", summary: { pl: "", en: "" }, tech: [], bullets: [], pinned: true, source: "" }];
+  cv.profile.contact.links = [
+    { label: "Finetune Studio (prezentacja, GitHub Pages)", url: "https://janko.github.io/finetune-studio/" },
+    { label: "Mój profil zawodowy", url: "https://www.linkedin.com/in/janko/" },
+  ];
+  // The site never writes either label: one anchor says "Demo", the other is an icon.
+  const html = `<html lang="pl"><head><title>Jan</title></head><body><h1>Jan Kowalski</h1><p>Narzędzie do dostrajania modeli.</p>
+    <a href="https://janko.github.io/finetune-studio">Demo</a><a href="https://linkedin.com/in/janko" aria-label="in"><svg></svg></a></body></html>`;
+  const { facts } = analyzePage(fake(html));
+  const a = alignCvWithSite(cv, facts.text, [...facts.links.profiles, ...facts.links.all, ...facts.links.jsonLd], facts.links.contacts, "https://jan.example.test");
+  const item = (label) => a.items.find((i) => i.label === label);
+  assert.equal(item("Finetune Studio (prezentacja, GitHub Pages)").onSite, true, "the URL is linked; the label is not on the page");
+  assert.equal(item("Mój profil zawodowy").onSite, true);
+  assert.equal(item("Finetune Studio").onSite, true, "the project counts through its CV link on the site");
+  assert.ok(!alignmentIssues(a).some((i) => ["align.links", "align.project-links", "align.projects"].includes(i.id)));
+  // A different URL does not count, even with the same label text on the page.
+  cv.profile.contact.links[0].url = "https://janko.github.io/other/";
+  const b = alignCvWithSite(cv, `${facts.text} Finetune Studio (prezentacja, GitHub Pages)`, facts.links.all, [], "https://jan.example.test");
+  assert.equal(b.items.find((i) => i.kind === "projectLink").onSite, false);
+});
+
 test("a JavaScript-only page is one finding, not no-H1 + thin + no-CTA", () => {
   const { facts, issues } = analyzePage(fake(SITE_PAGES["/v2"]));
   assert.equal(facts.wordCount, 0);

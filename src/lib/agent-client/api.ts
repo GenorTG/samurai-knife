@@ -1,6 +1,6 @@
 import { parseUsage, type UsageSummary } from "@/lib/usage";
 import type { KnifeToolEffectInfo } from "@/lib/mcp/define";
-import { UNTRUSTED_HEADER } from "./server-tool-policy";
+import { ROUND_MODEL_HEADER, UNTRUSTED_HEADER } from "./server-tool-policy";
 import type {
   AccountChoice,
   AccountInfo,
@@ -18,6 +18,7 @@ import type {
   WireMessage,
   ProviderProfileInfo,
   VisionProbeResult,
+  RoundModel,
 } from "./types";
 import { resolveTurnLimits, type TurnLimits } from "./turn-limits";
 import type { ConversationContent, DurableConversation } from "./conversation-store";
@@ -131,7 +132,7 @@ export async function fetchAccount(): Promise<ApiResult<AccountInfo>> {
 }
 
 function parseAssistant(value: unknown): AccountInfo["assistant"] {
-  return { ...resolveTurnLimits(isRecord(value) ? { maxRounds: value.maxRounds, maxToolCalls: value.maxToolCalls } : null), custom: isRecord(value) && value.custom === true };
+  return { ...resolveTurnLimits(isRecord(value) ? { maxRounds: value.maxRounds, maxToolCalls: value.maxToolCalls, maxInputTokens: value.maxInputTokens } : null), custom: isRecord(value) && value.custom === true };
 }
 
 /** PUT /api/account/assistant: the per-turn budget (null = back to the defaults). */
@@ -272,6 +273,8 @@ export interface EarlierChatInfo {
   messages: number;
   preview: string;
   untrusted: boolean;
+  /** The user cleared this chat at this time (Clear keeps a copy). */
+  archivedAt: string | null;
 }
 
 export async function fetchEarlierChats(chatIds: readonly string[]): Promise<ApiResult<EarlierChatInfo[]>> {
@@ -291,9 +294,17 @@ export async function fetchEarlierChats(chatIds: readonly string[]): Promise<Api
       messages: typeof c.messages === "number" ? c.messages : 0,
       preview: str(c.preview) ?? "",
       untrusted: c.untrusted === true,
+      archivedAt: str(c.archivedAt),
     }];
   });
   return { ok: true, value: chats };
+}
+
+/** Delete an earlier chat for good (Settings > Recover earlier chats). */
+export async function deleteEarlierChat(file: string): Promise<ApiResult<null>> {
+  const r = await call("/api/agent/conversation/earlier", { method: "DELETE", body: { file } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
 }
 
 /** "Open as a new chat": the server copies the earlier transcript (journal and taint) into `chatId`. */
@@ -301,6 +312,15 @@ export async function importEarlierChat(file: string, chatId: string): Promise<A
   const r = await call("/api/agent/conversation/earlier", { method: "POST", body: { file, chatId } });
   if ("failure" in r) return { ok: false, failure: r.failure };
   return r.res.ok ? { ok: true, value: null } : { ok: false, failure: failureFrom(r.res, r.body) };
+}
+
+/** A turn ended by an error or a limit with its request unfinished: keep it as a paused task (agent-work/goals.ts). */
+export async function captureUnfinished(request: string, reason: "error" | "limit", detail?: string): Promise<ApiResult<{ created: boolean; title: string }>> {
+  const r = await call("/api/agent/goals", { method: "POST", body: { action: "capture", request: request.slice(0, 4000), reason, ...(detail ? { detail: detail.slice(0, 300) } : {}) } });
+  if ("failure" in r) return { ok: false, failure: r.failure };
+  if (!r.res.ok) return { ok: false, failure: failureFrom(r.res, r.body) };
+  const goal = isRecord(r.body) && isRecord(r.body.goal) ? r.body.goal : {};
+  return { ok: true, value: { created: isRecord(r.body) && r.body.created === true, title: str(goal.title) ?? "" } };
 }
 
 export async function resetConversation(chatId = "default"): Promise<ApiResult<null>> {
@@ -327,6 +347,20 @@ function parseToolCalls(value: unknown): ToolCall[] | undefined {
     });
   });
   return out.length > 0 ? out : undefined;
+}
+
+/** `<host> <model>` from /api/agent/chat, URI-encoded parts; anything malformed is ignored. */
+function roundModelHeader(res: Response): RoundModel | undefined {
+  const raw = res.headers.get(ROUND_MODEL_HEADER);
+  const parts = raw?.split(" ");
+  if (!parts || parts.length !== 2) return undefined;
+  try {
+    const host = decodeURIComponent(parts[0]).slice(0, 253);
+    const model = decodeURIComponent(parts[1]).slice(0, 200);
+    return host || model ? { host, model } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** /api/agent/chat marks a conversation that holds third-party text (conversation-store.ts `untrusted`). */
@@ -365,6 +399,7 @@ export async function chat(request: ChatRequest, signal?: AbortSignal): Promise<
       finishReason: str(body.finishReason),
       usage: parseUsage(body.usage),
       ...(untrustedHeader(res) ? { untrusted: true } : {}),
+      ...(roundModelHeader(res) ? { roundModel: roundModelHeader(res) } : {}),
     },
   };
 }
@@ -522,7 +557,8 @@ export async function chatStream(
   }
   if (streamError !== null) return { ok: false, failure: { kind: "error", status: 502, message: streamError } };
   if (reply === null) return { ok: false, failure: { kind: "error", status: 502, message: "stream ended without a reply" } };
-  return { ok: true, value: untrustedHeader(res) ? { ...(reply as ChatReply), untrusted: true } : reply };
+  const roundModel = roundModelHeader(res);
+  return { ok: true, value: { ...(reply as ChatReply), ...(untrustedHeader(res) ? { untrusted: true } : {}), ...(roundModel ? { roundModel } : {}) } };
 }
 
 /** This account's token counters from the server-side ledger (today, 7 days, total, per model). */

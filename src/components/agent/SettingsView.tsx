@@ -4,10 +4,11 @@ import { msgf } from "@/lib/i18n/msg";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Field, Notice, TextArea, TextInput } from "@/components/ui";
 import { cx } from "@/lib/format";
-import { changeProfile, fetchEarlierChats, importEarlierChat, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider, type EarlierChatInfo } from "@/lib/agent-client/api";
+import { changeProfile, deleteEarlierChat, fetchEarlierChats, importEarlierChat, listModels, probeVisionModels, saveProvider, saveTurnLimits, testProvider, type EarlierChatInfo } from "@/lib/agent-client/api";
 import { UsagePanel } from "./UsagePanel";
 import type { AccountInfo, ProviderInput, ProviderModelDetails, VisionProbeResult } from "@/lib/agent-client/types";
 import { TURN_LIMIT_BOUNDS } from "@/lib/agent-client/turn-limits";
+import { formatTokens } from "@/lib/usage";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
@@ -749,24 +750,29 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
   const saved = account.assistant;
   const [rounds, setRounds] = useState(String(saved.maxRounds));
   const [calls, setCalls] = useState(String(saved.maxToolCalls));
+  const [tokens, setTokens] = useState(saved.maxInputTokens ? String(saved.maxInputTokens) : "");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<Status>(null);
   const bounds = TURN_LIMIT_BOUNDS;
   const roundsValue = Number(rounds);
   const callsValue = Number(calls);
+  // Empty = no token budget (the default).
+  const tokensValue = tokens.trim() ? Number(tokens) : null;
+  const tokensValid = tokensValue === null || (Number.isInteger(tokensValue) && tokensValue >= bounds.maxInputTokens.min && tokensValue <= bounds.maxInputTokens.max);
   const valid =
     Number.isInteger(roundsValue) && roundsValue >= bounds.maxRounds.min && roundsValue <= bounds.maxRounds.max &&
-    Number.isInteger(callsValue) && callsValue >= bounds.maxToolCalls.min && callsValue <= bounds.maxToolCalls.max;
-  const changed = roundsValue !== saved.maxRounds || callsValue !== saved.maxToolCalls;
+    Number.isInteger(callsValue) && callsValue >= bounds.maxToolCalls.min && callsValue <= bounds.maxToolCalls.max && tokensValid;
+  const changed = roundsValue !== saved.maxRounds || callsValue !== saved.maxToolCalls || tokensValue !== (saved.maxInputTokens ?? null);
   const save = async (reset: boolean) => {
     setBusy(true);
     setNote(null);
-    const result = await saveTurnLimits(reset ? null : { maxRounds: roundsValue, maxToolCalls: callsValue });
+    const result = await saveTurnLimits(reset ? null : { maxRounds: roundsValue, maxToolCalls: callsValue, ...(tokensValue !== null ? { maxInputTokens: tokensValue } : {}) });
     setBusy(false);
     if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not save the turn limit.") });
     if (reset) {
       setRounds(String(bounds.maxRounds.default));
       setCalls(String(bounds.maxToolCalls.default));
+      setTokens("");
     }
     setNote({ tone: "good", text: tr("Turn limit saved: it applies from the next message.") });
     await onSaved();
@@ -774,7 +780,9 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
   return (
     <details className="rounded-lg border border-line px-3 py-2" data-turn-limit open={saved.custom || undefined}>
       <summary className="cursor-pointer text-xs text-muted select-none">
-        {tr("Turn limit: {rounds} model rounds, {calls} tool calls per message", { rounds: String(saved.maxRounds), calls: String(saved.maxToolCalls) })}
+        {saved.maxInputTokens
+          ? tr("Turn limit: {rounds} model rounds, {calls} tool calls, {tokens} input tokens per message", { rounds: String(saved.maxRounds), calls: String(saved.maxToolCalls), tokens: formatTokens(saved.maxInputTokens) })
+          : tr("Turn limit: {rounds} model rounds, {calls} tool calls per message", { rounds: String(saved.maxRounds), calls: String(saved.maxToolCalls) })}
       </summary>
       <div className="mt-3 space-y-3">
         <p className="text-[11px] leading-snug text-faint">
@@ -793,6 +801,13 @@ function TurnLimitPanel({ account, onSaved }: { account: AccountInfo; onSaved: (
             <span className="block text-[11px] text-faint">{tr("From {min} to {max}; default {value}.", { min: String(bounds.maxToolCalls.min), max: String(bounds.maxToolCalls.max), value: String(bounds.maxToolCalls.default) })}</span>
           </span>
           <TextInput type="number" inputMode="numeric" min={bounds.maxToolCalls.min} max={bounds.maxToolCalls.max} step={1} value={calls} onChange={(e) => setCalls(e.target.value)} aria-label={tr("Tool calls per message")} className="h-8 text-xs tabular-nums" />
+        </label>
+        <label className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 text-xs text-muted" data-turn-limit-row>
+          <span className="min-w-0">
+            {tr("Input tokens per message")}
+            <span className="block text-[11px] text-faint">{tr("Optional: all model rounds of one message together may send at most this many prompt tokens. Empty = no limit; from {min} to {max}.", { min: formatTokens(bounds.maxInputTokens.min), max: formatTokens(bounds.maxInputTokens.max) })}</span>
+          </span>
+          <TextInput type="number" inputMode="numeric" min={bounds.maxInputTokens.min} max={bounds.maxInputTokens.max} step={1000} value={tokens} placeholder={tr("no limit")} onChange={(e) => setTokens(e.target.value)} aria-label={tr("Input tokens per message")} className="h-8 text-xs tabular-nums" />
         </label>
         {!valid ? <p className="text-[11px] text-danger">{tr("Enter whole numbers within the limits shown.")}</p> : null}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -844,6 +859,15 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
     if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not open that chat.") });
     onOpenChat(chatId);
   };
+  const remove = async (file: string) => {
+    if (!window.confirm(tr("Delete this earlier chat for good?"))) return;
+    setBusy(file);
+    setNote(null);
+    const result = await deleteEarlierChat(file);
+    setBusy(null);
+    if (!result.ok) return setNote({ tone: "error", text: result.failure.kind === "error" ? m(result.failure.message) : tr("Could not delete that chat.") });
+    setChats((current) => (current ?? []).filter((c) => c.file !== file));
+  };
   return (
     <details className="rounded-lg border border-line px-3 py-2" data-earlier-chats>
       <summary className="cursor-pointer text-xs text-muted select-none">
@@ -851,7 +875,7 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
       </summary>
       <div className="mt-2 space-y-2">
         <p className="text-[11px] leading-snug text-faint">
-          {tr("Chats saved before history was shared across providers, one per model. Open one to continue it as a new chat; the original stays until it is removed with the oldest chats.")}
+          {tr("Chats you cleared (the last 10) and chats saved before history was shared across providers. Open one to continue it as a new chat, or delete it for good.")}
         </p>
         <ul className="space-y-2">
           {chats.map((chat) => (
@@ -863,11 +887,17 @@ function EarlierChatsPanel({ chatIds, onOpenChat }: { chatIds: string[]; onOpenC
                 {tn("{n} message", "{n} messages", chat.messages)}
                 {" · "}
                 {date(chat.modifiedAt, { dateStyle: "medium", timeStyle: "short" })}
+                {chat.archivedAt ? <> · {tr("cleared")}</> : null}
                 {chat.untrusted ? <> · {tr("contains text from outside sources")}</> : null}
               </p>
-              <Button size="sm" variant="ghost" className="mt-1" disabled={busy !== null} onClick={() => void open(chat.file)}>
-                {busy === chat.file ? tr("Opening…") : tr("Open as a new chat")}
-              </Button>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void open(chat.file)}>
+                  {busy === chat.file ? tr("Opening…") : tr("Open as a new chat")}
+                </Button>
+                <Button size="sm" variant="ghost" data-earlier-delete="" disabled={busy !== null} onClick={() => void remove(chat.file)}>
+                  {tr("Delete")}
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

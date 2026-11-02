@@ -61,6 +61,8 @@ export function chromiumPath(env: NodeJS.ProcessEnv = process.env): string | nul
 export interface ScreenshotOptions {
   viewport: ViewportName;
   fullPage?: boolean;
+  /** Vertical document offset for a full-page screenshot tile. */
+  fromY?: number;
   format?: "png" | "jpeg";
   /** Tests: lower limits. */
   limits?: Partial<typeof SHOT_LIMITS>;
@@ -75,6 +77,7 @@ export interface ScreenshotResult {
   finalUrl: string;
   status: number | null;
   truncated: boolean;
+  nextFromY: number | null;
   requests: number;
   blockedRequests: number;
   refusedConnections: number;
@@ -90,6 +93,7 @@ interface ScriptData {
   title: string;
   status: number | null;
   truncated: boolean;
+  nextFromY: number | null;
   requests: number;
   blocked: number;
 }
@@ -121,6 +125,7 @@ export async function takeScreenshot(accountId: string, target: ScreenshotTarget
       ...(target.allowedPaths ? { allowedPaths: target.allowedPaths } : {}),
       viewport,
       fullPage: options.fullPage === true,
+      fromY: options.fromY ?? 0,
       maxHeight: limits.maxHeight,
       format: options.format ?? "png",
       quality: 80,
@@ -165,6 +170,7 @@ export async function takeScreenshot(accountId: string, target: ScreenshotTarget
       finalUrl: data.finalUrl,
       status: data.status,
       truncated: data.truncated,
+      nextFromY: data.nextFromY,
       requests: data.requests,
       blockedRequests: data.blocked,
       refusedConnections: stats.refused,

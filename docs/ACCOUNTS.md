@@ -123,10 +123,26 @@ SHA-256 of the raw token only).
   the base URL and model stay the same, and takes `--vision native|none` (it used to rebuild the provider without
   them, which silently turned vision off).
 - Assistant preferences (`src/lib/agent-client/turn-limits.ts`, `PUT /api/account/assistant`): the per-turn budget of
-  the in-page assistant, `{maxRounds 4-100 (default 24), maxToolCalls 4-200 (default 40)}` or `{reset: true}`, stored as
-  `assistant` on the account (null = defaults; an out-of-bounds hand edit reads as null rather than breaking the
-  file). The public account always carries `assistant: {maxRounds, maxToolCalls, custom}`; the loop
-  (`src/lib/agent-client/loop.ts`) reads it, and its limit notice names the numbers in use. Settings > "Turn limit".
+  the in-page assistant, `{maxRounds 4-100 (default 24), maxToolCalls 4-200 (default 40), maxInputTokens? 10,000-10,000,000
+  (default: none, no budget)}` or `{reset: true}`, stored as `assistant` on the account (null = defaults; an
+  out-of-bounds hand edit reads as null rather than breaking the file; an out-of-bounds token budget alone reads as off).
+  The public account always carries `assistant: {maxRounds, maxToolCalls, maxInputTokens?, custom}`; the loop
+  (`src/lib/agent-client/loop.ts`) reads it, adds up the prompt tokens every round reports (estimates when the provider
+  reports none) and stops after the round that reaches the budget, with the same summary call as the round and tool
+  limits; its notice names the numbers in use. Settings > "Turn limit". The turn footer shows the prompt tokens with
+  the cached share and count, or "no cache" when the provider reported none.
+- Prompt caching (design note, 2026-11-01): providers that cache on their own (OpenAI, DeepSeek, Kimi, most
+  OpenAI-compatible gateways) report it in `usage` and the footer shows it. Anthropic's OpenAI-compatible endpoint does
+  NOT cache and returns `prompt_tokens_details` always empty (docs.anthropic.com "OpenAI SDK compatibility",
+  limitations); caching there needs the native Messages API (`POST /v1/messages` with `cache_control: {type:
+  "ephemeral"}` breakpoints, `usage.cache_read_input_tokens` / `cache_creation_input_tokens` in the answer). Plan, not
+  built: a native adapter for the Anthropic host in `/api/agent/chat` that maps our wire messages (system, tool calls,
+  tool results, images) to Messages blocks, puts one breakpoint after the system prompt + tool definitions (stable across
+  rounds) and one on the last tool result of the previous round, streams Messages SSE back as our chat-completions
+  deltas, and normalises usage (`normalizeUsage` already reads `cache_read_input_tokens`). Until then the per-round
+  prompt is kept small instead: tool groups load on demand, earlier turns are compacted, tool results are clipped
+  JSON-aware (12k characters in the widget, 20k on the tool route), and the site tools batch reads/edits and wait
+  server-side (knife_site_verify) so a site job takes fewer rounds.
 
 - Migration: a v1 file (no `version`) is migrated explicitly to v2 with legacy records active admins (no email). In v2, missing role defaults to `user` and missing status to `disabled`; malformed or unknown values fail closed. The next change writes `version: 2`. The CLI does the same, so either side may write first.
 - Reads cache by mtime + size and return copies; changes still lock, re-read, validate and atomically write. A periodic sweeper removes expired pending registrations. Pending accounts are capped (defaults: 2,000 total, 50 per email domain, 5 per client IP prefix); at capacity new signups receive 429 + Retry-After.

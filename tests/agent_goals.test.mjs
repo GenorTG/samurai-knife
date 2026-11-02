@@ -77,3 +77,27 @@ test("delete one goal; account deletion removes the goals file", async () => {
   deleteAccountData("alice");
   assert.ok(!existsSync(accountScope("alice").goalsFile));
 });
+
+test("an unfinished request becomes ONE paused goal (error or limit), a repeat adds history; short follow-ups keep the real request", async () => {
+  const { unfinishedRequest } = await import("../src/lib/agent-client/context.ts");
+  const first = goals.captureUnfinishedRequest("alice", { request: "Popraw wszystkie znaleziska audytu na mojej stronie", reason: "limit" });
+  assert.equal(first.created, true);
+  assert.equal(first.goal.status, "paused");
+  assert.match(first.goal.nextAction, /Turn limit/);
+  assert.match(first.goal.events.at(-1).text, /turn limit was reached/);
+  const again = goals.captureUnfinishedRequest("alice", { request: "Popraw wszystkie znaleziska audytu na mojej stronie", reason: "error", detail: "Model request failed: 529 overloaded" });
+  assert.equal(again.created, false);
+  assert.equal(again.goal.id, first.goal.id);
+  assert.match(again.goal.events.at(-1).text, /529 overloaded/);
+  assert.equal(goals.listAgentGoals("alice").filter((g) => g.objective.startsWith("Popraw wszystkie")).length, 1);
+  assert.throws(() => goals.captureUnfinishedRequest("alice", { request: "  ", reason: "error" }), /empty/);
+  assert.equal(goals.listAgentGoals("bob").some((g) => g.id === first.goal.id), false, "per account");
+  const transcript = [
+    { role: "user", content: "Zaktualizuj sekcję projektów na stronie i dodaj Finetune Studio" },
+    { role: "assistant", content: "Proponuję 3 kroki… Zrobić?" },
+    { role: "user", content: "tak" },
+  ];
+  assert.equal(unfinishedRequest(transcript, "tak"), "Zaktualizuj sekcję projektów na stronie i dodaj Finetune Studio\n(then: tak)");
+  assert.equal(unfinishedRequest([{ role: "user", content: "hi" }], "hi"), null);
+  assert.equal(unfinishedRequest([{ role: "user", content: "x" }], "Translate my whole CV into English"), "Translate my whole CV into English");
+});

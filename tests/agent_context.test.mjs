@@ -2,6 +2,8 @@
 // the stored transcript is bounded. Regression: a 10-round tool-heavy turn followed by "tak tak." used to reach the model
 // as the single message "tak tak." (the trim snapped forward to the next user message and dropped the previous answer).
 import { test } from "node:test";
+import { clipToolResult } from "../src/lib/agent-client/loop.ts";
+import { clipJsonText } from "../src/lib/json-clip.ts";
 import assert from "node:assert/strict";
 import {
   CONTEXT_CHARS,
@@ -17,6 +19,53 @@ import {
 
 const PROPOSAL = "Raport gotowy.\n1. Popraw nagłówki.\n2. Dodaj opisy.\nZrobić to wszystko…?";
 
+test("large JSON tool results stay valid and preserve checks when compacted", () => {
+  const original = JSON.stringify({
+    work: { head: "abc123" },
+    pull: { number: 12 },
+    checks: { state: "failure", runs: [{ name: "CI", conclusion: "failure" }] },
+    compare: { commits: Array.from({ length: 60 }, (_, i) => ({ sha: String(i), message: "commit ".repeat(50) })), files: Array.from({ length: 60 }, (_, i) => ({ path: `src/${i}.tsx`, patch: "diff ".repeat(200) })) },
+  });
+  const clipped = clipToolResult(original);
+  assert.ok(clipped.length <= 12_000);
+  const parsed = JSON.parse(clipped);
+  assert.equal(parsed.checks.state, "failure");
+  assert.equal(parsed.checks.runs[0].name, "CI");
+  assert.equal(parsed.work.head, "abc123");
+});
+
+test("JSON clipping: knife_site_changes with 60 commits fits 6 kB, keeps checks.state, marks omitted items, terminates on short strings", () => {
+  const changes = JSON.stringify({
+    work: { branch: "knife/x", head: "f".repeat(40) },
+    pull: { number: 7, title: "Update", url: "https://github.com/o/r/pull/7" },
+    compare: { aheadBy: 60, commits: Array.from({ length: 60 }, (_, i) => ({ sha: String(i).padStart(40, "0"), message: `fix: step ${i} `.repeat(12) })) },
+    checks: { state: "pending", items: [{ name: "Vercel", state: "pending" }], previewUrl: "" },
+  });
+  const clipped = clipJsonText(changes, 6000);
+  assert.ok(clipped.length < 6000, `${clipped.length}`);
+  const parsed = JSON.parse(clipped);
+  assert.equal(parsed.checks.state, "pending");
+  assert.ok(parsed.compare.commits.some((c) => typeof c === "string" && /items omitted/.test(c)));
+  const many = JSON.stringify({ rows: Array.from({ length: 20_000 }, (_, i) => ({ i, k: "abc" })), tail: { state: "ok" } });
+  const started = Date.now();
+  const small = JSON.parse(clipJsonText(many, 20_000));
+  assert.ok(Date.now() - started < 3000, "bulk thinning stays fast");
+  assert.equal(small.tail.state, "ok");
+  // Only short strings and no arrays: no growth loop, a bounded error instead.
+  const flat = JSON.stringify(Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`k${i}`, "x".repeat(150)])));
+  assert.match(JSON.parse(clipJsonText(flat, 2000)).error, /could not be compacted/);
+  assert.match(clipJsonText("plain ".repeat(5000), 1000), /truncated, 30000 chars total/);
+});
+
+test("malformed persisted tool arguments are repaired before provider replay", () => {
+  const repaired = repairTranscript([
+    { role: "user", content: "write this" },
+    { role: "assistant", content: null, tool_calls: [{ id: "truncated", type: "function", function: { name: "knife_site_write", arguments: '{"path":"index.html","content":"cut' } }] },
+  ]);
+  assert.equal(repaired[1].tool_calls[0].function.arguments, "{}");
+  assert.equal(toWire(repaired)[1].tool_calls[0].function.arguments, "{}");
+});
+
 function toolTurn(prefix, rounds, size, answer) {
   const out = [{ role: "user", content: `${prefix} request` }];
   for (let i = 0; i < rounds; i += 1) {
@@ -27,6 +76,15 @@ function toolTurn(prefix, rounds, size, answer) {
   out.push({ role: "notice", level: "usage", content: `${rounds} rounds` });
   return out;
 }
+
+test("a failed turn's request and reason reach the next model context", () => {
+  const context = buildContext([
+    { role: "user", content: "finish the website fixes" },
+    { role: "notice", level: "error", content: "Model request failed: network timeout" },
+    { role: "user", content: "back to work!" },
+  ]);
+  assert.ok(context.messages.some((message) => message.role === "assistant" && message.content.includes("previous turn ended: Model request failed: network timeout") && message.content.includes("unfinished request: finish the website fixes")));
+});
 
 test("a short follow-up after a tool-heavy turn still carries the previous answer", () => {
   const transcript = [...toolTurn("t1", 10, 12_000, PROPOSAL), { role: "user", content: "tak tak." }];

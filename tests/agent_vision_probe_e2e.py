@@ -256,6 +256,10 @@ with sync_playwright() as pw:
     check("rounds limit: the notice names the configured numbers", any("Reached the per-turn limit (4 model rounds / 40 tool calls" in n for n in notices), notices)
     check("rounds limit: 4 tool rounds + 1 summary sent to the model", len(log) == 5, len(log))
     check("rounds limit: 4 tool results", sum(1 for m in turn if m["role"] == "tool") == 4)
+    check("rounds limit: the unfinished request is saved as a paused task", any("Saved as a paused task" in n for n in notices), notices)
+    _, saved = http_json("GET", "/api/agent/goals")
+    captured = [g for g in saved.get("goals", []) if g["objective"] == "rounds LOOP:list_tools:{}"]
+    check("rounds limit: exactly one paused goal with the request", len(captured) == 1 and captured[0]["status"] == "paused", captured)
 
     status, _ = http_json("PUT", "/api/account/assistant", {"maxRounds": 10, "maxToolCalls": 4})
     page.reload(wait_until="networkidle")
