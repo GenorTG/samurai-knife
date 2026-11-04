@@ -10,7 +10,9 @@ texts generated here. Python Playwright (the repo's test stack) rather than a ne
 With --sidecar-host <Tailscale/LAN address> it also installs the course database (`learn-db`, PostgreSQL + PostGIS)
 on a second scratch server bound to that address (a container cannot reach loopback), in its own compose project
 (KNIFE_SIDECAR_PREFIX=sk-shots-<pid>), takes the db-course shot and removes the project with its volume. Run it with
-KNIFE_SCRATCH_PORTS inside the range the host firewall lets containers reach (docs/SIDECARS.md).
+KNIFE_SCRATCH_PORTS inside the range the host firewall lets containers reach (docs/SIDECARS.md). The same flag shoots
+`office` (a demo docx in the editor) and `artcraft` (PhotoCraft with a generated picture) on another scratch server with
+the `office` and `craft` sidecars, removed afterwards; Firefox needs a display for WebGL2, so run it under `xvfb-run -a`.
 
 Usage: python3 scripts/showcase_shots.py [--only slug,slug] [--out public/showcase] [--keep-png DIR] [--headed]
                                          [--sidecar-host ADDRESS]
@@ -55,7 +57,7 @@ def image_slugs() -> list[str]:
     return re.findall(r'image: (?:shot|illustration)\("([a-z0-9-]+)"\)', text)
 
 
-SIDECAR_SLUGS = {"db-course"}
+SIDECAR_SLUGS = {"db-course", "office", "artcraft"}
 
 
 def untracked() -> list[str]:
@@ -314,6 +316,140 @@ def db_course_shot(pw, made: list[str], failed: list[str]) -> None:
             subprocess.run(["docker", "compose", "-p", f"{prefix}-learn-db", "down", "-v"], capture_output=True)
 
 
+DEMO_DOC = [
+    "Plan wyjazdu integracyjnego - Bieszczady 2026",
+    "Termin: 12-14 czerwca, wyjazd w piątek o 8:00 spod biura.",
+    "Nocleg: pensjonat w Wetlinie, pokoje dwuosobowe ze śniadaniem.",
+    "Program: piątek - przejazd i ognisko; sobota - wejście na Połoninę Wetlińską; niedziela - spływ Sanem i powrót.",
+    "Do zabrania: buty trekkingowe, kurtka przeciwdeszczowa, latarka, dobry humor.",
+    "Budżet na osobę: około 650 zł (transport, nocleg, wyżywienie, przewodnik).",
+    "Zapisy do końca maja u koordynatora wyjazdu.",
+]
+
+
+def office_shot(base: str, browser, made: list[str], failed: list[str]) -> None:
+    """A short Polish demo docx (created over MCP) open in the Euro-Office editor."""
+    try:
+        created = json.loads(mcp(base, "knife_doc_create", {"format": "docx", "name": "Plan wyjazdu integracyjnego", "paragraphs": DEMO_DOC}))
+        doc_id = created.get("id") or created["document"]["id"]
+        ctx = browser.new_context(viewport={"width": W, "height": H}, locale="pl-PL", timezone_id="Europe/Warsaw", color_scheme="dark")
+        ctx.add_cookies([{"name": "knife_lang", "value": "pl", "url": base}])
+        ctx.add_init_script(HIDE_DEV)
+        page = ctx.new_page()
+        page.goto(f"{base}/tools/office?doc={doc_id}", wait_until="domcontentloaded")
+        page.locator('[data-agent-region="office-editor-status"]').wait_for(timeout=120_000)
+        page.wait_for_function("() => /^(Edytor gotowy|Editor ready|Nie udało|Could not)/.test(document.querySelector('[data-agent-region=\"office-editor-status\"]')?.textContent ?? '')", timeout=300_000)
+        status = page.locator('[data-agent-region="office-editor-status"]').inner_text()
+        if not status.startswith(("Edytor gotowy", "Editor ready")):
+            raise RuntimeError(status)
+        editor = page.frame_locator('iframe[name="frameEditor"]')
+        editor.locator("#editor_sdk").wait_for(timeout=60_000)
+        page.wait_for_timeout(6000)
+        # The editor's one-time feature tip is not part of the document.
+        tip = editor.get_by_text("Got it", exact=True)
+        if tip.count():
+            tip.first.click()
+            page.wait_for_timeout(800)
+        page.mouse.move(W - 2, 2)
+        png = page.screenshot(full_page=False)
+        if KEEP:
+            KEEP.mkdir(parents=True, exist_ok=True)
+            (KEEP / "office.png").write_bytes(png)
+        size = to_webp(png, OUT / "office.webp")
+        made.append(f"office ({size // 1000} kB)")
+        print(f"OK    office  {size} bytes", flush=True)
+        ctx.close()
+    except Exception as exc:
+        failed.append("office")
+        print(f"FAIL  office: {str(exc)[:300]}", flush=True)
+
+
+# The scratch server is plain http on a private address: its address (in the status line) never goes into an image, and
+# the plain-http notice is hidden because a real deployment serves the Craft apps over https.
+SCRUB_CRAFT = """() => {
+  const walk = document.createTreeWalker(document.querySelector('main'), NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) n.nodeValue = n.nodeValue.replace(/https?:\\/\\/[0-9.]+(:\\d+)?/g, 'https://craft.smartknife.example');
+  for (const el of document.querySelectorAll('main p, main div')) {
+    if (el.children.length === 0 && /^(Ten adres to zwykłe http|This address is plain http)/.test(el.textContent.trim())) el.style.display = 'none';
+  }
+}"""
+
+
+def craft_shot(base: str, browser, tmp: Path, made: list[str], failed: list[str]) -> None:
+    """PhotoCraft with a generated demo picture opened through Smart Knife's chooser (nothing saved to the account)."""
+    try:
+        png_in = demo_png(tmp / "gory.png", 0, "Demo: gory o zachodzie")
+        ctx = browser.new_context(viewport={"width": W, "height": H}, locale="pl-PL", timezone_id="Europe/Warsaw")
+        ctx.add_cookies([{"name": "knife_lang", "value": "pl", "url": base}])
+        ctx.add_init_script(HIDE_DEV)
+        page = ctx.new_page()
+        page.goto(f"{base}/tools/artcraft?tab=photocraft", wait_until="domcontentloaded")
+        page.locator("main [role=status]", has_text="PhotoCraft loaded from").first.wait_for(timeout=300_000)
+        frame = page.frame_locator("[data-craft-app=photocraft] iframe")
+        frame.locator("canvas").first.wait_for(timeout=120_000)
+        page.wait_for_timeout(8000)
+        box = page.locator("[data-craft-app=photocraft] iframe").bounding_box()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.keyboard.press("Control+o")
+        drawer = page.get_by_role("dialog", name=re.compile("(Otwórz w|Open in) PhotoCraft"))
+        drawer.wait_for(timeout=15_000)
+        with page.expect_file_chooser(timeout=15_000) as chooser:
+            drawer.get_by_role("button", name=re.compile("(Z tego komputera|From this computer)")).click()
+        chooser.value.set_files(str(png_in))
+        page.wait_for_timeout(6000)
+        page.evaluate(SCRUB_CRAFT)
+        page.mouse.move(W - 2, 2)
+        page.wait_for_timeout(1000)
+        png = page.screenshot(full_page=False)
+        if KEEP:
+            KEEP.mkdir(parents=True, exist_ok=True)
+            (KEEP / "artcraft.png").write_bytes(png)
+        size = to_webp(png, OUT / "artcraft.webp")
+        made.append(f"artcraft ({size // 1000} kB)")
+        print(f"OK    artcraft  {size} bytes", flush=True)
+        ctx.close()
+    except Exception as exc:
+        failed.append("artcraft")
+        print(f"FAIL  artcraft: {str(exc)[:300]}", flush=True)
+
+
+def office_craft_shots(pw, slugs: list[str], made: list[str], failed: list[str]) -> None:
+    """office and artcraft: the office and craft sidecars installed on one scratch server bound to SIDECAR_HOST, in this
+    run's own compose projects, removed with their volumes afterwards. Craft apps need WebGL2: Firefox headed (run the
+    script under `xvfb-run` on a host without a display)."""
+    prefix = f"sk-shots-{os.getpid()}"
+    services = [s for s, slug in (("office", "office"), ("craft", "artcraft")) if slug in slugs]
+    with tempfile.TemporaryDirectory(prefix="showcase-craft-") as tmpdir, ScratchServer(host=SIDECAR_HOST) as server:
+        base = server.start(env={"KNIFE_SIDECAR_PREFIX": prefix, "KNIFE_CRAFT_UPDATES": "off"}, overlay=untracked())
+        try:
+            for service in services:
+                status, body = api(base, "POST", f"/api/services/{service}", {"action": "install"})
+                if status != 202:
+                    raise RuntimeError(f"{service} install refused: {status} {body}")
+                op = wait_op(base, body["op"], 1500)
+                if op["status"] != "done":
+                    raise RuntimeError(f"{service} install failed: {op.get('error') or op['phase']}")
+                print(f"      {service} installed", flush=True)
+            if "office" in services:
+                browser = pw.chromium.launch(headless=not HEADED)
+                office_shot(base, browser, made, failed)
+                browser.close()
+            if "craft" in services:
+                browser = pw.firefox.launch(headless=False)
+                craft_shot(base, browser, Path(tmpdir), made, failed)
+                browser.close()
+        except Exception as exc:
+            failed.extend(slug for slug in ("office", "artcraft") if slug in slugs and not any(m.startswith(slug) for m in made))
+            print(f"FAIL  sidecar shots: {str(exc)[:300]}", flush=True)
+        finally:
+            for service in services:
+                status, body = api(base, "POST", f"/api/services/{service}", {"action": "remove", "purge": True})
+                if status == 202:
+                    wait_op(base, body["op"], 300)
+                # Backstop: only this run's own compose projects are ever touched.
+                subprocess.run(["docker", "compose", "-p", f"{prefix}-{service}", "down", "-v"], capture_output=True)
+
+
 HIDE_DEV = "document.addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='nextjs-portal{display:none!important}';document.head.appendChild(s)})"
 
 
@@ -369,6 +505,10 @@ def main() -> int:
                 db_course_shot(pw, made, failed)
             elif "db-course" in slugs:
                 failed.append("db-course (needs --sidecar-host)")
+            if {"office", "artcraft"} & set(slugs) and SIDECAR_HOST:
+                office_craft_shots(pw, slugs, made, failed)
+            elif {"office", "artcraft"} & set(slugs):
+                failed.append("office/artcraft (need --sidecar-host)")
     print(f"\n{len(made)} made, {len(failed)} failed{': ' + ', '.join(failed) if failed else ''}")
     return 1 if failed else 0
 

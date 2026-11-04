@@ -29,9 +29,11 @@ quality stepped down until the file fits 120 kB. It is Python Playwright, the re
 
 The course database is a sidecar: with `--sidecar-host` the script installs `learn-db` on a second scratch server bound to
 that address (own compose project `sk-shots-<pid>`, `KNIFE_SCRATCH_PORTS` inside the firewall range, docs/SIDECARS.md),
-runs a query in a real lesson, takes the shot and removes the project with its volume. The office editor and the Craft
-apps are not shot (a multi-GB editor image or per-app bundles to download): their showcases are text-only (`image: null`)
-until a real screenshot exists. Never fake a picture: a picture that is not a live screenshot must be `kind:
+runs a query in a real lesson, takes the shot and removes the project with its volume. The same flag installs `office`
+and `craft` on a third scratch server (same prefix): a short Polish demo docx created over MCP open in the editor, and
+PhotoCraft (Firefox headed, WebGL2: run the script under `xvfb-run -a` without a display) with a generated picture opened
+through the chooser and nothing saved; the scratch address in the status line is replaced by an example host and the
+plain-http notice is hidden. Both services are removed with their volumes afterwards. Never fake a picture: a picture that is not a live screenshot must be `kind:
 "illustration"`, which the page labels as such.
 
 ## Page and card links

@@ -333,7 +333,7 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
     runs: ["sidecar"],
     data: msg("Documents are stored on this server in your account and edited in a self-hosted editor; they never go to an outside office service."),
     assistant: msg("The assistant can create documents, read them, and edit the open document live: text, formatting, tables, cells and slides."),
-    image: null,
+    image: shot("office"),
   },
   "db-course": {
     purpose: msg("Learn SQL and PostGIS step by step on a real PostgreSQL database."),
@@ -360,7 +360,7 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
     runs: ["sidecar", "browser"],
     data: msg("The apps run in your browser and keep your work in its storage; a file goes to the server only when you save it to Craft files."),
     assistant: msg("In VectorCraft, FilmCraft and EffectCraft the assistant can inspect the open project, run the app's commands, take screenshots and keep exports in your Craft files."),
-    image: null,
+    image: shot("artcraft"),
     apps: [
       { name: "PhotoCraft", what: msg("image editor") },
       { name: "VectorCraft", what: msg("vector illustration") },
