@@ -96,7 +96,8 @@ def run(server: ScratchServer, page: Page) -> None:
     check("the download of edition 1 is that edition's text", "Craft" not in body and "Terms of Service" in body and "edition-1" in status.headers["Content-Disposition"], status.headers["Content-Disposition"])
 
     # --------------------------------------------------------------------------------- 3. a sign-up records its version
-    status, answer, _ = api.call("POST", "/api/account/register", {"username": "lena", "email": "lena@example.com", "password": "lena password 1"}, ip="198.51.100.40")
+    # Polish-first (docs/I18N.md): the account takes the sign-up's language; this suite reads the English account page.
+    status, answer, _ = api.call("POST", "/api/account/register", {"username": "lena", "email": "lena@example.com", "password": "lena password 1"}, ip="198.51.100.40", headers={"Cookie": "knife_lang=en"})
     mails = Outbox(data).wait("lena@example.com", 1)
     link = Outbox.link(mails[0][2], "/verify") if mails else None
     status, answer, _ = api.call("POST", "/api/account/verify", {"token": Outbox.token(link)}, ip="198.51.100.40")

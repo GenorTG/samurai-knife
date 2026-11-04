@@ -1,6 +1,7 @@
 import { KindBadge } from "@/components/ToolShell";
 import { Greeter } from "@/components/Greeter";
 import { Launcher } from "@/components/Launcher";
+import { ToolEntryLink } from "@/components/showcase/ShowcaseLinks";
 import { isGuest } from "@/lib/accounts/viewer";
 import { loadApp } from "@/lib/github-app/config";
 import { TOOLS } from "@/lib/registry";
@@ -56,20 +57,21 @@ export default async function Home() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[
-            [msg("AI assistant"), msg("An assistant that can act across the tools, keep several chats and turn requests into trackable tasks."), "/tools/mcp-connect"],
-            [msg("CV studio"), msg("Create per-job CV versions, check ATS readiness and track each application."), "/tools/cv-studio"],
-            [msg("Website studio"), msg("Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots."), "/tools/cv-studio?tab=website"],
-            [msg("Office documents"), msg("Create and edit Word, Excel and PowerPoint files in your private workspace."), "/tools/office"],
-            [msg("Workflows"), msg("Connect services and automate repeatable work with visual workflows."), "/tools/workflows"],
-            [msg("Craft apps"), msg("Make and edit creative assets in a collection of browser-based apps."), "/tools/artcraft"],
-            [msg("MCP for outside agents"), msg("Give external agents personal tokens to work with your account's tools."), "/tools/mcp-connect"],
-            [msg("Database and SQL labs"), msg("Format, validate and run SQL, then learn against a real database."), "/tools/sql-lab"],
-            [msg("PDF and OCR"), msg("Inspect, convert and extract text from PDFs with local processing where available."), "/tools/pdf"],
-          ].map(([title, description, href]) => (
-            <Link key={title} href={href} className="group rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+            [msg("AI assistant"), msg("An assistant that can act across the tools, keep several chats and turn requests into trackable tasks."), "mcp-connect", ""],
+            [msg("CV studio"), msg("Create per-job CV versions, check ATS readiness and track each application."), "cv-studio", ""],
+            [msg("Website studio"), msg("Audit a site, open GitHub pull requests, inspect Vercel previews and review screenshots."), "cv-studio", "website"],
+            [msg("Office documents"), msg("Create and edit Word, Excel and PowerPoint files in your private workspace."), "office", ""],
+            [msg("Workflows"), msg("Connect services and automate repeatable work with visual workflows."), "workflows", ""],
+            [msg("Craft apps"), msg("Make and edit creative assets in a collection of browser-based apps."), "artcraft", ""],
+            [msg("MCP for outside agents"), msg("Give external agents personal tokens to work with your account's tools."), "mcp-connect", ""],
+            [msg("Database and SQL labs"), msg("Format, validate and run SQL, then learn against a real database."), "sql-lab", ""],
+            [msg("PDF and OCR"), msg("Inspect, convert and extract text from PDFs with local processing where available."), "pdf", ""],
+          ].map(([title, description, slug, tab]) => (
+            // The tool's showcase first, unless the user chose to open tools straight away (docs/SHOWCASE.md).
+            <ToolEntryLink key={title} slug={slug} tab={tab || undefined} className="group rounded-2xl border border-line bg-surface p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
               <h3 className="font-semibold text-ink group-hover:text-accent">{t(title)}</h3>
               <p className="mt-1.5 text-sm leading-relaxed text-muted">{t(description)}</p>
-            </Link>
+            </ToolEntryLink>
           ))}
         </div>
       </section>

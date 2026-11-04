@@ -28,6 +28,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# Polish-first (docs/I18N.md): Playwright contexts default to en-US so suites reading English labels keep working.
+try:
+    from tests import english_browser  # noqa: F401
+except ImportError:
+    import english_browser  # noqa: F401
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Suites register `<name>@example.com`, whose real DNS publishes a null MX (RFC 7505), and send far more mail to that one

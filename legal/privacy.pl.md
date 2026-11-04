@@ -71,6 +71,7 @@ Serwis zapisuje na Twoim urządzeniu wyłącznie informacje **niezbędne do świ
 | własna pamięć aplikacji Craft (ustawienia, biblioteki zdjęć, projekty i multimedia, kopie odzyskiwania otwartych dokumentów) | pamięć lokalna, IndexedDB, OPFS pod adresem aplikacji Craft | działanie aplikacji w Twojej przeglądarce | do usunięcia w przeglądarce; nigdy nie trafia na serwer |
 | `knife:account` | pamięć lokalna pod adresem aplikacji Craft | nieczytelny znacznik Konta, które ostatnio korzystało z aplikacji w tej przeglądarce, aby przed ich otwarciem usunąć lokalne dane innego Konta | do usunięcia w przeglądarce |
 | `sk-theme`, ustawienia narzędzi | pamięć lokalna | jasny lub ciemny motyw, Twoje ustawienia narzędzi | do usunięcia w przeglądarce |
+| `samurai-knife:showcase:v1` | pamięć lokalna | czy karty narzędzi otwierają najpierw stronę z opisem narzędzia, czy od razu narzędzie, oraz dla których narzędzi nie chcesz już widzieć tej strony | do usunięcia w przeglądarce; nigdy nie trafia na serwer |
 | kopia rozmowy z Asystentem, kolejka wiadomości, tryb zaufania, ustawienia SQL | pamięć lokalna | działanie Asystenta i narzędzi bez ponownego pobierania | usuwane przy wylogowaniu |
 
 Możesz usunąć te dane w ustawieniach przeglądarki; bez cookie sesji nie da się zalogować.
@@ -126,10 +127,12 @@ Co dodały kolejne wersje serwisu {{siteName}}, istotne dla Twoich danych:
 | 0.10.0 | Interfejs po polsku i po angielsku | wybrany język jest zapisywany w cookie `knife_lang` i na Koncie; w tym języku przychodzą wiadomości e-mail |
 | 0.13.0 | Opcjonalne połączenie z Vercel oraz zrzuty ekranu stron dla Asystenta | token i sekret projektu są przechowywane zaszyfrowane; przeglądarka serwera pobiera stronę i jej zasoby; plik roboczy jest usuwany po renderowaniu, a wynik trafia wyłącznie do wybranego przez Ciebie Dostawcy AI; Operator go nie ogląda, wynik pozostaje w pamięci do 30 minut |
 | 0.13.0 (późniejsze kompilacje) | Wykrywanie, czy model widzi obrazy; limit tury Asystenta | wygenerowany obrazek testowy trafia do wybranego przez Ciebie Dostawcy AI; odpowiedź jest przechowywana dla adresu Dostawcy i modelu, bez informacji, kto sprawdzał; limit tury jest zapisany na Twoim Koncie |
+| 0.14.0 | Polski jako język domyślny; strona z opisem każdego narzędzia | jeżeli nie wybierzesz języka, Serwis wyświetla się po polsku (po angielsku, gdy Twoja przeglądarka prosi tylko o angielski); sposób otwierania kart narzędzi jest zapisywany wyłącznie w pamięci lokalnej Twojej przeglądarki; strony z opisami są publiczne i nie odczytują danych Konta |
 | 0.13.0 (późniejsze kompilacje) | Zapisane zadania Asystenta; okno „Co nowego”; programy połączone Twoim kluczem MCP mogą czytać Twoje rozmowy z Asystentem | zadania są przechowywane zaszyfrowane na Koncie i wliczane do limitu miejsca; Konto pamięta, które informacje o nowościach widziałeś; każda rozmowa zapisuje adres Dostawcy i model ostatniej odpowiedzi; żadne dane nie trafiają do nowego odbiorcy |
 
 Zmiany:
 
+- **Wydanie 8** (4 listopada 2026, {{siteName}} 0.14.0): dodaje do § 6 wpis pamięci lokalnej `samurai-knife:showcase:v1` (sposób otwierania kart narzędzi) i opisuje polski jako język domyślny.
 - **Wydanie 7** (30 października 2026, {{siteName}} 0.13.0): dodaje do treści zapisane zadania Asystenta, do danych Konta informację, które informacje o nowościach ostatnio widziałeś, adres Dostawcy i model ostatniej odpowiedzi w rozmowie, a także to, że program połączony Twoim kluczem MCP może czytać Twoje rozmowy z Asystentem i zadania.
 - **Wydanie 6** (29 października 2026, {{siteName}} 0.13.0): dodaje limit tury Asystenta i informację o obrazach do konfiguracji Dostawcy AI oraz opisuje wykrywanie obrazów: wygenerowany obrazek testowy wysyłany do wybranego Dostawcy AI i wspólną listę odpowiedzi, która nie zapisuje, kto sprawdzał.
 - **Wydanie 5** (28 października 2026, {{siteName}} 0.13.0): opisuje zrzuty stron: pobieranie strony i jej zasobów przez serwer, chwilowy plik roboczy usuwany po zadaniu, wynik w pamięci do 30 minut, przekazanie obrazu wybranemu Dostawcy AI i brak wglądu Operatora.

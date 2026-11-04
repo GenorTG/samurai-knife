@@ -15,6 +15,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     version: "0.14.0",
     date: "2026-11-04",
     items: [
+      "Tool showcases: every top-level tool has a public page /tools/<slug>/about (purpose, what you can do, who it is for, where it runs and whether files leave the device, what the assistant can do there, a screenshot). Launcher and home cards open it first unless the user chose \"open tools straight away\" or skipped that tool; every tool page links to it (\"O tym narzędziu\" / \"About this tool\"). knife_ui_show still opens the tool itself; to show the user what a tool is, send them to /tools/<slug>/about.",
       "Polish-first: the interface, page titles, emails, the Terms and the privacy notice default to Polish; English only when the user chose it (the language cookie or the account's language) or the browser lists no Polish and prefers English. Page labels an agent reads through knife_ui_state / page_snapshot are therefore usually Polish; knife_* tool output stays English.",
     ],
   },

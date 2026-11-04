@@ -18,6 +18,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
     version: "0.14.0",
     date: "2026-11-04",
     features: [
+      msg("Every tool has a page that explains it: what it is for, what you can do, who it is for, where it runs and whether your files leave your device, what the assistant can do there, with a screenshot. Tool cards open it first; you can open tools straight away instead, or skip it for a tool you know."),
       msg("Smart Knife now speaks Polish first: pages, emails, the Terms and the privacy notice open in Polish unless you chose English or your browser asks only for English. The language switch in the top bar changes it at any time."),
     ],
     fixes: [],
@@ -49,6 +50,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
 /** A plain summary of each edition of the default Terms and privacy notice, for people who already accepted one. */
 export const LEGAL_EDITION_NOTES: Readonly<Record<number, string>> = {
   6: msg("The privacy notice describes checking whether a model sees images (one generated test picture; the shared list of answers does not record who checked) and your turn limit setting."),
+  8: msg("The privacy notice describes the browser setting that decides whether tool cards open a tool's description page first, and that Smart Knife is shown in Polish unless you choose English."),
   7: msg("The privacy notice now describes saved assistant tasks, which release notes you have already seen, and that outside AI tools you connect with your MCP key can read your assistant chats."),
 };
 

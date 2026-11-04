@@ -261,8 +261,10 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         check("knife_site_changes reports the preview URL", ok and site_url.replace("http://", "") in text, text[:300])
 
         # ---------------------------------------------------------------- 4b. Vercel (optional): connect, preview build, protected preview
-        ok, text = mcp.tool("knife_whats_new", {"count": 1})
-        check("knife_whats_new names the new Vercel tools and the server's version", ok and "knife_site_previews" in text and '"version": "0.13.0.' in text, text[:300])
+        # The Vercel tools came in 0.13.0; later releases sit above it, so ask for enough entries.
+        pkg = json.loads((ROOT / "package.json").read_text())["version"]
+        ok, text = mcp.tool("knife_whats_new", {"count": 5})
+        check("knife_whats_new names the new Vercel tools and the server's version", ok and "knife_site_previews" in text and f'"version": "{pkg}.' in text, text[:300])
         ok, text = mcp.tool("knife_site_previews", {})
         check("without Vercel, knife_site_previews says how to connect", not ok and "Vercel is not connected" in text, text[:200])
         go(page, "/tools/cv-studio?tab=website&step=connect")
