@@ -1,6 +1,9 @@
 # Moving the table data to a database (VPS primary, live local standby)
 
-Status: design proposal, nothing implemented. Base commit: `77572d4` (0.13.0).
+Status: design proposal. Phase 1 (accounts, provider profiles, sessions, MCP keys) is implemented with the owner's final
+topology — Postgres primary on the VPS, the APP STAYING on genorbox1 (~35 ms away) behind an authoritative in-process
+cache, a delayed async replica on genorbox1 — see [DB-POSTGRES.md](DB-POSTGRES.md); where that topology differs from
+§0.2/§2.5 below (app next to the database, PgBouncer, hot standby), DB-POSTGRES.md wins. Base commit: `77572d4` (0.13.0).
 Scope: the *table-like* state (accounts, sessions, keys, CV data, conversations, goals, workflows, ledgers, indexes…).
 Out of scope: documents, Craft files, photos, run binaries, exports and other blobs: they stay files (a blob store), see §1.3.
 

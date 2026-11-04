@@ -21,6 +21,8 @@ import { clientPrefix } from "@/lib/accounts/ip-prefix";
 import { recordSecurityEvent } from "@/lib/security/events";
 import { publicBaseUrl, sendMail } from "@/lib/mail";
 import { loginLockoutMail } from "@/lib/mail/templates";
+import { coreRuntime, type WriteOptions } from "@/lib/db/core/runtime";
+import { isSessionRecord, type SessionRecord } from "@/lib/db/core/types";
 
 export { clientIp, isHttps };
 
@@ -28,7 +30,8 @@ export { clientIp, isHttps };
  * Sessions are server-side records in `$KNIFE_DATA_DIR/sessions.json` (0600): the cookie holds 32 random bytes, the file
  * only their SHA-256, so a leaked data dir holds no usable cookie and any session can be revoked. A record also pins a
  * fingerprint of the password hash: a password set through the CLI ends every session without touching this file.
- * Written only by this server process (synchronously, so requests cannot interleave a read-modify-write). At most
+ * Written only by this server process (synchronously, so requests cannot interleave a read-modify-write). With
+ * KNIFE_DB_URL the records are rows of `sessions` in Postgres, read from the in-process cache (src/lib/db/core/cache.ts). At most
  * MAX_SESSIONS_PER_ACCOUNT live per account (the oldest go first), and successful logins are rate-limited per account, so
  * one account cannot grow the file without bound.
  */
@@ -37,18 +40,9 @@ export const MAX_SESSIONS_PER_ACCOUNT = 20;
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const TOUCH_EVERY_MS = 10 * 60_000;
 
-interface SessionRecord {
-  hash: string;
-  accountId: string;
-  pf: string;
-  createdAt: string;
-  expiresAt: string;
-  lastSeenAt: string;
-}
-
 interface SessionFile {
   version: 1;
-  sessions: SessionRecord[];
+  sessions: readonly SessionRecord[];
 }
 
 function sessionsPath(): string {
@@ -57,13 +51,10 @@ function sessionsPath(): string {
 
 let cache: { mtimeMs: number; size: number; path: string; data: SessionFile } | null = null;
 
-function isSessionRecord(value: unknown): value is SessionRecord {
-  if (typeof value !== "object" || value === null) return false;
-  const r = value as Record<string, unknown>;
-  return ["hash", "accountId", "pf", "createdAt", "expiresAt", "lastSeenAt"].every((key) => typeof r[key] === "string");
-}
-
 function readSessions(): SessionFile {
+  // Postgres (docs/DB-POSTGRES.md): the cached rows, no file and no round trip.
+  const pg = coreRuntime();
+  if (pg) return { version: 1, sessions: pg.sessions() };
   const path = sessionsPath();
   if (!existsSync(path)) return { version: 1, sessions: [] };
   const stat = statSync(path);
@@ -79,9 +70,14 @@ function readSessions(): SessionFile {
   return data;
 }
 
-function writeSessions(mutate: (sessions: SessionRecord[]) => SessionRecord[]): void {
+function writeSessions(mutate: (sessions: SessionRecord[]) => SessionRecord[], options: WriteOptions = {}): void {
   const now = Date.now();
   const next = mutate(readSessions().sessions.map((s) => ({ ...s }))).filter((s) => Date.parse(s.expiresAt) > now);
+  const pg = coreRuntime();
+  if (pg) {
+    pg.setSessions(next, options);
+    return;
+  }
   writePrivateFile(sessionsPath(), `${JSON.stringify({ version: 1, sessions: next } satisfies SessionFile)}\n`);
   cache = null;
 }
@@ -178,7 +174,8 @@ function accountFromToken(token: string): Account | null {
   const account = getAccount(record.accountId);
   if (!account || passwordFingerprint(account) !== record.pf || !accountUsable(account)) return null;
   if (now - Date.parse(record.lastSeenAt) > TOUCH_EVERY_MS) {
-    writeSessions((sessions) => sessions.map((s) => (s.hash === hash ? { ...s, lastSeenAt: new Date(now).toISOString() } : s)));
+    // Bookkeeping: the answer never waits for this commit (Postgres), and losing it on a crash costs nothing.
+    writeSessions((sessions) => sessions.map((s) => (s.hash === hash ? { ...s, lastSeenAt: new Date(now).toISOString() } : s)), { background: true });
   }
   return account;
 }

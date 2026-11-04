@@ -4,13 +4,16 @@ import { join } from "node:path";
 import { accountUsable } from "@/lib/accounts/session";
 import { ensureDataDir, getAccount, writePrivateFile, type Account } from "@/lib/accounts/store";
 import { msg, msgf } from "@/lib/i18n/msg";
+import { coreRuntime, type WriteOptions } from "@/lib/db/core/runtime";
+import { isMcpKeyRecord, type McpKeyRecord, type McpKeyScope } from "@/lib/db/core/types";
 
 /**
  * Per-account MCP credentials (docs/MCP.md "Connecting"). An agent outside the browser sends its username and one of that
  * account's keys (or only the key, on the account's own URL `/api/mcp/u/<username>`); the tools then act on that account
  * only, and a `read-only` key gets only the tools that change nothing. `$KNIFE_DATA_DIR/mcp-keys.json` (0600) stores the SHA-256 of
  * each key (32 random bytes, so a plain hash is enough), never the key: it is shown once, at creation. Written only by
- * this server process, synchronously (same pattern as sessions.json).
+ * this server process, synchronously (same pattern as sessions.json). With KNIFE_DB_URL: rows of `mcp_keys` in Postgres,
+ * read from the in-process cache (src/lib/db/core/cache.ts).
  */
 
 export const MCP_KEY_PREFIX = "skm_";
@@ -20,24 +23,11 @@ const KEY_PATTERN = /^skm_[A-Za-z0-9_-]{43}$/;
 
 /** What a key may do: every tool of the account's role, or only those with readOnlyHint (effect "read"). */
 export const MCP_KEY_SCOPES = ["full", "read-only"] as const;
-export type McpKeyScope = (typeof MCP_KEY_SCOPES)[number];
-
-interface McpKeyRecord {
-  id: string;
-  accountId: string;
-  name: string;
-  hash: string;
-  /** First characters of the key, shown in the list so the owner can tell keys apart. */
-  hint: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  /** Missing on keys made before scopes existed: full. */
-  scope?: McpKeyScope;
-}
+export type { McpKeyScope };
 
 interface McpKeyFile {
   version: 1;
-  keys: McpKeyRecord[];
+  keys: readonly McpKeyRecord[];
 }
 
 /** What the account page shows: never the hash. */
@@ -71,15 +61,10 @@ function keysPath(): string {
 
 let cache: { mtimeMs: number; size: number; path: string; data: McpKeyFile } | null = null;
 
-function isRecord(value: unknown): value is McpKeyRecord {
-  if (typeof value !== "object" || value === null) return false;
-  const r = value as Record<string, unknown>;
-  return ["id", "accountId", "name", "hash", "hint", "createdAt"].every((key) => typeof r[key] === "string")
-    && (r.lastUsedAt === null || typeof r.lastUsedAt === "string")
-    && (r.scope === undefined || (MCP_KEY_SCOPES as readonly unknown[]).includes(r.scope));
-}
-
 function readKeys(): McpKeyFile {
+  // Postgres (docs/DB-POSTGRES.md): the cached rows, no file and no round trip.
+  const pg = coreRuntime();
+  if (pg) return { version: 1, keys: pg.keys() };
   const path = keysPath();
   if (!existsSync(path)) return { version: 1, keys: [] };
   const stat = statSync(path);
@@ -87,7 +72,7 @@ function readKeys(): McpKeyFile {
   let data: McpKeyFile = { version: 1, keys: [] };
   try {
     const raw = JSON.parse(readFileSync(path, "utf8")) as { keys?: unknown };
-    if (Array.isArray(raw.keys)) data = { version: 1, keys: raw.keys.filter(isRecord) };
+    if (Array.isArray(raw.keys)) data = { version: 1, keys: raw.keys.filter(isMcpKeyRecord) };
   } catch {
     // Damaged file: every key stops working (fail closed) and owners create new ones; never a crash per request.
   }
@@ -95,8 +80,13 @@ function readKeys(): McpKeyFile {
   return data;
 }
 
-function writeKeys(mutate: (keys: McpKeyRecord[]) => McpKeyRecord[]): void {
+function writeKeys(mutate: (keys: McpKeyRecord[]) => McpKeyRecord[], options: WriteOptions = {}): void {
   const next = mutate(readKeys().keys.map((k) => ({ ...k })));
+  const pg = coreRuntime();
+  if (pg) {
+    pg.setKeys(next, options);
+    return;
+  }
   writePrivateFile(keysPath(), `${JSON.stringify({ version: 1, keys: next } satisfies McpKeyFile)}\n`);
   cache = null;
 }
@@ -203,7 +193,7 @@ export function callerForMcpKey(credentials: McpCredentials): McpCaller | null {
   if (!account || !accountUsable(account)) return null;
   const now = Date.now();
   if (!record.lastUsedAt || now - Date.parse(record.lastUsedAt) > TOUCH_EVERY_MS) {
-    writeKeys((keys) => keys.map((k) => (k.hash === record.hash ? { ...k, lastUsedAt: new Date(now).toISOString() } : k)));
+    writeKeys((keys) => keys.map((k) => (k.hash === record.hash ? { ...k, lastUsedAt: new Date(now).toISOString() } : k)), { background: true });
   }
   return { account, scope: record.scope ?? "full" };
 }
