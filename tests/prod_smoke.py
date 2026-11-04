@@ -51,6 +51,26 @@ def head(path: str) -> tuple[int, dict[str, str]]:
         return err.code, {k.lower(): v for k, v in err.headers.items()}
 
 
+# The provider_profiles rows as stored (KNIFE_DB_URL, same TLS rules as the app: src/lib/db/connect.mjs).
+PG_PROFILES = """
+import pg from "pg";
+import { pgConfig } from "./src/lib/db/connect.mjs";
+const client = new pg.Client(pgConfig(process.env, { applicationName: "prod-smoke" }));
+await client.connect();
+const { rows } = await client.query("SELECT config::text AS config FROM provider_profiles ORDER BY account_id, position");
+await client.end();
+process.stdout.write(rows.map((r) => r.config).join("\\n"));
+"""
+
+
+def stored_provider_configs() -> str:
+    r = subprocess.run(["node", "--input-type=module", "-e", PG_PROFILES], cwd=ROOT, text=True, capture_output=True, env=os.environ, timeout=60)
+    if r.returncode != 0:
+        check("read provider_profiles from the database", False, r.stderr[-500:])
+        return ""
+    return r.stdout
+
+
 def main() -> int:
     if not DATA or "/.local/share/samurai-knife" in DATA:
         sys.exit("set KNIFE_DATA_DIR to the scratch server's own data dir")
@@ -135,8 +155,13 @@ def main() -> int:
     check("no CSP violations", not csp_errors, csp_errors[:5])
     other = [e for e in errors if e not in csp_errors]
     check("no console/page errors", not other, other[:5])
-    raw = (Path(DATA) / "accounts.json").read_text()
-    check("provider key sealed on disk", "mock-key" not in raw and "enc:v1:" in raw)
+    if os.environ.get("KNIFE_DB_URL", "").strip():
+        # Postgres mode: the profile lives in provider_profiles.config (accounts.json is absent, or only the verify mirror).
+        raw = stored_provider_configs()
+        check("provider key sealed in the database", bool(raw) and "mock-key" not in raw and "enc:v1:" in raw, raw[:200])
+    else:
+        raw = (Path(DATA) / "accounts.json").read_text()
+        check("provider key sealed on disk", "mock-key" not in raw and "enc:v1:" in raw)
     print(f"\n{len(FAILS)} failed" if FAILS else "\nALL PASS")
     return 1 if FAILS else 0
 
