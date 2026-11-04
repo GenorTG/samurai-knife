@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button, Field, Notice, Panel, Select, TextArea, TextInput } from "@/components/ui";
-import { loadAccount } from "@/lib/client-account";
 import { errorText, importCv } from "@/lib/cv/client";
 import { answersToProfile, EMPTY_JOB, EMPTY_SCHOOL, emptyAnswers, monthProblem, suggestSummary, type WizardAnswers, type WizardJob, type WizardLang, type WizardSchool } from "@/lib/cv/wizard";
 import { cx } from "@/lib/format";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
-/** Kept in this browser until the CV is created; logging out clears it (client-account.ts). */
-export const CV_WIZARD_DRAFT_PREFIX = "samurai-knife:cv-wizard:";
+/** The account's encrypted draft (/api/workspace, the same store as the tools' drafts), until the CV is created. */
+const DRAFT_TOOL = "cv-wizard";
+const DRAFT_URL = `/api/workspace?tool=${DRAFT_TOOL}`;
+
+function dropDraft(): void {
+  void fetch(DRAFT_URL, { method: "DELETE" }).catch(() => undefined);
+}
 
 const STEPS = [
   { id: "you", label: msg("About you") },
@@ -37,7 +41,7 @@ function Row({ label, value, empty }: { label: string; value: string; empty: str
 
 /**
  * Create a CV by answering one topic per screen: a progress bar, Back and Next on every step, examples next to the fields,
- * nothing required except the name, dates in whatever way people write them, and a draft that survives closing the tab.
+ * nothing required except the name, dates in whatever way people write them, and a draft saved in the account.
  * `initial` carries what could be read from an uploaded CV; `sourceText` stays visible so it can be copied from.
  */
 export function CvWizard({ initial, sourceText, onDone, onCancel }: { initial?: Partial<WizardAnswers>; sourceText?: string; onDone: () => void; onCancel: () => void }) {
@@ -49,50 +53,46 @@ export function CvWizard({ initial, sourceText, onDone, onCancel }: { initial?: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(false);
-  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  // The draft belongs to the account; a file brought in by the person (initial) starts over instead of mixing with it.
+  // A file brought in by the person (initial) starts over instead of mixing with an earlier draft.
   useEffect(() => {
     let live = true;
-    void loadAccount().then((account) => {
-      if (!live || !account) return;
-      const key = `${CV_WIZARD_DRAFT_PREFIX}${account.id}`;
-      setDraftKey(key);
-      if (initial) return;
+    void (async () => {
       try {
-        const stored = JSON.parse(localStorage.getItem(key) ?? "null") as { answers?: WizardAnswers; step?: number } | null;
-        if (stored?.answers?.jobs && stored.answers.schools) {
-          setA(stored.answers);
-          setStep(Math.min(stored.step ?? 0, STEPS.length - 1));
+        if (initial) return;
+        const response = await fetch(DRAFT_URL, { cache: "no-store" });
+        const body = (await response.json()) as Record<string, { answers?: unknown; step?: unknown }>;
+        const stored = body[DRAFT_TOOL];
+        if (!live || !response.ok || typeof stored?.answers !== "string") return;
+        const answers = JSON.parse(stored.answers) as WizardAnswers;
+        if (answers.jobs && answers.schools) {
+          setA(answers);
+          setStep(Math.min(Number(stored.step) || 0, STEPS.length - 1));
           setRestored(true);
         }
       } catch {
         /* no draft */
+      } finally {
+        if (live) setDraftLoaded(true);
       }
-    });
+    })();
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on opening
   }, []);
 
+  // Saved shortly after typing stops; never before the earlier draft was read, so opening the page cannot overwrite it.
   useEffect(() => {
-    if (!draftKey || created) return;
-    try {
-      localStorage.setItem(draftKey, JSON.stringify({ answers: a, step }));
-    } catch {
-      /* storage blocked: the wizard still works for this page */
-    }
-  }, [a, step, draftKey, created]);
+    if (!draftLoaded || created) return;
+    const timer = setTimeout(() => {
+      void fetch("/api/workspace", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool: DRAFT_TOOL, fields: { answers: JSON.stringify(a), step: String(step) } }) }).catch(() => undefined);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [a, step, draftLoaded, created]);
 
-  const dropDraft = () => {
-    try {
-      if (draftKey) localStorage.removeItem(draftKey);
-    } catch {
-      /* nothing to drop */
-    }
-  };
   const go = (next: number) => {
     setStep(next);
     setError("");
@@ -315,7 +315,7 @@ export function CvWizard({ initial, sourceText, onDone, onCancel }: { initial?: 
           ) : (
             <Button size="lg" variant="primary" disabled={!canGoOn} onClick={() => go(step + 1)} data-cv-wizard-next>{t("Next")}</Button>
           )}
-          <span className="text-[13px] text-faint">{t("What you write is kept in this browser until you finish, so you can stop and come back.")}</span>
+          <span className="text-[13px] text-faint">{t("What you write is saved in your account until you finish, so you can stop and come back, even on another computer.")}</span>
         </div>
       </Panel>
 

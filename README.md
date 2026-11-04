@@ -1,11 +1,26 @@
 # Smart Knife
 
-**A self-hosted, browser-first toolbox with an AI assistant that can actually use it.**
+**Stop paying for Microsoft 365 and Adobe: office documents, photo and video editing, PDF tools and a CV builder in your browser, free.**
 
-One launcher, 41 hand-made tools (31 suites with 107 tabs, plus 10 standalone), a chat assistant that drives the live
-page, and an MCP endpoint so outside agents (Claude Code, Cursor, OpenClaw…) can use the same tools and steer the
-screen you have open. No telemetry, no registration, no cloud: it runs on your own machine, and most tools never send a
-byte off the page.
+Smart Knife puts the programs most people pay a subscription for, and the small jobs they search the web for, on one
+website you can use or run yourself. It has a step-by-step welcome guide and CV wizard for people who are not computer
+savvy, plus 41 tools (31 suites with 107 tabs, plus 10 standalone), an optional AI assistant that drives the live page,
+and an MCP endpoint for outside agents (Claude Code, Cursor, OpenClaw…). No telemetry and no ads, and most tools never
+send a byte off the page.
+
+| Instead of paying for | Use, free | For |
+| --- | --- | --- |
+| Microsoft Word, Excel, PowerPoint | Euro-Office | documents, spreadsheets and slides, in the same file formats |
+| Adobe Photoshop, Lightroom | PhotoCraft, LightCraft | photo editing and RAW development |
+| Adobe Illustrator, InDesign | VectorCraft, DesignCraft | graphics and page layout |
+| Adobe Premiere Pro, After Effects, Audition | FilmCraft, EffectCraft, SoundCraft | video, effects and sound |
+| Adobe Acrobat | PDF tools, PdfCraft | editing, merging, compressing and OCR for PDFs |
+| Paid CV websites | CV builder | a CV in Polish and English, in PDF or Word, adjusted to each job offer |
+| Zapier, Make | Automations | connecting apps and running tasks by themselves |
+
+These are independent open-source tools: they cover everyday and much advanced work, not every feature of the paid
+programs. The product names are trademarks of their owners and only say what the tools can be used instead of; Smart
+Knife is not connected with or endorsed by those companies.
 
 ![Launcher](docs/screenshots/launcher.png)
 
@@ -25,7 +40,7 @@ byte off the page.
 - **Web and code**: a website check (a live URL: redirects, security headers, cookies, SEO, accessibility, robots.txt, sitemap), a CSS playground (HTML, CSS, JS/TS with presets and export) and CSS builders, CSP and cURL, URLs, robots.txt and sitemaps, JWT and passwords, IDs and hashes, dates and time zones, cron and RRULE
 - **Text**: regex lab, diff, text kit (transforms, line wrap, smart quotes, placeholder text), Unicode and encoding inspector
 
-**CV builder**: one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
+**CV builder**: a step-by-step wizard (no AI needed) and one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
 with an ATS check, an application tracker, and a showcase builder that drafts project entries from GitHub repos.
 Prints to PDF or exports DOCX.
 
@@ -33,7 +48,7 @@ Prints to PDF or exports DOCX.
 window functions, `EXPLAIN` and catchment analysis, each checked against a real PostgreSQL + PostGIS database the app
 runs for you, with progressive hints and interview drills. See [docs/LEARN.md](docs/LEARN.md).
 
-**Office documents** (optional sidecar): create and edit Word, Excel and PowerPoint files in a self-hosted editor that
+**Euro-Office** (optional sidecar): create and edit Word, Excel and PowerPoint files in a self-hosted editor that
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
 

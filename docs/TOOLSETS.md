@@ -31,7 +31,7 @@ interrupted. `PUT /api/account/welcome` clears it, on finishing or skipping. The
 
 `src/tools/cv/CvWizard.tsx` + `src/lib/cv/wizard.ts`: an empty CV opens on three ways in. Answering questions is one topic
 per screen, only the name is required, dates are accepted as people write them (`normalizeMonth`), and the draft stays in
-local storage per account until the CV is created (logging out clears it, `accountStorageKeys`). An uploaded CV needs no
+the account's encrypted drafts (`/api/workspace`, tool `cv-wizard`) until the CV is created. An uploaded CV needs no
 AI: `guessFromCvText` fills in only what is safe (name, email, phone, a profile link) and keeps the text next to the
 questions. New accounts have no AI model, so no step of either wizard may depend on one; the AI routes are offered next to
 them and say they need a model.

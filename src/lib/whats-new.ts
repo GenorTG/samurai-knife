@@ -12,6 +12,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "0.15.0",
+    date: "2026-11-05",
+    items: [
+      "Plain names: tools have new display names (slugs and tab ids are unchanged; the old names stay searchable): cv-studio is \"CV builder\", office is \"Euro-Office\", pdf is \"PDF tools\", workflows is \"Automations\", sidecars is \"Server add-ons\". CV tabs: \"Your details\" (profile), \"Your CVs\" (variants), \"Jobs you applied to\" (applications), \"Your projects\" (showcase). list_tools categories are now documents, career, images, everyday, text, data, dev, automate, learn, sidecars.",
+      "Tool sets: public pages /sets/<id> (office, creative, career, everyday, data, automate, web, learn) link the tasks people ask for to the right tool and tab. New accounts start at /welcome. An empty CV opens the step-by-step wizard (no tool; knife_cv_import still loads a whole profile).",
+    ],
+  },
+  {
     version: "0.14.0",
     date: "2026-11-04",
     items: [

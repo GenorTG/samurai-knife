@@ -6,7 +6,7 @@ import { useT } from "@/lib/i18n/react";
 import { unseen, type SeenState } from "@/lib/release-notes";
 
 /** Pages that are read before or instead of the app: no window over them. */
-const QUIET = /^\/(?:privacy|terms|changelog|login|register|verify|reset|forgot|credits)(?:\/|$)/;
+const QUIET = /^\/(?:privacy|terms|changelog|login|register|verify|reset|forgot|credits|welcome)(?:\/|$)/;
 
 type Shown = NonNullable<ReturnType<typeof unseen>> & { version: string };
 

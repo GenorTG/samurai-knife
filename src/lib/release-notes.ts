@@ -15,6 +15,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.15.0",
+    date: "2026-11-05",
+    features: [
+      msg("Clearer names and categories: every tool now says in plain words what it does, and tools are grouped by the job you want done. Tool sets show what each group can replace."),
+      msg("A short welcome guide for new accounts: choose your language and what you came for, and it takes you straight there. You can open it again from the home page."),
+      msg("The CV builder has a new step-by-step wizard: one topic at a time, with examples, and only your name is required. No AI model is needed, and what you write is kept until you finish. You can also start from a CV file you already have."),
+    ],
+    fixes: [],
+  },
+  {
     version: "0.14.0",
     date: "2026-11-04",
     features: [
