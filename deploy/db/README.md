@@ -14,6 +14,7 @@ the app host. PostgreSQL **18 from PGDG on both** (same major is required for ph
 | `primary-setup.sql` | VPS, once | roles `knife_owner` / `knife_app` / `knife_replicator`, database `knife`, grants, replication slot |
 | `replica-setup.sh` | genorbox1, once | delayed standby (5 min apply delay, rate-limited first copy) |
 | `pgbackrest.conf` | both | repository on genorbox1, backups from the standby, encrypted |
+| `cutover.sh` | genorbox1, once | steps 9-10 as one checked script: stop, back up, import, verify, live.env, start, smoke; `--check` = read-only, `--rollback` |
 
 ## How genorbox1 reaches the VPS: a dedicated WireGuard link (decision)
 
@@ -53,6 +54,14 @@ install -d /etc/nftables.d && cp nftables-knife-db.nft /etc/nftables.d/knife-db.
 grep -q 'nftables.d' /etc/nftables.conf || echo 'include "/etc/nftables.d/*.nft"' >> /etc/nftables.conf
 nft -c -f /etc/nftables.conf && systemctl enable nftables && systemctl reload nftables   # (restart if it was not running)
 ```
+When the existing `inet filter` input chain has `policy drop` (it does on this VPS), its own accepts are needed too —
+an accept in `knife_db` does not skip another table — so add, next to the other port rules in `/etc/nftables.conf`:
+```
+    udp dport 51821 accept comment "Smart Knife DB WireGuard (wg-knife)"
+    iifname "wg-knife" ip saddr 10.77.0.2 tcp dport { 5432, 8432 } accept comment "Smart Knife DB from genorbox1 via wg-knife"
+```
+and put the `include` AFTER the `flush ruleset` line (appending it at the end does that). Keep a second SSH session open
+while you reload, check `nft list ruleset` (the 587 rule unchanged) and open a NEW SSH connection before closing it.
 genorbox1 (root): `wg-knife.conf` = `wg-knife.genorbox1.conf` filled in (Endpoint = `VPS_PUBLIC:51821`), then
 `systemctl enable --now wg-quick@wg-knife && ping -c3 10.77.0.1 && wg show wg-knife` (latest handshake < 30 s).
 If the VPS provider has its own firewall (security group), open 51821/udp there too.
@@ -81,7 +90,7 @@ If the VPS provider has its own firewall (security group), open 51821/udp there 
      openssl x509 -req -in "$1.csr" -CA knife-ca.crt -CAkey knife-ca.key -days 825 -out "$1.crt" \
        -extfile <(printf 'subjectAltName=%s\nextendedKeyUsage=%s\nkeyUsage=critical,digitalSignature\n' "$2" "$3")
    }
-   issue server    "IP:10.77.0.1,DNS:knife-db"   serverAuth                 # Postgres on the VPS
+   issue server    "IP:10.77.0.1,DNS:knife-db,IP:127.0.0.1,DNS:localhost" serverAuth   # Postgres on the VPS (+ loopback: checks on the VPS, SSH port-forward)
    issue vps       "IP:10.77.0.1,DNS:vps"        serverAuth,clientAuth      # pgBackRest on the VPS
    issue genorbox1 "IP:10.77.0.2,DNS:genorbox1"  serverAuth,clientAuth      # pgBackRest on genorbox1
    ```
@@ -117,7 +126,8 @@ If the VPS provider has its own firewall (security group), open 51821/udp there 
 8. Schema (as the deploy user, from the release checkout that contains this branch):
    `KNIFE_DB_URL='postgres://knife_owner:…@10.77.0.1:5432/knife?sslmode=verify-full&sslrootcert=/etc/samurai-knife/knife-db-ca.crt' npm run db:migrate`
    (`-- --status` shows applied/pending).
-9. Stop the live server (`sudo systemctl stop samurai-knife`), back up `/var/lib/samurai-knife`, then as the `knife` user:
+9. (`deploy/db/cutover.sh` does 9 and 10 with checks and an automatic return to files on any failure: run it with
+   `--check` first, with the server still up.) Stop the live server (`sudo systemctl stop samurai-knife`), back up `/var/lib/samurai-knife`, then as the `knife` user:
    `KNIFE_DATA_DIR=/var/lib/samurai-knife KNIFE_DB_URL='postgres://knife_app:…@10.77.0.1/knife?sslmode=verify-full&sslrootcert=/etc/samurai-knife/knife-db-ca.crt' npm run db:import -- --dry-run`,
    then the same without `--dry-run`; it must end with `verified: database matches the files`.
 10. Add to `/etc/samurai-knife/live.env`: `KNIFE_DB_URL=…knife_app…` (0640 root:knife), `KNIFE_DB_VERIFY=1`; start the

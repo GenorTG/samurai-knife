@@ -223,3 +223,16 @@ test("knife-update: a release that touches sidecar bundle sources logs which ins
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("knife-update's preflight never sees the live database (KNIFE_DB_URL would hit the writer lock)", () => {
+  const updater = read("deploy/bin/knife-update");
+  const preflight = updater.slice(updater.indexOf("# Preflight:"), updater.indexOf("scripts/serve.mjs start", updater.indexOf("# Preflight:")));
+  assert.match(preflight, /\nenv -i PATH=/, "the preflight server must start from an empty environment");
+  assert.doesNotMatch(updater, /KNIFE_DB_/, "knife-update must not pass any KNIFE_DB_* setting");
+  const unit = read("deploy/systemd/knife-update.service");
+  assert.equal(unitLines(unit, "EnvironmentFile").length, 0, "knife-update.service must not read live.env");
+  const cutover = read("deploy/db/cutover.sh");
+  assert.match(cutover, /env -i PATH/, "cutover.sh checks the installed updater's preflight");
+  const result = spawnSync("bash", ["-n", join(ROOT, "deploy/db/cutover.sh")], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+});
