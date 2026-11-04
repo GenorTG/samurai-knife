@@ -295,7 +295,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------------------------- 1. register
     ctx_a, page_a = new_context(browser, base, "198.51.100.11")
     go(page_a, "/")
-    expect(page_a.get_by_role("heading", level=1)).to_contain_text("in one sharp place", timeout=15_000)
+    expect(page_a.get_by_role("heading", level=1)).to_contain_text("Stop paying for", timeout=15_000)
     shot(page_a, "greeter")
     check("signed-out home is the welcome page: register + log in calls to action, no tool list, no app shell",
           page_a.locator("main a[href='/register']").count() >= 2 and page_a.locator("main a[href='/login']").count() >= 1
