@@ -36,8 +36,8 @@ function ChangePassword() {
     if (reply.ok) {
       setCurrent("");
       setNext("");
-      const keys = reply.body.mcpKeysRevoked > 0 ? ` ${tn("{n} MCP key was revoked: create a new one for your agents.", "{n} MCP keys were revoked: create new ones for your agents.", reply.body.mcpKeysRevoked)}` : "";
-      setNote({ tone: "good", text: `${t("Password changed.")} ${tn("{n} other session was signed out.", "{n} other sessions were signed out.", reply.body.signedOut)}${keys}` });
+      const keys = reply.body.mcpKeysRevoked > 0 ? ` ${tn("{n} connection key was removed: make a new one for your AI programs.", "{n} connection keys were removed: make new ones for your AI programs.", reply.body.mcpKeysRevoked)}` : "";
+      setNote({ tone: "good", text: `${t("Password changed.")} ${tn("{n} other device was logged out.", "{n} other devices were logged out.", reply.body.signedOut)}${keys}` });
     } else {
       setNote({ tone: "error", text: reply.message });
     }
@@ -49,7 +49,7 @@ function ChangePassword() {
         <Field label={t("Current password")}>
           <TextInput type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
         </Field>
-        <Field label={t("New password")} hint={t("At least 10 characters. Signs out your other devices and revokes your MCP keys.")}>
+        <Field label={t("New password")} hint={t("At least 10 characters. Logs out your other devices and removes your connection keys for AI programs.")}>
           <TextInput type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={10} />
         </Field>
         <div className="space-y-3 sm:col-span-2">
@@ -112,15 +112,15 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
 
 const AREAS: [keyof StorageUsage["areas"], string][] = [
   ["docs", msg("Office documents (with versions and trash)")],
-  ["cv", msg("CV builder (profile, snapshots, photo)")],
+  ["cv", msg("CV builder (your details, earlier copies, photo)")],
   ["conversations", msg("Assistant conversations")],
-  ["workspace", msg("Tool drafts")],
-  ["site", msg("Website studio (connection, audits)")],
+  ["workspace", msg("Unfinished work in tools")],
+  ["site", msg("Website check (connection, results)")],
   ["craft", msg("Craft apps files")],
-  ["workflows", msg("Workflows (runs, credentials)")],
-  ["jobs", msg("Running and finished jobs (temporary)")],
+  ["workflows", msg("Automations (runs, saved logins)")],
+  ["jobs", msg("Work in progress and finished tasks (temporary)")],
   ["learn", msg("Course progress")],
-  ["usage", msg("Usage counters")],
+  ["usage", msg("Usage statistics")],
 ];
 
 /** Used / quota for this account (GET /api/account/storage) and what takes the space. */
@@ -142,7 +142,7 @@ function Storage() {
           {usage.quotaBytes === null ? <p className="text-xs text-faint">{t("No storage limit on this account.")}</p> : null}
           <KeyValues rows={AREAS.filter(([key]) => usage.areas[key] > 0).map(([key, label]) => [t(label), formatBytes(usage.areas[key])])} />
           <p className="text-sm text-muted">
-            {t("To free space, empty the trash or prune old versions in")}{" "}
+            {t("To free space, empty the trash or delete old versions in")}{" "}
             <Link className="text-accent-soft underline underline-offset-2" href="/tools/office">{t("Office documents")}</Link>.
           </p>
         </div>
@@ -177,14 +177,14 @@ function Sessions({ username }: { username: string }) {
   }
 
   return (
-    <Panel title={t("Sessions")}>
+    <Panel title={t("Where you are logged in")}>
       <div className="space-y-3">
         <p className="text-sm text-muted">
-          {count === null ? t("Counting your sessions…") : tn("{n} signed-in session (browsers and devices), this one included.", "{n} signed-in sessions (browsers and devices), this one included.", count)}
+          {count === null ? t("Counting your devices…") : tn("You are logged in on {n} browser or device, this one included.", "You are logged in on {n} browsers or devices, this one included.", count)}
         </p>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={revokeKeys} onChange={(e) => setRevokeKeys(e.target.checked)} />
-          {t("With \"Log out everywhere\", also revoke every MCP key (agents lose access until you create a new key)")}
+          {t("With \"Log out everywhere\", also remove every connection key below (AI programs lose access until you make a new key)")}
         </label>
         <Status note={note} />
         <div className="flex flex-wrap gap-2">
@@ -249,7 +249,7 @@ function McpKeys({ username }: { username: string }) {
     setNote(null);
     const reply = await call("POST", "/api/account/mcp-keys", { action: "revoke", id: row.id });
     if (reply.ok) {
-      setNote({ tone: "good", text: t("Revoked \"{name}\". Agents using it are refused from now on.", { name: row.name }) });
+      setNote({ tone: "good", text: t("Removed \"{name}\". AI programs using it are refused from now on.", { name: row.name }) });
       load();
     } else {
       setNote({ tone: "error", text: reply.message });
@@ -265,22 +265,23 @@ function McpKeys({ username }: { username: string }) {
     cursor: t("Cursor (mcp.json)"),
   };
   return (
-    <Panel title={t("MCP keys")}>
+    <Panel title={t("Advanced: connect an AI program (MCP keys)")}>
       <div className="space-y-3">
-        <p className="text-sm text-muted">{t("Let an agent outside the browser (OpenClaw, Claude Code, Cursor…) use this account's tools. Your personal MCP address needs only a key, sent as Authorization: Bearer <key>, and only ever reaches this account's data:")}</p>
+        <p className="text-sm text-muted">{t("Only for people who run an AI program on their own computer (OpenClaw, Claude Code, Cursor and similar): it lets that program use this account's tools. If that is not you, skip this section. Your personal address needs only a key, sent as Authorization: Bearer <key>, and only ever reaches this account's data:")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <code data-testid="mcp-personal-url" className="min-w-0 flex-1 break-all rounded-lg border border-line bg-raised/50 px-3 py-2 font-mono text-xs text-ink">{origin ? personalUrl : t("Detecting site address…")}</code>
           <CopyButton text={origin ? personalUrl : ""} label={t("Copy address")} />
         </div>
-        <p className="text-xs text-muted">
-          {t("Older settings keep working: {endpoint} with your username {username} and a key (HTTP Basic auth, or a Bearer key with the X-Knife-User header).", { endpoint, username })}
-          {info.keyRequired ? "" : ` ${t("On this private server that address also answers without a key, as the default account (KNIFE_MCP_REQUIRE_KEY=1 turns that off).")}`}
-        </p>
+        <details className="text-xs text-muted">
+          <summary className="cursor-pointer select-none">{t("Technical details")}</summary>
+          <p className="mt-1">{t("Older settings keep working: {endpoint} with your username {username} and a key (HTTP Basic auth, or a Bearer key with the X-Knife-User header).", { endpoint, username })}
+          {info.keyRequired ? "" : ` ${t("On this private server that address also answers without a key, as the default account (KNIFE_MCP_REQUIRE_KEY=1 turns that off).")}`}</p>
+        </details>
         {created ? (
           <Notice tone="good">
             <span className="block">{t("Key \"{name}\" created. Copy it now: it is not shown again.", { name: created.name })}</span>
             <code data-testid="mcp-key-value" className="mt-2 block font-mono text-[13px] break-all select-all">{created.key}</code>
-            {created.scope === "read-only" ? <span className="mt-2 block">{t("This key is read-only: the agent sees and can call only tools that change nothing.")}</span> : null}
+            {created.scope === "read-only" ? <span className="mt-2 block">{t("This key is read-only: the program sees and can use only tools that change nothing.")}</span> : null}
             <span className="mt-3 block font-medium">{t("Ready-made settings with this key:")}</span>
             {mcpClientConfigs(personalUrl, created.key).map((config) => (
               <span key={config.id} className="mt-2 block" data-mcp-config={config.id}>
@@ -297,9 +298,9 @@ function McpKeys({ username }: { username: string }) {
         {keys === null ? (
           <p className="text-sm text-muted">{t("Loading keys…")}</p>
         ) : keys.length === 0 ? (
-          <p className="text-sm text-muted">{t("No MCP keys yet.")}</p>
+          <p className="text-sm text-muted">{t("No connection keys yet.")}</p>
         ) : (
-          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t("MCP keys")}>
+          <ul className="divide-y divide-line rounded-lg border border-line" aria-label={t("Advanced: connect an AI program (MCP keys)")}>
             {keys.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span className="min-w-0">
@@ -308,13 +309,13 @@ function McpKeys({ username }: { username: string }) {
                   <span data-mcp-scope={row.scope}><Badge tone={row.scope === "read-only" ? "accent" : "neutral"}>{row.scope === "read-only" ? t("read-only") : t("full access")}</Badge></span>
                   <span className="block text-xs text-muted">{t("created {createdAt} · last used", { createdAt: when(row.createdAt) })}{" "} {when(row.lastUsedAt)}</span>
                 </span>
-                <Button size="sm" variant="danger" onClick={() => void revoke(row)} aria-label={t("Revoke {name}", { name: row.name })}>{t("Revoke")}</Button>
+                <Button size="sm" variant="danger" onClick={() => void revoke(row)} aria-label={t("Remove {name}", { name: row.name })}>{t("Remove")}</Button>
               </li>
             ))}
           </ul>
         )}
         <form onSubmit={create} className="flex flex-wrap items-end gap-2" aria-label={t("New MCP key")}>
-          <Field label={t("Key name")} hint={t("Where it is used, e.g. laptop OpenClaw.")} className="min-w-0 flex-1">
+          <Field label={t("Key name")} hint={t("Where you use it, e.g. OpenClaw on my laptop.")} className="min-w-0 flex-1">
             <TextInput value={name} maxLength={60} onChange={(e) => setName(e.target.value)} required />
           </Field>
           <Field label={t("What the key may do")} className="min-w-0 sm:w-64">
@@ -354,7 +355,7 @@ function DeleteAccount({ username, requiresPassword }: { username: string; requi
     <Panel title={t("Delete account")}>
       {!open ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted">{t("Removes the account, every session and MCP key, and all of its data on this server: CV builder, documents, assistant conversations, course progress and usage counters. It cannot be undone.")}</p>
+          <p className="text-sm text-muted">{t("Removes your account, logs you out everywhere and deletes everything stored for it: your CVs, documents, assistant conversations, course progress and usage statistics. It cannot be undone.")}</p>
           <Button variant="danger" onClick={() => setOpen(true)}>{t("Delete my account…")}</Button>
         </div>
       ) : (
@@ -420,7 +421,7 @@ export function AccountSettings() {
             ]}
           />
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="text-muted">{t("Interface language")}</span>
+            <span className="text-muted">{t("Language of this site")}</span>
             <LanguageChoice />
           </div>
           {account.isAdmin ? (

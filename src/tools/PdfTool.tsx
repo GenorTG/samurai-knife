@@ -10,18 +10,18 @@ import { msg } from "@/lib/i18n/msg";
 type Action = "info" | "text" | "extract" | "merge" | "rotate" | "split" | "reorder" | "compress" | "number" | "watermark" | "protect" | "unlock";
 
 const ACTIONS: { value: Action; label: string; hint: string; needsPages: boolean }[] = [
-  { value: "info", label: msg("Inspect"), hint: msg("Page count, sizes, metadata, encryption — nothing is modified."), needsPages: false },
-  { value: "text", label: msg("Extract text"), hint: msg("Text layer only. Scanned PDFs need OCR, which this does not do."), needsPages: true },
-  { value: "extract", label: msg("Cut pages"), hint: msg("Keep only the listed pages as a new PDF."), needsPages: true },
-  { value: "rotate", label: msg("Rotate"), hint: msg("Rotate selected pages by 90/180/270°."), needsPages: true },
-  { value: "split", label: msg("Split"), hint: msg("Break into N-page files, delivered as one zip."), needsPages: false },
-  { value: "merge", label: msg("Merge"), hint: msg("Append every attached PDF in order. Needs 2+ files."), needsPages: false },
-  { value: "reorder", label: msg("Reorder pages"), hint: msg("List every page exactly once in the new order, e.g. 3,1,2."), needsPages: true },
-  { value: "compress", label: msg("Compress"), hint: msg("Lossless stream compression and duplicate-object removal; embedded images are not downsampled."), needsPages: false },
-  { value: "number", label: msg("Page numbers"), hint: msg("Stamp sequential numbers at the bottom of every page."), needsPages: false },
-  { value: "watermark", label: msg("Watermark"), hint: msg("Add a translucent diagonal text watermark to every page."), needsPages: false },
-  { value: "protect", label: msg("Protect"), hint: msg("Encrypt the PDF with AES-256. Use at least 8 characters."), needsPages: false },
-  { value: "unlock", label: msg("Unlock"), hint: msg("Remove a PDF password you know, then download an unprotected copy."), needsPages: false },
+  { value: "info", label: msg("Inspect"), hint: msg("Shows the page count, sizes, title and author, and whether it has a password. Nothing is changed."), needsPages: false },
+  { value: "text", label: msg("Extract text"), hint: msg("Gets the text stored in the PDF. For a scan, use the Edit and read scans tab, which can read text from pictures."), needsPages: true },
+  { value: "extract", label: msg("Cut pages"), hint: msg("Makes a new PDF with only the pages you list."), needsPages: true },
+  { value: "rotate", label: msg("Rotate"), hint: msg("Turns the pages you choose by 90, 180 or 270 degrees."), needsPages: true },
+  { value: "split", label: msg("Split"), hint: msg("Breaks it into files with the number of pages you choose, downloaded together as one zip file."), needsPages: false },
+  { value: "merge", label: msg("Merge"), hint: msg("Joins all the PDFs above in the order shown. You need at least 2 files."), needsPages: false },
+  { value: "reorder", label: msg("Reorder pages"), hint: msg("List every page once, in the new order, e.g. 3,1,2."), needsPages: true },
+  { value: "compress", label: msg("Compress"), hint: msg("Makes the file smaller without losing quality. Pictures inside are left as they are, so a PDF full of photos may shrink only a little."), needsPages: false },
+  { value: "number", label: msg("Page numbers"), hint: msg("Puts a number at the bottom of every page."), needsPages: false },
+  { value: "watermark", label: msg("Watermark"), hint: msg("Puts see-through text across every page."), needsPages: false },
+  { value: "protect", label: msg("Protect"), hint: msg("Locks the PDF with a password (AES-256 encryption). Use at least 8 characters."), needsPages: false },
+  { value: "unlock", label: msg("Unlock"), hint: msg("Removes a password you know and downloads a copy without it."), needsPages: false },
 ];
 
 const SINGLE_FILE_ACTIONS = new Set<Action>([
@@ -44,7 +44,7 @@ function phaseText(phase: PdfJobPhase | null): string | null {
   if (!phase) return null;
   if (phase.kind === "uploading") return "Uploading…";
   if (phase.kind === "running") return "Processing…";
-  return phase.ahead > 0 ? `Queued (${phase.ahead} ahead)…` : msg("Queued (next up)…");
+  return phase.ahead > 0 ? `Queued (${phase.ahead} ahead)…` : msg("Waiting for its turn…");
 }
 
 export default function PdfTool() {
@@ -158,7 +158,7 @@ export default function PdfTool() {
         : "";
       setDownloaded(`${filename} · ${formatBytes(blob.size)}${compression}`);
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : t("Request failed — is the dev server running?"));
+      setError(exc instanceof Error ? exc.message : t("Could not reach the server. Check your connection and try again."));
     } finally {
       jobRef.current = null;
       setPhase(null);
@@ -212,7 +212,7 @@ export default function PdfTool() {
           </div>
         </Panel>
 
-        <Panel title={t("Operation")}>
+        <Panel title={t("What to do")}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-1.5">
               {ACTIONS.map((item) => (
@@ -236,7 +236,7 @@ export default function PdfTool() {
             <p className="text-xs leading-relaxed text-faint">{t(active.hint)}</p>
 
             {active.needsPages ? (
-              <Field label={action === "reorder" ? t("New page order") : t("Pages")} hint={action === "reorder" ? t("List each page once; ranges work too. Example: 3,1-2") : t("Blank = all pages. Syntax: 1-3,7,9-11")}>
+              <Field label={action === "reorder" ? t("New page order") : t("Pages")} hint={action === "reorder" ? t("List each page once; ranges work too. Example: 3,1-2") : t("Leave empty for all pages. Example: 1-3,7,9-11")}>
                 <TextInput
                   value={pages}
                   spellCheck={false}
@@ -270,13 +270,13 @@ export default function PdfTool() {
             ) : null}
 
             {action === "watermark" ? (
-              <Field label={t("Watermark text")} hint={t("Basic Latin characters; placed diagonally at low opacity.")}>
+              <Field label={t("Watermark text")} hint={t("Use letters without Polish characters. It goes across the page, see-through.")}>
                 <TextInput maxLength={100} value={stampText} onChange={(e) => setStampText(e.target.value)} />
               </Field>
             ) : null}
 
             {action === "protect" || action === "unlock" ? (
-              <Field label={t("PDF password")} hint={action === "protect" ? t("At least 8 characters; the password is used only for this local request.") : t("Enter the password already on the PDF.")}>
+              <Field label={t("PDF password")} hint={action === "protect" ? t("At least 8 characters. The password is used only for this job and is not stored.") : t("Enter the password already on the PDF.")}>
                 <TextInput type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </Field>
             ) : null}
@@ -295,7 +295,7 @@ export default function PdfTool() {
             </div>
 
             {action === "merge" && files.length < 2 ? (
-              <Notice>{t("Add at least two PDFs to merge — order follows the list above.")}</Notice>
+              <Notice>{t("Add at least two PDFs to merge. They are joined in the order of the list above.")}</Notice>
             ) : null}
           </div>
         </Panel>
@@ -312,7 +312,7 @@ export default function PdfTool() {
                   <h3 className="text-sm text-ink">{doc.name}</h3>
                   <span className="font-mono text-[11px] text-faint">
                     {tn("{n} page", "{n} pages", doc.pages)} · {formatBytes(doc.bytes)}
-                    {doc.encrypted ? t(" · encrypted") : ""}
+                    {doc.encrypted ? t(" · password protected") : ""}
                   </span>
                 </div>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[13px]">
@@ -330,7 +330,7 @@ export default function PdfTool() {
                   ) : null}
                   {doc.producer ? (
                     <>
-                      <dt className="text-faint">{t("Producer")}</dt>
+                      <dt className="text-faint">{t("Made with")}</dt>
                       <dd className="font-mono text-ink">{doc.producer}</dd>
                     </>
                   ) : null}
@@ -349,7 +349,7 @@ export default function PdfTool() {
         ) : null}
 
         {downloaded ? (
-          <Panel title={t("Delivered")}>
+          <Panel title={t("Ready")}>
             <div className="space-y-2">
               <Notice tone="good">{t("Saved:")}{" "} <span className="font-mono">{downloaded}</span></Notice>
               {note ? <p className="text-xs text-faint">{note}</p> : null}
@@ -383,20 +383,13 @@ export default function PdfTool() {
         >
           <div className="space-y-2">
             {note && !downloaded ? <p className="text-xs text-faint">{note}</p> : null}
-            <OutputBlock value={text} rows={20} empty={t("Run “Extract text” to see the text layer here.")} />
+            <OutputBlock value={text} rows={20} empty={t("Choose “Extract text” to see the PDF's text here.")} />
           </div>
         </Panel>
 
-        <Panel title={t("Where this runs")}>
-          <StatGrid>
-            <Stat label={t("Runtime")} value="Python 3.12" />
-            <Stat label={t("Library")} value="pypdf" />
-            <Stat label={t("Isolation")} value="venv" />
-            <Stat label={t("Uploads")} value="localhost" />
-          </StatGrid>
-          <p className="mt-3 text-xs leading-relaxed text-faint">
-            {t("Files are written to a temp dir, processed by")}{" "}
-            <span className="font-mono">{t("server/py/scripts/pdf_tool.py")}</span>{t(", and deleted in the same request. Nothing is stored, and nothing leaves the machine.")}
+        <Panel title={t("Where your files go")}>
+          <p className="text-xs leading-relaxed text-faint">
+            {t("Your files go to this website's server just for this job and are deleted as soon as it ends. Nothing is kept, and nothing goes to any other company.")}
           </p>
         </Panel>
       </div>

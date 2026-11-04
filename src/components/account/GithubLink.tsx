@@ -42,7 +42,7 @@ export function GithubLink({ account, onChanged }: { account: PublicAccount; onC
         {account.github ? (
           <>
             <p className="text-sm text-muted">
-              {t("Linked to GitHub user")}{" "} <b>@{account.github}</b>{publicMode ? t(": you can sign in with GitHub") : ""}{t(". The website studio uses the app installations this GitHub user can reach.")}
+              {t("Linked to GitHub user")}{" "} <b>@{account.github}</b>{publicMode ? t(": you can sign in with GitHub") : ""}{t(". The website check can use the GitHub projects this user has access to.")}
             </p>
             <div className="flex flex-wrap gap-2">
               <a className="inline-flex h-9 items-center rounded-lg border border-line-strong px-3 text-sm text-ink hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Faccount">{t("Refresh from GitHub")}</a>
@@ -51,7 +51,7 @@ export function GithubLink({ account, onChanged }: { account: PublicAccount; onC
           </>
         ) : (
           <>
-            <p className="text-sm text-muted">{t("Link your GitHub user to")}{" "} {publicMode ? t("sign in with GitHub and ") : ""}{t("connect your website's repository in the website studio without a token.")}</p>
+            <p className="text-sm text-muted">{t("Link your GitHub user to")}{" "} {publicMode ? t("sign in with GitHub and ") : ""}{t("connect your website's code in the Website tab of the CV builder without a token.")}</p>
             <a className="inline-flex h-9 items-center rounded-lg border border-line-strong bg-surface px-3 text-sm font-semibold text-ink hover:bg-raised" href="/api/github/start?purpose=link&returnTo=%2Faccount">{t("Link GitHub")}</a>
           </>
         )}

@@ -457,7 +457,7 @@ export const TOOLS: ToolMeta[] = [
     kind: "client",
     tabs: [
       { id: "resize", label: msg("Resize"), component: "image-resize" },
-      { id: "scrub", label: msg("Scrub metadata"), component: "image-scrub" },
+      { id: "scrub", label: msg("Remove hidden data"), component: "image-scrub" },
       { id: "responsive", label: msg("Responsive set"), component: "responsive-images" },
       { id: "favicon", label: msg("Favicons"), component: "favicon-packager" },
     ],
@@ -511,7 +511,7 @@ export const TOOLS: ToolMeta[] = [
     kind: "server",
     tabs: [
       { id: "tools", label: msg("Tools"), component: "pdf" },
-      { id: "editor", label: msg("Editor & OCR"), component: "pdf-editor", wide: true },
+      { id: "editor", label: msg("Edit and read scans"), component: "pdf-editor", wide: true },
     ],
     keywords: ["pdf toolkit", 
       "pdf",

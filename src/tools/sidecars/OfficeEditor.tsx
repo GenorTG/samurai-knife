@@ -36,7 +36,7 @@ function loadDocsApi(src: string): Promise<DocsApiGlobal> {
     script.async = true;
     script.dataset.docsapi = src;
     script.onload = () => (window.DocsAPI ? resolve(window.DocsAPI) : reject(new Error("api.js loaded but DocsAPI is missing")));
-    script.onerror = () => reject(new Error(msgf("could not load {src} (is the office service reachable from this browser?)", { src })));
+    script.onerror = () => reject(new Error(msgf("could not load the document editor from {src}. Check your connection and try again.", { src })));
     document.head.appendChild(script);
   });
 }
@@ -74,7 +74,7 @@ function NotInstalled({ doc, onClose }: { doc: DocMeta; onClose: () => void }) {
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-ink">{doc.name}</h2>
           <p role="status" aria-live="polite" data-agent-region="office-editor-status" className="text-sm text-muted">
-            {t("Could not open the editor: the office editor service is not installed on this server.")}
+            {t("Could not open the editor: it is not available on this website yet.")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -83,7 +83,7 @@ function NotInstalled({ doc, onClose }: { doc: DocMeta; onClose: () => void }) {
         </div>
       </div>
       <Notice tone="info">
-        {t("Editing in the browser needs the office editor service. Your documents are safe and the library works without it: upload, download, organise into folders, versions and the trash. Download this file to edit it on your computer, or open it here once the service is installed.")}
+        {t("Editing in the browser is not available yet. Your documents are safe, and uploading, downloading, folders, earlier versions and the trash all work. Download this file to edit it on your computer, or open it here later.")}
       </Notice>
     </div>
   );
@@ -210,7 +210,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
   const saveError = latest.lastSaveError && latest.lastSaveError.at >= openedAt.current ? latest.lastSaveError.message : null;
   const status =
     phase.kind === "starting"
-      ? t("Starting the office editor service…")
+      ? t("Starting the document editor…")
       : phase.kind === "loading"
         ? t("Loading the editor for {name}…", { name: doc.name })
         : phase.kind === "ready"
@@ -252,7 +252,7 @@ function MountedEditor({ doc, sidecar, onClose }: { doc: DocMeta; sidecar: Retur
       {phase.kind === "error" ? (
         <Notice tone={phase.needsAdmin ? "info" : "error"}>
           {phase.needsAdmin
-            ? t("{message} The editor opens once it is running; until then the library still works (download, upload, organise).", { message: phase.message })
+            ? t("{message} The editor opens once it is ready. Until then your documents still work: download, upload and folders.", { message: phase.message })
             : phase.message}
         </Notice>
       ) : null}

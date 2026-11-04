@@ -7,14 +7,14 @@ import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
 
 const ROWS: { keys: string[]; label: string }[] = [
-  { keys: [msg("Ctrl/⌘"), "K"], label: msg("Jump to any tool") },
-  { keys: ["/"], label: msg("Search (launcher on Home, palette elsewhere)") },
+  { keys: [msg("Ctrl/⌘"), "K"], label: msg("Find any tool") },
+  { keys: ["/"], label: msg("Search (the box on the home page, a search window elsewhere)") },
   { keys: ["a"], label: msg("Open the assistant (Ctrl/⌘ J anywhere)") },
-  { keys: ["g", "h"], label: msg("Go Home") },
+  { keys: ["g", "h"], label: msg("Go to the home page") },
   { keys: ["["], label: msg("Previous tool") },
   { keys: ["]"], label: msg("Next tool") },
-  { keys: [msg("Alt"), "1–9"], label: msg("Switch suite tab") },
-  { keys: ["b"], label: msg("Toggle sidebar") },
+  { keys: [msg("Alt"), "1–9"], label: msg("Switch between the tabs of a tool") },
+  { keys: ["b"], label: msg("Show or hide the side menu") },
   { keys: ["?"], label: msg("This help") },
 ];
 

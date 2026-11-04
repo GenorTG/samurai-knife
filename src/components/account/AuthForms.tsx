@@ -52,11 +52,11 @@ export function AuthFrame({ title, intro, aside, children }: { title: string; in
 }
 
 const PERKS: [string, string][] = [
-  [msg("CV builder"), msg("a bilingual CV, a tailored version per job offer, ATS checks and an application tracker")],
-  [msg("Office library"), msg("Word, Excel and PowerPoint files with folders and versions, edited in the browser")],
-  [msg("Website studio and database course"), msg("audit your site from its GitHub repo; learn SQL and PostGIS on a real database")],
-  [msg("AI assistant"), msg("drives the tools with you on the model you choose; connect your own agents over MCP")],
-  [msg("Private storage"), msg("1 GB per account, encrypted at rest, visible to you only")],
+  [msg("CV builder"), msg("a CV in Polish and English, a copy fitted to each job offer, a check for recruitment software and a list of your applications")],
+  [msg("Office library"), msg("Word, Excel and PowerPoint files in folders, edited in the browser, with earlier versions kept")],
+  [msg("Website check and a database course"), msg("compare your website with your CV; learn SQL and PostGIS on a real database")],
+  [msg("AI assistant"), msg("an optional helper that uses the tools with you, once you connect an AI model of your choice")],
+  [msg("Private storage"), msg("1 GB for your files, stored encrypted, visible to you only")],
 ];
 
 /** Register page side panel: what an account adds to the browser tools. */
@@ -200,7 +200,7 @@ export function RegisterChoices({ terms, github, sender = "" }: { terms: string;
       {github ? (
         <div className="space-y-3">
           <GithubButton label={t("Sign up with GitHub")} purpose="register" terms={terms} disabled={!accepted} />
-          <p className="text-center text-xs text-faint">{t("GitHub's verified email is used; no password needed. Or create an account with a password:")}</p>
+          <p className="text-center text-xs text-faint">{t("Uses the email address from your GitHub account; no password needed. Or create an account with a password:")}</p>
         </div>
       ) : null}
       <RegisterForm terms={terms} accepted={accepted} sender={sender} />
@@ -255,10 +255,10 @@ export function RegisterForm({ terms, accepted, sender = "" }: { terms: string; 
   return (
     <Panel>
       <form onSubmit={submit} onInput={() => setMismatch(false)} className="space-y-4" aria-label={t("Create account")}>
-        <Field label={t("Username")} hint={t("Lowercase letters, digits, - and _; up to 32 characters.")}>
+        <Field label={t("Username")} hint={t("Small letters, digits, - and _; up to 32 characters.")}>
           <TextInput autoFocus name="username" autoComplete="username" required maxLength={32} />
         </Field>
-        <Field label={t("Email")} hint={t("You confirm it before the first login.")}>
+        <Field label={t("Email")} hint={t("We send a link to this address. Open it before you log in for the first time.")}>
           <TextInput name="email" type="email" autoComplete="email" required />
         </Field>
         <Field label={t("Password")} hint={t("At least 10 characters.")}>
@@ -428,7 +428,7 @@ export function ResetForm({ token }: { token: string | null }) {
     setWorking(false);
     if (reply.ok) {
       setDone(true);
-      const keys = reply.body.mcpKeysRevoked > 0 ? t(" Your {mcpKeysRevoked} MCP key(s) were revoked too.", { mcpKeysRevoked: reply.body.mcpKeysRevoked }) : "";
+      const keys = reply.body.mcpKeysRevoked > 0 ? t(" Your connection keys for AI programs ({mcpKeysRevoked}) were removed too.", { mcpKeysRevoked: reply.body.mcpKeysRevoked }) : "";
       setNote({ tone: "good", text: t("Your password is set. Every device was signed out; log in with the new password.{keys}", { keys }) });
     } else {
       setNote({ tone: "error", text: reply.message });

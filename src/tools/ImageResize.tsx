@@ -181,13 +181,13 @@ export default function ImageResize() {
         {!source ? (
           <Dropzone
             accept="image/*"
-            hint={t("PNG, JPEG, WebP, GIF, SVG — decoded locally")}
+            hint={t("PNG, JPEG, WebP, GIF, SVG. Stays on your device.")}
             onFiles={(files) => void loadFile(files[0])}
           />
         ) : (
           <>
             <Panel
-              title={t("Source")}
+              title={t("Your image")}
               right={
                 <Button size="sm" variant="ghost" onClick={() => { setSource(null); setResult(null); setError(null); }}>
                   {t("Clear")}
@@ -210,7 +210,7 @@ export default function ImageResize() {
               </div>
             </Panel>
 
-            <Panel title={t("Output size")}>
+            <Panel title={t("New size")}>
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   {PRESETS.map((preset) => (
@@ -249,7 +249,7 @@ export default function ImageResize() {
                     autoComplete="off"
                     type="button"
                     onClick={() => setLockRatio((v) => !v)}
-                    title={t("Lock aspect ratio")}
+                    title={t("Keep the shape")}
                     className={cx(
                       "mb-1 rounded-lg border px-3 py-2 text-sm transition-colors",
                       lockRatio
@@ -264,18 +264,18 @@ export default function ImageResize() {
                   </Field>
                 </div>
 
-                <Field label={t("Fit")} hint={t("Cover crops to fill the box; contain leaves margins.")}>
+                <Field label={t("How it fits")} hint={t("Fill cuts off the edges to fill the size. Fit inside leaves empty margins.")}>
                   <Select value={fillMode} onChange={(e) => setFillMode(e.target.value as "contain" | "cover")}>
-                    <option value="contain">{t("Contain — fit inside, no crop")}</option>
-                    <option value="cover">{t("Cover — fill the box, crop edges")}</option>
+                    <option value="contain">{t("Fit inside, nothing cut off")}</option>
+                    <option value="cover">{t("Fill the size, edges cut off")}</option>
                   </Select>
                 </Field>
               </div>
             </Panel>
 
-            <Panel title={t("Encoding")}>
+            <Panel title={t("File type and quality")}>
               <div className="space-y-3">
-                <Field label={t("Format")}>
+                <Field label={t("File type")}>
                   <Select value={format} onChange={(e) => setFormat(e.target.value as Format)}>
                     {FORMATS.map((f) => (
                       <option key={f.value} value={f.value}>
@@ -286,7 +286,7 @@ export default function ImageResize() {
                 </Field>
                 {format !== "image/png" ? (
                   <>
-                    <Field label={t("Quality — {value}", { value: Math.round(quality * 100) })}>
+                    <Field label={t("Quality: {value}", { value: Math.round(quality * 100) })}>
                       <input
                         type="range"
                         min={10}
@@ -296,7 +296,7 @@ export default function ImageResize() {
                         className="w-full accent-[var(--color-accent)]"
                       />
                     </Field>
-                    <Field label={t("Flatten onto")} hint={t("Transparency is filled with this colour.")}>
+                    <Field label={t("Background colour")} hint={t("See-through areas are filled with this colour.")}>
                       <div className="flex gap-2">
                         <input
                           type="color"
@@ -310,7 +310,7 @@ export default function ImageResize() {
                     </Field>
                   </>
                 ) : (
-                  <Notice>{t("PNG keeps transparency and stays lossless.")}</Notice>
+                  <Notice>{t("PNG keeps see-through areas and does not lose quality.")}</Notice>
                 )}
               </div>
             </Panel>
@@ -352,10 +352,10 @@ export default function ImageResize() {
                 <img src={result.url} alt={t("Resized result")} className="max-w-full object-contain" />
               </div>
               <StatGrid>
-                <Stat label={t("Dimensions")} value={`${width}×${height}`} />
+                <Stat label={t("Size in pixels")} value={`${width}×${height}`} />
                 <Stat label={t("Size")} value={formatBytes(result.blob.size)} />
                 <Stat
-                  label={t("vs source")}
+                  label={t("compared with the original")}
                   value={
                     source
                       ? `${savings > 0 ? "−" : "+"}${Math.abs(savings).toFixed(0)}%`

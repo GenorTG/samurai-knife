@@ -151,7 +151,7 @@ export function Transcript({
               ))}
             </ul>
           ) : (
-            <p>{t("Add a model provider in settings first.")}</p>
+            <p>{t("The assistant is optional: every tool works without it. To use it, connect an AI model in Settings, the gear button at the top of this panel.")}</p>
           )}
         </div>
       ) : null}
@@ -159,7 +159,7 @@ export function Transcript({
         if (m.role === "tool") return null;
         if (m.role === "notice" && m.level === "usage") {
           return (
-            <p key={i} data-agent-usage className="px-1 text-[11px] text-faint" title={t("Tokens used by this turn (prompt in, completion out)")}>
+            <p key={i} data-agent-usage className="px-1 text-[11px] text-faint" title={t("How much text the AI model read and wrote for this answer, counted in tokens")}>
               {m.usage ? usageLine(m.usage, t, tn) : m.content}
             </p>
           );
