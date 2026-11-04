@@ -245,7 +245,7 @@ with sync_playwright() as pw:
         box = page.get_by_label("Details JSON")
         box.fill(json.dumps({**PROFILE, "contact": {**PROFILE["contact"], "name": "Zmieniony"}}))
         btn("Replace details").click()
-        has("A profile already exists")
+        has("You already have details here")
         eq(cv()["profile"]["contact"]["name"], "Jan Testowy", "unchanged before confirm")
         btn("Confirm replace").click()
         has("Zmieniony")
@@ -574,7 +574,7 @@ with sync_playwright() as pw:
     def _():
         go("jobs")
         btn("Add to my applications").click()
-        has("Application tracked as wishlist")
+        has("Added to your list as")
         job = next(j for j in cv()["jobs"] if j["company"] == "Gamma Systems")
         apps = [a for a in cv()["applications"] if a["jobId"] == job["id"]]
         eq(len(apps), 1)
