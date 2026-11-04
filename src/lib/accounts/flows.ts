@@ -160,9 +160,15 @@ export async function register(input: { username: string; email: string; passwor
     return busy(error);
   }
   const token = newToken(VERIFY_TTL_MS);
+  // The collision mail goes to the address's owner, who reads it in their own language, not the registrant's.
+  let ownerLocale: Locale | null = null;
   const outcome = mutateStore((store): "created" | "email_taken" | "username_taken" | "pending_full" => {
     dropExpiredPending(store);
-    if (store.accounts.some((account) => account.email === email || account.emailChange?.email === email)) return "email_taken";
+    const owner = store.accounts.find((account) => account.email === email || account.emailChange?.email === email);
+    if (owner) {
+      ownerLocale = owner.language ?? null;
+      return "email_taken";
+    }
     if (RESERVED.has(username) || store.accounts.some((account) => account.id === username)) return "username_taken";
     if (pendingRoom(store, email, ipTag) !== "ok") return "pending_full";
     store.accounts.push(newAccountRecord({
@@ -185,7 +191,7 @@ export async function register(input: { username: string; email: string; passwor
   if (outcome === "pending_full") return fail(429, "pending_full", { message: PENDING_FULL, retryAfterSeconds: 3_600 });
   const locale = input.locale ?? DEFAULT_LOCALE;
   if (outcome === "created") sendMail(email, verifyEmailMail(username, link("/verify", token.raw), locale));
-  else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password"), locale));
+  else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password"), ownerLocale ?? locale));
   else sendMail(email, usernameTakenMail(username, link("/register"), locale));
   return { ok: true, message: GENERIC_REGISTER };
 }
