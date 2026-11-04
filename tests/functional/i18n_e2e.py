@@ -84,7 +84,7 @@ def main() -> int:
         check("switcher names the current language", switch.first.get_attribute("data-language-switcher") == "en" and "English" in switch.first.inner_text(), switch.first.inner_text())
         check("switcher is visible in the top bar", switch.first.is_visible())
         switch.first.click()
-        menu = page.get_by_role("menu", name="Language of this site")
+        menu = page.get_by_role("menu", name="Interface language")
         check("switcher opens a language menu", menu.is_visible())
         check("menu lists every language in its own name", menu.get_by_role("menuitemradio").all_inner_texts() and ["English", "Polski"] == [x.split("\n")[0].strip() for x in menu.get_by_role("menuitemradio").all_inner_texts()], menu.inner_text())
         page.keyboard.press("Escape")

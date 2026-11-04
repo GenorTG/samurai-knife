@@ -225,9 +225,9 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------- 8. UI bridge: only your own tabs
     ctx_a, page_a = new_context(browser, base, "203.0.113.60")
     ui_login(page_a, "alice", "alice password 1")
-    page_a.wait_for_url(base + "/", timeout=30_000)
+    page_a.wait_for_url(re.compile(r"/(welcome)?$"), timeout=30_000)  # a new website account lands on the welcome wizard
     go(page_a, "/tools/cv-studio?tab=showcase")
-    expect(page_a.get_by_text(re.compile(r"An administrator has to run the project showcase"))).to_be_visible(timeout=60_000)
+    expect(page_a.get_by_text(re.compile(r"Only an administrator can use this page here"))).to_be_visible(timeout=60_000)
     check("CV builder showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Score my projects").count() == 0)
     deadline = time.monotonic() + 20
     alice_state = ""
