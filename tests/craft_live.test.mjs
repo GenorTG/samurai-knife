@@ -6,6 +6,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import test from "node:test";
+// Polish-first (docs/I18N.md): the browser runtime defaults to Polish; these assertions read the English texts.
+{
+  const { setClientLocale } = await import("../src/lib/i18n/client-locale.ts");
+  const hadWindow = "window" in globalThis;
+  if (!hadWindow) globalThis.window = globalThis;
+  setClientLocale("en");
+  if (!hadWindow) delete globalThis.window;
+}
 
 const { assessCraftCall, craftRisk, craftStatusNote, craftToolAvailable, runCraftTool, CRAFT_TOOL_DEFS } = await import("../src/lib/agent-client/craft-live-tools.ts");
 const { setCraftPresence, clearCraftPresence, activeCraft } = await import("../src/lib/craft/live.ts");

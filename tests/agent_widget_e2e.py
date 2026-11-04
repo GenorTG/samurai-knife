@@ -13,6 +13,11 @@ import urllib.request
 
 from playwright.sync_api import Page, sync_playwright
 
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import tests.english_browser  # noqa: E402,F401  Polish-first: this suite reads English labels
+
 if len(sys.argv) < 3:
     sys.exit("usage: python3 tests/agent_widget_e2e.py <base_url> <mock_url>")
 BASE = sys.argv[1].rstrip("/")

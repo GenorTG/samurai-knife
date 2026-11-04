@@ -11,7 +11,8 @@ import PL_CATALOG from "./pl.json" with { type: "json" };
 
 export const LOCALES = ["en", "pl"] as const;
 export type Locale = (typeof LOCALES)[number];
-export const DEFAULT_LOCALE: Locale = "en";
+/** Polish-first (docs/I18N.md "Choosing the language"): the language of a visitor who has not chosen one. */
+export const DEFAULT_LOCALE: Locale = "pl";
 /** The cookie that carries the choice (also for guests). */
 export const LOCALE_COOKIE = "knife_lang";
 /** Native names for the switcher. */
@@ -31,9 +32,19 @@ function fill(text: string, vars?: Vars): string {
   return text.replace(/\{(\w+)\}/g, (whole, key: string) => (key in vars ? String(vars[key] ?? "") : whole));
 }
 
-/** Pick an Accept-Language match: the first listed language we have ("pl-PL,pl;q=0.9,en;q=0.8" -> pl). */
+/**
+ * What the browser's Accept-Language decides for a visitor without a choice. Polish-first: any Polish in the list -> pl;
+ * English only when the browser lists no Polish at all and its most preferred language is English
+ * ("en-GB,en;q=0.9" -> en, "de-DE,en;q=0.5" -> null, "en,pl;q=0.1" -> pl). null = no opinion: the default (Polish).
+ */
 export function localeFromAcceptLanguage(header: string | null | undefined): Locale | null {
-  if (!header) return null;
+  const ranked = rankedLanguages(header);
+  if (ranked.includes("pl")) return "pl";
+  return ranked[0] === "en" ? "en" : null;
+}
+
+function rankedLanguages(header: string | null | undefined): string[] {
+  if (!header) return [];
   const ranked = header
     .split(",")
     .map((part) => {
@@ -43,7 +54,7 @@ export function localeFromAcceptLanguage(header: string | null | undefined): Loc
     })
     .filter((item) => item.lang && item.q > 0)
     .sort((a, b) => b.q - a.q);
-  return ranked.map((item) => item.lang).find(isLocale) ?? null;
+  return ranked.map((item) => item.lang).filter((lang) => lang !== "*");
 }
 
 export function translate(locale: Locale, text: string, vars?: Vars): string {

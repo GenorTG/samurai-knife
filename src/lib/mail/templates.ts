@@ -1,4 +1,4 @@
-import { translator, type Locale } from "@/lib/i18n/core";
+import { DEFAULT_LOCALE, translator, type Locale } from "@/lib/i18n/core";
 import type { MailKind } from "@/lib/mail/kinds";
 
 /**
@@ -41,7 +41,7 @@ const ignore = (locale: Locale) => translator(locale).t("If you did not ask for 
  * Says plainly who asked: anyone can type any address into the sign-up form, so the person reading this may not be the
  * one who chose the username and the password (audit M3: confirming someone else's sign-up hands them your address).
  */
-export function verifyEmailMail(username: string, link: string, locale: Locale = "en"): MailContent {
+export function verifyEmailMail(username: string, link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("verify_email", t("Confirm your email for {app}", { app: APP }), [
     t("Someone signed up for {app} with the username \"{username}\" and this email address.", { app: APP, username }),
@@ -52,7 +52,7 @@ export function verifyEmailMail(username: string, link: string, locale: Locale =
 }
 
 /** Forgot / resend on an unconfirmed sign-up: that sign-up is gone; the owner of the address starts a fresh one. */
-export function pendingReleasedMail(link: string, locale: Locale = "en"): MailContent {
+export function pendingReleasedMail(link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("pending_released", t("Create your {app} account", { app: APP }), [
     t("Someone (maybe you) asked for a {app} link for this email address. An unconfirmed sign-up that used this address was cancelled, so the address is free.", { app: APP }),
@@ -62,7 +62,7 @@ export function pendingReleasedMail(link: string, locale: Locale = "en"): MailCo
   ], locale);
 }
 
-export function loginLockoutMail(username: string, link: string, locale: Locale = "en"): MailContent {
+export function loginLockoutMail(username: string, link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("login_lockout", t("Many failed logins on your {app} account", { app: APP }), [
     t("Hello {username},", { username }),
@@ -72,7 +72,7 @@ export function loginLockoutMail(username: string, link: string, locale: Locale 
   ], locale);
 }
 
-export function registerCollisionMail(link: string, locale: Locale = "en"): MailContent {
+export function registerCollisionMail(link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("register_collision", t("Someone tried to sign up for {app} with your address", { app: APP }), [
     t("Someone (maybe you) tried to create a new {app} account with this email address, which already has an account.", { app: APP }),
@@ -82,7 +82,7 @@ export function registerCollisionMail(link: string, locale: Locale = "en"): Mail
   ], locale);
 }
 
-export function usernameTakenMail(username: string, link: string, locale: Locale = "en"): MailContent {
+export function usernameTakenMail(username: string, link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("username_taken", t("Choose another username for {app}", { app: APP }), [
     t("You tried to create a {app} account with the username \"{username}\", which is not available.", { app: APP, username }),
@@ -92,7 +92,7 @@ export function usernameTakenMail(username: string, link: string, locale: Locale
   ], locale);
 }
 
-export function resetPasswordMail(username: string, link: string, locale: Locale = "en"): MailContent {
+export function resetPasswordMail(username: string, link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("reset_password", t("Reset your {app} password", { app: APP }), [
     t("Hello {username},", { username }),
@@ -102,7 +102,7 @@ export function resetPasswordMail(username: string, link: string, locale: Locale
   ], locale);
 }
 
-export function changeEmailMail(username: string, newEmail: string, link: string, locale: Locale = "en"): MailContent {
+export function changeEmailMail(username: string, newEmail: string, link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("change_email", t("Confirm your new email for {app}", { app: APP }), [
     t("Hello {username},", { username }),
@@ -112,7 +112,7 @@ export function changeEmailMail(username: string, newEmail: string, link: string
   ], locale);
 }
 
-export function emailChangedNoticeMail(username: string, newEmail: string, locale: Locale = "en"): MailContent {
+export function emailChangedNoticeMail(username: string, newEmail: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("email_changed", t("The email of your {app} account changed", { app: APP }), [
     t("Hello {username},", { username }),
@@ -120,7 +120,7 @@ export function emailChangedNoticeMail(username: string, newEmail: string, local
   ], locale);
 }
 
-export function emailInUseMail(link: string, locale: Locale = "en"): MailContent {
+export function emailInUseMail(link: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("email_in_use", t("Someone tried to use your address on {app}", { app: APP }), [
     t("Someone tried to move another {app} account to this email address, which already belongs to an account. Nothing was changed.", { app: APP }),
@@ -129,7 +129,7 @@ export function emailInUseMail(link: string, locale: Locale = "en"): MailContent
   ], locale);
 }
 
-export function passwordChangedMail(username: string, mcpKeysRevoked = 0, locale: Locale = "en"): MailContent {
+export function passwordChangedMail(username: string, mcpKeysRevoked = 0, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t, tn } = translator(locale);
   return compose("password_changed", t("Your {app} password changed", { app: APP }), [
     t("Hello {username},", { username }),
@@ -141,7 +141,7 @@ export function passwordChangedMail(username: string, mcpKeysRevoked = 0, locale
   ], locale);
 }
 
-export function accountDeletedMail(username: string, locale: Locale = "en"): MailContent {
+export function accountDeletedMail(username: string, locale: Locale = DEFAULT_LOCALE): MailContent {
   const { t } = translator(locale);
   return compose("account_deleted", t("Your {app} account was deleted", { app: APP }), [
     t("Hello {username},", { username }),

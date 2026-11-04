@@ -84,6 +84,9 @@ export function ToolShell({
           <p className="mt-1.5 max-w-3xl text-[15px] text-muted">{t(tool.tagline)}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/tools/${tool.slug}/about`} data-showcase-link className="rounded-md px-2 py-1 text-xs text-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-accent">
+            {t("About this tool")}
+          </Link>
           <ToolActions tool={tool} />
         </div>
       </header>

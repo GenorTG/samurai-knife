@@ -64,6 +64,15 @@ def main() -> int:
         browser = pw.chromium.launch(headless=not HEADED)
         errors: list[str] = []
 
+        # 0. Polish-first (docs/I18N.md): no cookie, no account choice -> Polish, unless the browser lists no Polish
+        #    and prefers English. A third language first, or English with any Polish, gets Polish.
+        for label, header in (("de-DE browser", "de-DE,de;q=0.9,en;q=0.5"), ("English browser listing Polish", "en-US,en;q=0.9,pl;q=0.1")):
+            probe = browser.new_context(extra_http_headers={"Accept-Language": header})
+            p0 = probe.new_page()
+            p0.goto(base + "/", wait_until="networkidle")
+            check(f"{label} gets Polish (lang=pl, og:locale pl_PL)", p0.evaluate("document.documentElement.lang") == "pl" and p0.locator('meta[property="og:locale"]').get_attribute("content") == "pl_PL", p0.evaluate("document.documentElement.lang"))
+            probe.close()
+
         # 1. An English browser starts in English; the switch flips to Polish and back.
         ctx = browser.new_context(locale="en-US")
         page = ctx.new_page()

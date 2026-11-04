@@ -17,11 +17,18 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import tests.english_browser  # noqa: E402,F401  Polish-first: this suite reads English labels
+
 BASE, MOCK, DATA = sys.argv[1].rstrip("/"), sys.argv[2].rstrip("/"), sys.argv[3]
 ROOT = Path(__file__).resolve().parents[1]
 DIALOG = "[data-whats-new] [role=dialog]"
 failures: list[str] = []
 PKG = json.loads((ROOT / "package.json").read_text())["version"]
+HAS_FIXES = subprocess.run(
+    ["node", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--disable-warning=ExperimentalWarning", "--import", "./tests/ts-resolve.mjs", "--input-type=module",
+     "-e", "const { RELEASE_NOTES } = await import('./src/lib/release-notes.ts'); process.stdout.write(String(RELEASE_NOTES[0].fixes.length > 0))"],
+    cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip() == "true"
 
 
 def check(name: str, ok: bool, detail: object = "") -> None:
@@ -77,7 +84,8 @@ with sync_playwright() as pw:
     page.locator(DIALOG).wait_for(timeout=10_000)
     text = page.locator(DIALOG).inner_text()
     check("titled with the version", f"What's new in Smart Knife {PKG}" in text, text[:200])
-    check("plain notes: new and fixed", "new\n" in text.lower() and "fixed\n" in text.lower() and "knife_" not in text, text[:600])
+    # A release without fixes shows only "New" (src/lib/release-notes.ts).
+    check("plain notes: new (and fixed when the release has fixes)", "new\n" in text.lower() and ("fixed\n" in text.lower() or not HAS_FIXES) and "knife_" not in text, text[:600])
     legal = page.locator("[data-whats-new-legal]")
     check("the current legal edition's summary with links", legal.count() == 1 and "Privacy and terms changes" in legal.inner_text()
           and legal.locator("a[href='/privacy']").count() == 1 and legal.locator("a[href='/terms']").count() == 1, legal.inner_text() if legal.count() else "")

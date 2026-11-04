@@ -8,6 +8,14 @@ import { chmodSync, cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, stat
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+// Polish-first (docs/I18N.md): the browser runtime defaults to Polish; these assertions read the English texts.
+{
+  const { setClientLocale } = await import("../src/lib/i18n/client-locale.ts");
+  const hadWindow = "window" in globalThis;
+  if (!hadWindow) globalThis.window = globalThis;
+  setClientLocale("en");
+  if (!hadWindow) delete globalThis.window;
+}
 import vm from "node:vm";
 import { parse } from "yaml";
 

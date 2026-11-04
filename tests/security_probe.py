@@ -8,7 +8,7 @@ live one), the way tests/prod_smoke.py documents:
     KNIFE_PUBLIC_URL=http://127.0.0.1:<port> KNIFE_TRUSTED_PROXIES=127.0.0.1/32 KNIFE_EMAIL_DNS=off npm run start
   KNIFE_DATA_DIR=<same> python3 tests/security_probe.py http://127.0.0.1:<port>
 
-Covers: guests reach no tool, account or API (pages redirect to /login, APIs answer 401/403); the Origin guard; the open
+Covers: guests reach no tool, account or API (tool showcases /tools/<slug>/about are public and carry no account data) (pages redirect to /login, APIs answer 401/403); the Origin guard; the open
 redirect shapes (`/\\t/evil.com`) on /login and the GitHub start route; cross-account isolation over MCP (CV offers,
 office documents, UI bridge, Craft files kept by craft_file_save and read over MCP); the personal MCP URL takes only a
 Bearer key of that very account (wrong user, case, encoded and traversal names refused) and read-only keys write nothing;
@@ -161,7 +161,8 @@ def main() -> int:
     for path in ("/tools/json", "/tools/cv-studio", "/tools/pdf?tab=tools", "/account", "/account/admin"):
         status, hdrs, _ = raw("GET", path)
         check(f"guest GET {path} -> redirect to /login?next=", status in (302, 303, 307, 308) and "/login?next=" in hdrs.get("location", ""), (status, hdrs.get("location")))
-    status, _, html = raw("GET", "/")
+    # Polish-first (docs/I18N.md): this check reads the English welcome text, so it asks for English.
+    status, _, html = raw("GET", "/", headers={"Cookie": "knife_lang=en"})
     check("guest home is the welcome page, no tool list", status == 200 and "in one sharp place" in html and "data-launcher-search" not in html)
     for method, path, body in (
         ("GET", "/api/account", None), ("GET", "/api/cv", None), ("GET", "/api/office/docs", None), ("GET", "/api/workspace?tool=json", None),
@@ -256,6 +257,17 @@ def main() -> int:
         m = re.search(r'"?id"?\s*[:=]\s*"?([a-f0-9]{8,40})', text)
         doc_id = m.group(1) if m else ""
     check("alice creates a document", ok and bool(doc_id), text[:200])
+
+    # Tool showcases (docs/SHOWCASE.md) are public marketing pages: a guest reads them, the tool behind still needs a
+    # session, and nothing on them comes from an account (alice and bob exist and have private data by now).
+    for path in ("/tools/json/about", "/tools/cv-studio/about?tab=jobs", "/tools/artcraft/about", "/tools/office/about"):
+        status, hdrs, html = raw("GET", path)
+        leaks = [w for w in ("alice", "bob@", "AcmeAliceOnly", "alice-private", "data-launcher-search", "knife_cv_") if w in html]
+        check(f"guest GET {path} -> 200 showcase with no account data", status == 200 and "data-showcase=" in html and not leaks and "set-cookie" not in hdrs, (status, leaks, hdrs.get("set-cookie")))
+    status, hdrs, _ = raw("GET", "/tools/cron/about")
+    check("a retired slug's showcase redirects to its suite's", status in (307, 308) and hdrs.get("location", "").startswith("/tools/dates/about"), (status, hdrs.get("location")))
+    status, _, _ = raw("GET", "/tools/no-such-tool/about")
+    check("unknown tool showcase -> 404", status == 404, status)
     if doc_id:
         ok, text, _ = mcp(api, "knife_doc_read", {"id": doc_id}, hb, "198.51.100.20")
         check("bob cannot read alice's document by id", (not ok) and "alice secret paragraph" not in text, text[:200])

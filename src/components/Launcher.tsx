@@ -8,6 +8,7 @@ import { BetaBadge, KindBadge } from "@/components/ToolShell";
 import { Select } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { useToolPreferences } from "@/lib/tool-preferences";
+import { entryHref, useShowcasePrefs } from "@/lib/showcase-prefs";
 import {
   CATEGORIES,
   categoryLabel,
@@ -31,6 +32,8 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const orderedTools = useMemo(() => tools.map((tool, index) => ({ tool, index })).sort((a, b) => (a.tool.rank ?? 100) - (b.tool.rank ?? 100) || a.index - b.index).map(({ tool }) => tool), [tools]);
   const { favorites, recent, ready, toggleFavorite, clearRecent } = useToolPreferences();
+  // A card opens the tool's showcase first unless the user chose otherwise there (docs/SHOWCASE.md).
+  const { prefs: showcasePrefs } = useShowcasePrefs();
 
   const categoryPool = useMemo(() => {
     if (filter === "favorites") {
@@ -67,8 +70,8 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
   const cursor = cursorState.signature === signature ? cursorState.index : 0;
 
   const open = useCallback(
-    (slug: string) => router.push(`/tools/${slug}`),
-    [router],
+    (slug: string) => router.push(entryHref(showcasePrefs, slug)),
+    [router, showcasePrefs],
   );
 
   const selectFilter = (next: LauncherFilter) => {

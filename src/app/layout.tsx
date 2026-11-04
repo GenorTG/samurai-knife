@@ -48,15 +48,32 @@ const geistMonoExt = localFont({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getT();
+  const { t, locale } = await getT();
+  const description = t("A private room of hand-made tools.");
   return {
     title: {
       default: "Smart Knife",
       template: "%s · Smart Knife",
     },
-    description: t("A private room of hand-made tools."),
+    description,
     icons: { icon: "/blade.svg" },
+    // Absolute Open Graph image URLs (tool showcases, docs/SHOWCASE.md) need the public address when there is one.
+    metadataBase: siteUrl(),
+    // Polish-first (docs/I18N.md): the page's language decides the Open Graph locale; the other one is the alternate.
+    openGraph: { siteName: "Smart Knife", type: "website", description, locale: OG_LOCALE[locale], alternateLocale: [OG_LOCALE[locale === "pl" ? "en" : "pl"]] },
   };
+}
+
+const OG_LOCALE = { pl: "pl_PL", en: "en_US" } as const;
+
+function siteUrl(): URL | undefined {
+  const configured = process.env.KNIFE_PUBLIC_URL?.trim();
+  if (!configured) return undefined;
+  try {
+    return new URL(configured);
+  } catch {
+    return undefined;
+  }
 }
 
 export const viewport: Viewport = {

@@ -158,7 +158,7 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
     return { c, nonce: solvePow(c, bits) };
   };
   const terms = (await import("../src/lib/legal/legal.ts")).legalVersion();
-  const register = (input, ip) => flows.register({ acceptTerms: terms, ...input }, ip, solved("register", ip));
+  const register = (input, ip) => flows.register({ locale: "en", acceptTerms: terms, ...input }, ip, solved("register", ip));
 
   const ok = await register({ username: "zoe", email: "Zoe@Example.com", password: "zoe password 1" }, "ip-1");
   assert.equal(ok.ok, true);
@@ -185,7 +185,7 @@ test("public flows: generic answers, hashed single-use tokens, collision mail, p
   assert.equal(flows.verifyToken(raw).ok, false, "single use");
   assert.equal(store.getAccount("zoe").status, "active");
 
-  assert.deepEqual(flows.forgotPassword("nobody@example.com", "ip-5", solved("forgot", "ip-5")), flows.forgotPassword("zoe@example.com", "ip-6", solved("forgot", "ip-6")));
+  assert.deepEqual(flows.forgotPassword("nobody@example.com", "ip-5", solved("forgot", "ip-5"), "en"), flows.forgotPassword("zoe@example.com", "ip-6", solved("forgot", "ip-6"), "en"));
   const reset = tokenIn((await mails("zoe@example.com", 3)).find((mail) => mail.includes("reset-password")));
   const resetTtl = Date.parse(store.getAccount("zoe").resetToken.expiresAt) - Date.now();
   assert.ok(resetTtl > 59 * 60_000 && resetTtl <= 3600_000, "reset links live 1 h");

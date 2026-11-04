@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_LOCALE } from "@/lib/i18n/core";
 import {
   ensureDataDir,
   findByIdentifier,
@@ -258,7 +259,7 @@ function onLockout(account: Account | undefined, ip: string): void {
     if (sent.size >= LOCKOUT_MAIL_MAX) return; // fewer notices rather than an unbounded map
   }
   sent.set(account.id, now);
-  sendMail(account.email, loginLockoutMail(account.id, `${publicBaseUrl()}/forgot-password`, account.language ?? "en"));
+  sendMail(account.email, loginLockoutMail(account.id, `${publicBaseUrl()}/forgot-password`, account.language ?? DEFAULT_LOCALE));
 }
 
 /** Records the login and, when the stored hash uses old parameters, the rehash (sessions follow the new fingerprint). */

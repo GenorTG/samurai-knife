@@ -71,6 +71,7 @@ The Service stores on your device only information that is **strictly necessary 
 | the Craft apps' own storage (preferences, photo libraries, projects and media, recovery copies of open documents) | local storage, IndexedDB, OPFS on the Craft apps' address | the apps working in your browser | until you clear it in the browser; never sent to the server |
 | `knife:account` | local storage on the Craft apps' address | an opaque marker of the Account that used the apps last in this browser, so another Account's local data is cleared before the apps open | until you clear it in the browser |
 | `sk-theme`, tool settings | local storage | light or dark theme, your tool settings | until you clear it in the browser |
+| `samurai-knife:showcase:v1` | local storage | whether tool cards open a tool's description page first or the tool straight away, and for which tools you chose not to see that page again | until you clear it in the browser; never sent to the server |
 | a copy of the AI assistant conversation, the message queue, trust mode, SQL settings | local storage | running the assistant and the tools without reloading | removed when you log out |
 
 You can delete these in your browser settings; without the session cookie you cannot sign in.
@@ -126,10 +127,12 @@ What each version of {{siteName}} added that matters for your data:
 | 0.10.0 | The interface in Polish and English | the language you choose is kept in the `knife_lang` cookie and on your Account; e-mails come in that language |
 | 0.13.0 | Optional Vercel connection and site screenshots for the assistant | your Vercel token and project bypass secret are encrypted; the server browser fetches the page and resources; the working file is deleted after rendering and the result goes only to the AI provider you chose; the Operator does not view it, and the result stays in server memory for up to 30 minutes |
 | 0.13.0 (later builds) | Detecting whether a model sees images; a turn limit for the assistant | a generated test picture goes to the AI provider you chose; the answer is kept per provider address and model, without who checked; the turn limit is kept on your Account |
+| 0.14.0 | Polish as the default language; a description page for every tool | without a choice of yours the Service is shown in Polish (English when your browser asks only for English); how tool cards open is kept in your browser's local storage only; the description pages are public and read no Account data |
 | 0.13.0 (later builds) | Saved assistant tasks; a "What's new" window; programs you connect with your MCP key can read your assistant conversations | tasks are stored encrypted in the Account and counted in the storage limit; the Account keeps which release notes you saw; each conversation keeps the provider address and model of its latest answer; nothing goes to a new recipient |
 
 Changes:
 
+- **Edition 8** (4 November 2026, {{siteName}} 0.14.0): adds the `samurai-knife:showcase:v1` local storage entry (how tool cards open) to § 6 and describes Polish as the default language.
 - **Edition 7** (30 October 2026, {{siteName}} 0.13.0): adds saved assistant tasks to the content, which release notes you last saw to the Account data, the provider address and model of a conversation's latest answer, and that a program you connect with your MCP key can read your assistant conversations and tasks.
 - **Edition 6** (29 October 2026, {{siteName}} 0.13.0): adds the assistant's turn limit and the vision flag to the AI provider settings, and describes vision detection: a generated test picture sent to the AI provider you chose, and the shared list of answers that does not record who checked.
 - **Edition 5** (28 October 2026, {{siteName}} 0.13.0): describes site screenshots: the server fetches the page and its resources, a temporary working file is removed when the job completes, the result is cached in memory for up to 30 minutes, sent to the AI provider you chose, and not viewed by the Operator.

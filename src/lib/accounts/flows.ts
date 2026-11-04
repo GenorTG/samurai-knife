@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { msg, msgf } from "@/lib/i18n/msg";
-import type { Locale } from "@/lib/i18n/core";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/core";
 import {
   ACCOUNT_ID_PATTERN,
   DEFAULT_USER_QUOTA_BYTES,
@@ -183,7 +183,7 @@ export async function register(input: { username: string; email: string; passwor
     return "created";
   });
   if (outcome === "pending_full") return fail(429, "pending_full", { message: PENDING_FULL, retryAfterSeconds: 3_600 });
-  const locale = input.locale ?? "en";
+  const locale = input.locale ?? DEFAULT_LOCALE;
   if (outcome === "created") sendMail(email, verifyEmailMail(username, link("/verify", token.raw), locale));
   else if (outcome === "email_taken") sendMail(email, registerCollisionMail(link("/forgot-password"), locale));
   else sendMail(email, usernameTakenMail(username, link("/register"), locale));
@@ -232,7 +232,7 @@ export function verifyToken(raw: string, ip = "local", sessionToken?: string): V
   if (!result) return fail(400, "invalid_or_expired");
   if (result.kind === "email_changed") {
     revokeAllSessions(result.account.id, sessionToken);
-    if (result.oldEmail && result.account.email) sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email, result.account.language ?? "en"));
+    if (result.oldEmail && result.account.email) sendMail(result.oldEmail, emailChangedNoticeMail(result.account.id, result.account.email, result.account.language ?? DEFAULT_LOCALE));
   }
   return { ok: true, kind: result.kind, username: result.account.id };
 }
@@ -244,7 +244,7 @@ export function verifyToken(raw: string, ip = "local", sessionToken?: string): V
  * address asks for any link (resend, forgot), that sign-up is cancelled and they get a "create your account" link: the
  * squatter's verification link is never sent to them again. Returns whether a record was released.
  */
-function releasePendingFor(email: string, locale: Locale = "en"): boolean {
+function releasePendingFor(email: string, locale: Locale = DEFAULT_LOCALE): boolean {
   const released = mutateStore((store) => {
     const before = store.accounts.length;
     store.accounts = store.accounts.filter((account) => !(account.email === email && account.status === "pending" && account.emailVerifiedAt === null));
@@ -255,7 +255,7 @@ function releasePendingFor(email: string, locale: Locale = "en"): boolean {
   return released;
 }
 
-export function resendVerification(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = "en"): FlowOk<{ message: string }> | FlowError {
+export function resendVerification(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = DEFAULT_LOCALE): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
   if (!email) return fail(400, msg("That does not look like an email address."));
   const unpaid = powGate("resend", ip, pow);
@@ -279,13 +279,13 @@ export function issueVerification(match: (account: Account) => boolean): boolean
     account.verifyToken = token.record;
     return account;
   });
-  if (target?.email) sendMail(target.email, verifyEmailMail(target.id, link("/verify", token.raw), target.language ?? "en"));
+  if (target?.email) sendMail(target.email, verifyEmailMail(target.id, link("/verify", token.raw), target.language ?? DEFAULT_LOCALE));
   return Boolean(target);
 }
 
 /* --------------------------------------------------------------------------------------- forgot / reset */
 
-export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = "en"): FlowOk<{ message: string }> | FlowError {
+export function forgotPassword(emailInput: string, ip: string, pow?: PowSolution | null, locale: Locale = DEFAULT_LOCALE): FlowOk<{ message: string }> | FlowError {
   const email = validateEmail(emailInput);
   if (!email) return fail(400, msg("That does not look like an email address."));
   const unpaid = powGate("forgot", ip, pow);
@@ -335,7 +335,7 @@ export async function resetPassword(raw: string, password: string, ip = "local",
   // Whoever had the password may have left credentials behind: every session and every MCP key ends (audit M2).
   revokeAllSessions(account.id);
   const mcpKeysRevoked = revokeAllMcpKeys(account.id);
-  if (account.email) sendMail(account.email, passwordChangedMail(account.id, mcpKeysRevoked, account.language ?? "en"));
+  if (account.email) sendMail(account.email, passwordChangedMail(account.id, mcpKeysRevoked, account.language ?? DEFAULT_LOCALE));
   return { ok: true, username: account.id, mcpKeysRevoked };
 }
 
@@ -377,7 +377,7 @@ export async function changePassword(account: Account, current: string, next: st
   const revoked = revokeAllSessions(updated.id);
   // A password change is what a user does after noticing a takeover: MCP keys an intruder made go too (audit M2).
   const mcpKeysRevoked = revokeAllMcpKeys(updated.id);
-  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id, mcpKeysRevoked, updated.language ?? "en"));
+  if (updated.email) sendMail(updated.email, passwordChangedMail(updated.id, mcpKeysRevoked, updated.language ?? DEFAULT_LOCALE));
   return { ok: true, account: updated, revoked, mcpKeysRevoked };
 }
 
@@ -400,8 +400,8 @@ export async function changeEmail(account: Account, password: string, emailInput
     return "pending" as const;
   });
   if (outcome === "missing") return fail(404, "not_found");
-  if (outcome === "pending") sendMail(email, changeEmailMail(account.id, email, link("/verify", token.raw), account.language ?? "en"));
-  else sendMail(email, emailInUseMail(link("/forgot-password"), account.language ?? "en"));
+  if (outcome === "pending") sendMail(email, changeEmailMail(account.id, email, link("/verify", token.raw), account.language ?? DEFAULT_LOCALE));
+  else sendMail(email, emailInUseMail(link("/forgot-password"), account.language ?? DEFAULT_LOCALE));
   return { ok: true, message: msgf("A confirmation link is on its way to {email}. Your address changes when you open it.", { email }) };
 }
 
@@ -439,6 +439,6 @@ export async function deleteOwnAccount(account: Account, password: string, store
   if (isLastAdmin(account.id, store)) return fail(409, msg("You are the only administrator. Make someone else an administrator first."));
   const result = purgeAccount(account.id);
   if (!result) return fail(404, "not_found");
-  if (result.email) sendMail(result.email, accountDeletedMail(account.id, account.language ?? "en"));
+  if (result.email) sendMail(result.email, accountDeletedMail(account.id, account.language ?? DEFAULT_LOCALE));
   return { ok: true, removed: result.removed };
 }

@@ -3,6 +3,7 @@ import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, rmSync, wri
 import { join } from "node:path";
 import { Marked, type Tokens } from "marked";
 import { dataDir } from "@/lib/accounts/store";
+import { DEFAULT_LOCALE, localeFromAcceptLanguage } from "@/lib/i18n/core";
 import { appVersion } from "@/lib/version";
 
 /**
@@ -431,9 +432,8 @@ export function legalGaps(env: NodeJS.ProcessEnv = process.env): string[] {
   return [...new Set(current(env).pages.flatMap((page) => page.missing))].sort();
 }
 
-/** `pl` for a Polish browser, else English. */
+/** Polish-first like the interface (docs/I18N.md): English only for a browser that lists no Polish and prefers English. */
 export function pickLang(requested: string | undefined | null, acceptLanguage: string | null): LegalLang {
   if (requested === "pl" || requested === "en") return requested;
-  const first = (acceptLanguage ?? "").split(",")[0]?.trim().toLowerCase() ?? "";
-  return first.startsWith("pl") ? "pl" : "en";
+  return localeFromAcceptLanguage(acceptLanguage) ?? DEFAULT_LOCALE;
 }
