@@ -96,7 +96,7 @@ export async function resolveScreenshotTarget(accountId: string, input: TargetIn
 
   if (input.target === "production") {
     const base = site.connection?.productionUrl || site.siteUrl?.url;
-    if (!base) throw new SiteError(msg("add your website first (Website tab of the CV studio: its address, or its GitHub repository): screenshots run on your own site only"), 409);
+    if (!base) throw new SiteError(msg("add your website first (Website tab of the CV builder: its address, or its GitHub repository): screenshots run on your own site only"), 409);
     const refused = siteTargetProblem(account, site.connection, base, site.siteUrl);
     if (refused) throw new SiteError(refused, 403);
     return done(pathOn(base, input.path), "production");

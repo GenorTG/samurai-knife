@@ -4,7 +4,7 @@ import { githubRepoFacts, githubRepos, localFacts, showcaseRank } from "@/lib/cv
 import { wrapUntrustedOptional } from "@/lib/security/untrusted";
 
 /**
- * CV studio "showcase" tools: verifiable project facts (GitHub via the authenticated `gh` CLI, or a path-fenced local repo)
+ * CV builder "showcase" tools: verifiable project facts (GitHub via the authenticated `gh` CLI, or a path-fenced local repo)
  * plus a deterministic README/presentation checklist. Facts only, nothing here calls an LLM; the assistant writes the prose.
  */
 

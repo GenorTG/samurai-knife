@@ -1,7 +1,7 @@
 import * as z from "zod/v4";
 
 /**
- * CV studio data contract. One bilingual master profile per account, plus per-job variants, saved job offers and
+ * CV builder data contract. One bilingual master profile per account, plus per-job variants, saved job offers and
  * tracked applications. Pure: imported by server routes, MCP tools and client components (no node/DOM APIs).
  * Every list item has a stable `id` so edits address it without index drift (see `ops.ts`).
  */

@@ -37,7 +37,7 @@ export function guardMode(/** @type {Record<string, string | undefined>} */ env 
 }
 
 /**
- * Budgets per route class. Calibrated against a heavy real user (3 tabs, the UI poll every 1.5 s, the CV studio poll
+ * Budgets per route class. Calibrated against a heavy real user (3 tabs, the UI poll every 1.5 s, the CV builder poll
  * every 2 s, the assistant running: about 150-200 /api requests a minute; tests/abuse_guard.test.mjs replays that).
  * `scale` multiplies every budget and the block threshold (KNIFE_GUARD_SCALE: test servers that replay many users from
  * one address); private mode multiplies the budgets by 10 on top.

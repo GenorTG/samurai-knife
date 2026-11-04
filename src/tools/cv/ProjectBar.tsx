@@ -8,7 +8,7 @@ import { useT } from "@/lib/i18n/react";
 import { announceProjectChange, CV_PROJECT_EVENT, setShownProject } from "@/lib/cv/shown-project";
 
 
-/** What each CV studio tab is for, in a few plain words (shown under "How this works"). */
+/** What each CV builder tab is for, in a few plain words (shown under "How this works"). */
 const HOW: Record<string, string[]> = {
   profile: [
     msg("Your master CV: every job, project, skill and school once, in Polish and English. Nothing here is sent anywhere."),
@@ -46,7 +46,7 @@ async function fetchProjects(): Promise<{ active: string; projects: CvProjectInf
 }
 
 /**
- * Top of every CV studio tab: which CV project the tab shows (switch, create, rename, duplicate, delete) and a short
+ * Top of every CV builder tab: which CV project the tab shows (switch, create, rename, duplicate, delete) and a short
  * "How this works" for the tab. Projects are separate CVs on one account (docs/CV-STUDIO.md "Projects").
  */
 export function ProjectBar({ tab }: { tab: string }) {

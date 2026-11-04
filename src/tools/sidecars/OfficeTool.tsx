@@ -599,7 +599,7 @@ export default function OfficeTool() {
       {service?.installed ? (
         <p className="text-xs text-faint">
           {t("Editor service:")}{" "} {service.ready ? t("running") : service.canManage === false ? t("not running (an administrator starts it)") : t("stopped (starts when you open a document)")}
-          {service.canManage === false ? "" : t(" · manage it on the Sidecar services page.")}
+          {service.canManage === false ? "" : t(" · manage it on the Server add-ons page.")}
         </p>
       ) : null}
     </div>

@@ -35,55 +35,40 @@ export interface NavSection {
 /** Craft apps grouped by medium: photos, graphics and design, video and audio, office documents, CAD. */
 const CRAFT_ORDER = ["photocraft", "lightcraft", "vectorcraft", "figcraft", "designcraft", "filmcraft", "effectcraft", "soundcraft", "wordcraft", "gridcraft", "deckcraft", "pdfcraft", "cadcraft"];
 
+/** The second line of a Craft app in the menu: what people know it as. */
+const CRAFT_INSTEAD_OF: Record<string, string> = {
+  photocraft: msg("instead of Photoshop"),
+  lightcraft: msg("instead of Lightroom"),
+  vectorcraft: msg("instead of Illustrator"),
+  figcraft: msg("instead of Figma"),
+  designcraft: msg("instead of InDesign"),
+  filmcraft: msg("instead of Premiere"),
+  effectcraft: msg("instead of After Effects"),
+  soundcraft: msg("instead of Audition"),
+  pdfcraft: msg("instead of Acrobat"),
+  cadcraft: msg("instead of AutoCAD"),
+};
+
 const craftItems: NavItem[] = CRAFT_ORDER.flatMap((id) => {
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === id);
-  return app ? [{ slug: "artcraft", tab: app.id, label: app.name, hint: app.kind }] : [];
+  return app ? [{ slug: "artcraft", tab: app.id, label: app.name, hint: CRAFT_INSTEAD_OF[app.id] ?? app.kind }] : [];
 });
 
 export const NAV: readonly NavSection[] = [
-  {
-    id: "documents",
-    label: msg("Documents and PDF"),
-    icon: "documents",
-    items: [{ slug: "office" }, { slug: "pdf" }, { slug: "markdown" }],
-  },
-  {
-    id: "images",
-    label: msg("Images"),
-    icon: "images",
-    items: [{ slug: "image-resize" }, { slug: "image-crop" }, { slug: "svg-optimize" }, { slug: "image-compare" }, { slug: "qr" }],
-  },
-  { id: "craft", label: msg("Craft apps"), icon: "craft", items: craftItems },
-  {
-    id: "data",
-    label: msg("Data and databases"),
-    icon: "data",
-    items: [{ slug: "csv" }, { slug: "json" }, { slug: "sql-lab" }],
-  },
-  {
-    id: "text",
-    label: msg("Text"),
-    icon: "text",
-    items: [{ slug: "text" }, { slug: "regex" }, { slug: "diff" }, { slug: "characters", label: msg("Characters and encoding") }],
-  },
-  {
-    id: "dev",
-    label: msg("Web and code"),
-    icon: "dev",
-    items: [
-      { slug: "css" },
-      { slug: "web" },
-      { slug: "ids" },
-      { slug: "dates" },
-    ],
-  },
-  { id: "career", label: msg("Career"), icon: "career", items: [{ slug: "cv-studio" }] },
-  { id: "automate", label: msg("Automation"), icon: "automate", items: [{ slug: "workflows" }] },
-  { id: "learn", label: msg("Learning"), icon: "learn", items: [{ slug: "db-course" }] },
+  { id: "documents", label: msg("Office and PDF"), icon: "documents", items: [{ slug: "office" }, { slug: "pdf" }] },
+  { id: "career", label: msg("CV and job search"), icon: "career", items: [{ slug: "cv-studio" }] },
+  { id: "craft", label: msg("Craft apps: photo, video, design"), icon: "craft", items: craftItems },
+  { id: "images", label: msg("Quick picture tools"), icon: "images", items: [{ slug: "image-resize" }, { slug: "image-crop" }, { slug: "image-compare" }, { slug: "svg-optimize" }] },
+  { id: "everyday", label: msg("Everyday helpers"), icon: "everyday", items: [{ slug: "ids" }, { slug: "qr" }, { slug: "dates" }] },
+  { id: "text", label: msg("Text and writing"), icon: "text", items: [{ slug: "text" }, { slug: "diff" }, { slug: "markdown" }, { slug: "regex" }, { slug: "characters" }] },
+  { id: "data", label: msg("Spreadsheets and data"), icon: "data", items: [{ slug: "csv" }, { slug: "json" }, { slug: "sql-lab" }] },
+  { id: "dev", label: msg("Websites and code"), icon: "dev", items: [{ slug: "web" }, { slug: "css" }] },
+  { id: "automate", label: msg("Automation and AI"), icon: "automate", items: [{ slug: "workflows" }, { slug: "mcp-connect" }] },
+  { id: "learn", label: msg("Courses"), icon: "learn", items: [{ slug: "db-course" }] },
 ];
 
 /** Utilities under the sections: setting up services and outside agents. */
-export const NAV_FOOTER: readonly NavItem[] = [{ slug: "sidecars", label: msg("Services") }, { slug: "mcp-connect", label: msg("Connect an agent (MCP)") }];
+export const NAV_FOOTER: readonly NavItem[] = [{ slug: "sidecars" }];
 
 /** The section a tool is listed in (breadcrumbs use its label). */
 export function navSectionOf(slug: string): NavSection | undefined {

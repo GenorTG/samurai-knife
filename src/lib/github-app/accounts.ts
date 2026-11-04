@@ -108,6 +108,7 @@ export function signInWithGithub(who: GithubIdentity, ip: string, acceptedTerms:
     const id = usernameFor(who.login, (candidate) => store.accounts.some((a) => a.id === candidate));
     const now = new Date().toISOString();
     const account = newAccountRecord({
+      needsWelcome: true,
       id,
       displayName: (who.name || who.login).slice(0, 80),
       email,

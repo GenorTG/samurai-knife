@@ -76,7 +76,7 @@ def flow(base: str, browser: Browser, engine: str) -> None:
     page.goto(base + "/", wait_until="networkidle")
     hydrated(page)
     shot(page, f"{engine}-1440-home")
-    # The home feature card for the CV studio's Website tab -> its showcase with the tab carried along.
+    # The home feature card for the CV builder's Website tab -> its showcase with the tab carried along.
     card = page.locator("main a[href^='/tools/cv-studio/about']").filter(has_text="Studio stron internetowych")
     check(f"[{engine}] home feature card links to the showcase with its tab", card.count() == 1 and card.get_attribute("href") == "/tools/cv-studio/about?tab=website", card.count())
     page.locator("#all-tools").scroll_into_view_if_needed()

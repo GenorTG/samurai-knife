@@ -7,7 +7,7 @@ import { UNTRUSTED_NOTE, wrapUntrusted } from "@/lib/security/untrusted";
 /**
  * MCP-only tools for agents OUTSIDE the app (the built-in assistant drives the page directly with open_tool): see which
  * app pages the user has open, and bring one of them to the result of your work. Data edits go through the knife_* tools;
- * open pages refresh by themselves (CV studio polls every 2 s and highlights what changed). knife_ui_call runs one of the
+ * open pages refresh by themselves (CV builder polls every 2 s and highlights what changed). knife_ui_call runs one of the
  * open page's live tools (the office document, a Craft app) in the user's visible tab, behind the same approval cards
  * the in-page assistant gets (docs/MCP.md "knife_ui_call").
  */

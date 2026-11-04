@@ -9,7 +9,7 @@ and Web workbench's pasted-headers check replaced by a Website check that fetche
 alias now lands on its closest neighbour. The tables below describe how the suites were formed; rows for removed tools
 are history.
 
-The first pass turned 100 registry entries into 36 (27 suites, 91 tabs, 9 standalone). Later additions (the database labs, CV studio, office documents, sidecars and the Craft apps) brought it to 42 entries; the 0.6 menu pass merged small neighbouring suites (CSS, web, dates, tables, JSON and config, IDs and secrets, Lottie into the image inspector) and placeholder text into the text kit: 32 entries today, 25 suites with 128 tabs and 7 standalone tools. Every
+The first pass turned 100 registry entries into 36 (27 suites, 91 tabs, 9 standalone). Later additions (the database labs, CV builder, office documents, sidecars and the Craft apps) brought it to 42 entries; the 0.6 menu pass merged small neighbouring suites (CSS, web, dates, tables, JSON and config, IDs and secrets, Lottie into the image inspector) and placeholder text into the text kit: 32 entries today, 25 suites with 128 tabs and 7 standalone tools. Every
 folded slug is a permanent alias (`SLUG_ALIASES` in `src/lib/registry.ts`) that
 the `/tools/[slug]` route redirects (308) to `/tools/<suite>?tab=<tab>`, so no
 bookmark, favorite or recent entry breaks. Favorites and history stored in

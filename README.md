@@ -12,7 +12,7 @@ byte off the page.
 | | |
 | --- | --- |
 | ![JSON workbench](docs/screenshots/json-workbench.png) | ![SQL lab](docs/screenshots/sql-lab.png) |
-| ![CV studio](docs/screenshots/cv-studio.png) | ![CV version with live preview](docs/screenshots/cv-version.png) |
+| ![CV builder](docs/screenshots/cv-studio.png) | ![CV version with live preview](docs/screenshots/cv-version.png) |
 
 ## What's inside
 
@@ -25,7 +25,7 @@ byte off the page.
 - **Web and code**: a website check (a live URL: redirects, security headers, cookies, SEO, accessibility, robots.txt, sitemap), a CSS playground (HTML, CSS, JS/TS with presets and export) and CSS builders, CSP and cURL, URLs, robots.txt and sitemaps, JWT and passwords, IDs and hashes, dates and time zones, cron and RRULE
 - **Text**: regex lab, diff, text kit (transforms, line wrap, smart quotes, placeholder text), Unicode and encoding inspector
 
-**CV studio**: one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
+**CV builder**: one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
 with an ATS check, an application tracker, and a showcase builder that drafts project entries from GitHub repos.
 Prints to PDF or exports DOCX.
 
@@ -54,7 +54,7 @@ affiliated with or endorsed by the ArtCraft team; "ArtCraft" and its logos are t
 - **Guardrails, not vibes.** Trust modes (All / Most / Risky / None) gate acting calls, destructive actions on your input
   are confirmed one by one, and the agent never fabricates your files: it opens the tool and waits for you. Tool outputs
   chain between tools by reference (`f1`, `f2`…), never as base64 pasted through the model.
-- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 65 deterministic tools: CV studio, SQL/NoSQL,
+- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 65 deterministic tools: CV builder, SQL/NoSQL,
   office documents, a course tutor and text utilities. Two MCP-only tools let an outside agent see which pages you have open and bring your
   visible tab to its result, with a short note on screen. Open pages refresh by themselves when an agent changes data,
   with Undo. See [docs/MCP.md](docs/MCP.md).
@@ -165,7 +165,7 @@ it in `src/tools/registry-client.tsx`. Nothing else is wired by hand.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): layout, rules and hard-won gotchas
 - [docs/MCP.md](docs/MCP.md): using the app from outside agents
-- [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV studio contract
+- [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV builder contract
 - [docs/SIDECARS.md](docs/SIDECARS.md): Docker sidecars, the live office plugin and the Craft apps
 - [docs/LEARN.md](docs/LEARN.md): the Database course (lessons, seed, learner sandbox)
 - [docs/SUITES.md](docs/SUITES.md): how 100 small tools became 30 suites

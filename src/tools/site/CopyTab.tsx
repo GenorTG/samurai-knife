@@ -23,7 +23,7 @@ const DIMENSIONS: [keyof AuditRun["pages"][number]["copy"]["scores"], string, st
 ];
 
 /**
- * Compare with your CV (a step of the CV studio's Website tab): how the site lines up with the CV project's profile, and
+ * Compare with your CV (a step of the CV builder's Website tab): how the site lines up with the CV project's profile, and
  * copywriting scores per page.
  */
 export default function CopyTab() {
@@ -90,7 +90,7 @@ export default function CopyTab() {
                 {t("Update the website from my CV")}
               </Button>
               {a.siteOnly.length ? (
-                <Button onClick={() => openAssistant(t("My website mentions {join} but my CV does not. Ask me which of these I really use, then add those to the CV skills (CV studio).", { join: a.siteOnly.join(", ") }))}>
+                <Button onClick={() => openAssistant(t("My website mentions {join} but my CV does not. Ask me which of these I really use, then add those to the CV skills (CV builder).", { join: a.siteOnly.join(", ") }))}>
                   {t("Update my CV from the website")}
                 </Button>
               ) : null}

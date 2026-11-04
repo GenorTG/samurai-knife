@@ -1,4 +1,4 @@
-"""Sidecar services page driven like a person (real docker): Install button -> live progress (role=status + meter) ->
+"""Server add-ons page driven like a person (real docker): Install button -> live progress (role=status + meter) ->
 Running badge -> Stop -> Start -> Remove with the confirm + purge checkbox. Also: the office page shows the install card
 while the sidecar is missing. Same isolation as tests/office_e2e.py (scratch worktree server on the Tailscale address,
 own data dir/port/compose project). Uses the cached image when present (pull is then seconds).
@@ -57,7 +57,7 @@ def main() -> int:
                 page.screenshot(path=str(shots / "office-not-installed.png"), full_page=True)
 
             page.goto(f"{url}/tools/sidecars")
-            # The Sidecar services page lists every sidecar (office, learn-db): this suite drives the office card.
+            # The Server add-ons page lists every sidecar (office, learn-db): this suite drives the office card.
             card = page.locator(".sk-sidecar-card").filter(has_text="Office editor (Euro-Office Document Server)")
             card.wait_for(timeout=60_000)
             expect(card.get_by_text("Not installed", exact=True)).to_be_visible(timeout=30_000)

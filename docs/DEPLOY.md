@@ -228,7 +228,7 @@ typically after a reboot. Three things say so before that:
   (`src/lib/services/sync-check.ts`): it re-stages each installed sidecar's bundle in the data dir (never root's copy),
   compares, and for a difference logs one line per change (`[sidecars] sync needed: <id>: … Run as root: sudo
   knife-sidecar check <id> …, then sudo knife-sidecar sync <id>.`) and shows admins a "Sync needed" notice with both
-  commands on the Sidecar services page and at the top of `/account/admin` (`GET /api/admin/sidecars`, admins only).
+  commands on the Server add-ons page and at the top of `/account/admin` (`GET /api/admin/sidecars`, admins only).
   Autostart does not try to start a sidecar that needs a sync (it would only fail); it starts within a minute of the
   sync, and the notice clears at the next check.
 - **knife-update**, after a switch, when the release changed `src/lib/services/`, `sidecars/` or

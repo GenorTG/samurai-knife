@@ -5,7 +5,7 @@
   starts from the tool's defaults and offers "Restore saved draft" (after a reload and in a fresh browser context = another
   machine, Chromium and Firefox); Discard forgets it; bob opening the same tool sees no offer and none of her text, and
   /api/workspace never reads or deletes another account's drafts;
-- server-backed tools are not wrapped (no draft line on the CV studio), signed-out pages work without drafts;
+- server-backed tools are not wrapped (no draft line on the CV builder), signed-out pages work without drafts;
 - at rest: after real flows (CV offer + photo, office document, course progress, drafts) every per-account file under the
   data dir is sealed (src/lib/storage/sealed.ts magic header) and no file anywhere in the data dir carries the plaintext;
   the storage key lives in KNIFE_STORAGE_KEY_FILE outside the data dir.
@@ -122,7 +122,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
           MARKER not in textarea(page_b).input_value() and page_b.get_by_role("group", name="Saved draft").count() == 0, textarea(page_b).input_value()[:120])
     go(page_b, "/tools/cv-studio")
     page_b.wait_for_function("!/Loading/.test(document.querySelector('main [role=status]')?.textContent ?? '')", timeout=30_000)
-    check(f"[{engine}] CV studio is not wrapped by drafts (server data wins)", page_b.locator("[data-workspace-tool]").count() == 0)
+    check(f"[{engine}] CV builder is not wrapped by drafts (server data wins)", page_b.locator("[data-workspace-tool]").count() == 0)
     ctx_b.close()
 
 

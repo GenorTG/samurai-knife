@@ -67,7 +67,7 @@ test("calibration: a heavy real user (3 tabs, UI poll 1.5 s, CV poll 2 s, assist
     const t = tick * 100;
     for (let tab = 0; tab < 3; tab++) {
       if ((t + tab * 500) % 1_500 === 0) send("/api/ui/poll"); // every visible-or-not tab, worst case
-      if ((t + tab * 700) % 2_000 === 0) send("/api/cv/profile"); // CV studio poll
+      if ((t + tab * 700) % 2_000 === 0) send("/api/cv/profile"); // CV builder poll
       if ((t + tab * 900) % 10_000 === 0) send("/api/ui/presence", "POST");
       if ((t + tab * 1_100) % 30_000 === 0) send("/api/account");
     }

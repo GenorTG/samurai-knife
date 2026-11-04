@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every CV layout exported as PDF and DOCX in Polish and English, from the real CV studio preview on a scratch server.
+"""Every CV layout exported as PDF and DOCX in Polish and English, from the real CV builder preview on a scratch server.
 
 For each layout x language: the PDF (WeasyPrint) has 1-3 pages, carries the name and a bullet as text, has link
 annotations for the e-mail, phone and every profile link, and uses the bundled fonts; the DOCX opens, carries the name

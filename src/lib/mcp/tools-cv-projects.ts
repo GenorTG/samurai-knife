@@ -5,7 +5,7 @@ import { loadCv } from "@/lib/cv/store";
 
 /**
  * CV projects (docs/CV-STUDIO.md "Projects"): one account holds several independent CVs (other people, or separate CVs
- * of one person). List, create and switch; deleting a project is left to the user in the CV studio.
+ * of one person). List, create and switch; deleting a project is left to the user in the CV builder.
  */
 
 function account(ctx: KnifeToolContext | undefined): string {
@@ -59,7 +59,7 @@ export const CV_PROJECT_TOOLS: KnifeToolDefinition[] = [
     name: "knife_cv_project_switch",
     scope: "account",
     effect: "write",
-    description: "Make another CV project the active one: the CV studio the user has open follows within seconds. Use knife_cv_project_list for ids.",
+    description: "Make another CV project the active one: the CV builder the user has open follows within seconds. Use knife_cv_project_list for ids.",
     schema: z.object({ id: z.string().min(1).max(40) }).strict(),
     run({ id }, ctx) {
       try {

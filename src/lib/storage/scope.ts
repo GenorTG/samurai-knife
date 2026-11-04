@@ -8,7 +8,7 @@ import { ACCOUNT_ID_PATTERN, ensureDataDir } from "@/lib/accounts/store";
  * (`ACCOUNT_ID_PATTERN`: no dot, slash or `..` possible) and builds every path through `safeJoin`, which refuses separators,
  * `..`, NUL and anything that resolves outside its base. The on-disk layout is the historical one (no migration needed):
  *
- *   cv/<id>.json, cv/<id>.snapshots/, cv/<id>.photo.jpg, cv/<id>.*   CV studio
+ *   cv/<id>.json, cv/<id>.snapshots/, cv/<id>.photo.jpg, cv/<id>.*   CV builder
  *   docs/<id>/                                                       office library (documents, folders, versions, trash)
  *   conversations/<id>/                                              assistant transcripts
  *   learn/<id>.json                                                  course progress

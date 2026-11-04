@@ -1,4 +1,4 @@
-// Sidecar services (src/lib/services) and the office library glue (src/lib/office): compose rendering, secrets, state,
+// Server add-ons (src/lib/services) and the office library glue (src/lib/office): compose rendering, secrets, state,
 // lock, pull progress, URLs, HS256 JWT, document templates/text, the document store and the save callback.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/services.test.mjs
 import assert from "node:assert/strict";

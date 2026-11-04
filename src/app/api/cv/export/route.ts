@@ -107,7 +107,7 @@ export async function POST(request: Request): Promise<Response> {
       cleanSheet(body.sheet, null);
       doc = { sheetHtml: body.sheet, lang, title, paper: body.paper, fonts, photoDataUrl };
     } catch (error) {
-      if (error instanceof SheetError) return jsonError(msg("That is not a CV sheet from the CV studio preview."), 422);
+      if (error instanceof SheetError) return jsonError(msg("That is not a CV sheet from the CV builder preview."), 422);
       throw error;
     }
     if (format === "html") return attachment(standaloneHtml(doc), "text/html; charset=utf-8", `${stem}.html`);

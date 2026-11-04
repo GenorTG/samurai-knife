@@ -1,6 +1,6 @@
 // "Sync needed" (src/lib/services/sync-check.ts, manager.checkSync, docs/DEPLOY.md "Sidecars without the docker group"):
 // with the root helper, the app re-stages each installed sidecar's bundle at startup, compares it with root's copy and
-// tells admins (Sidecar services page, /account/admin, one log line per change) instead of failing a start after the
+// tells admins (Server add-ons page, /account/admin, one log line per change) instead of failing a start after the
 // next reboot. Also: autostart skips a sidecar that needs a sync, non-admins never see the check, and stale Craft
 // configs are pruned so they cannot keep a bundle "different" forever.
 // Run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/ts-resolve.mjs --test tests/sidecar_sync_check.test.mjs

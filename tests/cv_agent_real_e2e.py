@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CV studio with a REAL model, natural language, from a page that is NOT the CV studio (/tools/json).
+"""CV builder with a REAL model, natural language, from a page that is NOT the CV builder (/tools/json).
 
 SCRATCH server only (own KNIFE_DATA_DIR, fresh), key read at runtime by tests/real_provider.py:
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3239 npm run dev

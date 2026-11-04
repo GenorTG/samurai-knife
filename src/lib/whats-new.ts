@@ -48,7 +48,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     date: "2026-10-28",
     items: [
       "Website studio: Publish is refused while GitHub checks fail or still run; knife_site_changes reports checks and the preview for the exact head commit, and agents must report that evidence (passed, failed, pending, not configured).",
-      "CV studio: several CV projects (knife_cv_project_list / _create / _switch, every knife_cv_* and knife_site_* tool takes projectId), 14 layouts, PDF/DOCX/HTML/TXT export, showcase pages, CV upload; the website is the Website tab of cv-studio.",
+      "CV builder: several CV projects (knife_cv_project_list / _create / _switch, every knife_cv_* and knife_site_* tool takes projectId), 14 layouts, PDF/DOCX/HTML/TXT export, showcase pages, CV upload; the website is the Website tab of cv-studio.",
     ],
   },
   {

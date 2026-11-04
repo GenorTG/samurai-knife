@@ -1,4 +1,4 @@
-"""CV studio driven by the floating assistant's UI tools (real browser, real routes, scripted mock provider).
+"""CV builder driven by the floating assistant's UI tools (real browser, real routes, scripted mock provider).
 
 Shows the widget can operate every control it needs through `page_snapshot` / `fill_field` / `click` alone: fill the job form
 and click Save, edit a profile field in place, add an application in the drawer and move it along the pipeline. Each step is
@@ -145,7 +145,7 @@ with sync_playwright() as pw:
     page.goto(BASE + "/", wait_until="networkidle")
     res = tool_result(send(page, key, 'CALL:open_tool:{"slug":"cv-studio","tab":"jobs"}'), "open_tool")
     page.wait_for_url("**/tools/cv-studio?tab=jobs")
-    check("open_tool opens the CV studio Jobs tab", res.get("ok") is True, res)
+    check("open_tool opens the CV builder Jobs tab", res.get("ok") is True, res)
     page.wait_for_function("!document.querySelector('main [role=status]')?.textContent?.match(/Loading/)")
 
     # 2. Fill the job form and click Save through UI tools only -----------------------------------------------------------------
@@ -227,4 +227,4 @@ with sync_playwright() as pw:
 if failures:
     print(f"\n{len(failures)} failed: {failures}")
     sys.exit(1)
-print("\nall CV studio agent checks passed")
+print("\nall CV builder agent checks passed")

@@ -253,7 +253,7 @@ test("progress: per account and course, private file, attempts/hints/completion,
 /* ------------------------------------------------------------------------------------------ registry */
 
 test("registry: Learn category and the db-course suite with the sql tab on the learn-db sidecar", () => {
-  assert.ok(CATEGORIES.some((c) => c.id === "learn" && c.label === "Learn"));
+  assert.ok(CATEGORIES.some((c) => c.id === "learn" && c.label === "Courses"));
   const tool = findTool("db-course");
   assert.equal(tool.category, "learn");
   assert.equal(tool.sidecar, "learn-db");

@@ -9,7 +9,7 @@ import VariantsTab from "./VariantsTab";
 import WebsiteTab from "@/tools/site/WebsiteTab";
 
 /**
- * Every CV studio tab under the CV project bar (switcher + "How this works"): the registry maps the cv-* components here
+ * Every CV builder tab under the CV project bar (switcher + "How this works"): the registry maps the cv-* components here
  * (src/tools/registry-client.tsx), which loads this module lazily (its "Loading tool…" status covers every tab).
  */
 

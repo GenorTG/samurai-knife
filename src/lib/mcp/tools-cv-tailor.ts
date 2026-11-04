@@ -10,7 +10,7 @@ import { loadCv, mutateCv } from "@/lib/cv/store";
 import { wrapUntrustedOptional, wrapUntrustedStrings } from "@/lib/security/untrusted";
 
 /**
- * CV studio "tailor" tools: everything the assistant needs to fit a CV version to one offer in a few calls, plus
+ * CV builder "tailor" tools: everything the assistant needs to fit a CV version to one offer in a few calls, plus
  * per-version rewording, the ATS check and "add a project from a GitHub link". Evidence and checks only: no LLM here.
  */
 

@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import { useSearchParams } from "next/navigation";
 import { CategoryIcon, categoryTint } from "@/components/category-icons";
 import { BetaBadge } from "@/components/ToolShell";
+import { loadAccount } from "@/lib/client-account";
 import { cx } from "@/lib/format";
 import { NAV, NAV_FOOTER, type NavItem } from "@/lib/nav";
 import { searchTools, TOOLS, type ToolMeta, type ToolTab } from "@/lib/registry";
@@ -146,7 +147,18 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
   const activeTool = activeSlug ? bySlug.get(activeSlug) : undefined;
   const activeTab = searchParams.get("tab") ?? activeTool?.tabs?.[0]?.id ?? null;
   const sections = useMemo(() => NAV.map((section) => ({ ...section, entries: section.items.map(entryOf).filter((entry): entry is Entry => entry !== null) })), []);
-  const footer = useMemo(() => NAV_FOOTER.map(entryOf).filter((entry): entry is Entry => entry !== null), []);
+  // Administrators' pages stay out of everyone else's menu (public mode); the page itself explains itself if reached.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void loadAccount().then((account) => {
+      if (live) setIsAdmin(account?.isAdmin === true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const footer = useMemo(() => (isAdmin ? NAV_FOOTER.map(entryOf).filter((entry): entry is Entry => entry !== null) : []), [isAdmin]);
   const pinned = ready ? favorites.map((slug) => bySlug.get(slug)).filter((tool): tool is ToolMeta => Boolean(tool)) : [];
   const results = useMemo(() => filterEntries(query, t), [query, t]);
   // A whole tool is active on any of its tabs; a tab entry (Craft apps, results) only on its own tab.

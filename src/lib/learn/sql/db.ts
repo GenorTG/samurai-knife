@@ -48,7 +48,7 @@ export function sidecarConnection(): ConnectionInfo {
   const adminPassword = readSecret(SERVICE_ID, "POSTGRES_PASSWORD");
   const learnerPassword = readSecret(SERVICE_ID, "LEARNER_PASSWORD");
   if (!state || !adminPassword || !learnerPassword) {
-    throw new LearnDbError("not_installed", "The course database is not installed. Install it from the course page or Sidecar services.");
+    throw new LearnDbError("not_installed", "The course database is not installed. Install it from the course page or Server add-ons.");
   }
   return { host: state.bindHost, port: state.hostPort, adminPassword, learnerPassword, key: `${state.hostPort}|${state.installedAt}|${state.lastStartedAt ?? ""}` };
 }

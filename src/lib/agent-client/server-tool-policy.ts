@@ -43,7 +43,7 @@ export const UNTRUSTED_HEADER = "x-knife-untrusted";
 /** Response header of /api/agent/chat: which provider host and model answered this round, `<host> <model>` (URI-encoded). */
 export const ROUND_MODEL_HEADER = "x-knife-round-model";
 
-/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV studio); every
+/** Page tools whose results show page text that may be third-party (a job posting rendered in the CV builder); every
  *  answer of a Craft app too (its code is third-party, and a project or media file may come from someone else). */
 export const PAGE_READS: ReadonlySet<string> = new Set(["page_snapshot", "read_text", "craft_commands", "craft_inspect", "craft_execute", "craft_request", "craft_files"]);
 

@@ -64,7 +64,7 @@ function DownloadLink({ doc }: { doc: DocMeta }) {
 
 /**
  * The editor service is not installed: nothing to start here. The library keeps working (the parent page), so this only
- * says so and offers the download. Installing/starting is the Sidecar services page's job (admins in public mode).
+ * says so and offers the download. Installing/starting is the Server add-ons page's job (admins in public mode).
  */
 function NotInstalled({ doc, onClose }: { doc: DocMeta; onClose: () => void }) {
   const { t } = useT();

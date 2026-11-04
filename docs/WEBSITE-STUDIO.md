@@ -1,6 +1,6 @@
-# Website (CV studio)
+# Website (CV builder)
 
-The optional **Website** tab of the CV studio (steps: Your website, Check it, Compare with your CV, Improve it). It used to be the separate suite `site-studio`, which now redirects there (`/tools/site-studio?tab=X` -> `/tools/cv-studio?tab=website&step=X`). The website belongs to a CV project (docs/CV-STUDIO.md "Projects"); every signed-in user may use it.
+The optional **Website** tab of the CV builder (steps: Your website, Check it, Compare with your CV, Improve it). It used to be the separate suite `site-studio`, which now redirects there (`/tools/site-studio?tab=X` -> `/tools/cv-studio?tab=website&step=X`). The website belongs to a CV project (docs/CV-STUDIO.md "Projects"); every signed-in user may use it.
 The point: keep a personal or company website in line with what you do now and with your CV, score it on the usual
 website benchmarks, and let the in-page assistant or any MCP agent improve it, without leaving the app. Nothing reaches
 production until the user clicks Publish.
@@ -63,7 +63,7 @@ One run per account at a time; progress is readable while it runs (`GET /api/sit
   for English), long sentences, the first screen (H1 of 3-12 words with a line under it), calls to action and a direct
   contact, proof (numbers with units, results, project links), reader focus ("you" words vs "I/we"), buzzwords,
   substance (enough text), stale years and copyright. Word matching uses Unicode boundaries (`\b` misses ę/ń/ó).
-- **CV fit** (`align.ts`, `links.ts`): the CV studio profile against all audited text and links: name, headline, current
+- **CV fit** (`align.ts`, `links.ts`): the CV builder profile against all audited text and links: name, headline, current
   roles (no end date), projects (name or URL), skills, contact links, email; accent- and case-insensitive; plus tech
   words the site names that the CV does not list. Links are compared after normalising (scheme, `www.`, host case,
   trailing slash, fragment and tracking parameters ignored; a deeper page of a profile counts) against every anchor

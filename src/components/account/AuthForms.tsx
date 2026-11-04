@@ -52,7 +52,7 @@ export function AuthFrame({ title, intro, aside, children }: { title: string; in
 }
 
 const PERKS: [string, string][] = [
-  [msg("CV studio"), msg("a bilingual CV, a tailored version per job offer, ATS checks and an application tracker")],
+  [msg("CV builder"), msg("a bilingual CV, a tailored version per job offer, ATS checks and an application tracker")],
   [msg("Office library"), msg("Word, Excel and PowerPoint files with folders and versions, edited in the browser")],
   [msg("Website studio and database course"), msg("audit your site from its GitHub repo; learn SQL and PostGIS on a real database")],
   [msg("AI assistant"), msg("drives the tools with you on the model you choose; connect your own agents over MCP")],

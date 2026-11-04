@@ -11,7 +11,7 @@
   malformed header, a revoked key, no key at all, another account's key on a personal URL;
 - cross-account isolation over MCP: alice's CV offers and documents are invisible to bob, and knife_ui_state /
   knife_ui_show reach only the caller's own open tabs;
-- the CV studio tells a user that an administrator has to run the GitHub showcase; logging out clears the account's
+- the CV builder tells a user that an administrator has to run the GitHub showcase; logging out clears the account's
   browser storage.
 
 Self-contained: own scratch server (tests/scratch_server.py: worktree of the current tree, fresh KNIFE_DATA_DIR, free
@@ -228,7 +228,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_a.wait_for_url(base + "/", timeout=30_000)
     go(page_a, "/tools/cv-studio?tab=showcase")
     expect(page_a.get_by_text(re.compile(r"An administrator has to run the project showcase"))).to_be_visible(timeout=60_000)
-    check("CV studio showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Rank my repositories").count() == 0)
+    check("CV builder showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Rank my repositories").count() == 0)
     deadline = time.monotonic() + 20
     alice_state = ""
     while time.monotonic() < deadline:

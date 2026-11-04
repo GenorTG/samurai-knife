@@ -8,7 +8,7 @@ import { removeAccountTriggers } from "@/lib/workflows/server/trigger-index";
  * Account deletion removes all of them; the admin list shows their size. A new per-account store must be added to the scope
  * (docs/ACCOUNTS.md "Data an account owns").
  *
- *   cv/<id>.json, cv/<id>.snapshots/, cv/<id>.photo.jpg (and any other cv/<id>.* file)   CV studio
+ *   cv/<id>.json, cv/<id>.snapshots/, cv/<id>.photo.jpg (and any other cv/<id>.* file)   CV builder
  *   conversations/<id>/                                                                 assistant transcripts
  *   docs/<id>/                                                                          office library
  *   learn/<id>.json                                                                     course progress

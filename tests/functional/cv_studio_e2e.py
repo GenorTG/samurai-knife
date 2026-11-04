@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-UI functional tests for the CV studio suite (/tools/cv-studio): profile, job offers, CV versions, applications, showcase.
+"""Real-UI functional tests for the CV builder suite (/tools/cv-studio): profile, job offers, CV versions, applications, showcase.
 
 Oracles are independent of the app: the API (GET /api/cv) is read back after every UI action, the translation backlog is
 counted by a separate Python walker, dates come from the Python clock. All data is synthetic.
@@ -941,4 +941,4 @@ with sync_playwright() as pw:
 if FAILS:
     print(f"\n{len(FAILS)} failed: {FAILS}")
     sys.exit(1)
-print("\nall CV studio checks passed")
+print("\nall CV builder checks passed")

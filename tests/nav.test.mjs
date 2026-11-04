@@ -38,7 +38,7 @@ test("sections are non-empty, uniquely named, and breadcrumbs find a tool's sect
   for (const section of NAV) assert.ok(section.items.length > 0, `${section.id} is empty`);
   assert.equal(navSectionOf("pdf")?.id, "documents");
   assert.equal(navSectionOf("artcraft")?.id, "craft");
-  assert.equal(navSectionOf("sidecars"), undefined, "setup pages live in the footer");
+  assert.equal(navSectionOf("sidecars"), undefined, "administrators' setup page lives in the footer");
 });
 
 test("launcher rank puts suites ahead of the utility tail without changing the registry count", () => {
@@ -46,7 +46,7 @@ test("launcher rank puts suites ahead of the utility tail without changing the r
     .sort((a, b) => (a.tool.rank ?? 100) - (b.tool.rank ?? 100) || a.index - b.index)
     .map(({ tool }) => tool);
   assert.equal(ranked.length, TOOLS.length);
-  assert.deepEqual(ranked.slice(0, 7).map((tool) => tool.slug), ["cv-studio", "office", "workflows", "web", "artcraft", "mcp-connect", "pdf"]);
+  assert.deepEqual(ranked.slice(0, 7).map((tool) => tool.slug), ["cv-studio", "office", "artcraft", "pdf", "image-resize", "image-crop", "qr"]);
   assert.equal(ranked.at(-1).rank, undefined, "single-purpose tools retain the registry-order utility tail");
 });
 

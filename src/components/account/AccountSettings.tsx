@@ -112,7 +112,7 @@ function ChangeEmail({ account, onChanged }: { account: PublicAccount; onChanged
 
 const AREAS: [keyof StorageUsage["areas"], string][] = [
   ["docs", msg("Office documents (with versions and trash)")],
-  ["cv", msg("CV studio (profile, snapshots, photo)")],
+  ["cv", msg("CV builder (profile, snapshots, photo)")],
   ["conversations", msg("Assistant conversations")],
   ["workspace", msg("Tool drafts")],
   ["site", msg("Website studio (connection, audits)")],
@@ -354,7 +354,7 @@ function DeleteAccount({ username, requiresPassword }: { username: string; requi
     <Panel title={t("Delete account")}>
       {!open ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted">{t("Removes the account, every session and MCP key, and all of its data on this server: CV studio, documents, assistant conversations, course progress and usage counters. It cannot be undone.")}</p>
+          <p className="text-sm text-muted">{t("Removes the account, every session and MCP key, and all of its data on this server: CV builder, documents, assistant conversations, course progress and usage counters. It cannot be undone.")}</p>
           <Button variant="danger" onClick={() => setOpen(true)}>{t("Delete my account…")}</Button>
         </div>
       ) : (
@@ -427,7 +427,7 @@ export function AccountSettings() {
             <p className="text-sm text-muted">
               <Link className="text-accent-soft underline underline-offset-2" href="/account/admin">{t("Manage users")}</Link>
               {" · "}
-              <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">{t("Sidecar services")}</Link>
+              <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">{t("Server add-ons")}</Link>
             </p>
           ) : null}
         </div>

@@ -4,7 +4,7 @@ import { fontFiles, type CvFonts, type CvPaper } from "./layout";
 
 /**
  * Server only: a CV sheet as a whole HTML document, for the PDF export (WeasyPrint, server/py/scripts/cv_pdf.py) and
- * the standalone HTML export. The sheet is the markup the CV studio preview rendered (`CvDocument`), sent by the
+ * the standalone HTML export. The sheet is the markup the CV builder preview rendered (`CvDocument`), sent by the
  * browser, so the file is what the user saw; the stylesheet is the app's own `cv-document.css`, read here (never sent
  * by the browser). The markup is reduced to what a CV sheet holds: no scripts, frames, external resources or event
  * handlers survive, every image source is replaced by the account's own photo (or dropped).

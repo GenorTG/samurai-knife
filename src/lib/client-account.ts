@@ -45,6 +45,7 @@ export function accountStorageKeys(accountId: string): string[] {
     `sk.agent.lease.v1.${accountId}`,
     `sk.sql.schema.v1.${accountId}`,
     `sk.sql.dialect.v1.${accountId}`,
+    `samurai-knife:cv-wizard:${accountId}`,
   ];
 }
 

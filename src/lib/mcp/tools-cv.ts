@@ -18,7 +18,7 @@ import { withProjectArg } from "./project-scope";
 import { CV_PROJECT_TOOLS } from "./tools-cv-projects";
 
 /**
- * CV studio tools. Principle: tools gather evidence and apply deterministic checks; the model (the widget's own
+ * CV builder tools. Principle: tools gather evidence and apply deterministic checks; the model (the widget's own
  * provider) writes the prose. Nothing here calls an LLM. All tools are scoped to the calling account.
  */
 
