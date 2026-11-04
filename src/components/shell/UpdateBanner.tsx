@@ -37,7 +37,7 @@ export function UpdateBanner({ version }: { version: string }) {
   if (!server || server === version || dismissed === server) return null;
   return (
     <div role="alert" className="fixed bottom-4 left-4 z-[70] flex max-w-[min(28rem,calc(100vw-2rem))] flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink shadow-pop">
-      <span>{t("Smart Knife was updated (v{from} → v{to}). Reload to get the new version and the assistant's new tools.", { from: version, to: server })}</span>
+      <span>{t("Smart Knife was updated (v{from} → v{to}). Reload the page to get the new version.", { from: version, to: server })}</span>
       <button type="button" className="rounded-md bg-accent px-2.5 py-1 font-semibold text-accent-fg" onClick={() => window.location.reload()}>{t("Reload")}</button>
       <button type="button" className="rounded-md px-2 py-1 text-muted hover:bg-raised" onClick={() => setDismissed(server)}>{t("Later")}</button>
     </div>

@@ -134,7 +134,7 @@ def main() -> int:
         check("account page has the language choice", group.count() == 1)
         group.get_by_role("radio", name="English").click()
         try:
-            page.wait_for_function("() => document.documentElement.lang === 'en' && document.body.innerText.includes('Interface language')", timeout=20000)
+            page.wait_for_function("() => document.documentElement.lang === 'en' && document.body.innerText.includes('Language of this site')", timeout=20000)
             switched = True
         except Exception:
             switched = False

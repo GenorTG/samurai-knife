@@ -226,7 +226,7 @@ export const SIDECARS: readonly SidecarDefinition[] = [
     name: "Office editor (Euro-Office Document Server)",
     shortName: msg("office editor"),
     description:
-      msg("Edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in the browser. Euro-Office is the AGPL fork of the ONLYOFFICE Document Server; it runs as one container on this machine and reads/writes documents only through this app."),
+      msg("Edit Word, Excel and PowerPoint files (also ODT, ODS, ODP) in the browser. The editor runs on this website's server and reaches your documents only through this website."),
     // `latest` and `v9.3.5` share the same digest on 2026-10-13 (ghcr.io registry API). The docs show `:9.3.1` without the
     // `v`, but the published release tags carry it.
     image: "ghcr.io/euro-office/documentserver:v9.3.5",

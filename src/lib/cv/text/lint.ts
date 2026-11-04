@@ -183,7 +183,7 @@ function firstPerson(text: string, lang: CvLang, kind: TextKind): Finding[] {
   const hits = FIRST_PERSON.flatMap((p) => Array.from(text.matchAll(p))).sort((a, b) => a.index - b.index);
   if (hits.length === 0) return [];
   const words = Array.from(new Set(hits.map((m) => `'${m[0]}'`))).join(", ");
-  return [finding("first-person", "warn", msgf("First-person {words} in an English bullet.", { words }), msg("CV bullets drop the subject: start with the verb ('Built…', not 'I built…')."), span(hits[0]))];
+  return [finding("first-person", "warn", msgf("First-person {words} in an English point.", { words }), msg("CV points leave out “I”: start with the verb ('Built…', not 'I built…')."), span(hits[0]))];
 }
 
 // --- length and substance (bullets) ----------------------------------------------------------------------------
@@ -197,7 +197,7 @@ function longBullet(text: string, _lang: CvLang, kind: TextKind): Finding[] {
       "long-bullet",
       n > LONG_BULLET_WARN ? "warn" : "info",
       msgf("Bullet is {n} words (aim for ≤{LONG_BULLET_INFO}).", { n, LONG_BULLET_INFO }),
-      msg("Split into two bullets or cut context the reader does not need."),
+      msg("Split it into two points or cut what the reader does not need."),
     ),
   ];
 }
@@ -213,7 +213,7 @@ function noSignal(text: string, _lang: CvLang, kind: TextKind): Finding[] {
     finding(
       "no-signal",
       "info",
-      msg("No number, name or technology — the bullet is hard to verify or skim."),
+      msg("No number, name or technology, so the point is hard to check or skim."),
       msg("Add one real, checkable detail: scale, technology or result. Never a made-up number."),
     ),
   ];

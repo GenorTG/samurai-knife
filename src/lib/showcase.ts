@@ -37,7 +37,7 @@ export interface Showcase {
 const shot = (slug: string): ShowcaseImage => ({ src: `/showcase/${slug}.webp`, kind: "screenshot" });
 
 const BROWSER_ONLY = msg("Your files and text stay on your device: the tool runs in this browser tab and uploads nothing.");
-const ASSISTANT_DRIVES = msg("The assistant can open the tool, fill in the fields from your request, run it and read you the result; it uses your own files only after you pick them.");
+const ASSISTANT_DRIVES = msg("If you have set up an AI model, the assistant can open the tool, fill in the fields from your request, run it and tell you the result. It uses your own files only after you pick them.");
 const ASSISTANT_MCP = msg("The assistant (and outside agents over MCP) can do the same work with deterministic tools and show you the result on this page.");
 
 export const SHOWCASES: Readonly<Record<string, Showcase>> = {
@@ -96,11 +96,11 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
     image: shot("svg-optimize"),
   },
   "image-crop": {
-    purpose: msg("Crop images to the right shape and trim empty margins."),
+    purpose: msg("Cut pictures to the shape you need and trim empty edges."),
     points: [
-      msg("Crop to a ratio such as 16:9 or 1:1, or freely."),
-      msg("Trim transparent margins around a cut-out."),
-      msg("Arrange several images into one contact sheet."),
+      msg("Cut to a set shape such as 16:9 or a square, or freely."),
+      msg("Remove see-through edges around a cut-out picture."),
+      msg("Arrange several pictures on one sheet."),
     ],
     audience: msg("Anyone preparing pictures for a site, a post or a document."),
     runs: ["browser"],
@@ -111,40 +111,40 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
   "image-compare": {
     purpose: msg("See exactly what changed between two images."),
     points: [
-      msg("Compare side by side, as an overlay with a slider, or as a pixel difference."),
-      msg("Inspect the transparency of an image."),
-      msg("Spot small changes between two versions of a screenshot or a design."),
+      msg("Compare side by side, one on top of the other with a slider, or by showing only what differs."),
+      msg("Check which parts of a picture are see-through."),
+      msg("Spot small changes between two versions of a screenshot or a picture."),
     ],
-    audience: msg("Designers, testers and developers checking visual changes."),
+    audience: msg("Anyone who wants to see what changed between two pictures."),
     runs: ["browser"],
     data: BROWSER_ONLY,
     assistant: ASSISTANT_DRIVES,
     image: shot("image-compare"),
   },
   "image-resize": {
-    purpose: msg("Prepare images for the web: the right size, format and no hidden metadata."),
+    purpose: msg("Make pictures smaller, change their file type and remove hidden data."),
     points: [
-      msg("Resize and convert to WebP, JPEG or PNG."),
+      msg("Change the size and save as JPEG, PNG or WebP."),
       msg("Remove location and camera data before you share a photo."),
-      msg("Build responsive srcset variants and a full favicon set."),
-      msg("Turn a small image into a data URI."),
+      msg("Make versions of a picture for different screens, and a full set of website icons."),
+      msg("For website makers: turn a small image into text you can paste into a page (a data URI)."),
     ],
-    audience: msg("Website owners, bloggers and developers."),
+    audience: msg("Anyone sharing photos or putting them on a website."),
     runs: ["browser"],
     data: BROWSER_ONLY,
     assistant: ASSISTANT_DRIVES,
     image: shot("image-resize"),
   },
   pdf: {
-    purpose: msg("Do everyday PDF work: edit, merge, split, compress, protect and read scans."),
+    purpose: msg("Do everyday PDF work: edit, join, split, make smaller, lock with a password and read scans."),
     points: [
-      msg("Merge, split, compress and password-protect PDF files."),
-      msg("Rotate, reorder and redact pages and scans in the editor."),
-      msg("Extract text in the browser, or make a scanned PDF searchable with OCR on this server."),
+      msg("Join, split and shrink PDF files, or lock them with a password."),
+      msg("Turn, reorder and delete pages, and add text, highlights and signatures."),
+      msg("Get the text out of a scan in your browser, or make a scanned PDF searchable on this website's server."),
     ],
     audience: msg("Anyone who handles PDF documents at work or at home."),
     runs: ["browser", "server"],
-    data: msg("Text extraction and the editor work in your browser. Merging, compressing, protecting and OCR send the file to this server, which deletes it when the job ends."),
+    data: msg("The PDF editor and reading a scan work in your browser. Joining, splitting, shrinking, adding a password, getting text and making a searchable PDF send the file to this website's server, which deletes it when the job ends."),
     assistant: ASSISTANT_DRIVES,
     image: shot("pdf"),
   },
@@ -295,18 +295,18 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
     image: shot("characters"),
   },
   "cv-studio": {
-    purpose: msg("Write your CV once in Polish and English, then tailor it to each job offer."),
+    purpose: msg("Write your CV once in Polish and English, then fit it to each job offer."),
     points: [
-      msg("Keep one master profile in two languages, for several people or career directions."),
-      msg("Save job offers and see which requirements your profile covers."),
-      msg("Make a CV version per offer, check it like an ATS would and export PDF or DOCX."),
-      msg("Track applications and their next steps."),
-      msg("Present your GitHub projects and check your website against the CV."),
+      msg("Keep all your details in one place, in two languages, with separate CVs for different people or kinds of work."),
+      msg("Save job offers and see which requirements you meet."),
+      msg("Make a CV for each offer, check how well recruitment software can read it (ATS) and download it as PDF or Word."),
+      msg("Keep a list of where you applied and what to do next."),
+      msg("Show your GitHub projects and compare your website with your CV."),
     ],
     audience: msg("Job seekers and people who keep their CV and portfolio up to date."),
     runs: ["server"],
-    data: msg("Your CV, offers and applications are stored on this server in your account, encrypted; they are sent to an AI provider only when you ask the assistant."),
-    assistant: msg("The assistant can import a pasted CV, translate it, tailor a version to an offer without inventing facts, run the ATS check and update your applications."),
+    data: msg("Your CV, offers and applications are stored encrypted in your account on this website's server. They go to an AI company only when you ask the assistant to work on them."),
+    assistant: msg("If you have set up an AI model, the assistant can bring in a pasted CV, translate it, fit it to an offer without inventing facts, check it for recruitment software and update your applications."),
     image: shot("cv-studio"),
   },
   workflows: {
@@ -325,7 +325,7 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
   office: {
     purpose: msg("Replace Microsoft 365 for free: write documents, spreadsheets and presentations in your browser with Euro-Office."),
     points: [
-      msg("Open, edit and save Word, Excel and PowerPoint files (DOCX, XLSX, PPTX), also ODT, ODS and ODP."),
+      msg("Open, change and save Word, Excel and PowerPoint files, and OpenDocument files too (ODT, ODS, ODP)."),
       msg("Start a new document or upload one you already have."),
       msg("Keep files in folders, with earlier versions kept on every save."),
       msg("Download your files in their original format at any time, and open them in any other program."),
@@ -333,7 +333,7 @@ export const SHOWCASES: Readonly<Record<string, Showcase>> = {
     audience: msg("Anyone who does not want to pay for Microsoft 365 or install anything: at home, at school or in a small business."),
     runs: ["sidecar"],
     data: msg("Your documents are kept on this website's server, in your account, and opened in an editor that also runs here. They never go to Microsoft, Google or any other outside service."),
-    assistant: msg("The assistant can create documents, read them, and edit the open document live: text, formatting, tables, cells and slides."),
+    assistant: msg("If you have set up an AI model, the assistant can create documents, read them and change the open one while you watch: text, formatting, tables, cells and slides."),
     image: shot("office"),
   },
   "db-course": {

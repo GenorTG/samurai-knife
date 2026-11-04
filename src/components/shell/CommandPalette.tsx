@@ -113,7 +113,7 @@ export function CommandPalette() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={tr("Jump to a tool")}
+        aria-label={tr("Find a tool")}
         className="sk-pop sk-glass w-full max-w-2xl overflow-hidden rounded-2xl border border-line-strong shadow-pop"
         style={{ transformOrigin: "top center" }}
       >
@@ -157,7 +157,7 @@ export function CommandPalette() {
             }}
             spellCheck={false}
             autoComplete="off"
-            placeholder={tr("Jump to a tool — resize, pdf, json, regex…")}
+            placeholder={tr("Type what you need, e.g. resize, pdf, CV…")}
             aria-label={tr("Search tools")}
             className="h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-faint"
           />

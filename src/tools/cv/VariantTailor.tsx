@@ -41,8 +41,8 @@ export function AtsPanel({ variant, job, stateKey, dirty }: { variant: Variant; 
 
   if (!job) {
     return (
-      <Panel title={t("ATS check")}>
-        <p className="text-sm text-muted">{t("Link this version to a saved offer (create it from the Job offers tab) to check it against the offer's keywords.")}</p>
+      <Panel title={t("Can recruitment software read it? (ATS)")}>
+        <p className="text-sm text-muted">{t("This check compares a CV with a job offer. Make a CV from a saved offer in the Job offers tab and the check appears here.")}</p>
       </Panel>
     );
   }
@@ -53,32 +53,32 @@ export function AtsPanel({ variant, job, stateKey, dirty }: { variant: Variant; 
     <Badge
       key={`${k.term}-${k.section}`}
       tone={k.status === "present" ? (k.spellingDiffers ? "warn" : "good") : k.status === "dropped" ? "warn" : "danger"}
-      title={k.status === "present" ? (k.spellingDiffers ? t("In the CV, but spelled differently than the offer (“{postingSpelling}”)", { postingSpelling: k.postingSpelling }) : t("In this version")) : k.status === "dropped" ? t("In your profile, left out of this version") : t("Not in your profile: a real gap")}
+      title={k.status === "present" ? (k.spellingDiffers ? t("In the CV, but spelled differently than the offer (“{postingSpelling}”)", { postingSpelling: k.postingSpelling }) : t("In this CV")) : k.status === "dropped" ? t("In your details, left out of this CV") : t("Not in your details: a real gap")}
     >
       {k.status === "present" ? "✓" : k.status === "dropped" ? "↩" : "✗"} {k.term}
     </Badge>
   );
   return (
-    <Panel title={t("ATS check")} right={r ? <Badge tone={r.score >= 75 ? "good" : r.score >= 50 ? "warn" : "danger"}>{r.score}/100</Badge> : undefined}>
+    <Panel title={t("Can recruitment software read it? (ATS)")} right={r ? <Badge tone={r.score >= 75 ? "good" : r.score >= 50 ? "warn" : "danger"}>{r.score}/100</Badge> : undefined}>
       <div className="space-y-3" data-agent-region="cv-ats">
-        {dirty ? <Notice tone="info">{t("Save the version to check it.")}</Notice> : null}
+        {dirty ? <Notice tone="info">{t("Save this CV to check it.")}</Notice> : null}
         {!dirty && view.phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Checking…")}</p> : null}
-        {view.phase === "error" ? <Notice tone="error">{t("ATS check failed:")}{" "} {view.error}</Notice> : null}
+        {view.phase === "error" ? <Notice tone="error">{t("The check failed:")}{" "} {view.error}</Notice> : null}
         {r ? (
           <>
             <div className="grid gap-3 @md:grid-cols-2">
               <div className="space-y-1">
-                <div className="flex items-baseline justify-between"><span className="sk-label">{t("Required keywords")}</span><span className="font-mono text-sm font-semibold tabular-nums text-ink">{r.requiredCoveragePct === null ? "n/a" : `${Math.round(r.requiredCoveragePct)}%`}</span></div>
-                <Meter value={r.requiredCoveragePct ?? 0} label={t("Required keyword coverage")} />
+                <div className="flex items-baseline justify-between"><span className="sk-label">{t("Words the offer requires")}</span><span className="font-mono text-sm font-semibold tabular-nums text-ink">{r.requiredCoveragePct === null ? "n/a" : `${Math.round(r.requiredCoveragePct)}%`}</span></div>
+                <Meter value={r.requiredCoveragePct ?? 0} label={t("How many required words are in this CV")} />
               </div>
               <div className="space-y-1">
                 <div className="flex items-baseline justify-between"><span className="sk-label">{t("Nice to have")}</span><span className="font-mono text-sm font-semibold tabular-nums text-ink">{r.niceCoveragePct === null ? "n/a" : `${Math.round(r.niceCoveragePct)}%`}</span></div>
-                <Meter value={r.niceCoveragePct ?? 0} label={t("Nice-to-have keyword coverage")} />
+                <Meter value={r.niceCoveragePct ?? 0} label={t("How many nice-to-have words are in this CV")} />
               </div>
             </div>
             {r.keywords.length > 0 ? (
-              <section aria-label={t("Offer keywords")} className="space-y-1.5">
-                <h3 className="text-[13px] font-semibold text-ink">{t("Offer keywords")}{" "} <span className="font-normal text-faint">{t("✓ in this CV · ↩ yours, left out · ✗ gap")}</span></h3>
+              <section aria-label={t("Words from the offer")} className="space-y-1.5">
+                <h3 className="text-[13px] font-semibold text-ink">{t("Words from the offer")}{" "} <span className="font-normal text-faint">{t("✓ in this CV · ↩ you have it, left out · ✗ you do not have it")}</span></h3>
                 {(["required", "nice", "text"] as const).map((section) => {
                   const ks = r.keywords.filter((k) => k.section === section);
                   if (!ks.length) return null;
@@ -112,9 +112,9 @@ export function AtsPanel({ variant, job, stateKey, dirty }: { variant: Variant; 
             </details>
             <div className="flex flex-wrap items-center gap-2">
               {r.fixable.length > 0
-                ? <Button variant="primary" onClick={() => openAssistant(fixPrompt)}>{t("Fix with the assistant")}</Button>
-                : <span className="text-[13px] text-muted">{t("Nothing left to fix truthfully.")}</span>}
-              <Button size="sm" variant="ghost" aria-pressed={showText} onClick={() => setShowText((v) => !v)}>{showText ? t("Hide") : t("Show")} {" "}{t("what an ATS reads")}</Button>
+                ? <Button variant="primary" onClick={() => openAssistant(fixPrompt)}>{t("Fix with the AI assistant")}</Button>
+                : <span className="text-[13px] text-muted">{t("Nothing more can be fixed honestly.")}</span>}
+              <Button size="sm" variant="ghost" aria-pressed={showText} onClick={() => setShowText((v) => !v)}>{showText ? t("Hide") : t("Show")} {" "}{t("what the software reads")}</Button>
             </div>
             {showText ? <pre className="max-h-80 overflow-auto rounded-lg border border-line bg-raised/40 p-3 text-xs leading-relaxed whitespace-pre-wrap text-ink">{r.printed}</pre> : null}
           </>
@@ -178,7 +178,7 @@ export function WordingPanel({ variant, master, selection, onSaved }: { variant:
       onSaved();
       // the warnings name the field by its id-path (for the assistant); the person sees the row they just edited
       const plain = res.warnings.map((w) => w.replace(/^\/\S+?\/(?:pl|en): /, ""));
-      setNote(plain.length ? { tone: "warn", text: t("Saved, but check it: {join}", { join: plain.join(" ") }) } : { tone: "good", text: text === null ? t("Back to the profile wording.") : t("Saved for this version.") });
+      setNote(plain.length ? { tone: "warn", text: t("Saved, but check it: {join}", { join: plain.join(" ") }) } : { tone: "good", text: text === null ? t("Back to the wording from Your details.") : t("Saved for this CV.") });
     } catch (e) {
       setNote({ tone: "error", text: errorText(e) });
     } finally {
@@ -188,11 +188,11 @@ export function WordingPanel({ variant, master, selection, onSaved }: { variant:
 
   const reworded = rows.filter((r) => r.rewritten).length;
   return (
-    <Panel title={t("Wording for this version")} right={reworded ? <Badge tone="accent">{reworded} {" "}{t("reworded")}</Badge> : undefined}>
+    <Panel title={t("Wording in this CV")} right={reworded ? <Badge tone="accent">{reworded} {" "}{t("reworded")}</Badge> : undefined}>
       <div className="space-y-2" data-agent-region="cv-wording">
-        <p className="text-xs text-muted">{t("Reword a bullet for this offer only; your profile keeps the original. Numbers and names must stay, nothing new may be added: a warning shows when that happens.")}</p>
+        <p className="text-xs text-muted">{t("Reword a point for this job only; Your details keep the original. Numbers and names must stay and nothing new may be added: you see a warning if that happens.")}</p>
         {note ? <div role={note.tone === "error" ? "alert" : "status"}><Notice tone={note.tone}>{note.text}</Notice></div> : null}
-        {rows.length === 0 ? <p className="text-sm text-muted">{t("No bullets or project summaries in this version yet.")}</p> : null}
+        {rows.length === 0 ? <p className="text-sm text-muted">{t("No points or project summaries in this CV yet.")}</p> : null}
         <ul className="space-y-1.5">
           {rows.map((row) => (
             <li key={row.path} className={cx("rounded-lg border p-2", row.rewritten ? "border-accent/40 bg-accent/5" : "border-line bg-raised/30")}>
@@ -202,10 +202,10 @@ export function WordingPanel({ variant, master, selection, onSaved }: { variant:
               </div>
               {editing === row.path ? (
                 <div className="mt-1 space-y-1.5">
-                  <TextArea rows={3} aria-label={t("Wording for this version: {label}", { label: row.label })} value={draft} onChange={(e) => setDraft(e.target.value)} className="font-sans" />
-                  {row.master ? <p className="text-xs text-faint wrap-anywhere"><span className="sk-label">{t("Profile")}</span> {row.master}</p> : null}
+                  <TextArea rows={3} aria-label={t("Wording in this CV: {label}", { label: row.label })} value={draft} onChange={(e) => setDraft(e.target.value)} className="font-sans" />
+                  {row.master ? <p className="text-xs text-faint wrap-anywhere"><span className="sk-label">{t("Original")}</span> {row.master}</p> : null}
                   <div className="flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="primary" disabled={busy || !draft.trim()} onClick={() => void save(row.path, draft)}>{t("Save for this version")}</Button>
+                    <Button size="sm" variant="primary" disabled={busy || !draft.trim()} onClick={() => void save(row.path, draft)}>{t("Save for this CV")}</Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditing("")}>{t("Cancel")}</Button>
                   </div>
                 </div>
@@ -213,12 +213,12 @@ export function WordingPanel({ variant, master, selection, onSaved }: { variant:
                 <div className="mt-0.5 flex min-w-0 items-start gap-2">
                   <p className={cx("min-w-0 flex-1 text-[13px] leading-relaxed wrap-anywhere", row.current ? "text-ink" : "text-faint italic")}>{row.current || `(empty in ${lang.toUpperCase()})`}</p>
                   <span className="flex shrink-0 gap-1">
-                    <Button size="sm" variant="ghost" aria-label={t("Reword for this version: {label} {path}", { label: row.label, path: row.path })} onClick={() => { setEditing(row.path); setDraft(row.current); }}>{t("Reword")}</Button>
-                    {row.rewritten ? <Button size="sm" variant="ghost" aria-label={t("Restore profile wording: {path}", { path: row.path })} disabled={busy} onClick={() => void save(row.path, null)}>{t("Restore")}</Button> : null}
+                    <Button size="sm" variant="ghost" aria-label={t("Reword in this CV: {label} {path}", { label: row.label, path: row.path })} onClick={() => { setEditing(row.path); setDraft(row.current); }}>{t("Reword")}</Button>
+                    {row.rewritten ? <Button size="sm" variant="ghost" aria-label={t("Restore the original wording: {path}", { path: row.path })} disabled={busy} onClick={() => void save(row.path, null)}>{t("Restore")}</Button> : null}
                   </span>
                 </div>
               )}
-              {row.rewritten && editing !== row.path && row.master ? <p className="mt-1 text-xs text-faint wrap-anywhere"><span className="sk-label">{t("Profile")}</span> {row.master}</p> : null}
+              {row.rewritten && editing !== row.path && row.master ? <p className="mt-1 text-xs text-faint wrap-anywhere"><span className="sk-label">{t("Original")}</span> {row.master}</p> : null}
             </li>
           ))}
         </ul>

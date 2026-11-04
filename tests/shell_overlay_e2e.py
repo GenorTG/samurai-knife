@@ -38,7 +38,7 @@ def main() -> int:
             page.wait_for_function("() => !document.body.innerText.includes('Loading tool')")
             page.wait_for_timeout(500)
 
-        palette = page.get_by_role("dialog", name="Jump to a tool")
+        palette = page.get_by_role("dialog", name="Find a tool")
         help_dialog = page.get_by_role("dialog", name="Keyboard shortcuts")
 
         def wait_path(path):

@@ -161,43 +161,43 @@ export function atsCheck(master: Profile, version: Profile, rawJob: JobInput & P
   const checks: AtsCheck[] = [];
   const add = (id: string, level: AtsLevel, message: string) => checks.push({ id, level, message });
   const c = version.contact;
-  add("name", c.name.trim() ? "ok" : "fail", c.name.trim() ? "Name is set." : msg("No name: parsers file the CV under nothing."));
+  add("name", c.name.trim() ? "ok" : "fail", c.name.trim() ? "Name is set." : msg("No name: recruitment software has nothing to file the CV under."));
   add("email", c.email.trim() ? "ok" : "fail", c.email.trim() ? "E-mail is set." : "No e-mail address.");
   add("phone", c.phone.trim() ? "ok" : "warn", c.phone.trim() ? "Phone is set." : "No phone number: most Polish recruiters call first.");
-  add("headline", view.headline ? "ok" : "warn", view.headline ? "Headline is set." : msgf("No headline in {lang}: a headline naming the role is the first thing a parser and a recruiter read.", { lang: lang.toUpperCase() }));
+  add("headline", view.headline ? "ok" : "warn", view.headline ? "Headline is set." : msgf("No headline in {lang}: a headline naming the job is the first thing recruitment software and a recruiter read.", { lang: lang.toUpperCase() }));
   const titleWords = (job.title ?? "").toLowerCase().match(/\p{L}{3,}/gu) ?? [];
   if (view.headline && titleWords.length && !titleWords.some((w) => foldCase(view.headline).toLowerCase().includes(foldCase(w)))) {
     add("headline-title", "info", msgf("The headline shares no word with the offer title “{title}”. If it is true of you, name the role the way the offer does.", { title: job.title }));
   }
   const summaryLen = view.summary.length;
-  add("summary", !summaryLen ? "warn" : summaryLen > 1100 ? "warn" : "ok", !summaryLen ? msgf("No summary in {lang}.", { lang: lang.toUpperCase() }) : summaryLen > 1100 ? msgf("The summary is long ({summaryLen} characters): 3-5 sentences read and parse better.", { summaryLen }) : "Summary length is fine.");
+  add("summary", !summaryLen ? "warn" : summaryLen > 1100 ? "warn" : "ok", !summaryLen ? msgf("No summary in {lang}.", { lang: lang.toUpperCase() }) : summaryLen > 1100 ? msgf("The summary is long ({summaryLen} characters): 3-5 sentences are easier to read.", { summaryLen }) : "Summary length is fine.");
   for (const w of view.warnings) add("translation", "warn", w);
   const undated = version.experience.filter((e) => !MONTH.test(e.start.trim()));
   add("dates", undated.length ? "warn" : "ok", undated.length ? `Roles without a YYYY-MM start date: ${undated.map((e) => e.org).join(", ")}. Parsers compute experience from dates.` : "Every role has a start date.");
   const thin = view.experience.filter((e) => e.bullets.length < 2);
-  if (thin.length) add("bullets", "info", msgf("Roles with fewer than 2 bullets: {value}.", { value: thin.map((e) => e.org).join(", ") }));
+  if (thin.length) add("bullets", "info", msgf("Jobs with fewer than 2 points: {value}.", { value: thin.map((e) => e.org).join(", ") }));
   const longBullets = [...view.experience.flatMap((e) => e.bullets), ...view.projects.flatMap((p) => p.bullets)].filter((b) => b.length > 300).length;
-  if (longBullets) add("bullet-length", "info", longBullets === 1 ? msg("1 bullet is over 300 characters: split or tighten.") : msgf("Bullets over 300 characters: {count}. Split or tighten them.", { count: longBullets }));
+  if (longBullets) add("bullet-length", "info", longBullets === 1 ? msg("1 point is over 300 characters: split or shorten it.") : msgf("Points over 300 characters: {count}. Split or shorten them.", { count: longBullets }));
   const pages = estimatePages(view);
   add("length", pages > 2.2 ? "warn" : "ok", pages > 2.2 ? `About ${pages} pages: aim for 1-2.` : `About ${pages} page${pages === 1 ? "" : "s"}.`);
-  if (lang === "pl" && !view.consent) add("consent", "warn", msg("No RODO consent clause in Polish: many Polish employers reject applications without it (Profile → Consent)."));
+  if (lang === "pl" && !view.consent) add("consent", "warn", msg("No RODO consent in Polish: many Polish employers reject applications without it (Your details → Data processing consent)."));
   for (const asked of rawJob.languages ?? []) {
     const code = asked.split(/\s+/)[0]?.toLowerCase() ?? "";
     const names: Record<string, string[]> = { en: ["english", "angielski"], pl: ["polish", "polski"], de: ["german", "niemiecki"], fr: ["french", "francuski"], es: ["spanish", "hiszpański"], uk: ["ukrainian", "ukraiński"] };
     const known = names[code];
     if (!known) continue;
     const has = master.languages.some((l) => known.some((n) => `${l.name.pl} ${l.name.en}`.toLowerCase().includes(n)));
-    add(`language-${code}`, has ? (view.languages.length ? "ok" : "warn") : "info", has ? (view.languages.length ? msgf("The offer asks for {asked}; your languages section lists it.", { asked }) : msgf("The offer asks for {asked}, but this version prints no languages section.", { asked })) : msgf("The offer asks for {asked}; your profile lists no such language.", { asked }));
+    add(`language-${code}`, has ? (view.languages.length ? "ok" : "warn") : "info", has ? (view.languages.length ? msgf("The offer asks for {asked}; your languages section lists it.", { asked }) : msgf("The offer asks for {asked}, but this CV prints no languages section.", { asked })) : msgf("The offer asks for {asked}; your details list no such language.", { asked }));
   }
   const asked = yearsAsked(job.requirements);
   if (asked !== null) {
     const have = Math.round((experienceMonths(master, today) / 12) * 10) / 10;
     add("years", have >= asked ? "ok" : "info", have >= asked
-      ? msgf("The offer asks for {asked}+ years; your dated roles cover about {have}.", { asked, have })
-      : msgf("The offer asks for {asked}+ years; your dated roles cover about {have}. Do not stretch dates: lead with projects that show the level instead (pin them, put projects first).", { asked, have }));
+      ? msgf("The offer asks for {asked}+ years; the jobs with dates in your CV cover about {have}.", { asked, have })
+      : msgf("The offer asks for {asked}+ years; the jobs with dates in your CV cover about {have}. Do not stretch dates: lead with projects that show the level instead (pin them, put projects first).", { asked, have }));
   }
   if (variant) for (const w of priorityWarnings(master, variant)) add("priority", "warn", w);
-  add("layout", "info", msg("Upload the ATS layout (plain, one column, no photo) to job portals and application forms; the designed layouts are for e-mail and print."));
+  add("layout", "info", msg("Upload the Simple (ATS) layout (plain, one column, no photo) to job websites and application forms; the designed layouts are for e-mail and print."));
 
   const structural = checks.filter((x) => x.level !== "info");
   const structureScore = structural.length ? structural.filter((x) => x.level === "ok").length / structural.length : 1;
@@ -206,18 +206,18 @@ export function atsCheck(master: Profile, version: Profile, rawJob: JobInput & P
   const fixable: string[] = [];
   const dropped = keywords.filter((k) => k.status === "dropped");
   const droppedReq = dropped.filter((k) => k.section === "required");
-  if (droppedReq.length) fixable.push(msgf("Bring back what you have but this version leaves out (required): {value}. Add the bullet/project/skill group that mentions it.", { value: droppedReq.map((k) => k.term).join(", ") }));
+  if (droppedReq.length) fixable.push(msgf("Bring back what you have but this CV leaves out (required): {value}. Add the point, project or skill group that mentions it.", { value: droppedReq.map((k) => k.term).join(", ") }));
   const droppedNice = dropped.filter((k) => k.section !== "required");
-  if (droppedNice.length) fixable.push(msgf("Also in your profile but not in this version: {value}.", { value: droppedNice.map((k) => k.term).join(", ") }));
+  if (droppedNice.length) fixable.push(msgf("Also in your details but not in this CV: {value}.", { value: droppedNice.map((k) => k.term).join(", ") }));
   const spelled = keywords.filter((k) => k.spellingDiffers);
-  if (spelled.length) fixable.push(msgf("Use the offer's spelling at least once (literal-match parsers): {value}.", { value: spelled.map((k) => `“${k.postingSpelling}”`).join(", ") }));
+  if (spelled.length) fixable.push(msgf("Use the offer's spelling at least once (some software looks for the exact words): {value}.", { value: spelled.map((k) => `“${k.postingSpelling}”`).join(", ") }));
   // structural items the CV itself can fix (a missing phone or a short career are facts, not edits)
   const EDITABLE = new Set(["headline", "summary", "translation", "dates", "length", "priority"]);
   for (const c of checks) if ((c.level === "warn" || c.level === "fail") && EDITABLE.has(c.id)) fixable.push(c.message);
   const gaps = keywords.filter((k) => k.status === "missing" && k.section === "required").map((k) => k.term);
   const actions = [...fixable];
   for (const c of checks) if ((c.level === "warn" || c.level === "fail") && !EDITABLE.has(c.id)) actions.push(c.message);
-  if (gaps.length) actions.push(msgf("Real gaps (not in your profile anywhere, do NOT add them unless true): {gaps}.", { gaps: gaps.join(", ") }));
+  if (gaps.length) actions.push(msgf("Real gaps (not in your details anywhere, do NOT add them unless true): {gaps}.", { gaps: gaps.join(", ") }));
 
   return { jobId: job.id, lang, score, requiredCoveragePct, niceCoveragePct, keywords, checks, pages, actions, fixable, gaps };
 }

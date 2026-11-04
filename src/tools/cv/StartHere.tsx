@@ -130,7 +130,7 @@ export function CvStartUpload({ onDone, onFill }: { onDone: () => void; onFill?:
         </div>
       </Panel>
       <details className="rounded-tool border border-line bg-surface p-3 text-sm text-muted">
-        <summary className="cursor-pointer">{t("For advanced users: import a JSON profile")}</summary>
+        <summary className="cursor-pointer">{t("For advanced users: import your details as JSON")}</summary>
         <div className="mt-3">
           <ProfileImport existing={null} onImported={onDone} />
         </div>
@@ -143,7 +143,7 @@ function Interview() {
   const { t } = useT();
   return (
     <Panel title={t("Interview with the assistant")}>
-      <p className="mb-3 text-sm text-muted">{t("The assistant asks one thing at a time (your roles, what you achieved, skills, education) and saves the answers into this CV project. It never makes facts up; you can undo every change.")}</p>
+      <p className="mb-3 text-sm text-muted">{t("The assistant asks one thing at a time (your jobs, what you achieved, skills, education) and saves the answers into this CV. It never makes facts up; you can undo every change.")}</p>
       <Button
         variant="primary"
         onClick={() =>

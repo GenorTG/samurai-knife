@@ -188,8 +188,8 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
             setQuery("");
           }
         }}
-        aria-label={t("Filter tools")}
-        placeholder={t("Filter tools…")}
+        aria-label={t("Find a tool in this list")}
+        placeholder={t("Find a tool…")}
         autoComplete="off"
         spellCheck={false}
         className="sk-input h-8 w-full px-2.5 text-[13px]"
@@ -209,7 +209,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
           {results.length ? (
             <ul className="space-y-px">{results.map((entry) => line(entry, `${entry.tool.slug}:${entry.tab?.id ?? ""}`))}</ul>
           ) : (
-            <p className="px-2.5 py-2 text-[13px] text-faint">{t("No tool matches. Ctrl K searches everything.")}</p>
+            <p className="px-2.5 py-2 text-[13px] text-faint">{t("No tool matches. Ctrl K searches all tools.")}</p>
           )}
         </section>
       ) : (
@@ -255,7 +255,7 @@ function SidebarContent({ activeSlug, onNavigate }: { activeSlug: string | null;
         </>
       )}
 
-      <ul aria-label={t("Setup")} className="mt-auto space-y-px border-t border-line pt-3">
+      <ul aria-label={t("Settings and add-ons")} className="mt-auto space-y-px border-t border-line pt-3">
         {footer.map((entry) => line(entry, `setup:${entry.tool.slug}`))}
       </ul>
     </nav>

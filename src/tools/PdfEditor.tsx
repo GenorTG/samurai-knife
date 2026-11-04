@@ -451,7 +451,7 @@ export default function PdfEditor() {
     }
     const total = isPdf(first) ? first.size : images.reduce((n, f) => n + f.size, 0);
     if (total > 200 * 1024 * 1024) {
-      setError(t("This editor is capped at 200 MB per document to keep browser memory bounded."));
+      setError(t("This editor opens documents up to 200 MB, so your browser does not run out of memory."));
       return;
     }
     setBusy(true);
@@ -491,7 +491,7 @@ export default function PdfEditor() {
       setFitToWidth(true);
       setSelectedMark(null);
       const pagesLoaded = tn("{n} page loaded in this browser.", "{n} pages loaded in this browser.", loaded.numPages);
-      setNotice(widths.length ? `${pagesLoaded} ${tn("Built from {n} image: run OCR below, or Export edited PDF to keep it as a PDF.", "Built from {n} images: run OCR below, or Export edited PDF to keep it as a PDF.", widths.length)}` : isPdf(first) && incoming.length > 1 ? `${pagesLoaded} ${t("Only the first PDF is opened.")}` : pagesLoaded);
+      setNotice(widths.length ? `${pagesLoaded} ${tn("Made from {n} image: read its text below, or press Download edited PDF to keep it as a PDF.", "Made from {n} images: read their text below, or press Download edited PDF to keep them as a PDF.", widths.length)}` : isPdf(first) && incoming.length > 1 ? `${pagesLoaded} ${t("Only the first PDF is opened.")}` : pagesLoaded);
     } catch (reason) {
       setPdf(null);
       setFile(null);
@@ -536,7 +536,7 @@ export default function PdfEditor() {
     const mark: Mark = { ...draft, id: createUuidV4() };
     updatePages((current) => current.map((page) => page.id === activePage.id ? { ...page, marks: [...page.marks, mark] } : page));
     setSelectedMark(mark.id);
-    setNotice(t("Mark added. Export to bake edits into a new PDF."));
+    setNotice(t("Mark added. Download the edited PDF to keep your changes."));
   }, [t, activePage, updatePages]);
 
   const selectMark = useCallback((id: string) => {
@@ -650,7 +650,7 @@ export default function PdfEditor() {
   const deletePage = useCallback(() => {
     if (!activePage) return;
     if (availablePages.length <= 1) {
-      setError(t("Keep at least one page in the exported document."));
+      setError(t("Keep at least one page in the document."));
       return;
     }
     const next = availablePages.filter((page) => page.id !== activePage.id);
@@ -708,9 +708,9 @@ export default function PdfEditor() {
       form.append("file", blob, `${safeStem(file.name)}-edited.pdf`);
       const onPhase = (phase: PdfJobPhase) => {
         if (run.cancelled || serverRun.current !== run) return;
-        setServerProgress(phase.kind === "uploading" ? t("Sending edited PDF to this app's server…")
+        setServerProgress(phase.kind === "uploading" ? t("Sending the edited PDF to this website's server…")
           : phase.kind === "queued" ? t("Searchable PDF queued ({value})…", { value: phase.ahead ? `${phase.ahead} ahead` : "next up" })
-          : t("Creating searchable PDF on this app's server…"));
+          : t("Making the searchable PDF on this website's server…"));
       };
       run.job = startPdfJob(form, onPhase);
       const outcome = await run.job.result;
@@ -719,7 +719,7 @@ export default function PdfEditor() {
         run.cancelled = true;
         return;
       }
-      if (outcome.kind !== "file") throw new Error(t("The OCR server did not return a PDF."));
+      if (outcome.kind !== "file") throw new Error(t("The server did not return a PDF."));
       // A blob-anchor download is also captured by the assistant for file chaining.
       const filename = `${safeStem(file.name)}-searchable.pdf`;
       downloadBlob(outcome.blob, filename);
@@ -754,7 +754,7 @@ export default function PdfEditor() {
     setOcrDone(null);
     setError(null);
     ocrPos.current = { index: 0, total: 0 };
-    setOcrProgress({ label: t("Starting local OCR…"), value: 0 });
+    setOcrProgress({ label: t("Starting to read the text…"), value: 0 });
     try {
       const worker = await createWorker(language, 1, {
         workerPath: "/ocr/worker.min.js",
@@ -786,7 +786,7 @@ export default function PdfEditor() {
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
           const context = canvas.getContext("2d");
-          if (!context) throw new Error(t("Canvas 2D is unavailable for OCR."));
+          if (!context) throw new Error(t("Your browser cannot draw the page, so its text cannot be read."));
           await source.render({ canvas, canvasContext: context, viewport }).promise;
           ocrPos.current = { index, total: targets.length };
           setOcrProgress({ label: t("Recognizing page {value} of {targets}…", { value: index + 1, targets: targets.length }), value: index / Math.max(1, targets.length) });
@@ -799,7 +799,7 @@ export default function PdfEditor() {
         setOcrProgress(null);
         const wordCount = chunks.join(" ").split(/\s+/).filter(Boolean).length;
         setOcrDone(`${cancelOcr.current ? t("OCR stopped after") : t("OCR finished:")} ${tn("{n} page", "{n} pages", chunks.length)}, ${tn("{n} word", "{n} words", wordCount)}.`);
-        setNotice(cancelOcr.current ? t("OCR stopped. Completed pages are kept below.") : tn("OCR finished for {n} page.", "OCR finished for {n} pages.", chunks.length));
+        setNotice(cancelOcr.current ? t("Reading stopped. Finished pages are kept below.") : tn("OCR finished for {n} page.", "OCR finished for {n} pages.", chunks.length));
       } finally {
         await worker.terminate();
       }
@@ -841,12 +841,12 @@ export default function PdfEditor() {
       }}
     >
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <Dropzone accept={`application/pdf,.pdf,${IMAGE_ACCEPT}`} multiple disabled={busy} hint={t("A PDF up to 200 MB, or scans/photos (PNG, JPEG, WebP: one page each) — editing and text OCR stay in this browser; searchable PDF export uses this app’s server")} onFiles={(files) => void loadFile(files)} />
+        <Dropzone accept={`application/pdf,.pdf,${IMAGE_ACCEPT}`} multiple disabled={busy} hint={t("A PDF up to 200 MB, or scans and photos (PNG, JPEG, WebP: one page each). Editing and reading text stay in this browser. Making a searchable PDF uses this website's server.")} onFiles={(files) => void loadFile(files)} />
         {file ? (
           <div className="flex flex-wrap items-center gap-2">
             <Stat label={t("Document")} value={file.name} />
             <Stat label={t("Size")} value={formatBytes(file.size)} />
-            <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportPdf()}>{busy ? t("Working…") : t("Export edited PDF")}</Button>
+            <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportPdf()}>{busy ? t("Working…") : t("Download edited PDF")}</Button>
           </div>
         ) : null}
       </div>
@@ -855,9 +855,9 @@ export default function PdfEditor() {
       {notice ? <Notice tone="good">{notice}</Notice> : null}
 
       {file ? (
-        <Panel title={t("Searchable PDF · server")}>
+        <Panel title={t("Make a scan searchable (on this website's server)")}>
           <div className="space-y-3">
-            <Notice>{t("Uploads the current edited document to this app’s local server for OCRmyPDF processing, not a cloud OCR service. Includes the current page order, rotations and marks. The original stays untouched.")}</Notice>
+            <Notice>{t("Sends your document to this website's server, which reads the text in the pictures (OCR) so you can search and copy it. No outside company gets it. Your page order, rotations and marks are included. Your original file is not changed.")}</Notice>
             <div className="flex flex-wrap items-end gap-4">
               <Field label={t("Searchable PDF language")}>
                 <Select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as OcrLanguage)}>
@@ -868,15 +868,15 @@ export default function PdfEditor() {
               </Field>
               <label className="flex items-center gap-2 py-2 text-sm text-muted">
                 <input type="checkbox" checked={deskew} disabled={busy} onChange={(event) => setDeskew(event.target.checked)} className="accent-accent" />
-                {t("Deskew scanned pages")}
+                {t("Straighten tilted pages")}
               </label>
               <label className="flex items-center gap-2 py-2 text-sm text-muted">
                 <input type="checkbox" checked={rotatePages} disabled={busy} onChange={(event) => setRotatePages(event.target.checked)} className="accent-accent" />
-                {t("Auto-rotate pages")}
+                {t("Turn pages the right way up")}
               </label>
-              <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportSearchablePdf()}>{t("Searchable PDF (server)")}</Button>
+              <Button variant="primary" disabled={busy || !pages.length} onClick={() => void exportSearchablePdf()}>{t("Make searchable PDF")}</Button>
             </div>
-            <p className="text-xs text-faint">{t("Up to 20 pages / 50 MB. Pages with editor marks are flattened to images and re-recognized so added text cannot hide a scan from OCR. Untouched pages that already contain text are kept as-is. Deskew straightens tilted scans; auto-rotate can override manual rotation. Turn it off to keep your chosen orientation, and review the result.")}</p>
+            <p className="text-xs text-faint">{t("Up to 20 pages or 50 MB. Pages you marked are turned into pictures and read again, so your additions do not hide the scan. Pages you did not touch that already have text stay as they are. Automatic turning can undo a rotation you made: switch it off to keep yours, and check the result.")}</p>
             {serverProgress ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p role="status" className="text-sm text-muted">{serverProgress}</p>
@@ -892,8 +892,8 @@ export default function PdfEditor() {
         <Panel title={t("PDF editor")}>
           <div className="py-10 text-center">
             <p className="text-lg font-medium text-ink">{t("Open a PDF to start editing")}</p>
-            <p className="mt-2 text-sm text-muted">{t("Reorder, rotate, or remove pages; add text, highlights, shapes, freehand marks, signatures, and images; run OCR in English or Polish.")}</p>
-            <p className="mt-1 text-sm text-muted">{t("Scans or photos (PNG, JPEG, WebP) open as pages too: OCR them, or export them as one PDF.")}</p>
+            <p className="mt-2 text-sm text-muted">{t("Reorder, rotate or remove pages. Add text, highlights, shapes, drawings, signatures and images. Read text from scans in English or Polish.")}</p>
+            <p className="mt-1 text-sm text-muted">{t("Scans or photos (PNG, JPEG, WebP) open as pages too: read their text, or download them as one PDF.")}</p>
           </div>
         </Panel>
       ) : (
@@ -957,12 +957,12 @@ export default function PdfEditor() {
                 </div>
               ) : <p className="p-8 text-center text-sm text-muted">{t("Choose a page.")}</p>}
             </Panel>
-            <Notice>{t("Text is added as an overlay; it does not rewrite existing PDF text. White overlays are not secure redaction. The source stays untouched until you export.")}</Notice>
+            <Notice>{t("Text is added on top; it does not change the text already in the PDF. A white box on top does not really remove what is under it. Your original file is not changed.")}</Notice>
             <Notice>{t("Shortcuts work only while focus is inside this editor: Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Y redo, Ctrl/Cmd+C/V copy/paste the selected mark inside the editor, Delete removes it, Esc returns to Select, and Page Up/Down changes pages. Text fields keep their native shortcuts. Existing PDF text cannot be rewritten by this editor.")}</Notice>
           </div>
 
           <div className="grid gap-3 lg:col-span-2 lg:grid-cols-2">
-            <Panel title={t("Markup tools")}>
+            <Panel title={t("Drawing tools")}>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-1.5">
                   {TOOL_OPTIONS.map((option) => (
@@ -990,7 +990,7 @@ export default function PdfEditor() {
                     <Field label={t("Font size")}>
                       <NumberField min={8} max={96} fallback={18} value={textSize} onValueChange={setTextSize} />
                     </Field>
-                    <Notice>{t("Standard PDF font supports common Western characters; unusual glyphs may not export.")}</Notice>
+                    <Notice>{t("The standard font covers common Western letters. Unusual characters may not appear in the downloaded file.")}</Notice>
                     {selectedMarkData?.type === "text" ? (
                       <Button variant="primary" disabled={busy} onClick={updateSelectedText}>{t("Update selected text")}</Button>
                     ) : null}
@@ -1008,9 +1008,9 @@ export default function PdfEditor() {
               </div>
             </Panel>
 
-            <Panel title={t("OCR text · browser")}>
+            <Panel title={t("Read text from a scan (in this browser)")}>
               <div className="space-y-3">
-                <Notice>{t("Extracts text in this browser with bundled Tesseract WASM and English/Polish language data. No upload; this does not add a searchable layer to the PDF. Use Searchable PDF (server) above for that.")}</Notice>
+                <Notice>{t("Reads the text from the pictures of your pages (OCR) in this browser, in English or Polish. Nothing is uploaded. This gives you the text only. To get a PDF you can search, use Make searchable PDF above.")}</Notice>
                 <Field label={t("Language")}>
                   <Select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as OcrLanguage)}>
                     <option value="eng">{t("English")}</option>
@@ -1020,7 +1020,7 @@ export default function PdfEditor() {
                 </Field>
                 {ocrProgress ? (
                   <div className="space-y-2">
-                    <progress className="w-full accent-accent" value={ocrProgress.value} max={1} aria-label={t("OCR progress")} />
+                    <progress className="w-full accent-accent" value={ocrProgress.value} max={1} aria-label={t("Reading progress")} />
                     <p role="status" className="text-xs text-muted">{ocrProgress.label} · {Math.round(ocrProgress.value * 100)}%</p>
                     <Button onClick={() => { cancelOcr.current = true; }}>{t("Stop after this page")}</Button>
                   </div>
@@ -1034,10 +1034,10 @@ export default function PdfEditor() {
                 {ocrText ? (
                   <>
                     <TextArea readOnly rows={10} value={ocrText} />
-                    <Button onClick={() => downloadBlob(new Blob([ocrText], { type: "text/plain;charset=utf-8" }), currentOcrName)}>{t("Download OCR text")}</Button>
+                    <Button onClick={() => downloadBlob(new Blob([ocrText], { type: "text/plain;charset=utf-8" }), currentOcrName)}>{t("Download the text")}</Button>
                   </>
                 ) : null}
-                <p className="text-[11px] leading-relaxed text-faint">{t("First use loads the local worker and selected language data from this app. Large scans can take time; higher-resolution originals usually improve recognition.")}</p>
+                <p className="text-[11px] leading-relaxed text-faint">{t("The first time takes longer, because the language data has to load. Large scans take time. Sharper originals are read better.")}</p>
               </div>
             </Panel>
           </div>
@@ -1159,11 +1159,11 @@ async function serializeSearchablePdf(file: File, pages: readonly EditorPage[], 
       canvas.height = Math.ceil(viewport.height);
       try {
         const context = canvas.getContext("2d");
-        if (!context) throw new Error(msg("Canvas 2D is unavailable for searchable PDF export."));
+        if (!context) throw new Error(msg("Your browser cannot draw the page, so the searchable PDF cannot be made."));
         await page.render({ canvas, canvasContext: context, viewport }).promise;
         checkCancelled();
         const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob(
-          (blob) => blob ? resolve(blob) : reject(new Error(msg("Could not prepare a marked PDF page."))), "image/png",
+          (blob) => blob ? resolve(blob) : reject(new Error(msg("Could not prepare a page with your marks."))), "image/png",
         ));
         const image = await output.embedPng(await png.arrayBuffer());
         const flattened = output.addPage([size.width, size.height]);

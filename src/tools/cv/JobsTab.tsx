@@ -11,10 +11,10 @@ import {
 import { openAssistant } from "@/lib/agent-client/bridge";
 import { JUSTJOIN_LEVELS } from "@/lib/cv/jobs/justjoin";
 import { labelForPath } from "@/lib/cv/diff";
-import type { Job, Profile, Variant } from "@/lib/cv/schema";
+import type { ApplicationStatus, Job, Profile, Variant } from "@/lib/cv/schema";
 import { resolveVariant } from "@/lib/cv/variant";
 import { cx } from "@/lib/format";
-import { CvFrame, externalUrl, LangToggle, NoProfileNotice, profileHref, profileIsEmpty, SafeLink, useLang } from "./shared";
+import { CvFrame, externalUrl, LangToggle, NoProfileNotice, profileHref, profileIsEmpty, SafeLink, STATUS_LABEL, useLang } from "./shared";
 import { useCvData } from "./useCvData";
 import { useT } from "@/lib/i18n/react";
 import { msg, msgf } from "@/lib/i18n/msg";
@@ -88,7 +88,7 @@ function AddOffer({ onAdded }: { onAdded: (job: Job, note: string) => void }) {
       });
       const isLink = /^https?:\/\/\S+$/i.test(source.trim());
       const note = !res.viaFetch && isLink
-        ? tr("Saved the link. Fetching the posting text is not available on this server yet: paste the posting text into the offer to enable matching.")
+        ? tr("Saved the link. Reading the ad from a link is not available right now: paste its text into the offer so it can be compared with your details.")
         : res.companyNote ? tr("Offer saved. The company website was not read: {companyNote}", { companyNote: res.companyNote }) : tr("Offer saved.");
       setSource("");
       setCompany("");
@@ -114,13 +114,13 @@ function AddOffer({ onAdded }: { onAdded: (job: Job, note: string) => void }) {
           void submit();
         }}
       >
-        <Field label={tr("Job link or posting text")} hint={tr("A justjoin.it or nofluffjobs.com link brings the skills and salary too. Several links, one per line, are saved in one go. Paste the whole posting if the page needs a login (pracuj.pl, LinkedIn).")}>
-          <TextArea aria-label={tr("Job link or posting text")} rows={4} value={source} onChange={(e) => setSource(e.target.value)} placeholder={tr("https://justjoin.it/job-offer/… or paste the posting")} className="font-sans" />
+        <Field label={tr("Job link or text of the ad")} hint={tr("A justjoin.it or nofluffjobs.com link brings the skills and salary too. Several links, one per line, are saved in one go. Paste the whole ad if the page needs a login (pracuj.pl, LinkedIn).")}>
+          <TextArea aria-label={tr("Job link or text of the ad")} rows={4} value={source} onChange={(e) => setSource(e.target.value)} placeholder={tr("https://justjoin.it/job-offer/… or paste the ad")} className="font-sans" />
         </Field>
-        <Field label={tr("Company website")} hint={tr("Optional. Read once, so the CV can speak to what the company does.")}>
+        <Field label={tr("Company website")} hint={tr("Optional. Read once, so your CV can mention what the company does.")}>
           <TextInput aria-label={tr("Company website")} value={companyUrl} onChange={(e) => setCompanyUrl(e.target.value)} placeholder={tr("https://… (optional)")} inputMode="url" />
         </Field>
-        <Field label={tr("Notes")} hint={tr("Optional. Extra details for tailoring: what the recruiter said, what they care about, anything copied from elsewhere.")}>
+        <Field label={tr("Notes")} hint={tr("Optional. Anything useful for fitting your CV to this job: what the recruiter said, what they care about, anything copied from elsewhere.")}>
           <TextArea aria-label={tr("Offer notes")} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className="font-sans" />
         </Field>
         <div className="grid gap-3 @md:grid-cols-2">
@@ -162,7 +162,7 @@ function OfferList({ jobs, selected, onSelect, applied, appliedOn }: { jobs: Job
               <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {job.url ? <Badge title={job.url}>{hostOf(job.url) || tr("link")}</Badge> : <Badge>{tr("pasted")}</Badge>}
                 {job.requirements.length > 0 ? <Badge tone="accent">{job.requirements.length} {" "}{tr("requirements")}</Badge> : null}
-                {applied.has(job.id) ? <Badge tone="good" title={appliedOn.has(job.id) ? tr("Applied on {id}", { id: appliedOn.get(job.id) }) : tr("Tracked in Applications")}>{applied.get(job.id)}{appliedOn.has(job.id) ? ` · ${appliedOn.get(job.id)}` : ""}</Badge> : null}
+                {applied.has(job.id) ? <Badge tone="good" title={appliedOn.has(job.id) ? tr("Applied on {id}", { id: appliedOn.get(job.id) }) : tr("On your list of applications")}>{tr(STATUS_LABEL[applied.get(job.id) as ApplicationStatus])}{appliedOn.has(job.id) ? ` · ${appliedOn.get(job.id)}` : ""}</Badge> : null}
                 <span className="text-[11px] text-faint">{job.savedAt.slice(0, 10)}</span>
               </span>
             </button>
@@ -181,28 +181,28 @@ function MatchPanel({ job, profile, state }: { job: Job; profile: Profile; state
   const { t: tr, tn } = useT();
   const m = state.result;
   return (
-    <Panel title={tr("Match with your profile")} right={<LangToggle tab={TAB} label={tr("Match language")} />}>
+    <Panel title={tr("How well you match this job")} right={<LangToggle tab={TAB} label={tr("Language to compare in")} />}>
       <div className="space-y-4" data-agent-region="cv-match">
-        {state.phase === "loading" ? <p role="status" className="text-sm text-muted">{tr("Matching…")}</p> : null}
-        {state.phase === "unavailable" ? <Notice>{tr("Matching is not available yet on this server.")}</Notice> : null}
-        {state.phase === "error" ? <Notice tone="error">{tr("Match failed:")}{" "} {state.error}</Notice> : null}
-        {state.phase === "ready" && !job.text && job.requirements.length === 0 ? <Notice tone="warn">{tr("This offer has no posting text or requirements yet, so there is nothing to match. Paste the text or add requirements below.")}</Notice> : null}
+        {state.phase === "loading" ? <p role="status" className="text-sm text-muted">{tr("Comparing…")}</p> : null}
+        {state.phase === "unavailable" ? <Notice>{tr("Comparing is not available right now.")}</Notice> : null}
+        {state.phase === "error" ? <Notice tone="error">{tr("The comparison failed:")}{" "} {state.error}</Notice> : null}
+        {state.phase === "ready" && !job.text && job.requirements.length === 0 ? <Notice tone="warn">{tr("This offer has no text or requirements yet, so there is nothing to compare. Paste the text or add requirements below.")}</Notice> : null}
         {m ? (
           <>
             <div className="grid gap-3 @md:grid-cols-2">
               <div className="space-y-1.5">
-                <div className="flex items-baseline justify-between"><span className="sk-label">{tr("Coverage")}</span><span className="font-mono text-lg font-semibold text-ink tabular-nums">{Math.round(m.coveragePct)}%</span></div>
-                <Meter value={m.coveragePct} label={tr("Overall coverage")} />
+                <div className="flex items-baseline justify-between"><span className="sk-label">{tr("Overall match")}</span><span className="font-mono text-lg font-semibold text-ink tabular-nums">{Math.round(m.coveragePct)}%</span></div>
+                <Meter value={m.coveragePct} label={tr("Overall match")} />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-baseline justify-between"><span className="sk-label">{tr("Technologies")}</span><span className="font-mono text-lg font-semibold text-ink tabular-nums">{m.techCoveragePct === null ? "n/a" : `${Math.round(m.techCoveragePct)}%`}</span></div>
-                <Meter value={m.techCoveragePct ?? 0} label={tr("Technology coverage")} />
+                <Meter value={m.techCoveragePct ?? 0} label={tr("Technologies you match")} />
               </div>
             </div>
 
             {m.missingRequired.length > 0 || m.missing.length > 0 ? (
-              <section aria-label={tr("Gaps")} className="space-y-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
-                <h3 className="text-[13px] font-semibold text-ink">{tr("Gaps: asked for, not in your profile")}</h3>
+              <section aria-label={tr("Missing")} className="space-y-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
+                <h3 className="text-[13px] font-semibold text-ink">{tr("Missing: asked for, not in your details")}</h3>
                 {m.missingRequired.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs text-muted">{tr("Required:")}</span>
@@ -215,24 +215,24 @@ function MatchPanel({ job, profile, state }: { job: Job; profile: Profile; state
                     {m.missing.filter((t) => !m.missingRequired.includes(t)).map((t) => <Badge key={t} tone="warn">{t}</Badge>)}
                   </div>
                 ) : null}
-                <p className="text-xs leading-relaxed text-muted">{tr("Add only what is true: ask the assistant to look for real evidence, or write a verified bullet in the Profile tab.")}</p>
+                <p className="text-xs leading-relaxed text-muted">{tr("Add only what is true: write it in Your details, or ask the AI assistant to look for real evidence.")}</p>
               </section>
             ) : null}
 
-            <section aria-label={tr("Matched terms")} className="space-y-2">
-              <h3 className="text-[13px] font-semibold text-ink">{tr("Matched ({matched})", { matched: m.matched.length })}</h3>
-              {m.matched.length === 0 ? <p className="text-sm text-muted">{tr("No overlap found yet.")}</p> : (
+            <section aria-label={tr("Words that match")} className="space-y-2">
+              <h3 className="text-[13px] font-semibold text-ink">{tr("Matching ({matched})", { matched: m.matched.length })}</h3>
+              {m.matched.length === 0 ? <p className="text-sm text-muted">{tr("Nothing matches yet.")}</p> : (
                 <ul className="space-y-2">
                   {m.matched.map((hit) => (
                     <li key={hit.term} className="rounded-lg border border-line bg-raised/40 p-2.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone="good">{hit.term}</Badge>
-                        <span className="text-xs text-faint">{tn("{n} place in your profile", "{n} places in your profile", hit.evidence.length)}</span>
+                        <span className="text-xs text-faint">{tn("{n} place in your details", "{n} places in your details", hit.evidence.length)}</span>
                       </div>
                       <ul className="mt-1.5 space-y-1">
                         {hit.evidence.slice(0, 3).map((ev, i) => (
                           <li key={`${ev.path}-${i}`} className="text-xs leading-relaxed text-muted">
-                            <Link href={profileHref(ev.path)} className="font-medium text-accent-soft underline underline-offset-2 hover:text-ink" aria-label={tr("Open {profile} in the profile", { profile: labelForPath(profile, ev.path) })}>
+                            <Link href={profileHref(ev.path)} className="font-medium text-accent-soft underline underline-offset-2 hover:text-ink" aria-label={tr("Open {profile} in Your details", { profile: labelForPath(profile, ev.path) })}>
                               {labelForPath(profile, ev.path)}
                             </Link>
                             {ev.text ? <span className="wrap-anywhere"> — {ev.text.length > 140 ? `${ev.text.slice(0, 139)}…` : ev.text}</span> : null}
@@ -272,7 +272,7 @@ function BoardFacts({ job }: { job: Job }) {
   const { t: tr } = useT();
   const required = job.skills.filter((s) => s.required);
   const nice = job.skills.filter((s) => !s.required);
-  const facts = [job.seniority && ["Seniority", job.seniority], job.workplace && [tr("Work mode"), job.workplace], job.salary && ["Salary", job.salary], job.languages.length > 0 && ["Languages", job.languages.join(", ")]].filter(Boolean) as [string, string][];
+  const facts = [job.seniority && [tr("Seniority"), job.seniority], job.workplace && [tr("Work mode"), job.workplace], job.salary && [tr("Salary"), job.salary], job.languages.length > 0 && [tr("Languages"), job.languages.join(", ")]].filter(Boolean) as [string, string][];
   if (!job.skills.length && !facts.length && !job.applyUrl) return null;
   const skill = (s: Job["skills"][number]) => (
     <Badge key={`${s.name}-${s.required}`} tone={s.required ? "accent" : "neutral"} title={s.level !== null ? tr("Level {level}/5: {value}", { level: s.level, value: JUSTJOIN_LEVELS[s.level] ?? s.level }) : undefined}>
@@ -373,19 +373,19 @@ function OfferEditor({ job, onChanged, onDeleted }: { job: Job; onChanged: () =>
         <BoardFacts job={job} />
 
         <div className="grid gap-3 @md:grid-cols-[minmax(0,1fr)_auto] @md:items-end">
-          <Field label={tr("Company website")} hint={job.companyText ? tr("Read: {companyText} characters of context.", { companyText: job.companyText.length }) : tr("Not read yet.")}>
+          <Field label={tr("Company website")} hint={job.companyText ? tr("Read: {companyText} characters.", { companyText: job.companyText.length }) : tr("Not read yet.")}>
             <TextInput aria-label={tr("Offer company website")} value={form.companyUrl} onChange={(e) => setForm({ ...form, companyUrl: e.target.value })} placeholder={tr("https://…")} inputMode="url" />
           </Field>
           <Button onClick={() => void readSite()} disabled={busy || !form.companyUrl.trim()}>{tr("Read website")}</Button>
         </div>
 
-        <Field label={tr("Notes for this offer")} hint={tr("Read by the assistant when it tailors your CV. Never printed.")}>
+        <Field label={tr("Notes for this offer")} hint={tr("The assistant reads this when it fits your CV to the job. Never printed.")}>
           <TextArea aria-label={tr("Notes for this offer")} rows={4} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="font-sans" />
         </Field>
         <Button onClick={() => void save({ notes: form.notes }, tr("Notes saved."))} disabled={busy}>{tr("Save notes")}</Button>
 
         <div className="grid gap-3 @md:grid-cols-2">
-          <Field label={tr("Requirements (one per line)")} hint={tr("Sharper requirements make the match sharper. Ask the assistant to extract them.")}>
+          <Field label={tr("Requirements (one per line)")} hint={tr("The clearer the requirements, the better the comparison. The AI assistant can pick them out of the ad for you.")}>
             <TextArea aria-label={tr("Requirements (one per line)")} rows={7} value={req} onChange={(e) => setReq(e.target.value)} className="font-sans" />
           </Field>
           <Field label={tr("Nice to have (one per line)")}>
@@ -395,10 +395,10 @@ function OfferEditor({ job, onChanged, onDeleted }: { job: Job; onChanged: () =>
         <Button onClick={() => void save({ requirements: lines(req), niceToHave: lines(nice) }, tr("Requirements saved."))} disabled={busy}>{tr("Save requirements")}</Button>
 
         <details className="rounded-lg border border-line bg-raised/30 px-3 py-2">
-          <summary className="cursor-pointer text-[13px] font-medium text-muted">{tr("Posting text ({text} characters)", { text: job.text.length })}</summary>
+          <summary className="cursor-pointer text-[13px] font-medium text-muted">{tr("Text of the ad ({text} characters)", { text: job.text.length })}</summary>
           <div className="mt-2 space-y-2">
-            <TextArea rows={10} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} aria-label={tr("Posting text")} className="font-sans" />
-            <Button size="sm" onClick={() => void save({ text: form.text }, tr("Posting text saved."))} disabled={busy}>{tr("Save posting text")}</Button>
+            <TextArea rows={10} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} aria-label={tr("Text of the ad")} className="font-sans" />
+            <Button size="sm" onClick={() => void save({ text: form.text }, tr("Text of the ad saved."))} disabled={busy}>{tr("Save the text")}</Button>
           </div>
         </details>
         {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
@@ -432,11 +432,11 @@ function VariantReview({ job, profile, draft, onClose, onSaved }: { job: Job; pr
   };
 
   return (
-    <Panel title={tr("Review the suggested version ({value})", { value: lang.toUpperCase() })}>
+    <Panel title={tr("Check the suggested CV ({value})", { value: lang.toUpperCase() })}>
       <div className="space-y-3" data-agent-region="cv-variant-review">
-        <Field label={tr("Version name")}><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label={tr("Name of this CV")}><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
         <p className="text-[13px] text-muted">
-          {tr("For {target}: {bullets}, {roles}, {projects}, {skills}.", { target: job.company || tr("this offer"), bullets: tn("{n} bullet", "{n} bullets", bullets), roles: tn("{n} role", "{n} roles", resolved.experience.length), projects: tn("{n} project", "{n} projects", resolved.projects.length), skills: tn("{n} skill group", "{n} skill groups", resolved.skills.length) })}
+          {tr("For {target}: {bullets}, {roles}, {projects}, {skills}.", { target: job.company || tr("this offer"), bullets: tn("{n} point", "{n} points", bullets), roles: tn("{n} role", "{n} roles", resolved.experience.length), projects: tn("{n} project", "{n} projects", resolved.projects.length), skills: tn("{n} skill group", "{n} skill groups", resolved.skills.length) })}
         </p>
         <ul className="space-y-2">
           {resolved.experience.map((e) => (
@@ -450,7 +450,7 @@ function VariantReview({ job, profile, draft, onClose, onSaved }: { job: Job; pr
         </ul>
         {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => void save()} disabled={busy}>{tr("Save version")}</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={busy}>{tr("Save this CV")}</Button>
           <Button variant="ghost" onClick={onClose}>{tr("Discard")}</Button>
         </div>
       </div>
@@ -458,7 +458,7 @@ function VariantReview({ job, profile, draft, onClose, onSaved }: { job: Job; pr
   );
 }
 
-/** What "Tailor with the assistant" sends: the offer, the language, and the truthfulness rule. */
+/** What "Fit my CV to this job with the AI assistant" sends: the offer, the language, and the truthfulness rule. */
 export function tailorPrompt(job: Job, lang: "pl" | "en"): string {
   const what = [job.title || "this offer", job.company ? `at ${job.company}` : ""].filter(Boolean).join(" ");
   return msgf("Tailor my CV for the saved offer “{what}” (jobId: {id}) in {value}: create a CV version for it, reword the bullets for this offer, write the headline and summary, then run the ATS check and fix what it finds. Keep my pinned items, follow my tailoring notes, and do not add anything my profile does not show.", { what, id: job.id, value: lang === "pl" ? msg("Polish (pl)") : msg("English (en)") });
@@ -477,7 +477,7 @@ function Actions({ job, profile, versions, trackedStatus, onChanged }: { job: Jo
     try {
       setDraft(await suggestVariant({ jobId: job.id, lang }));
     } catch (e) {
-      setNote({ tone: isUnavailable(e) ? "info" : "error", text: isUnavailable(e) ? tr("Suggesting a version is not available yet on this server.") : errorText(e) });
+      setNote({ tone: isUnavailable(e) ? "info" : "error", text: isUnavailable(e) ? tr("Suggesting a CV is not available right now.") : errorText(e) });
     } finally {
       setBusy("");
     }
@@ -490,7 +490,7 @@ function Actions({ job, profile, versions, trackedStatus, onChanged }: { job: Jo
       const latest = [...versions].reverse().find((v) => v.jobId === job.id);
       await saveApplication({ company: job.company || tr("Unknown company"), role: job.title || "Role", url: job.url, jobId: job.id, variantId: latest?.id ?? null, lang, status: "wishlist" });
       onChanged();
-      setNote({ tone: "good", text: tr("Application tracked as wishlist."), href: "/tools/cv-studio?tab=applications", hrefLabel: tr("Open applications") });
+      setNote({ tone: "good", text: tr("Added to your list as “Want to apply”."), href: "/tools/cv-studio?tab=applications", hrefLabel: tr("Open my applications") });
     } catch (e) {
       setNote({ tone: "error", text: errorText(e) });
     } finally {
@@ -503,13 +503,13 @@ function Actions({ job, profile, versions, trackedStatus, onChanged }: { job: Jo
       <Panel title={tr("Next steps")}>
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => openAssistant(tailorPrompt(job, lang))} disabled={busy !== ""}>{tr("Tailor with the assistant")}</Button>
-            <Button onClick={() => void suggest()} disabled={busy !== ""}>{busy === "suggest" ? tr("Suggesting…") : tr("Quick version (no rewording)")}</Button>
-            <Button onClick={() => void track()} disabled={busy !== "" || trackedStatus !== ""}>{trackedStatus ? `Tracked (${trackedStatus})` : tr("Track application")}</Button>
-            {trackedStatus ? <Link href="/tools/cv-studio?tab=applications" className="inline-flex h-9 items-center text-sm text-accent-soft underline underline-offset-2">{tr("Open applications")}</Link> : null}
+            <Button variant="primary" onClick={() => openAssistant(tailorPrompt(job, lang))} disabled={busy !== ""}>{tr("Fit my CV to this job with the AI assistant")}</Button>
+            <Button onClick={() => void suggest()} disabled={busy !== ""}>{busy === "suggest" ? tr("Suggesting…") : tr("Make a CV for this job (no AI, no rewording)")}</Button>
+            <Button onClick={() => void track()} disabled={busy !== "" || trackedStatus !== ""}>{trackedStatus ? tr("On my list: {status}", { status: tr(STATUS_LABEL[trackedStatus as ApplicationStatus] ?? trackedStatus) }) : tr("Add to my applications")}</Button>
+            {trackedStatus ? <Link href="/tools/cv-studio?tab=applications" className="inline-flex h-9 items-center text-sm text-accent-soft underline underline-offset-2">{tr("Open my applications")}</Link> : null}
           </div>
           {versions.some((v) => v.jobId === job.id) ? (
-            <p className="text-xs text-muted">{tr("Existing versions for this offer: {value}.", { value: versions.filter((v) => v.jobId === job.id).map((v) => v.name).join(", ") })}{" "} <Link href="/tools/cv-studio?tab=variants" className="text-accent-soft underline underline-offset-2">{tr("Open CV versions")}</Link></p>
+            <p className="text-xs text-muted">{tr("CVs already made for this offer: {value}.", { value: versions.filter((v) => v.jobId === job.id).map((v) => v.name).join(", ") })}{" "} <Link href="/tools/cv-studio?tab=variants" className="text-accent-soft underline underline-offset-2">{tr("Open Your CVs")}</Link></p>
           ) : null}
           {note ? (
             <div role={note.tone === "error" ? "alert" : "status"}>
@@ -527,7 +527,7 @@ function Actions({ job, profile, versions, trackedStatus, onChanged }: { job: Jo
           onSaved={(v) => {
             setDraft(null);
             onChanged();
-            setNote({ tone: "good", text: tr("Saved the version “{name}”.", { name: v.name }), href: "/tools/cv-studio?tab=variants", hrefLabel: tr("Open CV versions") });
+            setNote({ tone: "good", text: tr("Saved the CV “{name}”.", { name: v.name }), href: "/tools/cv-studio?tab=variants", hrefLabel: tr("Open Your CVs") });
           }}
         />
       ) : null}
@@ -567,7 +567,7 @@ export default function JobsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchKey]);
 
-  // Until the answer for the current key lands, keep showing the previous result under a "Matching…" line.
+  // Until the answer for the current key lands, keep showing the previous result under a "Comparing…" line.
   const matchView: MatchState = match.key === matchKey ? match : { ...match, phase: "loading", error: "" };
   const refresh = useCallback(() => void reload(), [reload]);
   const applied = useMemo(() => new Map((data?.applications ?? []).filter((a) => a.jobId).map((a) => [a.jobId as string, a.status])), [data]);
@@ -583,7 +583,7 @@ export default function JobsTab() {
               <AddOffer onAdded={(job, note) => { setPicked(job.id); setFlash(note); refresh(); }} />
               {flash ? <div role="status"><Notice tone="good">{flash}</Notice></div> : null}
               {cv.jobs.length === 0 ? (
-                <EmptyState title={tr("No offers saved yet")}>{tr("Paste a link or the text of a job posting above. The match, the tailored CV version and the application tracker all start from a saved offer.")}</EmptyState>
+                <EmptyState title={tr("No offers saved yet")}>{tr("Paste a link or the text of a job ad above. Comparing, making a CV for the job and keeping track of your application all start from a saved offer.")}</EmptyState>
               ) : (
                 <OfferList jobs={[...cv.jobs].reverse()} selected={selectedId} onSelect={(id) => { setPicked(id); setFlash(""); }} applied={applied} appliedOn={appliedOn} />
               )}

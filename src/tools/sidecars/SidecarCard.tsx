@@ -144,8 +144,8 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
   const badge = serviceBadge(service, op);
   if (!service) {
     return (
-      <Panel title={t("Sidecar")}>
-        <p role="status" className="text-sm text-muted">{error ? t("Could not read the service status: {message}", { message: error.message }) : t("Checking the service…")}</p>
+      <Panel title={t("Add-on")}>
+        <p role="status" className="text-sm text-muted">{error ? t("Could not read the service status: {message}", { message: error.message }) : t("Checking…")}</p>
       </Panel>
     );
   }
@@ -155,7 +155,7 @@ export function SidecarCard({ sidecar, compact = false, intro }: { sidecar: Side
     // Public mode, not an administrator: the shared service is used, never managed (no buttons, no configuration).
     const running = service.installed && service.ready;
     return (
-      <Panel title={service.name} right={<Badge tone={badge.tone}>{t(badge.text)}</Badge>} className="sk-sidecar-card">
+      <Panel title={service.name} right={running ? <Badge tone={badge.tone}>{t(badge.text)}</Badge> : <Badge>{t("Not available yet")}</Badge>} className="sk-sidecar-card">
         <div className="space-y-4">
           {intro}
           <p className="text-sm text-muted">{t(service.description)}</p>

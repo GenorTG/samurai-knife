@@ -151,9 +151,9 @@ with sync_playwright() as pw:
     # 2. Fill the job form and click Save through UI tools only -----------------------------------------------------------------
     snap = snapshot(page, key)
     posting = "Platform Engineer at Zeta Cloud. Requirements: Python, SQL, Docker. Nice to have: Kubernetes."
-    ids = {name: cid(snap, name) for name in ("Job link or posting text", "Company", "Job title", "Save offer")}
+    ids = {name: cid(snap, name) for name in ("Job link or text of the ad", "Company", "Job title", "Save offer")}
     check("snapshot exposes the job form controls with clear names", len(set(ids.values())) == 4, ids)
-    r1 = fill(page, key, ids["Job link or posting text"], posting)
+    r1 = fill(page, key, ids["Job link or text of the ad"], posting)
     r2 = fill(page, key, ids["Company"], "Zeta Cloud")
     r3 = fill(page, key, ids["Job title"], "Platform Engineer")
     check("fill_field typed into the form", all(r.get("ok") for r in (r1, r2, r3)), (r1, r2, r3))
@@ -173,7 +173,7 @@ with sync_playwright() as pw:
     page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).jobs.some(j => j.requirements.length === 3)", timeout=15000)
     check("requirements saved one per line", next(j for j in cv()["jobs"] if j["company"] == "Zeta Cloud")["requirements"] == ["Python", "SQL", "Docker"])
     snap = snapshot(page, key)
-    res = click(page, key, cid(snap, "Track application"))
+    res = click(page, key, cid(snap, "Add to my applications"))
     page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).applications.length === 1", timeout=15000)
     app = cv()["applications"][0]
     check("Track application created a linked application", app["company"] == "Zeta Cloud" and app["jobId"] == job["id"] and app["status"] == "wishlist", app)
@@ -190,14 +190,14 @@ with sync_playwright() as pw:
     fill(page, key, cid(snap, "Role", "input"), "Data Engineer")
     fill(page, key, cid(snap, "Status", "select"), "Applied")
     fill(page, key, cid(snap, "Saved link", "input"), "https://example.com/careers/omega-1")
-    fill(page, key, cid(snap, "Next action", "input"), "Follow up after a week")
+    fill(page, key, cid(snap, "Next step", "input"), "Follow up after a week")
     res = click(page, key, cid(snap, "Save application"))
     check("click Save application succeeded", res.get("ok") is True, res)
     page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).applications.some(a => a.company === 'Omega Labs')", timeout=15000)
     omega = next(a for a in cv()["applications"] if a["company"] == "Omega Labs")
     check("the drawer form stored status, saved link and next action", omega["status"] == "applied" and omega["url"].endswith("omega-1") and omega["nextAction"] == "Follow up after a week", omega)
     snap = snapshot(page, key)
-    res = click(page, key, cid(snap, "Move Omega Labs Data Engineer to Screening"))
+    res = click(page, key, cid(snap, "Move Omega Labs Data Engineer to First contact"))
     page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).applications.some(a => a.company === 'Omega Labs' && a.status === 'screening')", timeout=15000)
     omega = next(a for a in cv()["applications"] if a["company"] == "Omega Labs")
     check("a quick status button moved the application and logged history", [h["status"] for h in omega["history"]] == ["applied", "screening"], omega["history"])

@@ -19,6 +19,7 @@ import { useCvData } from "./useCvData";
 import {
   applySelection, moveId, moveRole, pruneDangling, selectionCounts, selectionOf, toggleId, toggleRole, updateBullets, type Selection,
 } from "./variant-edit";
+import { msg } from "@/lib/i18n/msg";
 import { useT } from "@/lib/i18n/react";
 
 const TAB = "variants";
@@ -38,7 +39,7 @@ function Preview({ profile, lang, look }: { profile: Profile; lang: CvLang; look
     window.print();
   };
   return (
-    <Panel title={t("Live preview")} right={<Button size="sm" onClick={print}>{t("Print / Save as PDF")}</Button>} bodyClassName="p-2 sm:p-3">
+    <Panel title={t("Preview")} right={<Button size="sm" onClick={print}>{t("Print / Save as PDF")}</Button>} bodyClassName="p-2 sm:p-3">
       <div ref={root} data-agent-region="cv-preview" className="max-h-[80vh] overflow-auto rounded-lg border border-line bg-raised/60 p-2 sm:p-3">
         <CvDocument profile={profile} lang={lang} look={look.options} photoUrl={look.photoUrl} photoShape={look.options.shape} pageMode={look.options.pageMode} />
       </div>
@@ -49,10 +50,10 @@ function Preview({ profile, lang, look }: { profile: Profile; lang: CvLang; look
 /* ---------------------------------------------------------------- export */
 
 const FORMATS: { id: CvExportFormat; label: string; hint: string }[] = [
-  { id: "pdf", label: "PDF", hint: "Exactly the preview, with clickable links" },
-  { id: "docx", label: "Word (DOCX)", hint: "Editable in Word or LibreOffice" },
-  { id: "html", label: "HTML", hint: "One file that opens in any browser" },
-  { id: "txt", label: "Text (ATS)", hint: "Plain text, what a portal parser reads" },
+  { id: "pdf", label: "PDF", hint: msg("Exactly the preview, with clickable links") },
+  { id: "docx", label: "Word (DOCX)", hint: msg("Editable in Word or LibreOffice") },
+  { id: "html", label: "HTML", hint: msg("One file that opens in any browser") },
+  { id: "txt", label: msg("Plain text"), hint: msg("Just the words, the way recruitment software (ATS) reads them") },
 ];
 
 /** Download the shown CV (master or version) as PDF, DOCX, HTML or plain text. */
@@ -92,7 +93,7 @@ function ExportButtons({ variantId, lang, look, blocked }: { variantId: string |
 function VersionList({ variants, selected, onSelect, master, jobs }: { variants: Variant[]; selected: string; onSelect: (id: string) => void; master: Profile; jobs: CvData["jobs"] }) {
   const { t, tn } = useT();
   const items: { id: string; title: string; sub: string; warn: number; badges: string[] }[] = [
-    { id: MASTER, title: t("Master profile"), sub: t("Everything, as written in the Profile tab"), warn: 0, badges: [] },
+    { id: MASTER, title: t("Full CV"), sub: t("Everything from Your details"), warn: 0, badges: [] },
     ...variants.map((v) => ({
       id: v.id,
       title: v.name,
@@ -102,14 +103,14 @@ function VersionList({ variants, selected, onSelect, master, jobs }: { variants:
     })),
   ];
   return (
-    <ul className="grid min-w-0 gap-2 @2xl:grid-cols-2 @5xl:grid-cols-3" aria-label={t("CV versions")}>
+    <ul className="grid min-w-0 gap-2 @2xl:grid-cols-2 @5xl:grid-cols-3" aria-label={t("CVs for a job")}>
       {items.map((item) => (
         <li key={item.id} data-cv-path={item.id === MASTER ? undefined : `/variants/id=${item.id}`} className="min-w-0 rounded-xl">
           <button
             autoComplete="off"
             type="button"
             aria-pressed={item.id === selected}
-            aria-label={t("Open version {title}", { title: item.title })}
+            aria-label={t("Open CV {title}", { title: item.title })}
             onClick={() => onSelect(item.id)}
             className={cx(
               "block h-full w-full cursor-pointer rounded-xl border p-3 text-left transition-colors",
@@ -120,7 +121,7 @@ function VersionList({ variants, selected, onSelect, master, jobs }: { variants:
             {item.sub ? <span className="block text-xs text-muted wrap-anywhere">{item.sub}</span> : null}
             <span className="mt-1.5 flex flex-wrap gap-1.5">
               {item.badges.map((b) => <Badge key={b}>{b}</Badge>)}
-              {item.warn > 0 ? <Badge tone="warn">{tn("{n} broken reference", "{n} broken references", item.warn)}</Badge> : null}
+              {item.warn > 0 ? <Badge tone="warn">{tn("{n} missing item", "{n} missing items", item.warn)}</Badge> : null}
             </span>
           </button>
         </li>
@@ -149,10 +150,10 @@ function NewVersion({ taken, lang, onCreated }: { taken: Set<string>; lang: CvLa
     }
   };
   return (
-    <form className="space-y-1" aria-label={t("New CV version")} onSubmit={(e) => { e.preventDefault(); void create(); }}>
+    <form className="space-y-1" aria-label={t("New CV for a job")} onSubmit={(e) => { e.preventDefault(); void create(); }}>
       <div className="flex flex-wrap items-center gap-2">
-        <TextInput aria-label={t("New version name")} className="h-9 min-w-0 flex-1 basis-48" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Name, e.g. Backend at Gamma")} />
-        <Button type="submit" disabled={!name.trim() || busy}>{t("Create version")}</Button>
+        <TextInput aria-label={t("Name of the new CV")} className="h-9 min-w-0 flex-1 basis-48" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Name, e.g. Accountant at Gamma")} />
+        <Button type="submit" disabled={!name.trim() || busy}>{t("Create this CV")}</Button>
       </div>
       {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
     </form>
@@ -236,7 +237,7 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
     try {
       const res = await saveVariant(v);
       setDraft({ base: editorKey(res.variant), v: res.variant });
-      setMessage({ tone: "good", text: t("Version saved.") });
+      setMessage({ tone: "good", text: t("CV saved.") });
     } catch (e) {
       setMessage({ tone: "error", text: errorText(e) });
     } finally {
@@ -261,15 +262,15 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
   return (
     <div className="grid min-w-0 gap-4 @5xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]" data-cv-path={`/variants/id=${v.id}`}>
       <div className="min-w-0 space-y-4">
-        <Panel title={t("Version")} right={dirty ? <Badge tone="warn">{t("Unsaved changes")}</Badge> : <Badge tone="good">{t("Saved")}</Badge>}>
+        <Panel title={t("This CV")} right={dirty ? <Badge tone="warn">{t("Unsaved changes")}</Badge> : <Badge tone="good">{t("Saved")}</Badge>}>
           <div className="space-y-3">
-            <Field label={t("Version name")}><TextInput value={v.name} onChange={(e) => edit({ ...v, name: e.target.value })} /></Field>
-            <Field label={t("Target (company or role)")}><TextInput value={v.target} onChange={(e) => edit({ ...v, target: e.target.value })} placeholder={t("Optional")} /></Field>
+            <Field label={t("Name of this CV")}><TextInput value={v.name} onChange={(e) => edit({ ...v, name: e.target.value })} /></Field>
+            <Field label={t("For which company or job")}><TextInput value={v.target} onChange={(e) => edit({ ...v, target: e.target.value })} placeholder={t("Optional")} /></Field>
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-1.5">
                 <span className="sk-label block">{t("Language")}</span>
                 <SegmentedControl<CvLang>
-                  label={t("Version language")}
+                  label={t("Language of this CV")}
                   value={v.lang}
                   onChange={(next) => edit({ ...v, lang: next })}
                   options={[{ value: "pl", label: "PL", ariaLabel: "Polish" }, { value: "en", label: "EN", ariaLabel: "English" }]}
@@ -277,20 +278,20 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
               </div>
             </div>
             <DocumentOptions look={look} profile={resolved} lang={v.lang} />
-            <p className="text-xs text-muted">{[tn("{n} role", "{n} roles", counts.roles), tn("{n} bullet", "{n} bullets", counts.bullets), tn("{n} project", "{n} projects", counts.projects), tn("{n} skill group", "{n} skill groups", counts.skills)].join(" · ")}</p>
+            <p className="text-xs text-muted">{[tn("{n} role", "{n} roles", counts.roles), tn("{n} point", "{n} points", counts.bullets), tn("{n} project", "{n} projects", counts.projects), tn("{n} skill group", "{n} skill groups", counts.skills)].join(" · ")}</p>
             {dangling.length > 0 ? (
               <div className="space-y-2" role="alert">
-                <Notice tone="warn">{tn("This version points at {n} item the profile no longer has ({items}). Saving is blocked until it is removed.", "This version points at {n} items the profile no longer has ({items}). Saving is blocked until they are removed.", dangling.length, { items: dangling.slice(0, 4).join(", ") + (dangling.length > 4 ? "…" : "") })}</Notice>
-                <Button size="sm" onClick={() => edit(pruneDangling(master, v))}>{t("Remove broken references")}</Button>
+                <Notice tone="warn">{tn("This CV uses {n} item you have since removed from Your details ({items}). You cannot save it until it is taken out.", "This CV uses {n} items you have since removed from Your details ({items}). You cannot save it until they are taken out.", dangling.length, { items: dangling.slice(0, 4).join(", ") + (dangling.length > 4 ? "…" : "") })}</Notice>
+                <Button size="sm" onClick={() => edit(pruneDangling(master, v))}>{t("Remove missing items")}</Button>
               </div>
             ) : null}
             {message ? <div role={message.tone === "error" ? "alert" : "status"}><Notice tone={message.tone}>{message.text}</Notice></div> : null}
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || dangling.length > 0 || !v.name.trim()}>{t("Save version")}</Button>
+              <Button variant="primary" onClick={() => void save()} disabled={busy || !dirty || dangling.length > 0 || !v.name.trim()}>{t("Save this CV")}</Button>
               <Button onClick={() => setDraft({ base: baseKey, v: stored })} disabled={!dirty}>{t("Discard changes")}</Button>
-              <Button variant="danger" onClick={() => void remove()} disabled={busy} aria-label={t("Delete version {name}", { name: stored.name })}>{t("Delete version")}</Button>
+              <Button variant="danger" onClick={() => void remove()} disabled={busy} aria-label={t("Delete CV {name}", { name: stored.name })}>{t("Delete this CV")}</Button>
             </div>
-            <ExportButtons variantId={v.id} lang={v.lang} look={look} blocked={dirty ? t("Save the version first: the files are made from the saved version.") : ""} />
+            <ExportButtons variantId={v.id} lang={v.lang} look={look} blocked={dirty ? t("Save this CV first: the files are made from the saved copy.") : ""} />
           </div>
         </Panel>
 
@@ -298,22 +299,22 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-[13px] text-ink">
-                <Checkbox checked={customHeadline} label={t("Use a custom headline")} onChange={() => edit({ ...v, headline: customHeadline ? null : { ...master.contact.headline } })} />
-                {t("Custom headline")}
+                <Checkbox checked={customHeadline} label={t("Use a different headline in this CV")} onChange={() => edit({ ...v, headline: customHeadline ? null : { ...master.contact.headline } })} />
+                {t("Different headline")}
               </label>
-              {v.headline ? <TextInput aria-label={t("Headline ({value})", { value: v.lang.toUpperCase() })} value={v.headline[v.lang]} onChange={(e) => v.headline && edit({ ...v, headline: { ...v.headline, [v.lang]: e.target.value } })} /> : <p className="text-xs text-faint">{t("Uses the profile headline.")}</p>}
+              {v.headline ? <TextInput aria-label={t("Headline ({value})", { value: v.lang.toUpperCase() })} value={v.headline[v.lang]} onChange={(e) => v.headline && edit({ ...v, headline: { ...v.headline, [v.lang]: e.target.value } })} /> : <p className="text-xs text-faint">{t("Uses the headline from Your details.")}</p>}
             </div>
             <div className="space-y-1.5">
               <label className="flex items-center gap-2 text-[13px] text-ink">
-                <Checkbox checked={customSummary} label={t("Use a custom summary")} onChange={() => edit({ ...v, summary: customSummary ? null : { ...master.summary } })} />
-                {t("Custom summary")}
+                <Checkbox checked={customSummary} label={t("Use a different summary in this CV")} onChange={() => edit({ ...v, summary: customSummary ? null : { ...master.summary } })} />
+                {t("Different summary")}
               </label>
-              {v.summary ? <TextArea rows={4} aria-label={t("Summary ({value})", { value: v.lang.toUpperCase() })} className="font-sans" value={v.summary[v.lang]} onChange={(e) => v.summary && edit({ ...v, summary: { ...v.summary, [v.lang]: e.target.value } })} /> : <p className="text-xs text-faint">{t("Uses the profile summary.")}</p>}
+              {v.summary ? <TextArea rows={4} aria-label={t("Summary ({value})", { value: v.lang.toUpperCase() })} className="font-sans" value={v.summary[v.lang]} onChange={(e) => v.summary && edit({ ...v, summary: { ...v.summary, [v.lang]: e.target.value } })} /> : <p className="text-xs text-faint">{t("Uses the summary from Your details.")}</p>}
             </div>
           </div>
         </Panel>
 
-        <Panel title={t("What goes in")}>
+        <Panel title={t("What goes into this CV")}>
           <div className="space-y-4">
             <section aria-label={t("Experience")} className="space-y-1">
               <h3 className="sk-label">{t("Experience")}</h3>
@@ -336,7 +337,7 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
                             const text = b.text[v.lang] || b.text[v.lang === "pl" ? "en" : "pl"] || b.id;
                             return (
                               <li key={b.id} className={cx("flex items-start gap-2 px-1 py-0.5", bOn ? "" : "opacity-60")}>
-                                <span className="mt-0.5"><Checkbox checked={bOn} label={t("Include bullet {id} of {org}", { id: b.id, org: role.org })} onChange={() => editSel(updateBullets(master, sel, role.id, { toggle: b.id }))} /></span>
+                                <span className="mt-0.5"><Checkbox checked={bOn} label={t("Include point {id} of {org}", { id: b.id, org: role.org })} onChange={() => editSel(updateBullets(master, sel, role.id, { toggle: b.id }))} /></span>
                                 <span className="min-w-0 flex-1 text-xs leading-relaxed text-muted wrap-anywhere">{text.length > 110 ? `${text.slice(0, 109)}…` : text}</span>
                                 {bOn ? <Mover name={`bullet ${b.id}`} canUp={bi > 0} canDown={bi < picked.bulletIds.length - 1} onUp={() => editSel(updateBullets(master, sel, role.id, { move: b.id, delta: -1 }))} onDown={() => editSel(updateBullets(master, sel, role.id, { move: b.id, delta: 1 }))} /> : null}
                               </li>
@@ -381,7 +382,7 @@ function Editor({ master, stored, look, onDone, jobs, revision, onReload }: {
             profile={master}
             order={v.sectionOrder ? effectiveSectionOrder({ ...master, sectionOrder: v.sectionOrder }) : effectiveSectionOrder(master)}
             isCustom={v.sectionOrder !== null}
-            label={t("Section order of this version")}
+            label={t("Section order of this CV")}
             lang={v.lang}
             onChange={(next) => edit({ ...v, sectionOrder: next })}
           />
@@ -403,9 +404,9 @@ function MasterView({ master, lang, look, onLang }: { master: Profile; lang: CvL
   const { t } = useT();
   return (
     <div className="grid min-w-0 gap-4 @5xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-      <Panel title={t("Master profile")}>
+      <Panel title={t("Full CV")}>
         <div className="space-y-3">
-          <p className="text-[13px] leading-relaxed text-muted">{t("Everything in your profile, unfiltered. Create a version to pick and order what goes into a CV for one offer.")}</p>
+          <p className="text-[13px] leading-relaxed text-muted">{t("Everything from Your details, nothing left out. To choose what goes into a CV for one job, make a new CV for a job.")}</p>
           <div className="flex flex-wrap items-end gap-3">
             <SegmentedControl<CvLang> label={t("Document language")} value={lang} onChange={onLang} options={[{ value: "pl", label: "PL", ariaLabel: "Polish" }, { value: "en", label: "EN", ariaLabel: "English" }]} />
           </div>
@@ -439,10 +440,10 @@ export default function VariantsTab() {
         const stored = cv.variants.find((v) => v.id === selected);
         return (
           <div className="@container space-y-4">
-            <Panel title={t("CV versions")}>
+            <Panel title={t("CVs for a job")}>
               <div className="space-y-4">
                 {cv.variants.length === 0 ? (
-                  <EmptyState title={t("No versions yet")}>{t("A version is your master profile trimmed and reordered for one offer. Create one here, or open an offer in the Job offers tab and let the assistant suggest it.")}</EmptyState>
+                  <EmptyState title={t("No CVs for a job yet")}>{t("A CV for a job is your full CV shortened and reordered for one offer. Create one here, or open an offer in the Job offers tab and make one from there.")}</EmptyState>
                 ) : null}
                 <VersionList variants={cv.variants} selected={selected} onSelect={setPicked} master={cv.profile} jobs={cv.jobs} />
                 <NewVersion taken={new Set(cv.variants.map((v) => v.id))} lang={lang} onCreated={(v) => { setPicked(v.id); void reload(); }} />

@@ -155,7 +155,7 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
         )}
         <p className="text-xs text-muted">
           {t(info.description)}
-          {info.atsSafe ? ` ${t("Safe for applicant tracking systems.")}` : ` ${t("For people to read; send an ATS-safe layout where a portal parses the file.")}`}
+          {info.atsSafe ? ` ${t("Easy for recruitment software (ATS) to read.")}` : ` ${t("Made for people to read. If you apply through a website that reads your file automatically, choose a layout marked ATS.")}`}
         </p>
       </div>
 
@@ -260,7 +260,7 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
           </div>
         ) : photo.phase === "ready" ? (
           <p className="text-xs text-muted">
-            {t("No photo yet:")}{" "} <Link className="text-accent-soft underline" href="/tools/cv-studio?tab=profile">{t("add one in the Profile tab")}</Link>.
+            {t("No photo yet:")}{" "} <Link className="text-accent-soft underline" href="/tools/cv-studio?tab=profile">{t("add one in Your details")}</Link>.
           </p>
         ) : null
       ) : null}
@@ -273,7 +273,7 @@ export function DocumentOptions({ look, profile, lang }: { look: DocLook; profil
           onChange={(next) => look.set({ pageMode: next })}
           options={CV_PAGE_MODES.map((id) => ({ value: id, label: t(PAGE_LABELS[id]), ariaLabel: t(PAGE_HINTS[id]) }))}
         />
-        {!hasPages ? <p className="text-xs text-muted">{t("No project has a showcase page yet: turn one on for a project in the Profile tab (Projects, “Showcase page”).")}</p> : null}
+        {!hasPages ? <p className="text-xs text-muted">{t("No project has its own page yet: turn one on for a project in Your details (Projects, “Project page”).")}</p> : null}
       </div>
     </div>
   );
