@@ -124,7 +124,7 @@ revocation as rows, and a NOTIFY that makes the running server reload. When a se
   set-password revoking keys and ending sessions, the empty-database guard, db:import (dry run, import, idempotent
   re-run, verify, tamper detection), one batch ≈ one round trip at 35 ms.
 - `tests/db_barrier.test.mjs` — held until committed, 503 without Set-Cookie on failure, reads never delayed, per request.
-- `tests/pg_scratch.mjs` (throwaway `postgres:18` container `sk-dbtest-*`, port from `KNIFE_SCRATCH_PORTS`, removed with
+- `tests/pg_scratch.mjs` (throwaway `postgres:18` container `sk-pg-test-*`, port from `KNIFE_SCRATCH_PORTS`, removed with
   its volume; never another container) and `tests/latency_proxy.mjs` (in-order delayed TCP proxy).
 - `tests/scratch_server.py`: with `KNIFE_TEST_PG_ADMIN_URL` every server start gets a fresh migrated database next to
   its fresh data dir (through `KNIFE_TEST_PG_VIA`, the proxy, when set).

@@ -1,4 +1,4 @@
-// Throwaway Postgres 18 for tests (docs/DB-POSTGRES.md "Tests"): one Docker container per run, named sk-dbtest-<pid>-<hex>,
+// Throwaway Postgres 18 for tests (docs/DB-POSTGRES.md "Tests"): one Docker container per run, named sk-pg-test-<pid>-<hex>,
 // published on 127.0.0.1 at a port from KNIFE_SCRATCH_PORTS (default 3401-3449), anonymous volume removed with it.
 // Never touches another container (the learn-db sidecar and every other project keep running). Skips cleanly when
 // Docker is missing: `available()` says why.
@@ -43,7 +43,7 @@ export async function startScratchPostgres({ port } = {}) {
   const check = available();
   if (!check.ok) throw new Error(check.reason);
   const hostPort = port ?? (await freeScratchPort());
-  const name = `sk-dbtest-${process.pid}-${randomBytes(3).toString("hex")}`;
+  const name = `sk-pg-test-${process.pid}-${randomBytes(3).toString("hex")}`;
   execFileSync("docker", [
     "run", "-d", "--rm", "--name", name, "--label", "samurai-knife.test=1",
     "-e", `POSTGRES_USER=${USER}`, "-e", `POSTGRES_PASSWORD=${PASSWORD}`, "-e", "POSTGRES_DB=knife",
@@ -126,10 +126,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       url.port = port;
     }
     console.log(url.toString());
-  } else if (command === "down" && name?.startsWith("sk-dbtest-")) {
+  } else if (command === "down" && name?.startsWith("sk-pg-test-")) {
     spawnSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore" });
   } else {
-    console.error("usage: node tests/pg_scratch.mjs up | down <sk-dbtest-…>");
+    console.error("usage: node tests/pg_scratch.mjs up | down <sk-pg-test-…>");
     process.exit(2);
   }
 }

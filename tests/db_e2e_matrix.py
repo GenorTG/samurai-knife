@@ -14,7 +14,7 @@ mirrors the database into the files after every commit and compares both); `--pu
 
 Suites: accounts_api (dev), accounts_public, roles_mcp (self-contained), prod_smoke, security_probe, cv_security_probe
 (production build in public mode: `npm run build` first, or --build). Logs go to --logs (default a temp dir).
-Ports: KNIFE_SCRATCH_PORTS (default 3401-3449). Only containers it started (sk-dbtest-*) are removed.
+Ports: KNIFE_SCRATCH_PORTS (default 3401-3449). Only containers it started (sk-pg-test-*) are removed.
 """
 from __future__ import annotations
 
