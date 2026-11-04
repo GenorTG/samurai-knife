@@ -94,6 +94,10 @@ class Api:
             req.add_header("Cookie", cookie)
         if ip:
             req.add_header("X-Forwarded-For", ip)
+        # An English client, like tests/english_browser.py for the browser: without it a sign-up records Polish (the
+        # default, docs/I18N.md), and that account's pages and mails stay Polish whatever the browser later asks for.
+        if not any(key.lower() == "accept-language" for key in (headers or {})):
+            req.add_header("Accept-Language", "en-US,en;q=0.9")
         for key, value in (headers or {}).items():
             req.add_header(key, value)
         try:
@@ -352,7 +356,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     expect(page_a.get_by_role("link", name="alice")).to_be_visible(timeout=15_000)
     check("login by email (any case) lands on / with the account in the top bar", True)
     check("signed-in home is the launcher, not the greeter",
-          page_a.get_by_role("heading", level=1).inner_text() == "A private room of hand-made tools."
+          page_a.get_by_role("heading", level=1).inner_text() == "Smart Knife brings your work tools and AI together."
           and page_a.locator("main a[href='/register']").count() == 0)
     go(page_a, "/login?next=%2Ftools%2Fjson")
     page_a.wait_for_url(base + "/tools/json", timeout=15_000)
@@ -474,13 +478,15 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("resend mails nobody for those", box.messages("ghost@example.com") == [] and len(box.messages("alice@example.com")) == alice_mails)
 
     # ------------------------------------------------------------------------------- 8. generic register answers
-    s1 = api.call("POST", "/api/account/register", {"username": "carol", "email": "ALICE@example.com", "password": "carol password 1"}, ip="198.51.100.41")[:2]
+    # A Polish registrant: the collision notice still reaches alice (an English account) in English.
+    s1 = api.call("POST", "/api/account/register", {"username": "carol", "email": "ALICE@example.com", "password": "carol password 1"}, ip="198.51.100.41",
+                  headers={"Accept-Language": "pl-PL,pl;q=0.9"})[:2]
     s2 = api.call("POST", "/api/account/register", {"username": "alice", "email": "carol@example.com", "password": "carol password 1"}, ip="198.51.100.41")[:2]
     s3 = api.call("POST", "/api/account/register", {"username": "admin", "email": "dan@example.com", "password": "dan password 12"}, ip="198.51.100.41")[:2]
     check("register: taken email, taken username, reserved name -> the same 202 answer as a new account",
           s1 == s2 == s3 == (202, {"ok": True, "message": GENERIC_REGISTER}), (s1, s2, s3))
     col = box.wait("alice@example.com", alice_mails + 1)
-    check("the owner of a taken address is told by mail instead", any("tried to sign up" in subject for _, subject, _ in col), [s for _, s, _ in col])
+    check("the owner of a taken address is told by mail instead, in the owner's language", any("tried to sign up" in subject for _, subject, _ in col), [s for _, s, _ in col])
     check("a taken username is explained to the registrant's mailbox",
           any("not available" in text for _, _, text in box.wait("carol@example.com", 1)) and any("not available" in text for _, _, text in box.wait("dan@example.com", 1)))
     acc = accounts(data)
