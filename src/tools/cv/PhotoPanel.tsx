@@ -122,7 +122,7 @@ export function PhotoPanel() {
     <Panel title={t("Photo")}>
       <div className="space-y-3" data-cv-path="/photo">
         <p className="text-xs leading-relaxed text-muted">
-          {t("Printed by the Modern, Sidebar and Elegant layouts (CV versions tab, switch it off per document there). The ATS layout never prints a photo.")}
+          {t("Printed by the Modern, Sidebar and Elegant layouts (in the Your CVs tab, where you can also switch it off for each CV). The Simple (ATS) layout never prints a photo.")}
         </p>
         {photo.phase === "error" ? <Notice tone="error">{t("Could not load the photo:")}{" "} {photo.error}</Notice> : null}
         {photo.meta && !picked ? (

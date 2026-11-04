@@ -63,23 +63,23 @@ export function TailoringSection({ profile }: { profile: Profile }) {
     + profile.customSections.filter((c) => c.pinned).length + profile.experience.reduce((n, e) => n + e.bullets.filter((b) => b.pinned).length, 0) + profile.projects.reduce((n, p) => n + p.bullets.filter((b) => b.pinned).length, 0);
   return (
     <div data-cv-path="/guidance">
-      <Panel title={t("Tailoring priorities")}>
+      <Panel title={t("What to put first")}>
         <div className="space-y-4">
           <div className="space-y-1">
-            <span className="sk-label">{t("Notes for tailoring (never printed)")}</span>
+            <span className="sk-label">{t("Notes for the AI assistant (never printed)")}</span>
             <EditableField
               path="/guidance"
               value={profile.guidance}
-              label={t("Notes for tailoring")}
-              placeholder={t("What should stand out, e.g. “My commercial years are few; lead with my projects (Finetune Studio, the homelab) and what they prove.”")}
+              label={t("Notes for the AI assistant")}
+              placeholder={t("What should stand out, e.g. “I have few years of paid work, so lead with my projects and what they show.”")}
               multiline
             />
-            <p className="px-2.5 text-xs text-muted">{t("The assistant reads this every time it tailors your CV. Truthfulness rules still apply.")}</p>
+            <p className="px-2.5 text-xs text-muted">{t("The assistant reads this every time it fits your CV to a job. It still will not write anything untrue.")}</p>
           </div>
           <div className="space-y-1">
-            <span className="sk-label">{t("Priority items")}</span>
+            <span className="sk-label">{t("Always shown first")}</span>
             <p className="px-2.5 text-sm text-muted">
-              {pinned ? tn("{n} pinned item: always kept and listed first in tailored versions.", "{n} pinned items: always kept and listed first in tailored versions.", pinned) : t("None yet. Use ☆ pin on a role, bullet, project, skill group or your own section to make it a priority.")}
+              {pinned ? tn("{n} pinned item: always kept and listed first in every CV for a job.", "{n} pinned items: always kept and listed first in every CV for a job.", pinned) : t("None yet. Press ☆ pin on a job, point, project, skill group or your own section to keep it at the top.")}
             </p>
           </div>
           <div className="space-y-1">
@@ -225,7 +225,7 @@ export function GithubProjectAdd() {
     return (
       <div className="space-y-2 rounded-xl border border-dashed border-line-strong p-3" aria-label={t("Add a project from GitHub")}>
         <p className="text-[13px] font-semibold text-ink">{t("Add from GitHub")}</p>
-        <p className="text-xs text-muted">{t("An administrator has to add projects from GitHub on this server (it uses the server owner's GitHub login). Add the project by hand above.")}</p>
+        <p className="text-xs text-muted">{t("Only an administrator can add projects from GitHub here. Add the project by hand above.")}</p>
       </div>
     );
   }
@@ -249,11 +249,11 @@ export function GithubProjectAdd() {
         />
         <label className="flex items-center gap-1.5 text-sm text-muted">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="accent-[var(--color-accent)]" />
-          {t("Pin as priority")}
+          {t("Pin to the top")}
         </label>
-        <Button size="sm" variant="primary" onClick={() => void add()} disabled={!repo.trim() || busy}>{busy ? t("Reading the repo…") : t("Add from GitHub")}</Button>
+        <Button size="sm" variant="primary" onClick={() => void add()} disabled={!repo.trim() || busy}>{busy ? t("Reading the project…") : t("Add from GitHub")}</Button>
       </div>
-      <p className="text-xs text-muted">{t("Takes the name, link, technologies and description from the repo. The assistant can then write the summary and bullets from its README and history.")}</p>
+      <p className="text-xs text-muted">{t("Takes the name, link, technologies and description from GitHub. If you have set up an AI model, the assistant can then write the summary and points from the project's description and history.")}</p>
       {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
       {done ? (
         <div role="status" className="space-y-2">

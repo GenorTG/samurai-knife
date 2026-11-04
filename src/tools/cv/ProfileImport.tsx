@@ -66,7 +66,7 @@ export function ProfileImport({ existing, onImported, onCancel }: { existing: Pr
 
   const submit = () => {
     if (!text.trim()) {
-      setError(t("Paste a JSON profile first."));
+      setError(t("Paste your details as JSON first."));
       return;
     }
     if (existing && !confirming) {
@@ -79,14 +79,14 @@ export function ProfileImport({ existing, onImported, onCancel }: { existing: Pr
 
   return (
     <Panel
-      title={existing ? t("Replace the profile") : t("Import your profile")}
-      right={existing ? <CopyButton text={JSON.stringify(existing, null, 2)} label={t("Copy current profile JSON")} /> : undefined}
+      title={existing ? t("Replace all your details") : t("Import your details as JSON")}
+      right={existing ? <CopyButton text={JSON.stringify(existing, null, 2)} label={t("Copy my details as JSON")} /> : undefined}
     >
       <div className="space-y-3" data-agent-region="cv-import">
         <p className="text-[13px] leading-relaxed text-muted">
-          {t("Paste a complete profile as JSON (every text field is")}{" "} {t("{ \"pl\": …, \"en\": … }")}{t("). Don't have one? Ask the assistant to structure your CV text, or start from the example.")}
+          {t("Paste all your details as JSON (every text field is")}{" "} {t("{ \"pl\": …, \"en\": … }")}{t("). Don't have one? Ask the assistant to structure your CV text, or start from the example.")}
         </p>
-        <Field label={t("Profile JSON")}>
+        <Field label={t("Details JSON")}>
           <TextArea
             rows={10}
             value={text}
@@ -100,11 +100,11 @@ export function ProfileImport({ existing, onImported, onCancel }: { existing: Pr
         </Field>
         {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
         {confirming ? (
-          <Notice tone="warn">{t("A profile already exists. Importing replaces all of it (you can still undo right after). Press \"Confirm replace\" to continue.")}</Notice>
+          <Notice tone="warn">{t("You already have details here. Importing replaces all of them (you can still undo right after). Press \"Confirm replace\" to continue.")}</Notice>
         ) : null}
         <div className="flex flex-wrap gap-2">
           <Button variant={confirming ? "danger" : "primary"} onClick={submit} disabled={busy}>
-            {confirming ? t("Confirm replace") : existing ? t("Replace profile") : t("Import profile")}
+            {confirming ? t("Confirm replace") : existing ? t("Replace details") : t("Import details")}
           </Button>
           <Button onClick={() => { setText(EXAMPLE); setConfirming(false); setError(""); }}>{t("Insert example")}</Button>
           {onCancel ? <Button variant="ghost" onClick={onCancel}>{t("Cancel")}</Button> : null}

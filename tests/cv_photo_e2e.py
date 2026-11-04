@@ -128,7 +128,7 @@ def main() -> int:
         expect(sheet).to_be_visible(timeout=60_000)
         layouts = page.get_by_role("radiogroup", name="Document layout")
         page.get_by_role("button", name="Show all 14 layouts").click()
-        for layout, label in (("ats", "ATS layout"), ("modern", "Modern layout"), ("sidebar", "Sidebar layout"), ("elegant", "Elegant layout")):
+        for layout, label in (("ats", "Simple (ATS) layout"), ("modern", "Modern layout"), ("sidebar", "Sidebar layout"), ("elegant", "Elegant layout")):
             layouts.get_by_role("radio", name=label).click()
             expect(sheet).to_have_attribute("data-theme", layout)
             photo = sheet.locator("img.cv-photo")
@@ -184,7 +184,7 @@ def main() -> int:
             xml = archive.read("word/document.xml").decode("utf-8")
         check(len(media) == 1 and media[0].endswith(".png"), f"DOCX carries the round photo ({media})")
         check(xml.count("<w:tbl>") == 1 and "w:fill=" in xml, "DOCX sidebar = one shaded two-column table")
-        layouts.get_by_role("radio", name="ATS layout").click()
+        layouts.get_by_role("radio", name="Simple (ATS) layout").click()
         with page.expect_download() as dl:
             page.get_by_role("button", name="Download Word (DOCX)").click()
         dl.value.save_as(str(docx))

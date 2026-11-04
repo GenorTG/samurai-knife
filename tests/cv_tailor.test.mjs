@@ -125,7 +125,7 @@ test("danglingIds: rewrite paths outside the allowed texts or pointing at missin
   assert.ok(bad.includes("order:custom:nope"));
   assert.ok(bad.some((b) => b.startsWith("rewrite:/contact/name")));
   assert.ok(bad.includes("rewrite:/experience/id=acme/bullets/id=zz/text"));
-  // the editor's "Remove broken references" clears all of it
+  // the editor's "Remove missing items" clears all of it
   const pruned = pruneDangling(master, v);
   assert.deepEqual(danglingIds(master, pruned), []);
 });

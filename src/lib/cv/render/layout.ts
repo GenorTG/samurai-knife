@@ -69,10 +69,10 @@ export const CV_PAGE_MODES = ["cv", "cv+pages", "pages"] as const;
 export type CvPageMode = (typeof CV_PAGE_MODES)[number];
 
 export const CV_LAYOUT_INFO: Record<CvLayout, CvLayoutInfo> = {
-  ats: { label: "ATS", description: msg("Plain single column in black, no photo: safest for applicant tracking systems."), photo: false, atsSafe: true, structure: "single", accent: false, defaultAccent: "black", defaultFonts: "inter" },
-  compact: { label: msg("Compact"), description: msg("Tight single column that fits more on one page; ATS-friendly, no photo."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "slate", defaultFonts: "inter" },
-  minimal: { label: msg("Minimal"), description: msg("Quiet monochrome with generous white space and thin rules; ATS-friendly."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "black", defaultFonts: "inter" },
-  classic: { label: msg("Classic"), description: msg("Traditional serif CV with a centred header; ATS-friendly, no photo."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "black", defaultFonts: "serif" },
+  ats: { label: msg("Simple (ATS)"), description: msg("Plain single column in black, no photo: the easiest for recruitment software to read."), photo: false, atsSafe: true, structure: "single", accent: false, defaultAccent: "black", defaultFonts: "inter" },
+  compact: { label: msg("Compact"), description: msg("Tight single column that fits more on one page; easy for recruitment software, no photo."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "slate", defaultFonts: "inter" },
+  minimal: { label: msg("Minimal"), description: msg("Quiet monochrome with plenty of white space and thin lines; easy for recruitment software."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "black", defaultFonts: "inter" },
+  classic: { label: msg("Classic"), description: msg("Traditional CV with a centred header; easy for recruitment software, no photo."), photo: false, atsSafe: true, structure: "single", accent: true, defaultAccent: "black", defaultFonts: "serif" },
   modern: { label: "Modern", description: msg("Single column with an accent colour; photo beside the name."), photo: true, atsSafe: false, structure: "single", accent: true, defaultAccent: "navy", defaultFonts: "inter" },
   elegant: { label: "Elegant", description: msg("Centred serif header with the photo above the name."), photo: true, atsSafe: false, structure: "single", accent: true, defaultAccent: "bronze", defaultFonts: "mixed" },
   executive: { label: msg("Executive"), description: msg("Large name, a highlighted profile and understated serif headings for senior roles."), photo: true, atsSafe: false, structure: "single", accent: true, defaultAccent: "slate", defaultFonts: "mixed" },

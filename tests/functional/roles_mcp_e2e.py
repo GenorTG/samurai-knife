@@ -228,7 +228,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_a.wait_for_url(base + "/", timeout=30_000)
     go(page_a, "/tools/cv-studio?tab=showcase")
     expect(page_a.get_by_text(re.compile(r"An administrator has to run the project showcase"))).to_be_visible(timeout=60_000)
-    check("CV builder showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Rank my repositories").count() == 0)
+    check("CV builder showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Score my projects").count() == 0)
     deadline = time.monotonic() + 20
     alice_state = ""
     while time.monotonic() < deadline:

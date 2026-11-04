@@ -3,7 +3,7 @@
 
 Private mode (one scratch server):
 - an account's existing single CV is the first project as it is (the file stays cv/<account>.json, no index written);
-- the project bar shows it; "Manage CV projects" creates a second one; the empty project shows "Start here" and
+- the project bar shows it; "Manage my CVs" creates a second one; the empty project shows "Start here" and
   "Build one from scratch" writes a first profile; the API with ?project= proves the two CVs are separate;
 - switching in the bar (and from an agent over MCP, knife_cv_project_switch) changes what every tab shows;
 - "How this works" opens on each tab; the retired /tools/site-studio lands on the Website tab;
@@ -142,18 +142,18 @@ def private_mode(server: ScratchServer, site_url: str) -> None:
         watch(page)
         go(page, "/tools/cv-studio?tab=profile")
         bar = page.locator("[data-cv-project-bar]")
-        expect(bar.get_by_label("CV project")).to_have_value("main", timeout=20_000)
-        check("the project bar names the first project after the CV", "Ada Lovelace" in (bar.get_by_label("CV project").inner_text()))
+        expect(bar.locator("[data-cv-only-project]")).to_contain_text("Ada Lovelace", timeout=20_000)
+        check("with one CV the bar is quiet: its name and one small button, no chooser", bar.get_by_label("Which CV").count() == 0)
         shot(page, "profile-desktop")
 
         # Create a second project in the drawer: it becomes active and empty -> Start here.
-        page.get_by_role("button", name="Manage CV projects").click()
-        drawer = page.get_by_role("dialog", name="CV projects")
-        drawer.get_by_label("New CV project").fill("Charles Babbage")
+        page.get_by_role("button", name="Manage my CVs").click()
+        drawer = page.get_by_role("dialog", name="My CVs")
+        drawer.get_by_label("New CV").fill("Charles Babbage")
         drawer.get_by_role("button", name="Create empty").click()
         expect(drawer.locator("[data-cv-project]")).to_have_count(2, timeout=20_000)
         shot(page, "projects-drawer")
-        drawer.get_by_role("button", name="Close CV projects").click()
+        drawer.get_by_role("button", name="Close My CVs").click()
         expect(page.locator("[data-cv-start-here]")).to_be_visible(timeout=20_000)
         check("a new project starts empty with Start here", True)
         shot(page, "start-here-desktop")
@@ -182,7 +182,7 @@ def private_mode(server: ScratchServer, site_url: str) -> None:
         check("knife_cv_get with projectId reads the other project without switching", ok and "Ada Lovelace" in text, text)
 
         # Switch in the bar: the open tab shows the other CV.
-        page.locator("[data-cv-project-bar]").get_by_label("CV project").select_option("main")
+        page.locator("[data-cv-project-bar]").get_by_label("Which CV").select_option("main")
         expect(page.locator("main")).to_contain_text("Note G", timeout=20_000)
         check("switching in the bar shows the other CV", "Difference Engine Ltd" not in page.locator("main").inner_text())
         # An agent switches: the open page follows by itself.

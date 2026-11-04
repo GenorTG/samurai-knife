@@ -207,27 +207,27 @@ with sync_playwright() as pw:
         go("profile")
         has("Start here")
         page.locator("[data-cv-start=upload]").click()
-        expect(page.get_by_label("Profile JSON")).to_be_visible()
+        expect(page.get_by_label("Details JSON")).to_be_visible()
         go("variants")
-        has("No profile yet")
+        has("Your details are empty")
 
     @check("import shows JSON syntax errors and the API's validation reason")
     def _():
         go("profile")
         page.locator("[data-cv-start=upload]").click()
-        box = page.get_by_label("Profile JSON")
+        box = page.get_by_label("Details JSON")
         box.fill("{ not json")
-        btn("Import profile").click()
+        btn("Import details").click()
         expect(page.get_by_role("alert").filter(has_text="not valid JSON")).to_be_visible()
         box.fill(json.dumps({"contact": {"name": 5}}))
-        btn("Import profile").click()
+        btn("Import details").click()
         expect(page.get_by_role("alert").filter(has_text=re.compile("contact/name"))).to_be_visible()
         eq(cv()["revision"], start["revision"], "nothing was saved")
 
     @check("import accepts a valid profile and renders it")
     def _():
-        page.get_by_label("Profile JSON").fill(json.dumps(PROFILE))
-        btn("Import profile").click()
+        page.get_by_label("Details JSON").fill(json.dumps(PROFILE))
+        btn("Import details").click()
         has("Jan Testowy")
         eq(cv()["profile"]["contact"]["name"], "Jan Testowy")
         expect(page.get_by_role("button", name="Edit Name", exact=True)).to_be_visible()
@@ -235,10 +235,10 @@ with sync_playwright() as pw:
 
     @check("replacing an existing profile needs an explicit second click and a bad paste stays harmless")
     def _():
-        btn("Replace profile…").click()
-        box = page.get_by_label("Profile JSON")
+        btn("Replace all details…").click()
+        box = page.get_by_label("Details JSON")
         box.fill(json.dumps({**PROFILE, "contact": {**PROFILE["contact"], "name": "Zmieniony"}}))
-        btn("Replace profile").click()
+        btn("Replace details").click()
         has("A profile already exists")
         eq(cv()["profile"]["contact"]["name"], "Jan Testowy", "unchanged before confirm")
         btn("Confirm replace").click()
@@ -265,9 +265,9 @@ with sync_playwright() as pw:
         has(f"{want_en} untranslated in EN")
         btn("Show untranslated").click()
         has("Wdrożyłem CI")  # the PL reference of the empty EN bullet is shown
-        expect(page.get_by_role("button", name="Edit Acme Sp. z o.o. bullet acme-ci text (EN)", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Edit Acme Sp. z o.o. point acme-ci text (EN)", exact=True)).to_be_visible()
         expect(page.get_by_role("button", name="Edit Name", exact=True)).to_have_count(0)
-        expect(page.get_by_role("button", name="Edit Acme Sp. z o.o. bullet acme-api text (EN)", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Edit Acme Sp. z o.o. point acme-api text (EN)", exact=True)).to_have_count(0)
         btn("Show everything").click()
         expect(page.get_by_role("button", name="Edit Name", exact=True)).to_be_visible()
 
@@ -344,8 +344,8 @@ with sync_playwright() as pw:
 
     @check("add a bullet opens it for typing; remove drops it; both reported and undoable")
     def _():
-        btn("Add bullet to Beta Labs").click()
-        area = page.get_by_label(re.compile(r"^Beta Labs bullet bullet text \(EN\)$"))
+        btn("Add point to Beta Labs").click()
+        area = page.get_by_label(re.compile(r"^Beta Labs point bullet text \(EN\)$"))
         expect(area).to_be_focused()
         area.fill("Mentored two junior developers.")
         page.get_by_role("heading", name="Summary").click()
@@ -353,7 +353,7 @@ with sync_playwright() as pw:
         beta = next(e for e in c["profile"]["experience"] if e["id"] == "beta")
         eq([b["text"]["en"] for b in beta["bullets"]][-1], "Mentored two junior developers.")
         new_id = beta["bullets"][-1]["id"]
-        btn(f"Remove Beta Labs bullet {new_id}").click()
+        btn(f"Remove Beta Labs point {new_id}").click()
         expect(toast()).to_contain_text("Removed")
         beta = next(e for e in cv()["profile"]["experience"] if e["id"] == "beta")
         eq(len(beta["bullets"]), 1)
@@ -377,9 +377,9 @@ with sync_playwright() as pw:
 
     @check("verified toggle flips the provenance flag")
     def _():
-        btn("Mark Acme Sp. z o.o. bullet acme-ci as verified").click()
+        btn("Mark Acme Sp. z o.o. point acme-ci as confirmed").click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.experience[0].bullets[1].verified === true")
-        btn("Unmark Acme Sp. z o.o. bullet acme-ci as verified").click()
+        btn("Unmark Acme Sp. z o.o. point acme-ci as confirmed").click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.experience[0].bullets[1].verified === false")
 
     # ---------------------------------------------------------------- assistant-style changes show live
@@ -419,7 +419,7 @@ with sync_playwright() as pw:
         expect(panel).to_be_visible()
         page.wait_for_function("!document.querySelector('[data-agent-region=cv-audit]').innerText.includes('Checking the profile')", timeout=15000)
         text = panel.inner_text()
-        assert "Audit failed" not in text, text
+        assert "The check failed" not in text, text
         assert "not available yet" in text or re.search(r"(error|warn|info): \d+|No findings", text), text
 
     @check("audit degrades gracefully when its route is missing (mocked 404)")
@@ -438,7 +438,7 @@ with sync_playwright() as pw:
         page.get_by_role("radio", name="Polish", exact=True).click()
         panel = page.locator('[data-agent-region="cv-audit"]')
         expect(panel).to_contain_text("Starts with a weak verb")
-        expect(page.get_by_label(re.compile("^Findings for Beta Labs bullet beta-ui text"))).to_contain_text("weak-verb")
+        expect(page.get_by_label(re.compile("^Findings for Beta Labs point beta-ui text"))).to_contain_text("weak-verb")
         page.evaluate("window.scrollTo(0, 0)")
         page.get_by_role("button", name=re.compile("^Go to ")).first.click()
         page.wait_for_function("document.querySelector('[data-cv-flash]') !== null", timeout=4000)
@@ -453,7 +453,7 @@ with sync_playwright() as pw:
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.projects[0].pinned === true", timeout=8000)
         expect(btn("Unpin project Toolbox")).to_have_attribute("aria-pressed", "true")
         btn("Edit Notes for tailoring").click()
-        page.get_by_label("Notes for tailoring", exact=True).fill("Lead with Toolbox.")
+        page.get_by_label("Notes for the AI assistant", exact=True).fill("Lead with Toolbox.")
         btn("Save Notes for tailoring").click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.guidance === 'Lead with Toolbox.'", timeout=8000)
         page.get_by_label("New section title").fill("Certyfikaty")
@@ -485,7 +485,7 @@ with sync_playwright() as pw:
     def _():
         go("jobs")
         has("No offers saved yet")
-        page.get_by_label("Job link or posting text").fill(POSTING)
+        page.get_by_label("Job link or text of the ad").fill(POSTING)
         page.get_by_label("Company", exact=True).first.fill("Gamma Systems")
         page.get_by_label("Job title", exact=True).first.fill("Backend Developer")
         btn("Save offer").click()
@@ -503,7 +503,7 @@ with sync_playwright() as pw:
         if "not available yet" in text:
             return
         assert "coverage" in text.lower() and "%" in text, text
-        has("Gaps")
+        has("Missing")
         expect(panel.locator("section[aria-label=Gaps]")).to_contain_text("Kubernetes")
         link = panel.get_by_role("link", name=re.compile(r"^Open .* in the profile$")).first
         expect(link).to_be_visible()
@@ -549,17 +549,17 @@ with sync_playwright() as pw:
     @check("Quick version (no rewording): suggest -> review -> save (or a readable fallback)")
     def _():
         go("jobs")
-        btn("Quick version (no rewording)").click()
+        btn("Make a CV for this job (no AI, no rewording)").click()
         page.wait_for_function("!document.querySelector('main').innerText.includes('Suggesting…')", timeout=20000)
         body = page.locator("main").inner_text()
         if "not available yet" in body:
             return
-        expect(page.get_by_text(re.compile(r"^Review the suggested version"))).to_be_visible()
-        name = page.get_by_label("Version name")
+        expect(page.get_by_text(re.compile(r"^Check the suggested CV"))).to_be_visible()
+        name = page.get_by_label("Name of this CV")
         expect(name).to_be_visible()
         name.fill("Gamma backend version")
-        btn("Save version").click()
-        has("Saved the version")
+        btn("Save this CV").click()
+        has("Saved the CV")
         vs = [v for v in cv()["variants"] if v["name"] == "Gamma backend version"]
         eq(len(vs), 1)
         eq(vs[0]["jobId"], next(j["id"] for j in cv()["jobs"] if j["company"] == "Gamma Systems"))
@@ -567,19 +567,19 @@ with sync_playwright() as pw:
     @check("Track application creates a linked application with the offer's link; the button then shows the status")
     def _():
         go("jobs")
-        btn("Track application").click()
+        btn("Add to my applications").click()
         has("Application tracked as wishlist")
         job = next(j for j in cv()["jobs"] if j["company"] == "Gamma Systems")
         apps = [a for a in cv()["applications"] if a["jobId"] == job["id"]]
         eq(len(apps), 1)
         eq(apps[0]["status"], "wishlist")
         eq(apps[0]["url"], "https://example.com/jobs/backend-1")
-        expect(page.get_by_role("button", name="Tracked (wishlist)")).to_be_disabled()
+        expect(page.get_by_role("button", name="On my list: Want to apply")).to_be_disabled()
 
     @check("a link pasted alone is saved as the offer link (fetch route or fallback)")
     def _():
         go("jobs")
-        page.get_by_label("Job link or posting text").fill("https://example.invalid/jobs/ghost-1")
+        page.get_by_label("Job link or text of the ad").fill("https://example.invalid/jobs/ghost-1")
         page.get_by_label("Company", exact=True).first.fill("Ghost Corp")
         btn("Save offer").click()
         page.wait_for_function("document.body.innerText.includes('Ghost Corp') || document.querySelector('[role=alert]')", timeout=20000)
@@ -596,7 +596,7 @@ with sync_playwright() as pw:
     @check("offer form stores the user's notes and company website; an unreadable website is a note, not an error")
     def _():
         go("jobs")
-        page.get_by_label("Job link or posting text").fill("Data Engineer — Delta Analytics, Kraków\nWymagania:\n- Python\n- Airflow\nMile widziane:\n- dbt\nOferujemy:\n- karta sportowa\n" + "Pracujemy nad platformą danych dla handlu. " * 12)
+        page.get_by_label("Job link or text of the ad").fill("Data Engineer — Delta Analytics, Kraków\nWymagania:\n- Python\n- Airflow\nMile widziane:\n- dbt\nOferujemy:\n- karta sportowa\n" + "Pracujemy nad platformą danych dla handlu. " * 12)
         page.get_by_label("Company website", exact=True).fill("https://delta.invalid")
         page.get_by_label("Offer notes").fill("Rekruterka: liczy się Airflow w produkcji.")
         btn("Save offer").click()
@@ -639,17 +639,17 @@ with sync_playwright() as pw:
 
         page.route("**/api/cv/jobs/fetch*", fake)
         go("jobs")
-        page.get_by_label("Job link or posting text").fill("https://x.example/a\nhttps://x.example/broken\n https://x.example/c https://x.example/a")
+        page.get_by_label("Job link or text of the ad").fill("https://x.example/a\nhttps://x.example/broken\n https://x.example/c https://x.example/a")
         expect(page.get_by_text("3 links: each is saved as its own offer")).to_be_visible()
         btn("Save 3 offers").click()
         alert = page.locator("main form[aria-label='Add job offer']").get_by_role("alert")
         expect(alert).to_contain_text("2 of 3 saved", timeout=15000)
         expect(alert).to_contain_text("answered HTTP 404. Paste the posting text instead.")
-        expect(page.get_by_label("Job link or posting text")).to_have_value("https://x.example/broken")
+        expect(page.get_by_label("Job link or text of the ad")).to_have_value("https://x.example/broken")
         eq([c["urlOrText"] for c in calls], ["https://x.example/a", "https://x.example/broken", "https://x.example/c"])
         assert all(set(c) == {"urlOrText"} for c in calls), calls
         page.unroute("**/api/cv/jobs/fetch*")
-        page.get_by_label("Job link or posting text").fill("")
+        page.get_by_label("Job link or text of the ad").fill("")
 
     @check("Tailor with the assistant opens the assistant with the offer and the language")
     def _():
@@ -657,7 +657,7 @@ with sync_playwright() as pw:
         go("jobs", extra=f"&job={job['id']}")
         # this suite runs without a model provider: the widget holds the prompt until one is set, so read it off the event
         page.evaluate("() => { window.__skPrompt = null; window.addEventListener('sk:agent-open', (e) => { window.__skPrompt = e.detail?.prompt ?? null; }, { once: true }); }")
-        btn("Tailor with the assistant").click()
+        btn("Fit my CV to this job with the AI assistant").click()
         prompt = page.wait_for_function("() => window.__skPrompt", timeout=8000).json_value()
         assert f"jobId: {job['id']}" in prompt and "Polish (pl)" in prompt and "do not add anything my profile does not show" in prompt, prompt
         expect(page.locator("[data-agent-widget]")).to_be_visible()
@@ -676,8 +676,8 @@ with sync_playwright() as pw:
         dlg.get_by_label("Role").fill("Platform Engineer")
         dlg.get_by_label("Status").select_option("applied")
         dlg.get_by_label("Saved link").fill("https://example.org/careers/42")
-        dlg.get_by_label("Next action").fill("Send a follow-up e-mail")
-        dlg.get_by_label("Due date").fill(YESTERDAY)
+        dlg.get_by_label("Next step").fill("Send a follow-up e-mail")
+        dlg.get_by_label("By when").fill(YESTERDAY)
         dlg.get_by_label("Notes").fill("Referred by a former colleague.")
         dlg.get_by_role("button", name="Save application").click()
         expect(dlg).to_have_count(0)
@@ -700,12 +700,12 @@ with sync_playwright() as pw:
 
     @check("quick status buttons move the card between columns and extend the dated history")
     def _():
-        page.get_by_role("button", name="Move Delta Corp Platform Engineer to Screening", exact=True).click()
+        page.get_by_role("button", name="Move Delta Corp Platform Engineer to First contact", exact=True).click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).applications.some(a => a.company === 'Delta Corp' && a.status === 'screening')")
         a = next(x for x in cv()["applications"] if x["company"] == "Delta Corp")
         eq([h["status"] for h in a["history"]], ["applied", "screening"])
         eq(a["history"][1]["on"], TODAY)
-        col = page.get_by_role("region", name="Screening applications")
+        col = page.get_by_role("region", name="First contact applications")
         expect(col).to_contain_text("Delta Corp")
         expect(page.get_by_role("region", name="Applied applications")).not_to_contain_text("Delta Corp")
         expect(toast()).to_contain_text("Updated Application Delta Corp - Platform Engineer", timeout=8000)
@@ -716,7 +716,7 @@ with sync_playwright() as pw:
         dlg = page.get_by_role("dialog", name="Edit application")
         hist = dlg.get_by_label("Status history", exact=True)
         expect(hist).to_contain_text(TODAY)
-        expect(hist).to_contain_text("Screening")
+        expect(hist).to_contain_text("First contact")
         expect(hist).to_contain_text("Applied")
         page.keyboard.press("Escape")
         expect(dlg).to_have_count(0)
@@ -751,15 +751,15 @@ with sync_playwright() as pw:
     @check("a version made for an offer shows the ATS check; rewording a bullet warns about invented facts; Restore undoes it")
     def _():
         go("variants")
-        page.get_by_role("button", name="Open version Gamma backend version", exact=True).click()
+        page.get_by_role("button", name="Open CV Gamma backend version", exact=True).click()
         ats = page.locator("[data-agent-region='cv-ats']")
-        expect(ats).to_contain_text("Required keywords", timeout=15000)
+        expect(ats).to_contain_text("Words the offer requires", timeout=15000)
         expect(ats).to_contain_text("Kubernetes")
         v = next(x for x in cv()["variants"] if x["name"] == "Gamma backend version")
         path = "/experience/id=acme/bullets/id=acme-api/text"
-        page.get_by_role("button", name=f"Reword for this version: Acme Sp. z o.o. {path}").click()
-        page.get_by_label("Wording for this version: Acme Sp. z o.o.").fill("Samodzielnie zaprojektowałem od zera API obsługujące 9 mln zapytań dziennie.")
-        btn("Save for this version").click()
+        page.get_by_role("button", name=f"Reword in this CV: Acme Sp. z o.o. {path}").click()
+        page.get_by_label("Wording in this CV: Acme Sp. z o.o.").fill("Samodzielnie zaprojektowałem od zera API obsługujące 9 mln zapytań dziennie.")
+        btn("Save for this CV").click()
         wording = page.locator("[data-agent-region='cv-wording']")
         expect(wording.get_by_role("status")).to_contain_text("adds number 9", timeout=8000)
         expect(wording.get_by_role("status")).to_contain_text("drops number 2")
@@ -767,16 +767,16 @@ with sync_playwright() as pw:
         stored = next(x for x in cv()["variants"] if x["id"] == v["id"])
         eq([r["path"] for r in stored["rewrites"]], [path])
         expect(page.locator("[data-cv-document]")).to_contain_text("9 mln zapytań")
-        page.get_by_role("button", name=f"Restore profile wording: {path}").click()
+        page.get_by_role("button", name=f"Restore the original wording: {path}").click()
         page.wait_for_function("async (id) => (await (await fetch('/api/cv')).json()).variants.find((x) => x.id === id).rewrites.length === 0", arg=v["id"], timeout=8000)
         expect(page.locator("[data-cv-document]")).to_contain_text("2 mln zapytań")
 
     @check("own sections print in the live preview and can be left out of a version")
     def _():
         go("variants")
-        page.get_by_role("button", name="Open version Gamma backend version", exact=True).click()
+        page.get_by_role("button", name="Open CV Gamma backend version", exact=True).click()
         doc = page.locator("[data-cv-document]")
-        page.get_by_role("radiogroup", name="Version language").get_by_role("radio", name="Polish").click()
+        page.get_by_role("radiogroup", name="Language of this CV").get_by_role("radio", name="Polish").click()
         expect(doc).to_contain_text("CERTYFIKATY", ignore_case=True)
         expect(doc).to_contain_text("AWS Cloud Practitioner")
         page.get_by_label("Include Certyfikaty").uncheck()
@@ -786,14 +786,14 @@ with sync_playwright() as pw:
     @check("create a version, toggle a bullet and a project: the live preview follows before saving")
     def _():
         go("variants")
-        page.get_by_label("New version name").fill("Backend CV")
-        btn("Create version").click()
-        has("Version name")
-        sel_lang = page.get_by_role("radiogroup", name="Version language")
+        page.get_by_label("Name of the new CV").fill("Backend CV")
+        btn("Create this CV").click()
+        has("Name of this CV")
+        sel_lang = page.get_by_role("radiogroup", name="Language of this CV")
         sel_lang.get_by_role("radio", name="English").click()
         doc = page.locator("[data-cv-document]")
         expect(doc).to_contain_text("Designed an API serving 2M requests per day.")
-        page.get_by_label("Include bullet acme-api of Acme Sp. z o.o.").uncheck()
+        page.get_by_label("Include point acme-api of Acme Sp. z o.o.").uncheck()
         expect(doc).not_to_contain_text("Designed an API serving")
         expect(page.get_by_text("Unsaved changes")).to_be_visible()
         # nothing was written yet
@@ -802,8 +802,8 @@ with sync_playwright() as pw:
 
     @check("Save version stores an explicit overlay and resolveVariant semantics hold (bullet gone from preview and API)")
     def _():
-        btn("Save version").click()
-        has("Version saved.")
+        btn("Save this CV").click()
+        has("CV saved.")
         v = next(x for x in cv()["variants"] if x["name"] == "Backend CV")
         acme = next(e for e in v["experience"] if e["id"] == "acme")
         assert "acme-api" not in (acme["bulletIds"] or []), v
@@ -815,8 +815,8 @@ with sync_playwright() as pw:
         doc = page.locator("[data-cv-document]")
         text = doc.inner_text()
         assert text.index("Beta Labs") < text.index("Acme"), text
-        btn("Save version").click()
-        has("Version saved.")
+        btn("Save this CV").click()
+        has("CV saved.")
         v = next(x for x in cv()["variants"] if x["name"] == "Backend CV")
         eq([e["id"] for e in v["experience"]], ["beta", "acme"])
 
@@ -824,7 +824,7 @@ with sync_playwright() as pw:
     def _():
         page.get_by_role("radiogroup", name="Document layout").get_by_role("radio", name="Modern layout").click()
         eq(page.locator("[data-cv-document]").get_attribute("data-theme"), "modern")
-        page.get_by_role("radiogroup", name="Version language").get_by_role("radio", name="Polish").click()
+        page.get_by_role("radiogroup", name="Language of this CV").get_by_role("radio", name="Polish").click()
         eq(page.locator("[data-cv-document]").get_attribute("data-lang"), "pl")
         expect(page.locator("[data-cv-document]")).to_contain_text("Starszy programista")
         btn("Discard changes").click()
@@ -833,12 +833,12 @@ with sync_playwright() as pw:
     @check("segmented controls are keyboard operable (arrow keys move the selection)")
     def _():
         group = page.get_by_role("radiogroup", name="Document layout")
-        group.get_by_role("radio", name="ATS layout").focus()
+        group.get_by_role("radio", name="Simple (ATS) layout").focus()
         page.keyboard.press("ArrowRight")
         expect(group.get_by_role("radio", name="Compact layout")).to_have_attribute("aria-checked", "true")
         expect(group.get_by_role("radio", name="Compact layout")).to_be_focused()
         page.keyboard.press("ArrowLeft")
-        expect(group.get_by_role("radio", name="ATS layout")).to_have_attribute("aria-checked", "true")
+        expect(group.get_by_role("radio", name="Simple (ATS) layout")).to_have_attribute("aria-checked", "true")
 
     @check("print media shows only the CV document")
     def _():
@@ -855,7 +855,7 @@ with sync_playwright() as pw:
 
     @check("exports: Word, PDF, HTML and text each deliver their file (or a readable error when unavailable)")
     def _():
-        for label, ext in (("Download Word (DOCX)", ".docx"), ("Download PDF", ".pdf"), ("Download HTML", ".html"), ("Download Text (ATS)", ".txt")):
+        for label, ext in (("Download Word (DOCX)", ".docx"), ("Download PDF", ".pdf"), ("Download HTML", ".html"), ("Download Plain text", ".txt")):
             try:
                 with page.expect_download(timeout=30000) as dl:
                     btn(label).click()
@@ -872,11 +872,11 @@ with sync_playwright() as pw:
         # Saved overlay of 'Backend CV' lists beta/beta-ui explicitly -> now dangling
         page.wait_for_function("document.body.innerText.includes('broken reference')", timeout=8000)
         expect(page.get_by_role("alert").filter(has_text="no longer has")).to_be_visible()
-        expect(btn("Save version")).to_be_disabled()
-        btn("Remove broken references").click()
+        expect(btn("Save this CV")).to_be_disabled()
+        btn("Remove missing items").click()
         expect(page.get_by_role("alert").filter(has_text="no longer has")).to_have_count(0)
-        btn("Save version").click()
-        has("Version saved.")
+        btn("Save this CV").click()
+        has("CV saved.")
         beta_bullet = {"id": "beta-ui", "text": PROFILE["experience"][1]["bullets"][0]["text"]}
         api("POST", "/api/cv/patch", {"ops": [{"op": "add", "path": "/experience/id=beta/bullets/-", "value": beta_bullet}]})
         assert v
@@ -884,12 +884,12 @@ with sync_playwright() as pw:
     @check("rename + delete a version")
     def _():
         go("variants")
-        page.get_by_role("button", name="Open version Backend CV", exact=True).click()
-        page.get_by_label("Version name", exact=True).fill("Renamed CV")
-        btn("Save version").click()
-        has("Version saved.")
+        page.get_by_role("button", name="Open CV Backend CV", exact=True).click()
+        page.get_by_label("Name of this CV", exact=True).fill("Renamed CV")
+        btn("Save this CV").click()
+        has("CV saved.")
         assert any(x["name"] == "Renamed CV" for x in cv()["variants"])
-        btn("Delete version Renamed CV").click()
+        btn("Delete CV Renamed CV").click()
         page.wait_for_function("async () => !(await (await fetch('/api/cv')).json()).variants.some(v => v.name === 'Renamed CV')")
 
     # ---------------------------------------------------------------- showcase
@@ -905,13 +905,13 @@ with sync_playwright() as pw:
         page.route("**/api/cv/showcase/rank**", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(rank)))
         page.route("**/api/cv/showcase/repo**", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(repo)))
         go("showcase")
-        page.get_by_label("GitHub owner").fill("jan-test")
-        btn("Rank my repositories").click()
-        expect(page.get_by_role("list", name="Ranked repositories")).to_contain_text("jan-test/toolbox")
+        page.get_by_label("GitHub username").fill("jan-test")
+        btn("Score my projects").click()
+        expect(page.get_by_role("list", name="Scored projects")).to_contain_text("jan-test/toolbox")
         has("Add a screenshot")
         page.get_by_role("button", name="Load details of jan-test/toolbox").click()
-        expect(page.get_by_label("Showcase checklist")).to_contain_text("screenshot")
-        expect(page.get_by_label("Repository facts")).to_contain_text("TypeScript 90%")
+        expect(page.get_by_label("Project checklist")).to_contain_text("screenshot")
+        expect(page.get_by_label("Project facts")).to_contain_text("TypeScript 90%")
         page.get_by_role("button", name="Copy facts for the assistant: jan-test/toolbox").click()
         page.wait_for_function("document.body.innerText.includes('Copied')")
         text = page.evaluate("navigator.clipboard.readText()")
@@ -923,7 +923,7 @@ with sync_playwright() as pw:
     def _():
         page.route("**/api/cv/showcase/rank**", lambda r: r.fulfill(status=502, content_type="application/json", body='{"error":"gh is not authenticated"}'))
         go("showcase")
-        btn("Rank my repositories").click()
+        btn("Score my projects").click()
         expect(page.get_by_role("alert").filter(has_text="gh is not authenticated")).to_be_visible()
         page.unroute("**/api/cv/showcase/rank**")
 

@@ -86,7 +86,7 @@ with sync_playwright() as pw:
     check(not err and shown.get("shown") is True and shown["path"] == "/tools/cv-studio?tab=variants&variant=first", "knife_ui_show reaches the tab", shown)
     try:
         page.wait_for_url("**/tools/cv-studio?tab=variants&variant=first", timeout=8000)
-        expect(page.get_by_role("button", name="Open version First version", exact=True)).to_have_attribute("aria-pressed", "true", timeout=15000)
+        expect(page.get_by_role("button", name="Open CV First version", exact=True)).to_have_attribute("aria-pressed", "true", timeout=15000)
         check(True, "the tab moved to CV versions with the deep-linked (older) version selected")
     except Exception as exc:  # noqa: BLE001
         check(False, "the tab moved to CV versions with the deep-linked (older) version selected", exc)

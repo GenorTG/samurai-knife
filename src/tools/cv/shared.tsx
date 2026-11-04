@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge, Button, EmptyState, Notice, SegmentedControl } from "@/components/ui";
 import { describeChanges } from "@/lib/cv/diff";
-import type { CvData, CvLang } from "@/lib/cv/schema";
+import type { ApplicationStatus, CvData, CvLang } from "@/lib/cv/schema";
 import { useCvLang } from "./prefs";
 import type { CvLive } from "./useCvData";
 import { useT } from "@/lib/i18n/react";
@@ -120,9 +120,9 @@ export function CvFrame({ live, children }: { live: CvLive; children: (data: CvD
   return (
     <div className="space-y-4">
       {live.data ? children(live.data) : live.status === "error" ? (
-        <Notice tone="error">{tr("Could not load the CV workspace:")}{" "} {live.error}</Notice>
+        <Notice tone="error">{tr("Could not load your CV:")}{" "} {live.error}</Notice>
       ) : (
-        <p role="status" className="py-10 text-center text-sm text-muted">{tr("Loading CV workspace…")}</p>
+        <p role="status" className="py-10 text-center text-sm text-muted">{tr("Loading your CV…")}</p>
       )}
       {live.data && live.error ? <Notice tone="warn">{tr("Connection problem, showing the last known data:")}{" "} {live.error}</Notice> : null}
       <LiveLayer live={live} />
@@ -147,15 +147,21 @@ export function useLang(tab: string): CvLang {
   return useCvLang(tab)[0];
 }
 
+/** The name of an application status, as a catalogue key (translate with t). */
+export const STATUS_LABEL: Record<ApplicationStatus, string> = {
+  wishlist: msg("Want to apply"), applied: msg("Applied"), screening: msg("First contact"), interview: msg("Interview"), offer: msg("Got an offer"),
+  rejected: msg("Rejected"), withdrawn: msg("I withdrew"), ghosted: msg("No reply"),
+};
+
 /** Shown on every tab when no profile exists yet. */
 export function NoProfileNotice() {
   const { t: tr } = useT();
   return (
     <EmptyState
-      title={tr("No profile yet")}
-      action={<Link href="/tools/cv-studio?tab=profile" className="sk-btn-primary inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg">{tr("Open the Profile tab")}</Link>}
+      title={tr("Your details are empty")}
+      action={<Link href="/tools/cv-studio?tab=profile" className="sk-btn-primary inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg">{tr("Open Your details")}</Link>}
     >
-      {tr("Import your master CV first (paste a JSON profile or ask the assistant to structure your CV). Versions, offers and matching all build on it.")}
+      {tr("Fill in your details first: answer a few simple questions or bring in the CV you already have. Everything on this tab is made from them.")}
     </EmptyState>
   );
 }
