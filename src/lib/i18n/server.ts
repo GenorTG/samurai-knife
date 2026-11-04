@@ -6,8 +6,8 @@ import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE, localeFromAcceptLanguage, tran
 
 /**
  * SERVER ONLY. The interface language of this request, in order: the `knife_lang` cookie (what the switcher set on this
- * device), the signed-in account's choice (a new device; private mode: the default account's), the browser's
- * Accept-Language, English.
+ * device), the signed-in account's choice (a new device; private mode: the default account's), then Polish-first: English
+ * only when Accept-Language lists no Polish at all and prefers English, otherwise Polish (docs/I18N.md).
  */
 export async function getLocale(): Promise<Locale> {
   const fromCookie = (await cookies()).get(LOCALE_COOKIE)?.value;
@@ -30,7 +30,7 @@ export async function getT(): Promise<Translator> {
   return translator(await getLocale());
 }
 
-/** For route handlers (no request-scoped cookies() needed): the cookie, else Accept-Language. */
+/** For route handlers (no request-scoped cookies() needed): the cookie, else Accept-Language (Polish-first), else Polish. */
 export function requestLocale(request: Request): Locale {
   const cookie = request.headers.get("cookie") ?? "";
   const match = cookie.match(new RegExp(`(?:^|;\\s*)${LOCALE_COOKIE}=([a-z]{2})`));

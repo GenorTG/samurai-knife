@@ -4230,6 +4230,7 @@
   "Smart Knife": "Smart Knife",
   "Smart Knife · self-hosted": "Smart Knife · na własnym serwerze",
   "Smart Knife · self-hosted · no ads, no tracking": "Smart Knife · na własnym serwerze · bez reklam i śledzenia",
+  "Smart Knife now speaks Polish first: pages, emails, the Terms and the privacy notice open in Polish unless you chose English or your browser asks only for English. The language switch in the top bar changes it at any time.": "Smart Knife mówi teraz najpierw po polsku: strony, e-maile, Regulamin i informacja o prywatności otwierają się po polsku, chyba że wybierzesz angielski albo Twoja przeglądarka prosi tylko o angielski. Przełącznik języka na górnym pasku zmienia to w każdej chwili.",
   "Smart Knife was updated (v{from} → v{to}). Reload to get the new version and the assistant's new tools.": "Smart Knife został zaktualizowany (v{from} → v{to}). Odśwież stronę, żeby dostać nową wersję i nowe narzędzia asystenta.",
   "Smart Knife’s in-page file bridge and account storage integration are maintained as part of Smart Knife; they do not change the upstream apps’ ownership or licences.": "Mostek plików w stronie i integracja z miejscem na dane konta są rozwijane jako część Smart Knife; nie zmieniają one własności ani licencji aplikacji źródłowych.",
   "Smart punctuation normalizer": "Normalizacja typografii",

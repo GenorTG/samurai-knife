@@ -12,6 +12,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "0.14.0",
+    date: "2026-11-04",
+    items: [
+      "Polish-first: the interface, page titles, emails, the Terms and the privacy notice default to Polish; English only when the user chose it (the language cookie or the account's language) or the browser lists no Polish and prefers English. Page labels an agent reads through knife_ui_state / page_snapshot are therefore usually Polish; knife_* tool output stays English.",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-10-29",
     items: [

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { isLocale, localeFromAcceptLanguage, translate, translateMessage, translatePlural, translator } from "../src/lib/i18n/core.ts";
+import { DEFAULT_LOCALE, isLocale, localeFromAcceptLanguage, translate, translateMessage, translatePlural, translator } from "../src/lib/i18n/core.ts";
 import { msg, msgf } from "../src/lib/i18n/msg.ts";
 import { localizeCourse } from "../src/lib/learn/localize.ts";
 import { SQL_COURSE } from "../src/lib/learn/sql/lessons.ts";
@@ -44,9 +44,15 @@ test("locale negotiation", () => {
   assert.equal(isLocale("pl"), true);
   assert.equal(isLocale("de"), false);
   assert.equal(localeFromAcceptLanguage("pl-PL,pl;q=0.9,en;q=0.8"), "pl");
-  assert.equal(localeFromAcceptLanguage("de-DE,en;q=0.5"), "en");
+  // Polish-first (docs/I18N.md): English only for a browser that lists no Polish and prefers English.
+  assert.equal(localeFromAcceptLanguage("en-US,en;q=0.9"), "en");
+  assert.equal(localeFromAcceptLanguage("en-GB"), "en");
+  assert.equal(localeFromAcceptLanguage("en-US,en;q=0.9,pl;q=0.1"), "pl", "any Polish wins");
+  assert.equal(localeFromAcceptLanguage("de-DE,en;q=0.5"), null, "a third language first: the default");
+  assert.equal(localeFromAcceptLanguage("*"), null);
   assert.equal(localeFromAcceptLanguage(null), null);
   assert.equal(localeFromAcceptLanguage("de-DE"), null);
+  assert.equal(DEFAULT_LOCALE, "pl", "Polish is the default and the fallback");
 });
 
 test("the Polish SQL course overlays every lesson and keeps its SQL", () => {

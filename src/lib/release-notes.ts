@@ -15,6 +15,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.14.0",
+    date: "2026-11-04",
+    features: [
+      msg("Smart Knife now speaks Polish first: pages, emails, the Terms and the privacy notice open in Polish unless you chose English or your browser asks only for English. The language switch in the top bar changes it at any time."),
+    ],
+    fixes: [],
+  },
+  {
     version: "0.13.0",
     date: "2026-10-30",
     features: [

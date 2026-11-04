@@ -8,7 +8,7 @@ conclusions below change: see "If money is involved".
 
 ## How it works
 
-- `/terms` and `/privacy` (public in both modes): Polish for a Polish browser, else English, `?lang=pl|en`; a download
+- `/terms` and `/privacy` (public in both modes): the interface language (Polish-first: English only for an English-only browser, docs/I18N.md), `?lang=pl|en`; a download
   link (`GET /api/legal?doc=&lang=`) gives the page as Markdown (UŚUDE art. 8: a form you can store and print).
 - Texts: `$KNIFE_LEGAL_DIR/<doc>.<lang>.md` if present, else the defaults in `legal/`. Values: `$KNIFE_LEGAL_DIR/legal.json`
   fills `{{placeholders}}` (`legal/README.md` lists them). `KNIFE_LEGAL_DIR` defaults to `$KNIFE_DATA_DIR/legal`; the

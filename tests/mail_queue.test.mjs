@@ -389,7 +389,7 @@ test("every template names its kind; security notices are security class (never 
     assert.equal(mail.kind, kind, mail.subject);
     assert.equal(kinds.mailClass(mail.kind), cls, kind);
   }
-  assert.match(templates.passwordChangedMail("ann", 2).text, /Your 2 MCP keys were revoked/, "HEAD's signature and text kept");
+  assert.match(templates.passwordChangedMail("ann", 2, "en").text, /Your 2 MCP keys were revoked/, "HEAD's signature and text kept");
   assert.equal(alerts.isAlertWorthy({ kind: "mail_suppressed", detail: { domain: "example.org" } }), true, "suppressions reach the digest");
   assert.equal(alerts.isAlertWorthy({ kind: "mail_budget", detail: { reason: "global" } }), true);
 });

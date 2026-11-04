@@ -80,11 +80,12 @@ test("headings take an explicit {#id} anchor and show no marker", () => {
   assert.match(html, /<h2>Plain<\/h2>/);
 });
 
-test("language: ?lang wins, else a Polish browser gets Polish, everyone else English", () => {
+test("language: ?lang wins, else Polish-first (English only for an English-only browser)", () => {
   assert.equal(legal.pickLang("en", "pl-PL,pl;q=0.9"), "en");
   assert.equal(legal.pickLang(undefined, "pl-PL,pl;q=0.9"), "pl");
-  assert.equal(legal.pickLang(undefined, "de-DE,en;q=0.5"), "en");
-  assert.equal(legal.pickLang("xx", null), "en");
+  assert.equal(legal.pickLang(undefined, "de-DE,en;q=0.5"), "pl", "Polish-first: a third language first gets Polish");
+  assert.equal(legal.pickLang(undefined, "en-GB,en;q=0.9"), "en", "an English-only browser gets English");
+  assert.equal(legal.pickLang("xx", null), "pl");
 });
 
 function readExample() {
