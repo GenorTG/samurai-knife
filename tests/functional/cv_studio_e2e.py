@@ -96,6 +96,12 @@ def check(name):
     return deco
 
 
+def open_json_import():
+    """An empty CV opens on three ways in; the JSON import sits under the file upload, behind a disclosure."""
+    page.locator("[data-cv-start=upload]").click()
+    page.get_by_text("For advanced users: import your details as JSON").click()
+
+
 def eq(actual, expected, what=""):
     assert actual == expected, f"{what} expected {expected!r} got {actual!r}"
 
@@ -205,8 +211,8 @@ with sync_playwright() as pw:
     @check("empty state offers the import panel on every tab that needs a profile")
     def _():
         go("profile")
-        has("Start here")
-        page.locator("[data-cv-start=upload]").click()
+        has("Let's make your CV")
+        open_json_import()
         expect(page.get_by_label("Details JSON")).to_be_visible()
         go("variants")
         has("Your details are empty")
@@ -214,7 +220,7 @@ with sync_playwright() as pw:
     @check("import shows JSON syntax errors and the API's validation reason")
     def _():
         go("profile")
-        page.locator("[data-cv-start=upload]").click()
+        open_json_import()
         box = page.get_by_label("Details JSON")
         box.fill("{ not json")
         btn("Import details").click()
