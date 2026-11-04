@@ -50,6 +50,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
 /** A plain summary of each edition of the default Terms and privacy notice, for people who already accepted one. */
 export const LEGAL_EDITION_NOTES: Readonly<Record<number, string>> = {
   6: msg("The privacy notice describes checking whether a model sees images (one generated test picture; the shared list of answers does not record who checked) and your turn limit setting."),
+  9: msg("The privacy notice says that account details, sign-in sessions, MCP keys and AI provider profiles are kept in a database on a rented server in Germany (the same provider that relays our e-mail), reached only through an encrypted tunnel, with a copy on our own server in Poland. Passwords, tokens and API keys stay hashed or encrypted there."),
   8: msg("The privacy notice describes the browser setting that decides whether tool cards open a tool's description page first, and that Smart Knife is shown in Polish unless you choose English."),
   7: msg("The privacy notice now describes saved assistant tasks, which release notes you have already seen, and that outside AI tools you connect with your MCP key can read your assistant chats."),
 };

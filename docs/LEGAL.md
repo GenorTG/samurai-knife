@@ -141,4 +141,13 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
   forwarded IP; art. 14 data of callers, basis 6(1)(f)); § 4 recipients the workflows contact under the user's own
   relationship; Terms § 7.9–7.10 (no spam, attacks, phishing pages, credentials without right) and § 8.5–8.6 (AI nodes;
   the user discloses AI to people a workflow lets talk to a model, AI Act art. 50(1)).
+- Core tables on Postgres (edition 9, Smart Knife 0.14.0 later builds; docs/DB-POSTGRES.md): § 2 says accounts, sessions,
+  MCP keys and AI provider profiles are kept in a database on a virtual server of `{{mailRelay}}` (the same rented VPS
+  as the mail relay), a processor under art. 28,
+  reached only through the WireGuard tunnel with TLS inside, with passwords / tokens / keys hashed and provider API keys
+  sealed by a key that stays on the Operator's computer; a copy (the delayed replica + pgBackRest) on the Operator's own
+  server in Poland; § 4 widens the relay recipient to the database; § 10 names the tunnel. A provider in the EEA needs no § 5
+  transfer. An instance that keeps these tables in files (no `KNIFE_DB_URL`) should override § 2 / § 4. Publish the
+  edition with (or before) the cut-over release, and check the provider's data processing agreement (art. 28 contract) is
+  accepted in its customer panel.
 
