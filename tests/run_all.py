@@ -102,6 +102,7 @@ SUITES: list[Suite] = [
     Suite("log_files", py(f"{F}/log_files_e2e.py"), "static", timeout=900),
     Suite("legal_versions", py(f"{F}/legal_versions_e2e.py"), "static", timeout=900),
     Suite("i18n", py(f"{F}/i18n_e2e.py"), "static", timeout=900),
+    Suite("welcome_wizard", py(f"{F}/welcome_wizard_e2e.py"), "static", timeout=900),
     Suite("workflows", py(f"{F}/workflows_e2e.py"), "static", timeout=1500),
     Suite("site_studio", py(f"{F}/site_studio_e2e.py"), "static", timeout=900),
     Suite("github_app", py(f"{F}/github_app_e2e.py"), "static", timeout=900),
