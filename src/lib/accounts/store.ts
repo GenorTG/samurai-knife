@@ -18,6 +18,8 @@ import { randomBytes } from "node:crypto";
 import { ensureKey, isSealed, open, readKey, seal, secretContext } from "@/lib/accounts/secret-box";
 import { msg, msgf } from "@/lib/i18n/msg";
 import { resolveTurnLimits, turnLimitsSchema, type TurnLimits } from "@/lib/agent-client/turn-limits";
+import { coreRuntime } from "@/lib/db/core/runtime";
+import type { AccountCodec } from "@/lib/db/core/types";
 
 /**
  * Account store. Lives outside the repo (KNIFE_DATA_DIR or ~/.local/share/samurai-knife) in `accounts.json` (0600, atomic
@@ -37,6 +39,10 @@ import { resolveTurnLimits, turnLimitsSchema, type TurnLimits } from "@/lib/agen
  * Reads are cached by the file's identity (path, inode, mtime, size), the same rule as sessions.json: a request that only
  * reads never parses or decrypts the file again; any write (ours or the CLI's) changes the identity. Callers get copies,
  * so mutating a returned account never touches the cache.
+ *
+ * Postgres (KNIFE_DB_URL set, docs/DB-POSTGRES.md): the same functions read the authoritative in-process cache of the
+ * database rows and `mutateStore` changes it synchronously, committing write-through (src/lib/db/core/cache.ts); the
+ * file code below is then not used (except the verify-mode mirror). Callers do not change.
  *
  * Provider secrets (API key, extra-header values) are sealed on disk (`secret-box.ts`, AES-256-GCM, key file
  * `provider-keys.key`) and opened on read, so everything in this module sees plaintext. A file with plaintext secrets
@@ -286,8 +292,7 @@ const LOCK_WAIT_MS = 5_000;
 const sleeper = new Int32Array(new SharedArrayBuffer(4));
 
 /** Exclusive lock shared with scripts/accounts.mjs (same file name and staleness rule). */
-function withLock<T>(fn: () => T): T {
-  const lock = `${accountsPath()}.lock`;
+function withLock<T>(fn: () => T, lock = `${accountsPath()}.lock`): T {
   const deadline = Date.now() + LOCK_WAIT_MS;
   let fd: number | null = null;
   while (fd === null) {
@@ -362,7 +367,9 @@ function identity(path: string): FileIdentity | null {
 const sameFile = (a: FileIdentity, b: FileIdentity): boolean => a.path === b.path && a.ino === b.ino && a.mtimeMs === b.mtimeMs && a.size === b.size;
 
 /** The cached parse of accounts.json (never handed out directly: callers get copies). */
-function cachedStore(): StoreCache {
+function cachedStore(): Pick<StoreCache, "store" | "byId" | "byEmail"> {
+  const pg = coreRuntime();
+  if (pg) return pg.accountsView();
   const path = accountsPath();
   const before = identity(path);
   if (cache && before && sameFile(cache, before)) return cache;
@@ -385,6 +392,32 @@ function cachedStore(): StoreCache {
   // Only cache what is known to match the file on disk now (a write between our read and this stat is re-read next time).
   cache = after && before && !plaintext && sameFile(before, after) ? fresh : null;
   return fresh;
+}
+
+/**
+ * The account-store rules for the core repositories (src/lib/db/core): validation, sealing, the initial store. Rows hold
+ * sealed provider secrets in Postgres exactly as accounts.json does on disk.
+ */
+export const accountCodec: AccountCodec = {
+  parse: (raw, legacyV1) => parseStore(legacyV1 ? { defaultAccountId: raw.defaultAccountId, accounts: raw.accounts } : { version: STORE_VERSION, ...raw }),
+  openSecrets: (store) => openSecrets(store),
+  sealAccount: (account) => sealSecrets({ version: STORE_VERSION, defaultAccountId: account.id, accounts: [account] }).accounts[0],
+  initial: () => initialStore(),
+};
+
+/** accounts.json of a data directory (the file repository; db-import reads another directory than the server's). */
+export function accountsFileIn(dir: string): string {
+  return join(dir, "accounts.json");
+}
+
+/** Runs `fn` holding accounts.json.lock of `dir` (shared with the CLI). */
+export function withAccountsLock<T>(dir: string, fn: () => T): T {
+  return withLock(fn, `${accountsFileIn(dir)}.lock`);
+}
+
+/** Verify mode (KNIFE_DB_VERIFY=1): keeps accounts.json equal to the database state, so unsetting KNIFE_DB_URL rolls back. */
+export function mirrorAccountsFile(store: AccountStore): void {
+  withLock(() => writeStore(store));
 }
 
 /** Tests and the CLI interop suite: drop the cache (the next read parses the file). */
@@ -423,6 +456,8 @@ export function readStore(): AccountStore {
  * must be synchronous and cheap; its return value is passed through. Throwing inside `fn` writes nothing.
  */
 export function mutateStore<T>(fn: (store: AccountStore) => T): T {
+  const pg = coreRuntime();
+  if (pg) return pg.mutateAccounts(fn);
   return withLock(() => {
     const store = load(true);
     const result = fn(store);

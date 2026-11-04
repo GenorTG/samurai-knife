@@ -42,6 +42,8 @@ const dir = process.env.KNIFE_DATA_DIR?.trim() || join(homedir(), ".local", "sha
 const file = join(dir, "accounts.json");
 const lockFile = `${file}.lock`;
 const STORE_VERSION = 2;
+// KNIFE_DB_URL: accounts live in Postgres (docs/DB-POSTGRES.md "Accounts CLI"); same commands, same record format.
+const PG = process.env.KNIFE_DB_URL?.trim() ? await (await import("./accounts-pg.mjs")).openCorePg(process.env) : null;
 const EMAIL = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 
 function fail(message) {
@@ -169,11 +171,20 @@ function mapSecrets(account, fn) {
   return out;
 }
 
-function writeStore(store) {
+async function writeStore(store) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { chmodSync(dir, 0o700); } catch { /* not ours */ }
   const emails = store.accounts.map((a) => a.email).filter(Boolean);
   if (new Set(emails).size !== emails.length) fail("two accounts would share an email address");
+  if (PG) {
+    const opened = store.accounts.map((a) => withV2Fields(a, false));
+    try {
+      await PG.save(store, opened, new Map(opened.map((a) => [a.id, mapSecrets(a, sealValue)])));
+    } catch (error) {
+      fail(error.message);
+    }
+    return;
+  }
   const accounts = store.accounts.map((a) => mapSecrets(withV2Fields(a, false), sealValue));
   const text = `${JSON.stringify({ ...store, version: STORE_VERSION, accounts }, null, 2)}\n`;
   lock();
@@ -195,7 +206,8 @@ function writeStore(store) {
  * revokeAllMcpKeys the web password reset/change uses): a new password must end an attacker's agent access too, and a
  * removed id registered again must not inherit the old keys. Returns how many were revoked.
  */
-function revokeMcpKeys(accountId) {
+async function revokeMcpKeys(accountId) {
+  if (PG) return PG.revokeKeys(accountId);
   const keysFile = join(dir, "mcp-keys.json");
   if (!existsSync(keysFile)) return 0;
   let raw;
@@ -215,14 +227,26 @@ function revokeMcpKeys(accountId) {
   return keys.length - kept.length;
 }
 
-function readStore() {
+async function readStore() {
+  if (PG) {
+    const loaded = await PG.load();
+    if (loaded.empty) {
+      const initial = { version: STORE_VERSION, defaultAccountId: "genor", accounts: [withV2Fields({ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString(), seen: seenNow() })] };
+      PG.remember([]);
+      await writeStore(initial);
+      return initial;
+    }
+    const accounts = loaded.accounts.map((a) => mapSecrets(withV2Fields(a, false), openValue));
+    PG.remember(accounts.map((a) => withV2Fields(a, false)));
+    return { version: STORE_VERSION, defaultAccountId: loaded.defaultAccountId, accounts };
+  }
   if (!existsSync(file)) {
     const initial = {
       version: STORE_VERSION,
       defaultAccountId: "genor",
       accounts: [withV2Fields({ id: "genor", displayName: "Genor", provider: null, createdAt: new Date().toISOString(), seen: seenNow() })],
     };
-    writeStore(initial);
+    await writeStore(initial);
     return initial;
   }
   let store;
@@ -376,63 +400,63 @@ const commands = {
     if (flags.has("email")) Object.assign(account, verifiedEmail(store, id, flags.get("email")[0]));
     if (flags.has("password-prompt")) account.passwordHash = await newPassword();
     store.accounts.push(account);
-    writeStore(store);
+    await writeStore(store);
     console.log(`added ${id}${account.passwordHash ? " (password set)" : " (no password; only the default account may be passwordless to be usable)"}`);
   },
 
   async "set-password"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     account.passwordHash = await newPassword();
-    writeStore(store);
-    const keys = revokeMcpKeys(account.id);
+    await writeStore(store);
+    const keys = await revokeMcpKeys(account.id);
     console.log(`password set for ${account.id}; existing sessions are invalidated; ${keys} MCP key(s) revoked${keys ? " (create new ones for the agents)" : ""}`);
   },
 
-  "set-email"(store, { positional }) {
+  async "set-email"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     Object.assign(account, verifiedEmail(store, account.id, positional[1]));
     delete account.emailChange;
     if (account.status === "pending") account.status = "active";
-    writeStore(store);
+    await writeStore(store);
     console.log(`email of ${account.id} is now ${account.email} (verified)`);
   },
 
-  "set-role"(store, { positional }) {
+  async "set-role"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     const role = positional[1];
     if (role !== "admin" && role !== "user") fail("role must be admin or user");
     account.role = role;
     if (role === "admin" && account.storageQuotaBytes !== null && account.storageQuotaBytes !== undefined) account.storageQuotaBytes = null;
-    writeStore(store);
+    await writeStore(store);
     console.log(`${account.id} is now ${role}`);
   },
 
-  "set-status"(store, { positional }) {
+  async "set-status"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     const status = positional[1];
     if (status !== "active" && status !== "disabled") fail("status must be active or disabled");
     account.status = status;
-    writeStore(store);
+    await writeStore(store);
     console.log(`${account.id} is now ${status}${status === "disabled" ? " (its sessions stop working at once)" : ""}`);
   },
 
-  "set-network"(store, { positional }) {
+  async "set-network"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     const value = positional[1];
     if (value !== "private" && value !== "public") fail("network must be private (may reach loopback/LAN) or public");
     account.privateNetwork = value === "private";
-    writeStore(store);
+    await writeStore(store);
     const note = account.role === "admin" ? "" : " (has no effect until the account is an admin)";
     console.log(`${account.id}: provider requests ${value === "private" ? "may reach private addresses in public mode" : "are limited to public addresses in public mode"}${note}`);
   },
 
-  "approve-provider"(store, { positional }) {
+  async "approve-provider"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     const value = positional[1];
     if (!value) fail("give the provider base URL to approve, or none");
     if (value === "none") {
       account.approvedProviderUrl = null;
-      writeStore(store);
+      await writeStore(store);
       console.log(`${account.id}: known model providers only`);
       return;
     }
@@ -444,17 +468,17 @@ const commands = {
     }
     if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) fail("baseUrl must be an http(s) URL without credentials, query or fragment");
     account.approvedProviderUrl = url.toString().replace(/\/+$/, "");
-    writeStore(store);
+    await writeStore(store);
     console.log(`${account.id}: may use ${account.approvedProviderUrl} as its model provider (public mode)`);
   },
 
-  "approve-site"(store, { positional }) {
+  async "approve-site"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     const value = positional[1];
     if (!value) fail("give the site URL to approve, or none");
     if (value === "none") {
       account.approvedSiteUrl = null;
-      writeStore(store);
+      await writeStore(store);
       console.log(`${account.id}: may audit GitHub-verified sites only`);
       return;
     }
@@ -466,7 +490,7 @@ const commands = {
     }
     if (!/^https?:$/.test(url.protocol) || url.username || url.password) fail("the site must be an http(s) URL without credentials");
     account.approvedSiteUrl = url.origin;
-    writeStore(store);
+    await writeStore(store);
     console.log(`${account.id}: may audit ${account.approvedSiteUrl} (public mode)`);
   },
 
@@ -474,7 +498,7 @@ const commands = {
     const account = requireAccount(store, positional[0]);
     if (flags.has("clear")) {
       account.github = null;
-      writeStore(store);
+      await writeStore(store);
       console.log(`${account.id}: GitHub link removed`);
       return;
     }
@@ -496,28 +520,28 @@ const commands = {
     const other = store.accounts.find((a) => a.github?.id === user.id && a.id !== account.id);
     if (other) fail(`GitHub user ${user.login} is already linked to ${other.id}`);
     account.github = { id: user.id, login: user.login, linkedAt: new Date().toISOString() };
-    writeStore(store);
+    await writeStore(store);
     console.log(`${account.id} is linked to GitHub user ${user.login} (id ${user.id}): signing in with GitHub opens this account`);
   },
 
-  "provider-json"(store, { positional }) {
+  async "provider-json"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     process.stdout.write(`${JSON.stringify(account.provider ?? null)}\n`);
   },
 
-  remove(store, { positional }) {
+  async remove(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     if (account.id === store.defaultAccountId) fail("refusing to remove the default account; run set-default first");
     store.accounts = store.accounts.filter((a) => a.id !== account.id);
-    writeStore(store);
-    const keys = revokeMcpKeys(account.id);
+    await writeStore(store);
+    const keys = await revokeMcpKeys(account.id);
     console.log(`removed ${account.id}${keys ? `; ${keys} MCP key(s) revoked` : ""}`);
   },
 
-  "set-default"(store, { positional }) {
+  async "set-default"(store, { positional }) {
     const account = requireAccount(store, positional[0]);
     store.defaultAccountId = account.id;
-    writeStore(store);
+    await writeStore(store);
     console.log(`default account is now ${account.id}${account.passwordHash ? "" : " (no password: anyone on the tailnet acts as this account)"}`);
   },
 
@@ -605,7 +629,7 @@ const commands = {
       account.providerProfiles = [...profiles, { id, name: "Default", config: account.provider }];
       account.activeProviderProfile = id;
     }
-    writeStore(store);
+    await writeStore(store);
     console.log(`provider saved for ${account.id}: ${account.provider.baseUrl} model=${account.provider.model} key=${keyHint(apiKey)}`);
   },
 };
@@ -615,4 +639,5 @@ if (!command || command === "help" || command === "--help" || !(command in comma
   console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).slice(0, 24).map((l) => l.slice(3)).join("\n"));
   process.exit(command && command !== "help" && command !== "--help" ? 2 : 0);
 }
-await commands[command](readStore(), parseArgs(rest));
+await commands[command](await readStore(), parseArgs(rest));
+await PG?.close();

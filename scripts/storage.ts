@@ -19,6 +19,15 @@ try {
 }
 
 const [command, ...rest] = process.argv.slice(2);
+// KNIFE_DB_URL (docs/DB-POSTGRES.md): accounts come from Postgres, read-only; a rename would have to move rows too.
+if (process.env.KNIFE_DB_URL?.trim()) {
+  if (command === "rename-account") {
+    console.error("rename-account works on the file store only: run it before the Postgres cut-over (docs/DB-POSTGRES.md)");
+    process.exit(2);
+  }
+  const { loadReadOnlyCore } = await import("@/lib/db/core/init");
+  await loadReadOnlyCore();
+}
 if (command === "rename-account") {
   const [from, to] = process.argv.slice(3);
   if (!from || !to) {

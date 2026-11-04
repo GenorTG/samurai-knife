@@ -1,6 +1,9 @@
 # Moving the table data to a database (VPS primary, live local standby)
 
-Status: design proposal, nothing implemented. Base commit: `77572d4` (0.13.0).
+Status: design proposal. Phase 1 (accounts, provider profiles, sessions, MCP keys) is implemented with the owner's final
+topology — Postgres primary on the VPS, the APP STAYING on genorbox1 (~35 ms away) behind an authoritative in-process
+cache, a delayed async replica on genorbox1 — see [DB-POSTGRES.md](DB-POSTGRES.md); where that topology differs from
+§0.2/§2.5 below (app next to the database, PgBouncer, hot standby), DB-POSTGRES.md wins. Base commit: `77572d4` (0.13.0).
 Scope: the *table-like* state (accounts, sessions, keys, CV data, conversations, goals, workflows, ledgers, indexes…).
 Out of scope: documents, Craft files, photos, run binaries, exports and other blobs: they stay files (a blob store), see §1.3.
 
@@ -228,7 +231,9 @@ slot retained WAL > 50 % of `max_slot_wal_keep_size`.
   provider), home already on own hardware (LUKS too if not yet).
 - Keys outside the DB: `storage.key`, `auth.key`, `provider-keys.key` on both sites (same values), 0600, outside the
   data dir (`KNIFE_STORAGE_KEY_FILE`, `KNIFE_AUTH_KEY_FILE`), backed up separately from the data and from pgBackRest.
-- Network: Postgres and PgBouncer listen on loopback + the Tailscale interface only; Tailscale ACL lets only the home
+- Network (as built for phase 1, DB-POSTGRES.md "VPS" and deploy/db/README.md: a dedicated WireGuard link `wg-knife`
+  between the VPS and genorbox1 instead of Tailscale, because genorbox1's Tailscale is on another tailnet and the VPS
+  runs Headscale itself; the rest of this bullet applies with `wg-knife` in place of Tailscale): Postgres and PgBouncer listen on loopback + the Tailscale interface only; Tailscale ACL lets only the home
   node reach 5432 (replication) and pgBackRest; nothing on the public interface (host firewall drops it too).
   `pg_hba.conf`: `hostssl … scram-sha-256` only, replication entry limited to the home Tailscale IP
   ([pg_hba.conf](https://www.postgresql.org/docs/18/auth-pg-hba-conf.html), [SSL](https://www.postgresql.org/docs/18/ssl-tcp.html));

@@ -148,6 +148,14 @@ class ScratchServer:
             # server is its own "proxy" on loopback (suites pick client addresses with X-Forwarded-For) at its bind address.
             child_env.setdefault("KNIFE_TRUSTED_PROXIES", "127.0.0.1,::1")
             child_env.setdefault("KNIFE_PUBLIC_URL", f"http://{self.host}:{port}")
+        # KNIFE_TEST_PG_ADMIN_URL (tests/db_e2e_matrix.py): this start gets its own fresh, migrated Postgres database, like
+        # its fresh data dir; the suite's own CLI calls (scripts/accounts.mjs inherits os.environ) reach the same one.
+        pg_admin = os.environ.get("KNIFE_TEST_PG_ADMIN_URL", "").strip()
+        if pg_admin and "KNIFE_DB_URL" not in (env or {}):
+            name = f"sk_{os.getpid()}_{id(self) % 100000}_{self._runs}"
+            db_url = subprocess.run(["node", str(ROOT / "tests" / "pg_scratch.mjs"), "newdb", pg_admin, name], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+            child_env["KNIFE_DB_URL"] = db_url
+            os.environ["KNIFE_DB_URL"] = db_url
         self._log = (scratch / f"server-{self._runs}.log").open("w+")
         self._proc = subprocess.Popen(
             ["npm", "run", "dev"], cwd=self._worktree or ROOT, env=child_env, stdout=self._log, stderr=subprocess.STDOUT,

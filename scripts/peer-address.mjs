@@ -30,6 +30,8 @@ for (const Server of [http.Server, https.Server]) {
 
 // Counts requests that are someone's work, so an update waits for a quiet moment (scripts/activity.mjs).
 await import("./activity.mjs");
+// KNIFE_DB_URL: a response waits until the writes made for it are committed in Postgres (scripts/db-barrier.mjs).
+await import("./db-barrier.mjs");
 if (process.env.KNIFE_SECURITY_HEADERS_INSTALL === "1") await import("./security-headers.mjs");
 // Last, so it wraps the others: requests for the office host (KNIFE_OFFICE_PUBLIC_URL) never get the app's headers.
 await import("./office-proxy.mjs");
