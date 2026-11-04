@@ -57,3 +57,8 @@ test("every category in use has a label and every set text is in the Polish cata
     for (const text of [set.name, set.headline, set.pitch, set.start.label, ...set.tasks.flatMap((task) => [task.label, task.hint])]) assert.ok(pl[text], `no Polish for: ${text}`);
   }
 });
+
+test("the ArtCraft name stays out of our marketing (their brand terms, docs/LEGAL.md); app names only say which app it is", () => {
+  const text = JSON.stringify(TOOL_SETS) + JSON.stringify(TOP_TASKS) + readFileSync(new URL("../src/components/Greeter.tsx", import.meta.url), "utf8");
+  assert.ok(!/artcraft(?!\?tab=)/i.test(text.replace(/\/tools\/artcraft/g, "")), "ArtCraft appears in a set or on the guest page");
+});

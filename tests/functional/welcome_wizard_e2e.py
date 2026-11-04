@@ -55,7 +55,7 @@ def main() -> int:
     global SHOTS
     SHOTS = Path(args.shots) if args.shots else None
     with ScratchServer() as server, sync_playwright() as pw:
-        server.start({"KNIFE_AUTH_MODE": "public", "KNIFE_MAIL_TRANSPORT": "outbox", "KNIFE_TRUSTED_PROXIES": "loopback"})
+        server.start({"KNIFE_AUTH_MODE": "public", "KNIFE_MAIL_TRANSPORT": "outbox", "KNIFE_TRUSTED_PROXIES": "127.0.0.1/32,::1/128"})
         base, data = server.url, server.data_dir
         assert data
         browser = pw.chromium.launch()
@@ -138,10 +138,10 @@ def main() -> int:
         expect(page.get_by_role("heading", level=1)).to_contain_text("Welcome to Smart Knife")
         page.locator("[data-welcome-language=en]").click()
         check("Back keeps the choices", page.locator("[data-welcome-set=office]").get_attribute("aria-pressed") == "true")
-        page.get_by_role("button", name="Next").click()
+        page.get_by_role("button", name="Next", exact=True).click()
         expect(page.get_by_role("heading", level=1)).to_contain_text("Four things")
         shot(page, "welcome-3")
-        page.get_by_role("button", name="Next").click()
+        page.get_by_role("button", name="Next", exact=True).click()
         expect(page.get_by_role("heading", level=1)).to_contain_text("All set")
         check("the last step offers what was picked", page.get_by_role("link", name="Open Euro-Office").is_visible() and page.get_by_role("link", name="Create my CV").is_visible())
         shot(page, "welcome-4")
@@ -163,7 +163,7 @@ def main() -> int:
         next_button = page.locator("[data-cv-wizard-next]")
         check("Next waits for the name, the one required answer", next_button.is_disabled())
         shot(page, "cv-1")
-        page.get_by_role("button", name="English").click()
+        page.locator("[data-cv-wizard]").get_by_role("button", name="English", exact=True).click()
         page.get_by_label("Your first and last name").fill("Anna Nowak")
         page.get_by_label("Email address").fill("anna@example.com")
         page.get_by_label("City").fill("Gdansk")
@@ -221,7 +221,7 @@ def main() -> int:
         # --------------------------------------------------------------- bring in a CV, also without AI
         ctx3 = browser.new_context(base_url=base, viewport={"width": 1280, "height": 900}, extra_http_headers={"X-Forwarded-For": "198.51.100.32"}, storage_state=ctx.storage_state())
         upload = ctx3.new_page()
-        project = ctx3.request.post(base + "/api/cv/projects", data={"name": "Second"}, headers={"Origin": base})
+        project = ctx3.request.post(base + "/api/cv/projects", data={"action": "create", "name": "Second"}, headers={"Origin": base})
         if project.ok:
             go(upload, "/tools/cv-studio")
             upload.locator("[data-cv-start=upload]").click()
@@ -234,10 +234,13 @@ def main() -> int:
             check("a second CV project could be created for the upload path", False, project.status)
         ctx3.close()
 
-        # -------------------------------------------------------------------------- Skip, and Polish
+        # -------------------------------------------------------------------------------- Polish
         ctx4, pl = context("pl")
         go(pl, "/")
-        pl.goto("/register", wait_until="networkidle")
+        expect(pl.get_by_role("heading", level=1)).to_contain_text("Przestań płacić za")
+        go(pl, "/sets/creative")
+        check("Polish set page", "Zamiast" in pl.locator("main").inner_text() and "zamiast" not in pl.get_by_role("heading", level=1).inner_text())
+        shot(pl, "set-creative-pl")
         ctx4.close()
         check("no console errors", not errors, errors[:5])
         browser.close()
