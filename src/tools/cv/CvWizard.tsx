@@ -44,7 +44,7 @@ function Row({ label, value, empty }: { label: string; value: string; empty: str
  * nothing required except the name, dates in whatever way people write them, and a draft saved in the account.
  * `initial` carries what could be read from an uploaded CV; `sourceText` stays visible so it can be copied from.
  */
-export function CvWizard({ initial, sourceText, onDone, onCancel }: { initial?: Partial<WizardAnswers>; sourceText?: string; onDone: () => void; onCancel: () => void }) {
+export function CvWizard({ initial, sourceText, onCreating, onDone, onCancel }: { initial?: Partial<WizardAnswers>; sourceText?: string; onCreating?: (creating: boolean) => void; onDone: () => void; onCancel: () => void }) {
   const { t, locale } = useT();
   const fresh = (): WizardAnswers => ({ ...emptyAnswers(locale === "en" ? "en" : "pl"), ...initial });
   const [a, setA] = useState<WizardAnswers>(fresh);
@@ -113,11 +113,14 @@ export function CvWizard({ initial, sourceText, onDone, onCancel }: { initial?: 
   const create = async () => {
     setBusy(true);
     setError("");
+    // The page refreshes by itself: once the CV exists it would swap this screen for the details form before "ready" shows.
+    onCreating?.(true);
     try {
       await importCv(answersToProfile(a), false);
       dropDraft();
       setCreated(true);
     } catch (e) {
+      onCreating?.(false);
       setError(errorText(e));
     } finally {
       setBusy(false);

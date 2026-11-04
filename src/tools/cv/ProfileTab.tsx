@@ -452,6 +452,7 @@ export default function ProfileTab() {
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [autoEdit, setAutoEdit] = useState("");
   const [replacing, setReplacing] = useState(false);
+  const [creatingCv, setCreatingCv] = useState(false);
   const [undoError, setUndoError] = useState("");
   const data = live.data;
   const profile = data?.profile ?? null;
@@ -501,8 +502,14 @@ export default function ProfileTab() {
   return (
     <CvFrame live={live}>
       {(cv) =>
-        profileIsEmpty(cv) && !replacing ? (
-          <StartHere onDone={() => void live.reload()} />
+        (profileIsEmpty(cv) || creatingCv) && !replacing ? (
+          <StartHere
+            onCreating={setCreatingCv}
+            onDone={() => {
+              setCreatingCv(false);
+              void live.reload();
+            }}
+          />
         ) : (
           <div className="@container space-y-4">
             <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Actions for your details")}>

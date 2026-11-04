@@ -22,7 +22,7 @@ interface FromFile {
  * questions" opens the step-by-step wizard (CvWizard); "I already have a CV" reads an uploaded PDF/DOCX/ODT/TXT on the
  * server and fills in what it can without AI before the same wizard; the assistant's interview needs an AI model.
  */
-export function StartHere({ onDone }: { onDone: () => void }) {
+export function StartHere({ onDone, onCreating }: { onDone: () => void; onCreating?: (creating: boolean) => void }) {
   const { t } = useT();
   const [way, setWay] = useState<Way | null>(null);
   const [fromFile, setFromFile] = useState<FromFile | null>(null);
@@ -32,6 +32,7 @@ export function StartHere({ onDone }: { onDone: () => void }) {
         <CvWizard
           initial={fromFile?.initial}
           sourceText={fromFile?.text}
+          onCreating={onCreating}
           onDone={onDone}
           onCancel={() => {
             setFromFile(null);
