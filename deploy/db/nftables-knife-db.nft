@@ -1,0 +1,24 @@
+#!/usr/sbin/nft -f
+# Smart Knife database firewall — VPS: /etc/nftables.d/knife-db.nft, included from /etc/nftables.conf
+# (`include "/etc/nftables.d/*.nft"`), loaded with `nft -f /etc/nftables.conf`.
+# A table of its own, so it never rewrites the rules Caddy (80/443), Postfix (25/587) and Headscale (443 via Caddy,
+# 3478/udp STUN) already have. nftables evaluates every base chain on the hook: a `drop` here wins over an `accept`
+# elsewhere, and an `accept` here does not skip the other tables, so the existing ruleset must still allow 51821/udp
+# if its input policy is drop (the `udp dport 51821 accept` line below covers a ruleset that has none).
+#
+# genorbox1 gets the mirror image for pgBackRest's TLS server: replace 10.77.0.2 with 10.77.0.1, keep only 8432
+# (genorbox1's Postgres replica listens on localhost only).
+
+table inet knife_db {
+	chain input {
+		type filter hook input priority filter - 5; policy accept;
+
+		# The tunnel itself (genorbox1 dials in from a changing home address).
+		udp dport 51821 accept
+
+		# Postgres and pgBackRest: loopback, or genorbox1 through wg-knife. Nothing else, on any interface.
+		tcp dport { 5432, 8432 } iifname "lo" accept
+		tcp dport { 5432, 8432 } iifname "wg-knife" ip saddr 10.77.0.2 accept
+		tcp dport { 5432, 8432 } counter drop
+	}
+}

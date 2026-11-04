@@ -5,7 +5,7 @@ Design background and the later areas: [DB-DECOUPLING.md](DB-DECOUPLING.md). Thi
 
 ## Topology (owner decisions)
 
-- **Primary**: PostgreSQL 18 on the VPS (today 1 vCPU / 1 GB, shared with the mail relay and Headscale).
+- **Primary**: PostgreSQL 18 on the VPS (today 1 vCPU / 1 GB / 30 GB, shared with the Postfix relay, Headscale and Caddy), reached over the WireGuard link `wg-knife` (§VPS).
 - **App**: stays on genorbox1 with its sidecars and the file/blob storage. Every database round trip costs **~35 ms**.
 - **Replica**: an asynchronous, **delayed** (5 min apply delay) physical standby on genorbox1, also the pgBackRest
   backup source. It never slows a write (`synchronous_standby_names = ''`).
@@ -133,13 +133,23 @@ revocation as rows, and a NOTIFY that makes the running server reload. When a se
 
 ## VPS (proposed, see deploy/db/README.md)
 
-`deploy/db/`: `postgresql.knife.conf` (1 GB box: shared_buffers 128MB, effective_cache_size 384MB, work_mem 4MB,
-max_connections 20, wal_compression zstd, synchronous_commit on, async replication, max_slot_wal_keep_size, archiving to
-pgBackRest; bigger-VPS values in comments), `pg_hba.knife.conf` (hostssl + scram only, app and replica from genorbox1's
-tunnel address), `primary-setup.sql` (roles knife_owner / knife_app / knife_replicator, database, default privileges,
-replication slot), `replica-setup.sh` (pg_basebackup `--max-rate`, `primary_conninfo` verify-full,
-`recovery_min_apply_delay = 5min`, hot standby), `pgbackrest.conf` (repo on genorbox1, backups taken from the standby,
-async archive-push, encrypted repo). None of it is run by the repo.
+Network: genorbox1 reaches the VPS over a **dedicated point-to-point WireGuard link** `wg-knife` (VPS 10.77.0.1,
+genorbox1 10.77.0.2, genorbox1 dials in with a 25 s keepalive), not the Headscale network on the VPS (genorbox1's
+Tailscale is on another tailnet; one `tailscaled` serves one tailnet) and not TLS over the internet (5432 would face
+the internet). Postgres listens on loopback + 10.77.0.1 only, nftables drops 5432/8432 everywhere else, and TLS
+verify-full + SCRAM stay on inside the tunnel. The comparison and the full command list: deploy/db/README.md.
+
+`deploy/db/`: `wg-knife.{vps,genorbox1}.conf`, `nftables-knife-db.nft` (a table of its own next to the Caddy / Postfix /
+Headscale rules), `postgresql.knife.conf` (1 vCPU / 1 GB / 30 GB box shared with Postfix, Headscale and Caddy:
+shared_buffers 128MB, effective_cache_size 256MB, work_mem 4MB, max_connections 20, no parallel query, io_workers 2,
+autovacuum_max_workers 2, wal_compression zstd, synchronous_commit on, async replication, max_slot_wal_keep_size 3GB,
+temp_file_limit 1GB, archiving to pgBackRest; the 4 vCPU / 16 GB and 8 vCPU / 32 GB values in comments and in the
+README's table; checked against `postgres:18`), `knife-db.override.conf` (systemd: after the tunnel, postmaster OOM
+protection, MemoryHigh 450M), `pg_hba.knife.conf` (hostssl + scram only; migrations, app and replica from 10.77.0.2),
+`primary-setup.sql` (roles knife_owner / knife_app / knife_replicator, database, default privileges, replication slot),
+`replica-setup.sh` (pg_basebackup `--max-rate`, `primary_conninfo` verify-full, `recovery_min_apply_delay = 5min`, hot
+standby), `pgbackrest.conf` (repo on genorbox1, backups taken from the standby, async archive-push, encrypted repo,
+mutual TLS on 8432 through the tunnel). None of it is run by the repo.
 
 ## Next areas (same pattern)
 

@@ -231,7 +231,9 @@ slot retained WAL > 50 % of `max_slot_wal_keep_size`.
   provider), home already on own hardware (LUKS too if not yet).
 - Keys outside the DB: `storage.key`, `auth.key`, `provider-keys.key` on both sites (same values), 0600, outside the
   data dir (`KNIFE_STORAGE_KEY_FILE`, `KNIFE_AUTH_KEY_FILE`), backed up separately from the data and from pgBackRest.
-- Network: Postgres and PgBouncer listen on loopback + the Tailscale interface only; Tailscale ACL lets only the home
+- Network (as built for phase 1, DB-POSTGRES.md "VPS" and deploy/db/README.md: a dedicated WireGuard link `wg-knife`
+  between the VPS and genorbox1 instead of Tailscale, because genorbox1's Tailscale is on another tailnet and the VPS
+  runs Headscale itself; the rest of this bullet applies with `wg-knife` in place of Tailscale): Postgres and PgBouncer listen on loopback + the Tailscale interface only; Tailscale ACL lets only the home
   node reach 5432 (replication) and pgBackRest; nothing on the public interface (host firewall drops it too).
   `pg_hba.conf`: `hostssl … scram-sha-256` only, replication entry limited to the home Tailscale IP
   ([pg_hba.conf](https://www.postgresql.org/docs/18/auth-pg-hba-conf.html), [SSL](https://www.postgresql.org/docs/18/ssl-tcp.html));

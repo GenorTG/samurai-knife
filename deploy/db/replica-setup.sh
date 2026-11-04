@@ -8,10 +8,10 @@
 #
 # NOT run by anything in the repo. Run by hand as root on genorbox1 after reading it, with Postgres 18 from PGDG
 # (same major as the primary) installed and its default cluster stopped:
-#   sudo PRIMARY_HOST=100.64.0.1 REPL_PASSWORD_FILE=/root/knife-repl.pass bash deploy/db/replica-setup.sh
+#   sudo PRIMARY_HOST=10.77.0.1 REPL_PASSWORD_FILE=/root/knife-repl.pass bash deploy/db/replica-setup.sh
 set -euo pipefail
 
-PRIMARY_HOST="${PRIMARY_HOST:?tunnel address of the VPS primary, e.g. 100.64.0.1}"
+PRIMARY_HOST="${PRIMARY_HOST:?tunnel address of the VPS primary, e.g. 10.77.0.1}"
 PRIMARY_PORT="${PRIMARY_PORT:-5432}"
 REPL_PASSWORD_FILE="${REPL_PASSWORD_FILE:?file holding the knife_replicator password, mode 0600}"
 CA_FILE="${CA_FILE:-/etc/postgresql/18/main/tls/knife-ca.crt}"   # the CA that signed the primary's server.crt
