@@ -65,7 +65,7 @@ export const TOOL_SETS: readonly ToolSet[] = [
       { label: msg("Edit a PDF or add a signature"), hint: msg("Add text, pictures and a drawn signature to any page."), href: "/tools/pdf?tab=editor" },
       { label: msg("Turn a scan into text"), hint: msg("Read the text from a scanned page or a photo of a document."), href: "/tools/pdf?tab=editor" },
     ],
-    limits: msg("Very complex files can look slightly different than in Microsoft Office: macros are switched off, and it is worth checking the layout of an important document before you send it."),
+    limits: msg("Euro-Office is an independent open-source editor that this website runs for you. Very complex files can look slightly different than in Microsoft Office: macros are switched off, and it is worth checking the layout of an important document before you send it."),
   },
   {
     id: "creative",
