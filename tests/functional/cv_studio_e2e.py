@@ -426,7 +426,7 @@ with sync_playwright() as pw:
         page.wait_for_function("!document.querySelector('[data-agent-region=cv-audit]').innerText.includes('Checking the profile')", timeout=15000)
         text = panel.inner_text()
         assert "The check failed" not in text, text
-        assert "not available right now" in text or re.search(r"(error|warn|info): \d+|Nothing to improve", text), text
+        assert "not available right now" in text or re.search(r"(To fix|Worth a look|Tips): \d+|Nothing to improve", text), text
 
     @check("audit degrades gracefully when its route is missing (mocked 404)")
     def _():
@@ -504,7 +504,7 @@ with sync_playwright() as pw:
     @check("match panel: coverage, evidence linked to profile fields and missing terms as gaps (or a readable fallback)")
     def _():
         panel = page.locator('[data-agent-region="cv-match"]')
-        page.wait_for_function("!document.querySelector('[data-agent-region=cv-match]')?.innerText.match(/Matching…/)", timeout=15000)
+        page.wait_for_function("!document.querySelector('[data-agent-region=cv-match]')?.innerText.match(/Comparing…/)", timeout=15000)
         text = panel.inner_text()
         if "not available right now" in text:
             return

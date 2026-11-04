@@ -6,6 +6,7 @@ import { errorText, getAudit, isUnavailable, type AuditResult } from "@/lib/cv/c
 import { labelForPath } from "@/lib/cv/diff";
 import type { CvLang, Profile } from "@/lib/cv/schema";
 import { SeverityBadge } from "./shared";
+import { msg } from "@/lib/i18n/msg";
 import { useT } from "@/lib/i18n/react";
 
 export interface AuditState {
@@ -36,6 +37,9 @@ export function useAudit(lang: CvLang, revision: number | null): AuditState {
 
 const SHOWN = 10;
 
+/** The severity counters of a check, in words. */
+const COUNT_LABEL: Record<string, string> = { error: msg("To fix"), warn: msg("Worth a look"), info: msg("Tips") };
+
 export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; profile: Profile; lang: CvLang; onGo: (path: string) => void }) {
   const { t, m } = useT();
   const [all, setAll] = useState(false);
@@ -56,7 +60,7 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
         {result ? (
           <>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(result.counts).map(([key, n]) => <Badge key={key} tone={/err|high/i.test(key) && n > 0 ? "danger" : n > 0 ? "warn" : "good"}>{key}: {n}</Badge>)}
+              {Object.entries(result.counts).map(([key, n]) => <Badge key={key} tone={/err|high/i.test(key) && n > 0 ? "danger" : n > 0 ? "warn" : "good"}>{COUNT_LABEL[key] ? t(COUNT_LABEL[key]) : key}: {n}</Badge>)}
               {total === 0 ? <Badge tone="good">{t("Nothing to improve")}</Badge> : null}
             </div>
             {Object.keys(result.byRule).length > 0 ? (
