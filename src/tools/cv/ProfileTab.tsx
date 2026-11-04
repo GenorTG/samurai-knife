@@ -61,7 +61,7 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
                 value={b.text[lang]}
                 reference={b.text[other]}
                 label={t("{owner} point {id} text ({value})", { owner, id: b.id, value: lang.toUpperCase() })}
-                placeholder={t("Write this point in {value}", { value: lang === "pl" ? "Polish" : "English" })}
+                placeholder={t("Write this point in {value}", { value: lang === "pl" ? t("Polish") : t("English") })}
                 multiline
               />
             </div>
@@ -72,7 +72,7 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
                   autoComplete="off"
                   type="button"
                   aria-pressed={b.verified}
-                  aria-label={t("{value} {owner} point {id} as confirmed", { value: b.verified ? "Unmark" : "Mark", owner, id: b.id })}
+                  aria-label={t("{value} {owner} point {id} as confirmed", { value: b.verified ? t("Unmark") : t("Mark"), owner, id: b.id })}
                   title={t("Confirmed means you checked that this is true")}
                   onClick={() => void env.save([{ op: "set", path: `${path}/verified`, value: !b.verified }])}
                   className="cursor-pointer"
@@ -139,7 +139,7 @@ function ContactSection({ profile }: { profile: Profile }) {
         </>
       ) : null}
       <Row label={t("Headline {l}", { l: L })}>
-        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={t("Headline ({l})", { l: L })} placeholder={t("One line under your name, e.g. Experienced accountant")} />
+        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={t("Headline ({l})", { l: L })} placeholder={t("One line under your name, e.g. Accountant, 10 years of experience")} />
       </Row>
       <Row label={t("Location {l}", { l: L })}>
         <EditableField path={`/contact/location/${lang}`} biPath="/contact/location" value={c.location[lang]} reference={c.location[other]} label={t("Location ({l})", { l: L })} placeholder={t("City, country")} />

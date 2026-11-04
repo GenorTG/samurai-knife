@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic";
 const RUNS_LABEL: Record<ShowcaseRuns, string> = {
   browser: msg("In your browser"),
   server: msg("On this server"),
-  sidecar: msg("In an optional service on this server"),
+  sidecar: msg("In an add-on on this website's server"),
 };
 
 export default async function ShowcasePage({ params, searchParams }: PageProps<"/tools/[slug]/about">) {

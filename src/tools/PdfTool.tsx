@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, CopyButton, Dropzone, Field, Notice, NumberField, OutputBlock, Panel, Select, Stat, StatGrid, TextInput } from "@/components/ui";
+import { Button, CopyButton, Dropzone, Field, Notice, NumberField, OutputBlock, Panel, Select, TextInput } from "@/components/ui";
 import { cx, downloadBlob, formatBytes, parseRanges } from "@/lib/format";
 import { startPdfJob, type PdfJob, type PdfJobPhase } from "@/lib/pdf-client";
 import { useT } from "@/lib/i18n/react";

@@ -8,7 +8,7 @@ import { OpProgress } from "./SidecarCard";
 import { OfficeLiveBridge, setActiveLiveBridge, type LiveState } from "@/lib/office/live-bridge";
 import type { useSidecar } from "./useSidecar";
 import { useT } from "@/lib/i18n/react";
-import { msg, msgf } from "@/lib/i18n/msg";
+import { msgf } from "@/lib/i18n/msg";
 
 const SERVICE = "office";
 
