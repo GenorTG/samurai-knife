@@ -7,7 +7,7 @@ counted by a separate Python walker, dates come from the Python clock. All data 
 Usage: python3 tests/functional/cv_studio_e2e.py <base_url>   (default http://127.0.0.1:3210)
 Needs a FRESH data dir (KNIFE_DATA_DIR=$(mktemp -d)): the run imports a profile and refuses to start on a non-empty one.
 Routes owned by other lanes (audit, jobs fetch/match, variants suggest, export) are exercised when present; the tests that
-depend on them check the readable 'not available yet' state instead when the server answers 404/501. No network beyond the scratch server.
+depend on them check the readable 'not available right now' state instead when the server answers 404/501. No network beyond the scratch server.
 """
 import datetime
 import json
@@ -418,7 +418,7 @@ with sync_playwright() as pw:
         expect(page.get_by_role("button", name="Open offer Epsilon Live Offer", exact=True)).to_have_count(0, timeout=8000)
 
     # ---------------------------------------------------------------- audit
-    @check("audit panel shows findings or the readable 'not available yet' state, never an error")
+    @check("audit panel shows findings or the readable 'not available right now' state, never an error")
     def _():
         go("profile")
         panel = page.locator('[data-agent-region="cv-audit"]')
@@ -426,13 +426,13 @@ with sync_playwright() as pw:
         page.wait_for_function("!document.querySelector('[data-agent-region=cv-audit]').innerText.includes('Checking the profile')", timeout=15000)
         text = panel.inner_text()
         assert "The check failed" not in text, text
-        assert "not available yet" in text or re.search(r"(error|warn|info): \d+|No findings", text), text
+        assert "not available right now" in text or re.search(r"(error|warn|info): \d+|Nothing to improve", text), text
 
     @check("audit degrades gracefully when its route is missing (mocked 404)")
     def _():
         page.route("**/api/cv/audit**", lambda r: r.fulfill(status=404, content_type="application/json", body='{"error":"nope"}'))
         go("profile")
-        page.wait_for_function("document.querySelector('[data-agent-region=cv-audit]')?.innerText.includes('not available yet')", timeout=10000)
+        page.wait_for_function("document.querySelector('[data-agent-region=cv-audit]')?.innerText.includes('not available right now')", timeout=10000)
         page.unroute("**/api/cv/audit**")
 
     @check("audit findings are linked to their fields (mocked payload) and Go to field scrolls + flashes")
@@ -458,9 +458,9 @@ with sync_playwright() as pw:
         btn("Pin project Toolbox").click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.projects[0].pinned === true", timeout=8000)
         expect(btn("Unpin project Toolbox")).to_have_attribute("aria-pressed", "true")
-        btn("Edit Notes for tailoring").click()
+        btn("Edit Notes for the AI assistant").click()
         page.get_by_label("Notes for the AI assistant", exact=True).fill("Lead with Toolbox.")
-        btn("Save Notes for tailoring").click()
+        btn("Save Notes for the AI assistant").click()
         page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.guidance === 'Lead with Toolbox.'", timeout=8000)
         page.get_by_label("New section title").fill("Certyfikaty")
         btn("Add section").click()
@@ -506,12 +506,12 @@ with sync_playwright() as pw:
         panel = page.locator('[data-agent-region="cv-match"]')
         page.wait_for_function("!document.querySelector('[data-agent-region=cv-match]')?.innerText.match(/Matching…/)", timeout=15000)
         text = panel.inner_text()
-        if "not available yet" in text:
+        if "not available right now" in text:
             return
-        assert "coverage" in text.lower() and "%" in text, text
+        assert "overall match" in text.lower() and "%" in text, text
         has("Missing")
-        expect(panel.locator("section[aria-label=Gaps]")).to_contain_text("Kubernetes")
-        link = panel.get_by_role("link", name=re.compile(r"^Open .* in the profile$")).first
+        expect(panel.locator("section[aria-label=Missing]")).to_contain_text("Kubernetes")
+        link = panel.get_by_role("link", name=re.compile(r"^Open .* in Your details$")).first
         expect(link).to_be_visible()
         href = link.get_attribute("href")
         assert "tab=profile" in href and "focus=" in href, href
@@ -523,7 +523,7 @@ with sync_playwright() as pw:
     def _():
         page.route("**/api/cv/jobs/match**", lambda r: r.fulfill(status=404, content_type="application/json", body='{"error":"nope"}'))
         go("jobs")
-        page.wait_for_function("document.querySelector('[data-agent-region=cv-match]')?.innerText.includes('not available yet')", timeout=10000)
+        page.wait_for_function("document.querySelector('[data-agent-region=cv-match]')?.innerText.includes('not available right now')", timeout=10000)
         page.unroute("**/api/cv/jobs/match**")
 
     @check("requirements editor saves one requirement per line; offer link opens safely in a new tab")
@@ -558,7 +558,7 @@ with sync_playwright() as pw:
         btn("Make a CV for this job (no AI, no rewording)").click()
         page.wait_for_function("!document.querySelector('main').innerText.includes('Suggesting…')", timeout=20000)
         body = page.locator("main").inner_text()
-        if "not available yet" in body:
+        if "not available right now" in body:
             return
         expect(page.get_by_text(re.compile(r"^Check the suggested CV"))).to_be_visible()
         name = page.get_by_label("Name of this CV")
@@ -876,11 +876,11 @@ with sync_playwright() as pw:
         v = next(x for x in cv()["variants"] if x["name"] == "Backend CV")
         api("POST", "/api/cv/patch", {"ops": [{"op": "remove", "path": "/experience/id=beta/bullets/id=beta-ui"}]})
         # Saved overlay of 'Backend CV' lists beta/beta-ui explicitly -> now dangling
-        page.wait_for_function("document.body.innerText.includes('broken reference')", timeout=8000)
-        expect(page.get_by_role("alert").filter(has_text="no longer has")).to_be_visible()
+        page.wait_for_function("document.body.innerText.includes('missing item')", timeout=8000)
+        expect(page.get_by_role("alert").filter(has_text="you have since removed")).to_be_visible()
         expect(btn("Save this CV")).to_be_disabled()
         btn("Remove missing items").click()
-        expect(page.get_by_role("alert").filter(has_text="no longer has")).to_have_count(0)
+        expect(page.get_by_role("alert").filter(has_text="you have since removed")).to_have_count(0)
         btn("Save this CV").click()
         has("CV saved.")
         beta_bullet = {"id": "beta-ui", "text": PROFILE["experience"][1]["bullets"][0]["text"]}

@@ -252,7 +252,7 @@ function ProjectsSection({ profile }: { profile: Profile }) {
         <AddRow
           label={t("New project name")}
           buttonLabel={t("Add project")}
-          placeholder={t("CV name")}
+          placeholder={t("Project name")}
           onAdd={(name) => {
             const id = uniqueId(name, new Set(profile.projects.map((x) => x.id)));
             return env.save([{ op: "add", path: "/projects/-", value: { id, name, url: "", summary: { pl: "", en: "" }, tech: [], bullets: [] } }]);
