@@ -19,6 +19,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
     date: "2026-11-05",
     features: [],
     fixes: [
+      msg("The home page shows the AI assistant and the website check again."),
       msg("Pages now say clearly whose software Euro-Office and the Craft apps are: open-source projects we only host, with no ties either way."),
     ],
   },

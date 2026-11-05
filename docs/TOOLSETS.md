@@ -24,7 +24,7 @@ How the app introduces itself to people who are not computer savvy.
 
 `src/lib/toolsets.ts` (`TOOL_SETS`, `TOP_TASKS`): one set per real job, with its headline, what it replaces, and the tasks
 as people would say them, each linking to a tool or tab. `/sets/<id>` (`src/app/sets/[id]/page.tsx`) is public in both
-modes and reads only this data, like a tool's about page. The home page shows `TOP_TASKS`, the sets, then all tools; the
+modes and reads only this data, like a tool's about page. The home page shows `TOP_TASKS`, the sets, `ALSO_HERE` (what no set covers: the assistant, the website check), then all tools; the
 guest page shows the comparison and the sets. `tests/toolsets.test.mjs` checks every link against the registry.
 
 ## Welcome wizard

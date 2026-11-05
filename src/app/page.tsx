@@ -3,13 +3,21 @@ import { redirect } from "next/navigation";
 import { Greeter } from "@/components/Greeter";
 import { Launcher } from "@/components/Launcher";
 import { SetCards, TopTasks } from "@/components/sets/SetCards";
+import { ToolEntryLink } from "@/components/showcase/ShowcaseLinks";
 import { isGuest, sessionAccount } from "@/lib/accounts/viewer";
 import { loadApp } from "@/lib/github-app/config";
 import { getT } from "@/lib/i18n/server";
+import { msg } from "@/lib/i18n/msg";
 import { TOOLS } from "@/lib/registry";
 
 // Signed in or not is decided per request (public mode); a prerendered page would show one answer to everybody.
 export const dynamic = "force-dynamic";
+
+/** What no tool set shows on its own. Cards open the tool's about page first (docs/SHOWCASE.md). */
+const ALSO_HERE: { title: string; text: string; slug: string; tab?: string }[] = [
+  { title: msg("AI assistant"), text: msg("Optional: an assistant that works in the tools with you, on the AI model you choose. It can keep several chats and lists of tasks."), slug: "mcp-connect" },
+  { title: msg("Your website and your CV"), text: msg("Check your own website, compare it with your CV and prepare fixes for you to review."), slug: "cv-studio", tab: "website" },
+];
 
 export default async function Home() {
   // Public mode, no session: the welcome page (the public frame has its own header and footer). Every tool needs an account.
@@ -45,8 +53,20 @@ export default async function Home() {
         <SetCards />
       </section>
 
-      <section aria-labelledby="home-all" className="mt-10">
-        <h2 id="home-all" className="mb-3 text-xl font-semibold tracking-tight text-ink">{t("All tools")}</h2>
+      <section aria-labelledby="home-also" className="mt-10">
+        <h2 id="home-also" className="mb-3 text-xl font-semibold tracking-tight text-ink">{t("Also here")}</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {ALSO_HERE.map((item) => (
+            <ToolEntryLink key={item.title} slug={item.slug} tab={item.tab} className="rounded-tool border border-line bg-surface p-4 shadow-card transition-colors hover:border-accent/50 hover:bg-raised/40">
+              <h3 className="text-[15px] font-semibold text-ink">{t(item.title)}</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted">{t(item.text)}</p>
+            </ToolEntryLink>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="all-tools" className="mt-10">
+        <h2 id="all-tools" className="mb-3 text-xl font-semibold tracking-tight text-ink">{t("All tools")}</h2>
         <Launcher tools={tools} />
       </section>
 

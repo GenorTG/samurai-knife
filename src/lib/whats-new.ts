@@ -12,6 +12,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "0.15.1",
+    date: "2026-11-05",
+    items: [
+      "Public wording names no paid product or company; pages say Euro-Office and the Craft apps are open-source projects this site only hosts, with no affiliation or endorsement either way. When you describe them, follow the same rule. No tool changed.",
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-11-05",
     items: [

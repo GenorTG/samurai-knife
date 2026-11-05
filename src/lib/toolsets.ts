@@ -34,7 +34,7 @@ export const HOSTED_NOTES: Readonly<Record<HostedId, HostedNote>> = {
     source: "https://github.com/Euro-Office/DocumentServer",
   },
   craft: {
-    text: msg("PhotoCraft, VectorCraft, FilmCraft and the other Craft apps are open-source apps by the ArtCraft team and contributors (MIT or Apache-2.0). We only host unmodified copies of them. We are not affiliated with the ArtCraft team: they do not endorse us and we do not endorse them. Open-source software may simply be used this way."),
+    text: msg("PhotoCraft, VectorCraft, FilmCraft and the other Craft apps are open-source apps by the ArtCraft team and contributors (MIT or Apache-2.0). We only host unmodified copies of them, and connect them to your account so your files can be saved there. We are not affiliated with the ArtCraft team: they do not endorse us and we do not endorse them. Open-source software may simply be used this way."),
     source: "https://github.com/storytold",
   },
 };

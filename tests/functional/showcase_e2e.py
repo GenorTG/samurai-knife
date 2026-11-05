@@ -77,7 +77,7 @@ def flow(base: str, browser: Browser, engine: str) -> None:
     hydrated(page)
     shot(page, f"{engine}-1440-home")
     # The home feature card for the CV builder's Website tab -> its showcase with the tab carried along.
-    card = page.locator("main a[href^='/tools/cv-studio/about']").filter(has_text="Studio stron internetowych")
+    card = page.locator("main a[href^='/tools/cv-studio/about']").filter(has_text="Twoja strona i Twoje CV")
     check(f"[{engine}] home feature card links to the showcase with its tab", card.count() == 1 and card.get_attribute("href") == "/tools/cv-studio/about?tab=website", card.count())
     page.locator("#all-tools").scroll_into_view_if_needed()
     page.wait_for_timeout(300)
@@ -85,7 +85,7 @@ def flow(base: str, browser: Browser, engine: str) -> None:
 
     # Launcher card -> showcase.
     page.locator("[data-launcher-search]").fill("json")
-    page.locator("main article button").filter(has_text="JSON i konfiguracja").first.click()
+    page.locator("main article button").filter(has_text="Pliki JSON i konfiguracyjne").first.click()
     page.wait_for_url("**/tools/json/about", timeout=30000)
     settle(page)
     check(f"[{engine}] launcher card opens /tools/json/about", page.url.endswith("/tools/json/about"), page.url)
@@ -112,7 +112,7 @@ def flow(base: str, browser: Browser, engine: str) -> None:
     page.goto(base + "/", wait_until="networkidle")
     hydrated(page)
     page.locator("[data-launcher-search]").fill("json")
-    page.locator("main article button").filter(has_text="JSON i konfiguracja").first.click()
+    page.locator("main article button").filter(has_text="Pliki JSON i konfiguracyjne").first.click()
     page.wait_for_url("**/tools/json", timeout=30000)
     check(f"[{engine}] a skipped tool opens straight away", page.url.endswith("/tools/json"), page.url)
     page.goto(base + "/", wait_until="networkidle")
