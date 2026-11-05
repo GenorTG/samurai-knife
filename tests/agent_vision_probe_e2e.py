@@ -116,12 +116,10 @@ def send(page: Page, text: str) -> list[dict]:
         messages = conversation(page)
         if sum(1 for m in messages if m["role"] == "user") <= users_before:
             return False
-        return messages[-1]["role"] == "assistant" and not messages[-1].get("tool_calls")
-    try:
-        wait_until(finished, "the turn to end", timeout=SLOW * 2 / 1000)
-    except TimeoutError:
-        print("last messages:", [(m["role"], str(m.get("content"))[:160]) for m in conversation(page)[-4:]])
-        raise
+        # A turn that hit a limit ends with an info notice ("Saved as a paused task") after the answer.
+        last = next(m for m in reversed(messages) if m["role"] != "notice")
+        return last["role"] == "assistant" and not last.get("tool_calls")
+    wait_until(finished, "the turn to end", timeout=SLOW * 2 / 1000)
     page.locator("button[aria-label='Send']").wait_for(timeout=SLOW)
     return conversation(page)
 

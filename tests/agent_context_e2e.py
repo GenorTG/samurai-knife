@@ -69,13 +69,14 @@ def send_and_settle(page: Page, text: str, timeout: float = 120) -> None:
     while time.time() < deadline:
         t = transcript(page)
         users = [m for m in t if m["role"] == "user"]
-        done = len(users) > before and t[-1]["role"] == "notice" and t[-1].get("level") == "usage" \
+        # A turn that hit a limit ends with "Saved as a paused task" after the usage footer.
+        done = len(users) > before and any(m["role"] == "notice" and m.get("level") == "usage" for m in t[-2:]) \
             and page.locator("html[data-agent-active]").count() == 0
         stable = stable + 1 if done else 0
         if stable >= 3:
             return
         time.sleep(0.3)
-    raise AssertionError(f"turn did not settle: {text[:40]!r} last={[(m["role"], str(m.get("content"))[:160]) for m in transcript(page)[-3:]]} active={page.locator("html[data-agent-active]").count()}")
+    raise AssertionError(f"turn did not settle: {text[:40]!r} last={transcript(page)[-3:]}")
 
 
 def last_request() -> dict:

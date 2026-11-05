@@ -117,6 +117,8 @@ with sync_playwright() as pw:
     def put_limits(body: dict) -> int:
         return page.evaluate("b => fetch('/api/account/assistant', {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(b)}).then(r => r.status)", body)
     check("a budget below the minimum is refused", put_limits({"maxRounds": 24, "maxToolCalls": 40, "maxInputTokens": 500}) == 400)
+    page.wait_for_timeout(200)
+    errors[:] = [e for e in errors if "status of 400" not in e]  # that refusal, asked for above
     check("a budget is saved", put_limits({"maxRounds": 24, "maxToolCalls": 40, "maxInputTokens": 10000}) == 200)
     acc = page.evaluate("fetch('/api/account').then(r => r.json())")
     check("the account shows the budget", (acc.get("assistant") or {}).get("maxInputTokens") == 10000, acc.get("assistant"))
