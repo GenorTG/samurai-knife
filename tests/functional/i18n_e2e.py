@@ -95,7 +95,7 @@ def main() -> int:
         settle(page)
         check("html lang becomes pl", page.evaluate("document.documentElement.lang") == "pl")
         body = page.locator("body").inner_text()
-        check("launcher is Polish", "JSON i konfiguracja" in body and "Laboratorium SQL" in body, body[:300])
+        check("launcher is Polish", "Pliki JSON i konfiguracyjne" in body and "Narzędzia SQL" in body, body[:300])
         cookies = {c["name"]: c["value"] for c in ctx.cookies()}
         check("cookie knife_lang=pl", cookies.get("knife_lang") == "pl", cookies)
         shot(page, "home-pl")
@@ -134,7 +134,7 @@ def main() -> int:
         check("account page has the language choice", group.count() == 1)
         group.get_by_role("radio", name="English").click()
         try:
-            page.wait_for_function("() => document.documentElement.lang === 'en' && document.body.innerText.includes('Interface language')", timeout=20000)
+            page.wait_for_function("() => document.documentElement.lang === 'en' && document.body.innerText.includes('Language of this site')", timeout=20000)
             switched = True
         except Exception:
             switched = False

@@ -34,7 +34,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 flex-1">{children}</div>
       <footer className="border-t border-line px-4 py-6 text-xs text-faint sm:px-6">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3">
-          <p>{t("Smart Knife · self-hosted · no ads, no tracking")}</p>
+          <p>{t("Smart Knife · free · no ads, no tracking")}</p>
           <nav aria-label={t("Footer")} className="flex flex-wrap gap-4">
             <Link href="/" className="hover:text-ink">{t("Home")}</Link>
             <Link href="/login" className="hover:text-ink">{t("Log in")}</Link>

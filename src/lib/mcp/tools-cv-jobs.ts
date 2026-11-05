@@ -5,7 +5,7 @@ import { CvJobError, fetchAndSaveJob, matchJob, suggestForJob } from "@/lib/cv/j
 import { CV_LANGS } from "@/lib/cv/schema";
 import { wrapUntrusted, wrapUntrustedOptional, wrapUntrustedStrings } from "@/lib/security/untrusted";
 
-/** CV studio `knife_cv_*` tools for the "jobs" lane. Evidence and deterministic checks only: no LLM calls. */
+/** CV builder `knife_cv_*` tools for the "jobs" lane. Evidence and deterministic checks only: no LLM calls. */
 
 const MAX_TEXT_RETURNED = 12_000;
 

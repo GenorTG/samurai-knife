@@ -145,6 +145,8 @@ const accountSchema = z.object({
    * null = an account from before 0.13.0 (it sees the current notes once); new accounts start at the current release.
    */
   seen: z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/), legalEdition: z.number().int().min(0).nullable(), at: z.string().max(40) }).nullable().default(null).catch(null),
+  /** Signed up through the website and has not finished or skipped the welcome wizard yet (`/` sends it to /welcome once). */
+  needsWelcome: z.boolean().default(false).catch(false),
 });
 
 const storeSchema = z.object({
@@ -213,6 +215,16 @@ export function markSeen(id: string): Account | undefined {
     const account = store.accounts.find((candidate) => candidate.id === id);
     if (!account) return undefined;
     account.seen = seenNow();
+    return account;
+  });
+}
+
+/** The welcome wizard is finished or skipped. Returns the account, or undefined. */
+export function markWelcomed(id: string): Account | undefined {
+  return mutateStore((store) => {
+    const account = store.accounts.find((candidate) => candidate.id === id);
+    if (!account) return undefined;
+    account.needsWelcome = false;
     return account;
   });
 }

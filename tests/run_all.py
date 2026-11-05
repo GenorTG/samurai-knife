@@ -102,6 +102,7 @@ SUITES: list[Suite] = [
     Suite("log_files", py(f"{F}/log_files_e2e.py"), "static", timeout=900),
     Suite("legal_versions", py(f"{F}/legal_versions_e2e.py"), "static", timeout=900),
     Suite("i18n", py(f"{F}/i18n_e2e.py"), "static", timeout=900),
+    Suite("welcome_wizard", py(f"{F}/welcome_wizard_e2e.py"), "static", timeout=900),
     Suite("workflows", py(f"{F}/workflows_e2e.py"), "static", timeout=1500),
     Suite("site_studio", py(f"{F}/site_studio_e2e.py"), "static", timeout=900),
     Suite("github_app", py(f"{F}/github_app_e2e.py"), "static", timeout=900),
@@ -192,6 +193,7 @@ def select(args: argparse.Namespace) -> list[Suite]:
 def run_suite(suite: Suite, server: ScratchServer | None, mock: Mock, out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
     env = os.environ.copy()
     env.setdefault("KNIFE_PYTHON", VENV_PY)  # suites and the server must agree on the engine venv whatever checkout they run from
+    env["PYTHONPATH"] = os.pathsep.join(x for x in [str(ROOT / "tests" / "english_default"), env.get("PYTHONPATH")] if x)  # Polish-first: English labels in every suite
     url, data, tmp = "", "", None
     if suite.real:
         env.setdefault("KNIFE_REAL_ACCOUNT", "openclaw")

@@ -1,6 +1,6 @@
-"""The assistant can use the CV studio from ANY page (real browser, scripted mock provider, real routes):
+"""The assistant can use the CV builder from ANY page (real browser, scripted mock provider, real routes):
 the `cv` tool group is not sent on unrelated pages, the system prompt teaches it, `load_tools {group:"cv"}` brings it in
-anywhere, and applications saved through it (with the day they were applied to) show up in the CV studio and can be
+anywhere, and applications saved through it (with the day they were applied to) show up in the CV builder and can be
 asked for as "still open". Oracles are the CV API and the request the mock provider really received (GET /__last).
 
   node tests/mock_provider.mjs 3299
@@ -73,7 +73,7 @@ def open_panel(page: Page, url: str) -> str:
     page.goto(BASE + url, wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
 
 
@@ -162,7 +162,7 @@ with sync_playwright() as pw:
     jl = call(page, k, "knife_cv_job_list", {})
     check("the offer list says which offers were applied to and when", jl[0]["application"] == {"id": "globex-backend-dev", "status": "applied", "appliedOn": TODAY}, jl)
 
-    # 3) the user sees it in the CV studio: applied date on the card, offer badge with the date
+    # 3) the user sees it in the CV builder: applied date on the card, offer badge with the date
     page.goto(BASE + "/tools/cv-studio?tab=applications", wait_until="networkidle")
     card = page.locator("[data-cv-path='/applications/id=globex-backend-dev']")
     card.wait_for(timeout=15_000)

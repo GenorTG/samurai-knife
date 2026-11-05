@@ -485,7 +485,7 @@ function ProviderForm({
 
   return (
     <form onSubmit={connect} className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto p-4" aria-label={tr("Provider settings")}>
-      {firstRun ? <p className="text-[13px] leading-snug text-muted">{tr("Connect a model to start: pick a provider, paste its key, choose a model. The key stays on this server.")}</p> : null}
+      {firstRun ? <p className="text-[13px] leading-snug text-muted">{tr("The assistant is optional: every tool works without it. To use it, connect an AI model. Choose a company that offers one (a provider), paste the key you get from them (API key) and choose a model. Using it may cost money at that company. Your key stays on this server.")}</p> : null}
 
       {account.providerProfiles.length > 0 ? <ProfileBar account={account} buildInput={buildInput} onChanged={onSaved} setStatus={setStatus} /> : null}
 
@@ -507,7 +507,7 @@ function ProviderForm({
         ))}
       </div>
 
-      <Field label={tr("Base URL")} hint={local ? tr("Runs on the Knife server's machine: requests come from the server, not from this browser.") : preset.id === "custom" ? tr("Any OpenAI-compatible API, usually ending in /v1.") : undefined}>
+      <Field label={tr("Base URL")} hint={local ? tr("This runs on the same computer as Smart Knife: requests come from the server, not from this browser.") : preset.id === "custom" ? tr("The address of the AI service. Any service that works like OpenAI's, usually ending in /v1.") : undefined}>
         <TextInput
           data-agent-autofocus
           type="url"
@@ -535,7 +535,7 @@ function ProviderForm({
           ) : null}
         </div>
         <TextInput id="sk-provider-key" type="password" autoComplete="new-password" value={apiKey} disabled={clearKey} onChange={(e) => setApiKey(e.target.value)} placeholder={keyPlaceholder} />
-        <p className="text-[11px] text-faint">{tr("Write-only: kept on the server, never shown again.")}</p>
+        <p className="text-[11px] text-faint">{tr("Kept on the server and never shown again.")}</p>
       </div>
 
       <div className="space-y-1.5">

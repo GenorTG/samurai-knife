@@ -28,19 +28,19 @@ export function KindBadge({ kind }: { kind: ToolMeta["kind"] }) {
     : isRemote
       ? t("Sends prompts and tool inputs to the model endpoint you configure")
       : isSidecar
-        ? t("Runs in an optional docker service on this server (installed from the page)")
+        ? t("Runs on this website's server: nothing to install on your computer")
           : kind === "server"
             ? t("Runs on this app's server")
             : t("Runs on the server (Python venv)");
   const className = isClient
-    ? "rounded-md border border-line-strong px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-faint uppercase"
-    : "rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-accent-soft uppercase";
+    ? "rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] text-faint"
+    : "rounded-md border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent-soft";
   return (
     <span
       title={title}
       className={className}
     >
-      {isClient ? t("browser") : isRemote ? "api" : isSidecar ? "sidecar" : "server"}
+      {isClient ? t("on your device") : isRemote ? "api" : t("on our server")}
     </span>
   );
 }

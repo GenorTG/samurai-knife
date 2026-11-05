@@ -90,7 +90,7 @@ export function siteTargetProblem(
     return msgf("{host} is not verified yet: add the verification tag or file shown in the Website tab to the site, then press Verify", { host: own.host });
   }
   const production = connection?.productionUrl ? new URL(connection.productionUrl) : null;
-  if (!production || !connection) return "add your website first (Website tab of the CV studio: its address, or its GitHub repository): checks run on your own site only";
+  if (!production || !connection) return "add your website first (Website tab of the CV builder: its address, or its GitHub repository): checks run on your own site only";
   if (target.origin !== production.origin) return msgf("audits and page reads run on your connected production site only ({origin})", { origin: production.origin });
   if (!productionTrusted({ approvedSiteUrl: account.approvedSiteUrl ?? null }, { productionUrl: connection.productionUrl, verifiedOrigin: connection.verifiedOrigin ?? "" })) {
     return msgf("{host} is not verified as this repository's site: set it as the repository's Website (GitHub, About) or serve it from its GitHub Pages, then Connect again; or ask an administrator to approve it for your account", { host: production.host });

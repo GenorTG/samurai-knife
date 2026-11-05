@@ -1,5 +1,6 @@
 "use client";
 
+import { HOSTED_NOTES } from "@/lib/toolsets";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SegmentedControl, Select, StorageMeter, TextInput } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
@@ -291,7 +292,7 @@ export default function OfficeTool() {
     try {
       for (const [index, file] of files.entries()) {
         if (file.size > room) {
-          throw new Error(t("{name} ({value}) does not fit: {value2} of your storage is free. Empty the trash or prune old versions to make room.", { name: file.name, value: formatBytes(file.size), value2: formatBytes(Math.max(0, room)) }));
+          throw new Error(t("{name} ({value}) does not fit: {value2} of your storage is free. Empty the trash or delete old versions to make room.", { name: file.name, value: formatBytes(file.size), value2: formatBytes(Math.max(0, room)) }));
         }
         setProgress(t("Uploading {value} of {total}: {name} ({file})…", { value: index + 1, total, name: file.name, file: formatBytes(file.size) }));
         await uploadDoc(file.name, await fileToBase64(file), cwd);
@@ -320,7 +321,7 @@ export default function OfficeTool() {
           compact
           intro={
             <Notice tone="info">
-              {t("Editing in the browser needs the office editor service, which is not installed yet. Your library below works without it: upload, create, download, folders, versions and the trash.")}
+              {t("Editing in the browser is not available yet. Your documents below still work: upload, create, download, folders, earlier versions and the trash.")}
             </Notice>
           }
         />
@@ -358,7 +359,7 @@ export default function OfficeTool() {
             accept={ACCEPT}
             multiple
             disabled={progress !== null}
-            hint={t("docx, xlsx, pptx, odt, ods, odp · up to 50 MB each · into {where}", { where })}
+            hint={t("Word, Excel, PowerPoint or OpenDocument files, up to 50 MB each. They go into {where}.", { where })}
             onFiles={(files) => void upload(files)}
           />
         </Panel>
@@ -534,7 +535,7 @@ export default function OfficeTool() {
                               <button type="button" autoComplete="off" className="text-left font-medium text-ink hover:text-accent-soft hover:underline" onClick={() => open(doc.id)} title={t("Open in the editor")}>
                                 {doc.name}
                               </button>
-                              {doc.lastSaveError ? <span className="block text-xs text-danger">{t("Last editor save refused:")}{" "} {doc.lastSaveError.message}</span> : null}
+                              {doc.lastSaveError ? <span className="block text-xs text-danger">{t("The last save did not go through:")}{" "} {doc.lastSaveError.message}</span> : null}
                             </td>
                             {searching ? <td className="px-3 py-2 text-xs text-muted">{pathOf(folders, doc.folderId) || t("Library")}</td> : null}
                             <td className="px-3 py-2"><Badge>{doc.format}</Badge></td>
@@ -598,8 +599,10 @@ export default function OfficeTool() {
       </Panel>
       {service?.installed ? (
         <p className="text-xs text-faint">
-          {t("Editor service:")}{" "} {service.ready ? t("running") : service.canManage === false ? t("not running (an administrator starts it)") : t("stopped (starts when you open a document)")}
-          {service.canManage === false ? "" : t(" · manage it on the Sidecar services page.")}
+          {t("Document editor:")}{" "} {service.ready ? t("ready") : service.canManage === false ? t("not ready yet (an administrator has to start it)") : t("asleep (it wakes up when you open a document)")}
+          {" "}{t(HOSTED_NOTES.office.text)}{" "}
+          <a href={HOSTED_NOTES.office.source} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{t("Source code")}</a>
+          {service.canManage === false ? "" : t(" · manage it on the Server add-ons page.")}
         </p>
       ) : null}
     </div>
@@ -646,7 +649,7 @@ function TrashView({ lib, confirm, setConfirm, act }: {
               <th className="px-3 py-2 font-medium">{t("Name")}</th>
               <th className="px-3 py-2 font-medium">{t("Type")}</th>
               <th className="px-3 py-2 font-medium">{t("Size")}</th>
-              <th className="px-3 py-2 font-medium">{t("Trashed (UTC)")}</th>
+              <th className="px-3 py-2 font-medium">{t("Moved to trash (UTC)")}</th>
               <th className="px-3 py-2"><span className="sr-only">{t("Actions")}</span></th>
             </tr>
           </thead>

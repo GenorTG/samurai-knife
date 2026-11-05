@@ -4,7 +4,7 @@ import { hostOf, isProfileUrl, linkPresent, normalizeUrl } from "./links";
 import type { Alignment, AlignmentItem, Issue } from "./types";
 
 /**
- * CV <-> website alignment (pure): which facts of the CV studio profile the site shows, and which tech words the site
+ * CV <-> website alignment (pure): which facts of the CV builder profile the site shows, and which tech words the site
  * uses that the CV does not list. Matching is accent- and case-insensitive on whole words; a multi-word item matches
  * when all of its significant words are present.
  */
@@ -88,7 +88,7 @@ export function alignCvWithSite(cv: CvData, siteText: string, siteLinks: string[
   const cvWords = fold([JSON.stringify(p.skills), JSON.stringify(p.projects.map((x) => x.tech)), p.summary.en, p.summary.pl].join(" "));
   const siteOnly = TECH_WORDS.filter((t) => ` ${hay} `.includes(` ${fold(t)} `) && !` ${cvWords} `.includes(` ${fold(t)} `));
 
-  if (!items.length) return { score: 0, items, siteOnly, note: msg("The CV studio profile is empty: fill it (or import your CV) to compare it with the site.") };
+  if (!items.length) return { score: 0, items, siteOnly, note: msg("The CV builder profile is empty: fill it (or import your CV) to compare it with the site.") };
   // Weights: who you are and what you do now count most, then projects, then skills.
   const weight: Record<AlignmentItem["kind"], number> = { name: 3, headline: 3, role: 3, email: 1, link: 1, projectLink: 0.5, project: 2, skill: 0.5 };
   const total = items.reduce((n, i) => n + weight[i.kind], 0);
@@ -114,6 +114,6 @@ export function alignmentIssues(a: Alignment): Issue[] {
   if (links.length) add("align.links", "medium", msg("Profile links from the CV are missing on the site"), links.join(", "), msgf("Link {links} from the site (a visible link, and in JSON-LD sameAs).", { links: links.join(", ") }));
   const projectLinks = named("projectLink");
   if (projectLinks.length) add("align.project-links", "low", msg("Project pages linked in the CV are not linked from the site"), projectLinks.join(", "), msgf("Link {links} where you describe that project (optional: they are project pages, not profiles).", { links: projectLinks.join(", ") }));
-  if (a.siteOnly.length) add("align.site-only", "low", msgf("The site names tech the CV does not list: {value}", { value: a.siteOnly.slice(0, 8).join(", ") }), msg("Either the CV misses current skills or the site shows old ones."), msg("Add them to the CV skills (CV studio) or update the site copy."));
+  if (a.siteOnly.length) add("align.site-only", "low", msgf("The site names tech the CV does not list: {value}", { value: a.siteOnly.slice(0, 8).join(", ") }), msg("Either the CV misses current skills or the site shows old ones."), msg("Add them to the CV skills (CV builder) or update the site copy."));
   return out;
 }

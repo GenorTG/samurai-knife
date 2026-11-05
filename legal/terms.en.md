@@ -124,7 +124,7 @@ In particular, you must not:
 
 ## 17. Change history {#history}
 
-- **Edition 9** (4 November 2026, {{siteName}} 0.14.0, later builds): no change of the provisions; the privacy notice describes the database of Account tables on a rented virtual server.
+- **Edition 9** (5 November 2026, {{siteName}} 0.15.2): no change of the provisions; the privacy notice describes the database of Account tables on a rented virtual server.
 - **Edition 8** (4 November 2026, {{siteName}} 0.14.0): no change of the provisions; the Service is shown in Polish by default, every tool has a public description page, and the privacy notice describes how tool cards open.
 - **Edition 7** (30 October 2026, {{siteName}} 0.13.0): no change of the provisions; the privacy notice describes saved assistant tasks, the "What's new" window and that programs connected with the User's MCP key can read the User's assistant conversations.
 - **Edition 6** (29 October 2026, {{siteName}} 0.13.0): no change of the provisions; the privacy notice describes vision detection (a generated test picture sent to the AI provider chosen by the User) and the assistant's turn limit.

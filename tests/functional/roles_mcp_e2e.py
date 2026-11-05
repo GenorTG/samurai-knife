@@ -11,7 +11,7 @@
   malformed header, a revoked key, no key at all, another account's key on a personal URL;
 - cross-account isolation over MCP: alice's CV offers and documents are invisible to bob, and knife_ui_state /
   knife_ui_show reach only the caller's own open tabs;
-- the CV studio tells a user that an administrator has to run the GitHub showcase; logging out clears the account's
+- the CV builder tells a user that an administrator has to run the GitHub showcase; logging out clears the account's
   browser storage.
 
 Self-contained: own scratch server (tests/scratch_server.py: worktree of the current tree, fresh KNIFE_DATA_DIR, free
@@ -225,10 +225,10 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------- 8. UI bridge: only your own tabs
     ctx_a, page_a = new_context(browser, base, "203.0.113.60")
     ui_login(page_a, "alice", "alice password 1")
-    page_a.wait_for_url(base + "/", timeout=30_000)
+    page_a.wait_for_url(re.compile(r"/(welcome)?$"), timeout=30_000)  # a new website account lands on the welcome wizard
     go(page_a, "/tools/cv-studio?tab=showcase")
-    expect(page_a.get_by_text(re.compile(r"An administrator has to run the project showcase"))).to_be_visible(timeout=60_000)
-    check("CV studio showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Rank my repositories").count() == 0)
+    expect(page_a.get_by_text(re.compile(r"Only an administrator can use this page here"))).to_be_visible(timeout=60_000)
+    check("CV builder showcase tab tells a user an administrator has to run it", page_a.get_by_role("button", name="Score my projects").count() == 0)
     deadline = time.monotonic() + 20
     alice_state = ""
     while time.monotonic() < deadline:
@@ -276,8 +276,8 @@ def run(server: ScratchServer, browser: Browser) -> None:
     check("a read-only key cannot call a write tool", not ok, text[:200])
     page_a.reload(wait_until="networkidle")
     check("the key is not shown again after a reload", page_a.get_by_test_id("mcp-key-value").count() == 0 and ui_key not in page_a.content())
-    page_a.get_by_role("button", name="Revoke from the page").click()
-    expect(page_a.get_by_text('Revoked "from the page"')).to_be_visible(timeout=15_000)
+    page_a.get_by_role("button", name="Remove from the page").click()
+    expect(page_a.get_by_text('Removed "from the page"')).to_be_visible(timeout=15_000)
     status, _ = mcp.call("tools/list", {}, basic("alice", ui_key))
     check("a key revoked in the UI stops working", status == 401, status)
     status, _, _ = api.call("POST", "/api/account/mcp-keys", {"action": "revoke", "id": alice_key_id}, cookie=bob)

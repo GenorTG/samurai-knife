@@ -20,6 +20,7 @@ Usage: python3 tests/functional/github_app_e2e.py [--headed]
 """
 from __future__ import annotations
 
+import re
 import json
 import os
 import subprocess
@@ -89,7 +90,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         # ------------------------------------------------------------------------- 1. the admin creates the app
         ctx, page = new_context(browser, base, "203.0.113.10")
         ui_login(page, "genor", ADMIN_PW)
-        page.wait_for_url(base + "/", timeout=15_000)
+        page.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
         page.goto("/account/admin", wait_until="networkidle")
         expect(page.get_by_role("button", name="Create the GitHub App on GitHub")).to_be_visible(timeout=20_000)
         page.get_by_label("App name (unique on GitHub)").fill("Knife E2E")
@@ -186,7 +187,7 @@ def run(server: ScratchServer, web: str, app_file: Path) -> None:
         ctx_a2, page_a2 = new_context(browser, base, "203.0.113.14")
         page_a2.goto("/login", wait_until="networkidle")
         page_a2.get_by_role("link", name="Continue with GitHub").click()
-        page_a2.wait_for_url(base + "/", timeout=30_000)
+        page_a2.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=30_000)
         page_a2.goto("/account", wait_until="networkidle")
         hydrated(page_a2)
         page_a2.get_by_role("button", name="Delete my account…").click()

@@ -192,7 +192,7 @@ export class OfficeLiveBridge {
       if (this.status.state === "connecting") {
         this.setState({
           state: "unavailable",
-          reason: "the assistant plugin did not connect (restart the office service on the Sidecar services page to install it)",
+          reason: "the assistant plugin did not connect (restart the office service on the Server add-ons page to install it)",
         });
       }
     }, ms);

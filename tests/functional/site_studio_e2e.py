@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Website (the CV studio's Website tab) end to end (docs/WEBSITE-STUDIO.md) against the fake world of tests/mock_site_world.mjs (in-memory
+"""Website (the CV builder's Website tab) end to end (docs/WEBSITE-STUDIO.md) against the fake world of tests/mock_site_world.mjs (in-memory
 GitHub API, a small Polish website, a PageSpeed endpoint), driven like a person in Chromium plus an agent over MCP:
 
 - Connect in the UI (repo, token, production URL, extra page) -> the repository panel shows write access and the repo's
@@ -7,7 +7,7 @@ GitHub API, a small Polish website, a PageSpeed endpoint), driven like a person 
 - Score: Run audit -> live role=status progress -> score tiles (Lighthouse 72 from the fake PageSpeed), issues with a
   fix each (missing alt, stale copyright...), Lighthouse panel, site checks.
 - Copy & CV with a CV seeded over MCP (knife_cv_import): CV fit badges, per-page copy metrics; the same view as the
-  CV studio's Website tab.
+  CV builder's Website tab.
 - An agent over MCP: knife_site_status (instructions), knife_site_replace + knife_site_pr -> the open Changes tab shows
   the work branch, the commit, the diff and the preview by itself; "Score the preview" audits it; Publish (two steps)
   merges exactly the reviewed head into main on the fake GitHub; the work branch is gone.
@@ -153,7 +153,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
 
         # ---------------------------------------------------------------- 1. connect
         go(page, "/tools/cv-studio?tab=website&step=connect")
-        # The website now lives in the CV studio: the repository path is the second way in (the address alone is the first).
+        # The website now lives in the CV builder: the repository path is the second way in (the address alone is the first).
         # A click before hydration is lost (no React handler yet): click until the repository form appears.
         repo_way = page.get_by_role("button", name="Its GitHub repository")
         for _ in range(20):
@@ -232,7 +232,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         check("Copy & CV: ✓ Samurai Knife, ✗ Toberenamed RTS, ✗ Kubernetes", "✓ Samurai Knife" in badges and "✗ Toberenamed RTS" in badges and "✗ Kubernetes" in badges, badges[:500])
         check("Copy & CV: per-page copy metrics (FOG-PL)", "FOG-PL" in badges and "Calls to action" in badges)
         page.goto(base + "/tools/site-studio?tab=copy", wait_until="networkidle")
-        check("the retired site-studio URL lands on the same step of the CV studio's Website tab", "/tools/cv-studio?tab=website&step=copy" in page.url, page.url)
+        check("the retired site-studio URL lands on the same step of the CV builder's Website tab", "/tools/cv-studio?tab=website&step=copy" in page.url, page.url)
         expect(page.get_by_text("CV fit ·")).to_be_visible(timeout=20_000)
 
         # ---------------------------------------------------------------- 4. agent edits, the Changes tab follows
@@ -242,7 +242,7 @@ def run(server: ScratchServer, gh_url: str, site_url: str, preview_url: str) -> 
         check("knife_site_status gives the agent the repo's AGENTS.md", ok and "Copy lives in lib/site-data.ts" in text, text[:300])
         ok, text = mcp.tool("knife_site_replace", {"path": "lib/site-data.ts", "find": '["Samurai Knife"]', "replace": '["Samurai Knife", "Toberenamed RTS"]', "message": "Show Toberenamed RTS on the site"})
         check("knife_site_replace commits to a knife/ work branch", ok and '"branch": "knife/' in text, text[:300])
-        ok, text = mcp.tool("knife_site_pr", {"title": "Add Toberenamed RTS", "body": "From the CV studio."})
+        ok, text = mcp.tool("knife_site_pr", {"title": "Add Toberenamed RTS", "body": "From the CV builder."})
         check("knife_site_pr opens the pull request", ok and '"number": 1' in text, text[:300])
         expect(page.get_by_role("link", name="#1 Add Toberenamed RTS")).to_be_visible(timeout=30_000)
         main = page.locator("main").inner_text()

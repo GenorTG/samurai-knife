@@ -15,6 +15,33 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.15.2",
+    date: "2026-11-05",
+    features: [],
+    fixes: [
+      msg("Account details and sign-ins move to a database that is faster to reach for many people at once. Nothing changes in how you use the site."),
+    ],
+  },
+  {
+    version: "0.15.1",
+    date: "2026-11-05",
+    features: [],
+    fixes: [
+      msg("The home page shows the AI assistant and the website check again."),
+      msg("Pages now say clearly whose software Euro-Office and the Craft apps are: open-source projects we only host, with no ties either way."),
+    ],
+  },
+  {
+    version: "0.15.0",
+    date: "2026-11-05",
+    features: [
+      msg("Clearer names and categories: every tool now says in plain words what it does, and tools are grouped by the job you want done. Tool sets show what each group can replace."),
+      msg("A short welcome guide for new accounts: choose your language and what you came for, and it takes you straight there. You can open it again from the home page."),
+      msg("The CV builder has a new step-by-step wizard: one topic at a time, with examples, and only your name is required. No AI model is needed, and what you write is kept until you finish. You can also start from a CV file you already have."),
+    ],
+    fixes: [],
+  },
+  {
     version: "0.14.0",
     date: "2026-11-04",
     features: [
@@ -50,7 +77,7 @@ export const RELEASE_NOTES: readonly ReleaseNote[] = [
 /** A plain summary of each edition of the default Terms and privacy notice, for people who already accepted one. */
 export const LEGAL_EDITION_NOTES: Readonly<Record<number, string>> = {
   6: msg("The privacy notice describes checking whether a model sees images (one generated test picture; the shared list of answers does not record who checked) and your turn limit setting."),
-  9: msg("The privacy notice says that account details, sign-in sessions, MCP keys and AI provider profiles are kept in a database on a rented server in Germany (the same provider that relays our e-mail), reached only through an encrypted tunnel, with a copy on our own server in Poland. Passwords, tokens and API keys stay hashed or encrypted there."),
+  9: msg("The privacy notice says that account details, sign-in sessions, MCP keys and AI provider profiles are kept in a database on a rented server in Germany (the same provider that relays our e-mail), on an encrypted volume, reached only through an encrypted tunnel, with a copy on our own server in Poland. Passwords, tokens and API keys stay hashed or encrypted there."),
   8: msg("The privacy notice describes the browser setting that decides whether tool cards open a tool's description page first, and that Smart Knife is shown in Polish unless you choose English."),
   7: msg("The privacy notice now describes saved assistant tasks, which release notes you have already seen, and that outside AI tools you connect with your MCP key can read your assistant chats."),
 };

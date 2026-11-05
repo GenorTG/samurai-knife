@@ -7,14 +7,10 @@ import { deleteApplication, errorText, saveApplication } from "@/lib/cv/client";
 import { daysBetween, dueApplications, todayIso } from "@/lib/cv/collections";
 import { APPLICATION_STATUSES, OPEN_STATUSES, type Application, type ApplicationStatus, type CvData } from "@/lib/cv/schema";
 import { cx } from "@/lib/format";
-import { CvFrame, externalUrl, SafeLink } from "./shared";
+import { CvFrame, externalUrl, SafeLink, STATUS_LABEL } from "./shared";
 import { useCvData } from "./useCvData";
 import { useT } from "@/lib/i18n/react";
 
-const STATUS_LABEL: Record<ApplicationStatus, string> = {
-  wishlist: "Wishlist", applied: "Applied", screening: "Screening", interview: "Interview", offer: "Offer",
-  rejected: "Rejected", withdrawn: "Withdrawn", ghosted: "Ghosted",
-};
 const STATUS_TONE: Record<ApplicationStatus, "neutral" | "accent" | "good" | "warn" | "danger"> = {
   wishlist: "neutral", applied: "accent", screening: "accent", interview: "warn", offer: "good",
   rejected: "danger", withdrawn: "neutral", ghosted: "neutral",
@@ -89,7 +85,7 @@ function AppCard({ app, data, today, onEdit, onMove, busy }: { app: Application;
           <h3 className="text-sm font-semibold text-ink wrap-anywhere">{app.company}</h3>
           <p className="text-[13px] text-muted wrap-anywhere">{app.role}</p>
         </div>
-        <Badge tone={STATUS_TONE[app.status]}>{STATUS_LABEL[app.status]}</Badge>
+        <Badge tone={STATUS_TONE[app.status]}>{t(STATUS_LABEL[app.status])}</Badge>
       </div>
 
       <dl className="mt-2 space-y-1 text-xs text-muted">
@@ -104,13 +100,13 @@ function AppCard({ app, data, today, onEdit, onMove, busy }: { app: Application;
             {due ? <Badge tone="danger">{t("Due now")}</Badge> : null}
           </div>
         ) : null}
-        {last ? <div className="flex gap-1.5 text-faint"><dt>{t("Last")}</dt><dd>{last.on} {STATUS_LABEL[last.status]}{last.note && last.note !== "created" ? ` · ${last.note}` : ""}</dd></div> : null}
+        {last ? <div className="flex gap-1.5 text-faint"><dt>{t("Last change")}</dt><dd>{last.on} {t(STATUS_LABEL[last.status])}{last.note && last.note !== "created" ? ` · ${last.note}` : ""}</dd></div> : null}
       </dl>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5" role="group" aria-label={t("Move {company} to", { company: app.company })}>
         {NEXT[app.status].map((status) => (
-          <Button key={status} size="sm" disabled={busy} aria-label={t("Move {company} {role} to {value}", { company: app.company, role: app.role, value: STATUS_LABEL[status] })} onClick={() => onMove(status)}>
-            {STATUS_LABEL[status]}
+          <Button key={status} size="sm" disabled={busy} aria-label={t("Move {company} {role} to {value}", { company: app.company, role: app.role, value: t(STATUS_LABEL[status]) })} onClick={() => onMove(status)}>
+            {t(STATUS_LABEL[status])}
           </Button>
         ))}
         <Button size="sm" variant="ghost" aria-label={t("Edit {company} {role}", { company: app.company, role: app.role })} onClick={onEdit}>{t("Edit")}</Button>
@@ -157,7 +153,7 @@ function AppDrawer({ draft, setDraft, data, history, onClose, onSave, onDelete, 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={t("Status")}>
               <Select value={draft.status} onChange={(e) => set("status", e.target.value as ApplicationStatus)}>
-                {APPLICATION_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                {APPLICATION_STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_LABEL[s])}</option>)}
               </Select>
             </Field>
             <Field label={t("CV language")}>
@@ -171,13 +167,13 @@ function AppDrawer({ draft, setDraft, data, history, onClose, onSave, onDelete, 
             <TextInput aria-label={t("Saved link")} value={draft.url} onChange={(e) => set("url", e.target.value)} placeholder={t("https://…")} inputMode="url" />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t("Linked offer")}>
+            <Field label={t("Saved offer")}>
               <Select value={draft.jobId} onChange={(e) => set("jobId", e.target.value)}>
                 <option value="">{t("None")}</option>
                 {data.jobs.map((j) => <option key={j.id} value={j.id}>{`${j.company} — ${j.title}`.slice(0, 60)}</option>)}
               </Select>
             </Field>
-            <Field label={t("CV version sent")}>
+            <Field label={t("CV you sent")}>
               <Select value={draft.variantId} onChange={(e) => set("variantId", e.target.value)}>
                 <option value="">{t("None")}</option>
                 {data.variants.map((v) => <option key={v.id} value={v.id}>{v.name.slice(0, 60)}</option>)}
@@ -185,19 +181,19 @@ function AppDrawer({ draft, setDraft, data, history, onClose, onSave, onDelete, 
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9.5rem]">
-            <Field label={t("Next action")}><TextInput value={draft.nextAction} onChange={(e) => set("nextAction", e.target.value)} placeholder={t("e.g. Send a follow-up")} /></Field>
-            <Field label={t("Due date")}><TextInput type="date" value={draft.nextActionDue} onChange={(e) => set("nextActionDue", e.target.value)} /></Field>
+            <Field label={t("Next step")}><TextInput value={draft.nextAction} onChange={(e) => set("nextAction", e.target.value)} placeholder={t("e.g. Send a reminder")} /></Field>
+            <Field label={t("By when")}><TextInput type="date" value={draft.nextActionDue} onChange={(e) => set("nextActionDue", e.target.value)} /></Field>
             <Field label={t("Applied on")} hint={t("Set automatically the first time it is marked Applied. Enter a date to record an earlier one.")}><TextInput type="date" value={draft.appliedOn} onChange={(e) => set("appliedOn", e.target.value)} /></Field>
           </div>
           <Field label={t("Notes")}><TextArea rows={4} value={draft.notes} onChange={(e) => set("notes", e.target.value)} className="font-sans" /></Field>
-          {editing ? <Field label={t("Note for the status history")} hint={t("Added to the dated history when the status changes.")}><TextInput aria-label={t("Note for the status history")} value={draft.note} onChange={(e) => set("note", e.target.value)} /></Field> : null}
+          {editing ? <Field label={t("Note about this change")} hint={t("Kept in the history with the date when the status changes.")}><TextInput aria-label={t("Note about this change")} value={draft.note} onChange={(e) => set("note", e.target.value)} /></Field> : null}
           {error ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
           {editing && history.length > 0 ? (
             <section aria-label={t("Status history")}>
               <h3 className="sk-label mb-1.5">{t("Status history")}</h3>
               <ol className="space-y-1 border-l border-line pl-3 text-xs text-muted">
                 {[...history].reverse().map((h, i) => (
-                  <li key={`${h.on}-${h.status}-${i}`} className="wrap-anywhere"><span className="font-mono text-faint">{h.on}</span> · <span className="text-ink">{STATUS_LABEL[h.status]}</span>{h.note ? ` · ${h.note}` : ""}</li>
+                  <li key={`${h.on}-${h.status}-${i}`} className="wrap-anywhere"><span className="font-mono text-faint">{h.on}</span> · <span className="text-ink">{t(STATUS_LABEL[h.status])}</span>{h.note ? ` · ${h.note}` : ""}</li>
                 ))}
               </ol>
             </section>
@@ -294,9 +290,9 @@ export default function ApplicationsTab() {
         const by = (status: ApplicationStatus) => cv.applications.filter((a) => a.status === status);
         const closedCount = CLOSED.reduce((n, s) => n + by(s).length, 0);
         const column = (status: ApplicationStatus) => (
-          <section key={status} aria-label={t("{value} applications", { value: STATUS_LABEL[status] })} className="min-w-0 space-y-2 rounded-tool border border-line bg-raised/30 p-2.5">
+          <section key={status} aria-label={t("{value} applications", { value: t(STATUS_LABEL[status]) })} className="min-w-0 space-y-2 rounded-tool border border-line bg-raised/30 p-2.5">
             <h2 className="flex items-center justify-between px-1 text-[13px] font-semibold text-ink">
-              {STATUS_LABEL[status]}
+              {t(STATUS_LABEL[status])}
               <Badge tone={STATUS_TONE[status]}>{by(status).length}</Badge>
             </h2>
             {by(status).length === 0 ? <p className="px-1 py-3 text-xs text-faint">{t("Nothing here.")}</p> : by(status).map((app) => (
@@ -309,7 +305,7 @@ export default function ApplicationsTab() {
             <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Application actions")}>
               <Button variant="primary" onClick={() => openDrawer(emptyDraft())}>{t("Add application")}</Button>
               <Badge tone="accent">{cv.applications.filter((a) => (OPEN_STATUSES as readonly ApplicationStatus[]).includes(a.status)).length} {" "}{t("open")}</Badge>
-              <Badge tone={due.length > 0 ? "danger" : "neutral"} title={t("Open applications whose next action is due today or earlier")}>{due.length} {" "}{t("due now")}</Badge>
+              <Badge tone={due.length > 0 ? "danger" : "neutral"} title={t("Applications with a next step due today or earlier")}>{due.length} {" "}{t("due now")}</Badge>
             </div>
             {moveError ? <div role="alert"><Notice tone="error">{moveError}</Notice></div> : null}
 
@@ -330,10 +326,10 @@ export default function ApplicationsTab() {
 
             {cv.applications.length === 0 ? (
               <EmptyState
-                title={t("No applications tracked yet")}
+                title={t("No applications yet")}
                 action={<Button variant="primary" onClick={() => openDrawer(emptyDraft())}>{t("Add your first application")}</Button>}
               >
-                {t("Save the link to every job you apply to, with the CV version you sent and the next step. Offers saved in the Job offers tab can be tracked in one click.")}
+                {t("Save the link to every job you apply to, with the CV you sent and the next step. Offers saved in the Job offers tab can be added in one click.")}
               </EmptyState>
             ) : (
               <>

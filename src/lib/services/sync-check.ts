@@ -8,7 +8,7 @@ import { readState } from "./state";
  * sidecar's bundle renders (compose, secret, editor plugin, generated config) cannot start that sidecar until the owner
  * runs `sudo knife-sidecar sync <id>`. The running containers keep working, so without this the first sign was a failed
  * start after the next reboot. Checked once shortly after every server start (= after every release switch) and then
- * every CHECK_MS; the result is logged once per change and shown to admins (Sidecar services page, /account/admin).
+ * every CHECK_MS; the result is logged once per change and shown to admins (Server add-ons page, /account/admin).
  */
 
 export interface SyncNotice extends SyncCheck {

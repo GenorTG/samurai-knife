@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every CV layout exported as PDF and DOCX in Polish and English, from the real CV studio preview on a scratch server.
+"""Every CV layout exported as PDF and DOCX in Polish and English, from the real CV builder preview on a scratch server.
 
 For each layout x language: the PDF (WeasyPrint) has 1-3 pages, carries the name and a bullet as text, has link
 annotations for the e-mail, phone and every profile link, and uses the bundled fonts; the DOCX opens, carries the name
@@ -198,7 +198,7 @@ def main() -> int:
 
             # The showcase page editor: the fixture's project has one; its story is editable in the Profile tab.
             page.goto("/tools/cv-studio?tab=profile", wait_until="networkidle")
-            toggle = page.get_by_role("checkbox", name="Showcase page: an extra page about this project after the CV (or exported on its own)")
+            toggle = page.get_by_role("checkbox", name="Project page: an extra page about this project after the CV (or downloaded on its own)")
             check("showcase page switch shown and on for queuectl", toggle.count() >= 1 and toggle.first.is_checked(), toggle.count())
             check("story text in the editor", page.evaluate("() => { const box = document.querySelector('[data-cv-project-page=queuectl]'); return !!box && [...box.querySelectorAll('*')].some(el => (el.value || el.textContent || '').includes('Kafka')); }"))
             check("no console errors", not errors, errors[:3])

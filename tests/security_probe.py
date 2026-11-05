@@ -163,7 +163,7 @@ def main() -> int:
         check(f"guest GET {path} -> redirect to /login?next=", status in (302, 303, 307, 308) and "/login?next=" in hdrs.get("location", ""), (status, hdrs.get("location")))
     # Polish-first (docs/I18N.md): this check reads the English welcome text, so it asks for English.
     status, _, html = raw("GET", "/", headers={"Cookie": "knife_lang=en"})
-    check("guest home is the welcome page, no tool list", status == 200 and "in one sharp place" in html and "data-launcher-search" not in html)
+    check("guest home is the welcome page, no tool list", status == 200 and "Stop paying for" in html and "data-launcher-search" not in html)
     for method, path, body in (
         ("GET", "/api/account", None), ("GET", "/api/cv", None), ("GET", "/api/office/docs", None), ("GET", "/api/workspace?tool=json", None),
         ("GET", "/api/system/queue", None), ("GET", "/api/admin/users", None), ("GET", "/api/admin/security", None), ("GET", "/api/agent/tools", None),

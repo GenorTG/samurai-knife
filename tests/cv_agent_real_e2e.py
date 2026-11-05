@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CV studio with a REAL model, natural language, from a page that is NOT the CV studio (/tools/json).
+"""CV builder with a REAL model, natural language, from a page that is NOT the CV builder (/tools/json).
 
 SCRATCH server only (own KNIFE_DATA_DIR, fresh), key read at runtime by tests/real_provider.py:
   KNIFE_DATA_DIR=$(mktemp -d) KNIFE_PORT=3239 npm run dev
@@ -82,7 +82,7 @@ with sync_playwright() as pw:
     page.goto(BASE + "/tools/json", wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-    k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+    k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
     say(page, k, "I applied for the Backend Developer role at Globex Corp today. The posting is at https://example.com/jobs/backend-1 . Please keep track of it for me.")
     apps = api("/api/cv")["applications"]

@@ -122,7 +122,7 @@ export function VersionsPanel({ doc, onChanged, onNotice }: { doc: DocMeta; onCh
             <>
               <Button size="sm" variant="danger" disabled={busy !== null} onClick={() => {
                 setConfirmPrune(false);
-                void run(t("Pruning versions"), async () => {
+                void run(t("Deleting old versions"), async () => {
                   const r = await docAction(doc.id, { action: "prune_versions", keep });
                   return t("Removed {value} old version(s) of {name}, freed {formatBytes}.", { value: r.removed ?? 0, name: doc.name, formatBytes: formatBytes(r.freedBytes ?? 0) });
                 });
@@ -131,7 +131,7 @@ export function VersionsPanel({ doc, onChanged, onNotice }: { doc: DocMeta; onCh
             </>
           ) : (
             <Button size="sm" variant="danger" disabled={versions.length <= keep} onClick={() => setConfirmPrune(true)}>
-              {t("Prune old versions")}
+              {t("Delete old versions")}
             </Button>
           )}
           <span className="text-xs text-faint">{versions.length} {" "}{t("kept ·")}{" "} {formatBytes(keptBytes)}</span>

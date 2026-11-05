@@ -68,7 +68,10 @@ If the VPS provider has its own firewall (security group), open 51821/udp there 
 
 ### B. PostgreSQL 18 on the VPS
 
-1. Disk: put `/var/lib/postgresql` on a LUKS volume, or confirm the provider encrypts the disk. Swap: a 1 GB swapfile
+1. Disk: `/var/lib/postgresql` is on a LUKS2 volume in a file (`/var/lib/knife-pg.img`, not in crypttab, so boot never waits for
+   it). The key is not on the VPS: genorbox1's `knife-pg-unlock.timer` (user unit) sends it to `/usr/local/sbin/knife-pg-unlock`
+   every minute, which opens the volume and starts Postgres if needed. Keep a second copy of the key off both machines' disks
+   being the only copy: losing it loses the primary. Swap: a 1 GB swapfile
    (`fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`, plus fstab) and
    `sysctl vm.swappiness=10` (`/etc/sysctl.d/90-knife-db.conf`), so a burst never OOM-kills the mail relay.
 2. PGDG and the packages:

@@ -41,49 +41,20 @@ const craftItems: NavItem[] = CRAFT_ORDER.flatMap((id) => {
 });
 
 export const NAV: readonly NavSection[] = [
-  {
-    id: "documents",
-    label: msg("Documents and PDF"),
-    icon: "documents",
-    items: [{ slug: "office" }, { slug: "pdf" }, { slug: "markdown" }],
-  },
-  {
-    id: "images",
-    label: msg("Images"),
-    icon: "images",
-    items: [{ slug: "image-resize" }, { slug: "image-crop" }, { slug: "svg-optimize" }, { slug: "image-compare" }, { slug: "qr" }],
-  },
-  { id: "craft", label: msg("Craft apps"), icon: "craft", items: craftItems },
-  {
-    id: "data",
-    label: msg("Data and databases"),
-    icon: "data",
-    items: [{ slug: "csv" }, { slug: "json" }, { slug: "sql-lab" }],
-  },
-  {
-    id: "text",
-    label: msg("Text"),
-    icon: "text",
-    items: [{ slug: "text" }, { slug: "regex" }, { slug: "diff" }, { slug: "characters", label: msg("Characters and encoding") }],
-  },
-  {
-    id: "dev",
-    label: msg("Web and code"),
-    icon: "dev",
-    items: [
-      { slug: "css" },
-      { slug: "web" },
-      { slug: "ids" },
-      { slug: "dates" },
-    ],
-  },
-  { id: "career", label: msg("Career"), icon: "career", items: [{ slug: "cv-studio" }] },
-  { id: "automate", label: msg("Automation"), icon: "automate", items: [{ slug: "workflows" }] },
-  { id: "learn", label: msg("Learning"), icon: "learn", items: [{ slug: "db-course" }] },
+  { id: "documents", label: msg("Office and PDF"), icon: "documents", items: [{ slug: "office" }, { slug: "pdf" }] },
+  { id: "career", label: msg("CV and job search"), icon: "career", items: [{ slug: "cv-studio" }] },
+  { id: "craft", label: msg("Craft apps: photo, video, design"), icon: "craft", items: craftItems },
+  { id: "images", label: msg("Quick picture tools"), icon: "images", items: [{ slug: "image-resize" }, { slug: "image-crop" }, { slug: "image-compare" }, { slug: "svg-optimize" }] },
+  { id: "everyday", label: msg("Everyday helpers"), icon: "everyday", items: [{ slug: "ids" }, { slug: "qr" }, { slug: "dates" }] },
+  { id: "text", label: msg("Text and writing"), icon: "text", items: [{ slug: "text" }, { slug: "diff" }, { slug: "markdown" }, { slug: "regex" }, { slug: "characters" }] },
+  { id: "data", label: msg("Spreadsheets and data"), icon: "data", items: [{ slug: "csv" }, { slug: "json" }, { slug: "sql-lab" }] },
+  { id: "dev", label: msg("Websites and code"), icon: "dev", items: [{ slug: "web" }, { slug: "css" }] },
+  { id: "automate", label: msg("Automation and AI"), icon: "automate", items: [{ slug: "workflows" }, { slug: "mcp-connect" }] },
+  { id: "learn", label: msg("Courses"), icon: "learn", items: [{ slug: "db-course" }] },
 ];
 
 /** Utilities under the sections: setting up services and outside agents. */
-export const NAV_FOOTER: readonly NavItem[] = [{ slug: "sidecars", label: msg("Services") }, { slug: "mcp-connect", label: msg("Connect an agent (MCP)") }];
+export const NAV_FOOTER: readonly NavItem[] = [{ slug: "sidecars" }];
 
 /** The section a tool is listed in (breadcrumbs use its label). */
 export function navSectionOf(slug: string): NavSection | undefined {

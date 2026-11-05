@@ -5,14 +5,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { CategoryTile } from "@/components/category-icons";
 import { FavoriteButton } from "@/components/ToolActions";
 import { BetaBadge, KindBadge } from "@/components/ToolShell";
-import { Select } from "@/components/ui";
 import { cx } from "@/lib/format";
 import { useToolPreferences } from "@/lib/tool-preferences";
 import { entryHref, useShowcasePrefs } from "@/lib/showcase-prefs";
 import {
   CATEGORIES,
   categoryLabel,
-  familyLabel,
   searchTools,
   TOOL_FAMILIES,
   type ToolCategory,
@@ -79,10 +77,6 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
     setFamily("all");
   };
 
-  const selectFamily = (value: string) => {
-    setFamily(value === "all" ? "all" : (value as ToolFamily));
-  };
-
   const quickOpenEnabled = query.trim().length > 0 || filter !== "all" || activeFamily !== "all";
 
   const emptyMessage =
@@ -135,7 +129,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
             }}
             spellCheck={false}
             autoComplete="off"
-            placeholder={t("Search tools — resize, pdf, json, regex…")}
+            placeholder={t("What do you need? Try: pdf, photo, password, CV…")}
             aria-label={t("Search tools")}
             className="sk-input h-12 w-full rounded-xl pr-24 pl-11 text-base shadow-card"
           />
@@ -153,7 +147,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
               {t("Clear")}
             </button>
           ) : (
-            <kbd className="sk-kbd pointer-events-none absolute top-1/2 right-4 hidden -translate-y-1/2 sm:block">
+            <kbd className="sk-kbd pointer-events-none absolute top-1/2 right-4 hidden -translate-y-1/2 lg:block">
               /
             </kbd>
           )}
@@ -169,7 +163,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
           <Chip active={filter === "recent"} onClick={() => selectFilter("recent")}>
             {t("Recent")}{" "} <FilterCount value={recent.length} />
           </Chip>
-          {CATEGORIES.map((cat) => (
+          {CATEGORIES.filter((cat) => tools.some((tool) => tool.category === cat.id)).map((cat) => (
             <Chip
               key={cat.id}
               active={filter === cat.id}
@@ -181,23 +175,7 @@ export function Launcher({ tools }: { tools: ToolMeta[] }) {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-faint sm:flex-none">
-            <span>{t("Family")}</span>
-            {/* Phones: 16px field text (no iOS zoom) would push the count onto its own line; fill the row instead. */}
-            <Select
-              value={activeFamily}
-              onChange={(event) => selectFamily(event.target.value)}
-              disabled={familyOptions.length === 0}
-              className="h-8 min-w-0 flex-1 text-xs sm:w-auto sm:min-w-40 sm:flex-none"
-            >
-              <option value="all">{t("All families")}</option>
-              {familyOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {t(item.label)} · {categoryPool.filter((tool) => tool.family === item.id).length}
-                </option>
-              ))}
-            </Select>
-          </label>
+          <span />
           <div className="flex items-center gap-3">
             {filter === "recent" && recent.length > 0 ? (
               <button
@@ -342,9 +320,7 @@ function ToolCard({
           <span className="mt-2 flex items-center gap-2">
             <KindBadge kind={tool.kind} />
             {tool.beta ? <BetaBadge compact /> : null}
-            <span className="truncate font-mono text-[10px] tracking-wider text-faint uppercase">
-              {t(categoryLabel(tool.category))} · {t(familyLabel(tool.family))}
-            </span>
+            <span className="truncate text-[11px] text-faint">{t(categoryLabel(tool.category))}</span>
           </span>
         </span>
       </button>

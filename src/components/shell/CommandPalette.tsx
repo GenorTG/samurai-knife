@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CategoryIcon, categoryTint } from "@/components/category-icons";
 import { cx } from "@/lib/format";
+import { loadAccount } from "@/lib/client-account";
 import { categoryLabel, searchTools, TOOLS, type ToolMeta } from "@/lib/registry";
 import { useToolPreferences } from "@/lib/tool-preferences";
 import { openAssistant } from "@/lib/agent-client/bridge";
@@ -54,9 +55,22 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // The administrators' page stays out of everyone else's list, as in the sidebar and on the home page.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void loadAccount().then((account) => {
+      if (live) setIsAdmin(account?.isAdmin === true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const entries = useMemo<Entry[]>(() => {
-    if (query.trim()) return searchTools(query).map((tool) => ({ tool }));
-    const bySlug = new Map(TOOLS.map((t) => [t.slug, t]));
+    const visible = (tool: ToolMeta) => isAdmin || tool.category !== "sidecars";
+    if (query.trim()) return searchTools(query).filter(visible).map((tool) => ({ tool }));
+    const bySlug = new Map(TOOLS.filter(visible).map((t) => [t.slug, t]));
     const seen = new Set<string>();
     const out: Entry[] = [];
     const add = (slugs: string[], tag: Entry["tag"]) => {
@@ -73,11 +87,11 @@ export function CommandPalette() {
       add(favorites, "favorite");
     }
     add(
-      TOOLS.map((t) => t.slug),
+      TOOLS.filter(visible).map((t) => t.slug),
       undefined,
     );
     return out;
-  }, [query, favorites, recent, ready]);
+  }, [query, favorites, recent, ready, isAdmin]);
 
   // A trailing "Ask the assistant" row turns any query into a prompt.
   const q = query.trim();
@@ -113,7 +127,7 @@ export function CommandPalette() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={tr("Jump to a tool")}
+        aria-label={tr("Find a tool")}
         className="sk-pop sk-glass w-full max-w-2xl overflow-hidden rounded-2xl border border-line-strong shadow-pop"
         style={{ transformOrigin: "top center" }}
       >
@@ -157,7 +171,7 @@ export function CommandPalette() {
             }}
             spellCheck={false}
             autoComplete="off"
-            placeholder={tr("Jump to a tool — resize, pdf, json, regex…")}
+            placeholder={tr("Type what you need, e.g. resize, pdf, CV…")}
             aria-label={tr("Search tools")}
             className="h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-faint"
           />

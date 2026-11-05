@@ -506,7 +506,7 @@ def pdf_editor(browser):
     check("editor: drag reorder puts page 2 first", "Page 2" in first_label, first_label)
 
     with pg.expect_download(timeout=60000) as d:
-        pg.get_by_role("button", name="Export edited PDF").click()
+        pg.get_by_role("button", name="Download edited PDF").click()
     out = save_dl(d.value)
     check("editor: export filename", out.name.endswith("ed-edited.pdf"), out.name)
     info = pdfinfo(out)
@@ -536,7 +536,7 @@ print(t.count("h"), len(xo), t.count("l"))
         otxt = ta.first.input_value()
         check("ocr: current page recognizes text", "HELLO" in otxt.upper() and "OCR" in otxt.upper(), otxt[:80])
         with pg.expect_download() as d:
-            pg.get_by_role("button", name="Download OCR text").click()
+            pg.get_by_role("button", name="Download the text").click()
         check("ocr: download OCR text", "HELLO" in save_dl(d.value).read_text().upper())
         pg.get_by_role("button", name="All pages").click()
         pg.wait_for_function("document.body.innerText.includes('OCR finished for 1 page')", timeout=100000)
@@ -555,7 +555,7 @@ print(t.count("h"), len(xo), t.count("l"))
     pg.locator("input[type=file]").first.set_input_files([str(fx / "scan.png"), str(sideways)])
     try:
         pg.get_by_text("2 pages loaded").wait_for(timeout=60000)
-        check("images: PNG + JPEG open as a 2-page document", pg.get_by_text("Built from 2 images").count() == 1)
+        check("images: PNG + JPEG open as a 2-page document", pg.get_by_text("Made from 2 images").count() == 1)
         pg.get_by_role("button", name="Current page").click()
         pg.wait_for_function("document.body.innerText.includes('OCR finished for 1 page')", timeout=150000)
         page1 = ta.first.input_value()
@@ -568,7 +568,7 @@ print(t.count("h"), len(xo), t.count("l"))
         acc2 = word_recall(truth, page2)
         check("images: EXIF orientation applied (sideways JPEG reads upright)", acc2 >= 0.85, f"recall {acc2:.2f}: {page2[:80]!r}")
         with pg.expect_download() as d:
-            pg.get_by_role("button", name="Export edited PDF").click()
+            pg.get_by_role("button", name="Download edited PDF").click()
         out = save_dl(d.value)
         shape = json.loads(pyv(PDF_IMAGES, str(out)))
         check("images: export is one PDF, a full-page image per page, upright portrait pages",

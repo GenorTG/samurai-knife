@@ -30,7 +30,7 @@ export function AdminSidecarSync() {
         <SyncNeededNotice key={item.id} id={item.id} name={item.name} message={item.message} />
       ))}
       <p className="text-[13px] text-muted">
-        <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">{t("Sidecar services")}</Link>
+        <Link className="text-accent-soft underline underline-offset-2" href="/tools/sidecars">{t("Server add-ons")}</Link>
       </p>
     </section>
   );

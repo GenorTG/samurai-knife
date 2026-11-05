@@ -5,7 +5,7 @@
   starts from the tool's defaults and offers "Restore saved draft" (after a reload and in a fresh browser context = another
   machine, Chromium and Firefox); Discard forgets it; bob opening the same tool sees no offer and none of her text, and
   /api/workspace never reads or deletes another account's drafts;
-- server-backed tools are not wrapped (no draft line on the CV studio), signed-out pages work without drafts;
+- server-backed tools are not wrapped (no draft line on the CV builder), signed-out pages work without drafts;
 - at rest: after real flows (CV offer + photo, office document, course progress, drafts) every per-account file under the
   data dir is sealed (src/lib/storage/sealed.ts magic header) and no file anywhere in the data dir carries the plaintext;
   the storage key lives in KNIFE_STORAGE_KEY_FILE outside the data dir.
@@ -17,6 +17,7 @@ Usage: python3 tests/functional/storage_privacy_e2e.py [--headed]
 """
 from __future__ import annotations
 
+import re
 import base64
 import secrets
 import shutil
@@ -72,7 +73,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
     text = f"{MARKER} {engine} draft words words"
     ctx_a, page_a = new_context(browser, base, ip_a)
     ui_login(page_a, "alice", "alice password 1")
-    page_a.wait_for_url(base + "/", timeout=15_000)
+    page_a.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_a)
     textarea(page_a).fill(text)
     expect(page_a.get_by_text("Draft saved to your account")).to_be_visible(timeout=10_000)
@@ -86,13 +87,14 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
           textarea(page_a).input_value() != text and offer.get_by_role("button", name="Restore saved draft").count() == 1, textarea(page_a).input_value()[:80])
     offer.get_by_role("button", name="Restore saved draft").click()
     check(f"[{engine}] Restore saved draft brings alice's text back after a reload", textarea(page_a).input_value() == text, textarea(page_a).input_value()[:120])
+    page_a.wait_for_function("t => (document.querySelector('main div.min-h-64')?.innerText ?? '').includes(t)", arg=f"{engine} draft words", timeout=5_000)
     rendered = page_a.locator("main div.min-h-64").first.inner_text()
     check(f"[{engine}] the restored draft drives the tool (its preview renders it)", f"{engine} draft words" in rendered, rendered[:200])
     ctx_a.close()
 
     ctx_a2, page_a2 = new_context(browser, base, ip_a)
     ui_login(page_a2, "alice", "alice password 1")
-    page_a2.wait_for_url(base + "/", timeout=15_000)
+    page_a2.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_a2)
     page_a2.get_by_role("group", name="Saved draft").get_by_role("button", name="Restore saved draft").click(timeout=10_000)
     expect(textarea(page_a2)).to_have_value(text, timeout=10_000)
@@ -115,14 +117,14 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
 
     ctx_b, page_b = new_context(browser, base, ip_b)
     ui_login(page_b, "bob", "bob password 1")
-    page_b.wait_for_url(base + "/", timeout=15_000)
+    page_b.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_b)
     page_b.wait_for_timeout(1_500)
     check(f"[{engine}] bob opening the same tool sees none of alice's draft and gets no offer",
           MARKER not in textarea(page_b).input_value() and page_b.get_by_role("group", name="Saved draft").count() == 0, textarea(page_b).input_value()[:120])
     go(page_b, "/tools/cv-studio")
     page_b.wait_for_function("!/Loading/.test(document.querySelector('main [role=status]')?.textContent ?? '')", timeout=30_000)
-    check(f"[{engine}] CV studio is not wrapped by drafts (server data wins)", page_b.locator("[data-workspace-tool]").count() == 0)
+    check(f"[{engine}] CV builder is not wrapped by drafts (server data wins)", page_b.locator("[data-workspace-tool]").count() == 0)
     ctx_b.close()
 
 

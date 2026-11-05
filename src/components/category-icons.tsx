@@ -1,9 +1,10 @@
 import type { ToolCategory } from "@/lib/registry";
 
 /** A registry category, or one of the sidebar's own sections (src/lib/nav.ts). */
-export type IconName = ToolCategory | "media" | "setup" | "automate" | "craft" | "career";
+export type IconName = ToolCategory | "media" | "setup" | "craft";
 
 const PATHS: Record<IconName, string> = {
+  everyday: "M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4M12 8a4 4 0 100 8 4 4 0 000-8z",
   images:
     "M4 5h16v14H4zM4 16l4.5-4.5 3.5 3.5 3-3 5 5M15.5 9.5h.01",
   documents: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
@@ -21,6 +22,7 @@ const PATHS: Record<IconName, string> = {
 
 /** Hue per category, applied to the shared accent so it follows the theme. */
 const HUES: Record<IconName, number> = {
+  everyday: 100,
   images: 200,
   documents: 25,
   data: 155,

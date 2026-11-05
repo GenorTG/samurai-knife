@@ -5,7 +5,7 @@ The app has two agent surfaces that share one tool set:
 1. **Built-in assistant** (the chat widget): uses the account's own provider/key, drives the page directly (open_tool,
    fill_field, click…) plus the `knife_*` tools.
 2. **MCP** (`POST /api/mcp`, Streamable HTTP, stateless): any MCP client (OpenClaw, Claude Code, Cursor…) gets the same
-   deterministic `knife_*` tools (CV studio, SQL/NoSQL, office documents, the Database course tutor, base tools) plus two MCP-only UI tools. The
+   deterministic `knife_*` tools (CV builder, SQL/NoSQL, office documents, the Database course tutor, base tools) plus two MCP-only UI tools. The
    client brings its own model; the app needs no key for this.
 
 Both can be used at the same time; edits are atomic per call and every CV save is undoable.
@@ -61,7 +61,7 @@ Every `defineTool` declares `scope` (no default, so a new tool must choose):
   `knife_cv_project_from_github` (the host's `gh` login) and `knife_cv_local_repo_facts` (git repos on the host's disk).
 `toolsFor(ctx)` (tools.ts) is the only list: `GET /api/agent/tools` (the widget), `POST /api/agent/tool` (403
 `admin_required` for an admin tool) and the MCP server all use it, and `defineTool` refuses a call outside its scope a
-second time. The matching routes (`/api/cv/showcase/*`) are admin-only too, and the CV studio shows non-admins that an
+second time. The matching routes (`/api/cv/showcase/*`) are admin-only too, and the CV builder shows non-admins that an
 administrator has to run the GitHub showcase.
 
 ## Office documents (`knife_doc_*`, group `docs`)
@@ -179,7 +179,7 @@ cache their tool list: reconnect after an update. `tests/whats_new.test.mjs` req
 release in package.json and every tool it names to exist.
 
 ## Live view of the user's screen
-- Data: the open pages refresh by themselves. CV studio polls every 2 s, highlights the changed field and shows a toast
+- Data: the open pages refresh by themselves. CV builder polls every 2 s, highlights the changed field and shows a toast
   with Undo; nothing extra is needed after a `knife_cv_*` call.
 - `knife_ui_state`: the user's open app tabs (path, title, visible, connected, last activity, and for a page with live
   tools `live` = its state line and `liveTools` = what `knife_ui_call` can run there now), most recently active first.

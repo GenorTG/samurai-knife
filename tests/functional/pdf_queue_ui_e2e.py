@@ -141,7 +141,7 @@ with sync_playwright() as pw:
     check("heavy lane is occupied by the API job", wait(lambda: lane()["running"] == 1), lane())
     open_tool()
     page.get_by_role("button", name="Inspect", exact=True).last.click()
-    check("status shows 'Queued (next up)…' while waiting behind a running job", wait(lambda: "Queued (next up)" in pdf_status(), 15), pdf_status())
+    check("status shows 'Queued (next up)…' while waiting behind a running job", wait(lambda: "Waiting for its turn" in pdf_status(), 15), pdf_status())
     check("server agrees: one job queued", lane()["queued"] == 1, lane())
     check("button reads Working… and Cancel is offered", page.get_by_role("button", name="Cancel", exact=True).count() == 1
           and page.get_by_role("button", name="Working…").count() == 1)
@@ -154,7 +154,7 @@ with sync_playwright() as pw:
     # 3. position text with two ahead
     other = occupy(SMALL)           # queued behind big_job (position 0)
     page.get_by_role("button", name="Inspect", exact=True).last.click()
-    check("status shows 'Queued (1 ahead)…' with one job queued before it", wait(lambda: "Queued (1 ahead)" in pdf_status(), 15), pdf_status())
+    check("status shows 'Queued (1 ahead)…' with one job queued before it", wait(lambda: "1 ahead" in pdf_status(), 15), pdf_status())
 
     # 4. navigating away cancels the job (unmount cleanup)
     page.goto(f"{BASE}/")

@@ -60,26 +60,26 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
                 biPath={`${path}/text`}
                 value={b.text[lang]}
                 reference={b.text[other]}
-                label={t("{owner} bullet {id} text ({value})", { owner, id: b.id, value: lang.toUpperCase() })}
-                placeholder={t("Write this bullet in {value}", { value: lang === "pl" ? "Polish" : "English" })}
+                label={t("{owner} point {id} text ({value})", { owner, id: b.id, value: lang.toUpperCase() })}
+                placeholder={t("Write this point in {value}", { value: lang === "pl" ? t("Polish") : t("English") })}
                 multiline
               />
             </div>
             {!env.onlyMissing ? (
               <div className="flex shrink-0 items-center gap-1">
-                <PinButton path={path} pinned={b.pinned} name={`${owner} bullet ${b.id}`} />
+                <PinButton path={path} pinned={b.pinned} name={t("{owner} point {id}", { owner, id: b.id })} />
                 <button
                   autoComplete="off"
                   type="button"
                   aria-pressed={b.verified}
-                  aria-label={t("{value} {owner} bullet {id} as verified", { value: b.verified ? "Unmark" : "Mark", owner, id: b.id })}
-                  title={t("Verified = you confirmed this claim is true")}
+                  aria-label={t("{value} {owner} point {id} as confirmed", { value: b.verified ? t("Unmark") : t("Mark"), owner, id: b.id })}
+                  title={t("Confirmed means you checked that this is true")}
                   onClick={() => void env.save([{ op: "set", path: `${path}/verified`, value: !b.verified }])}
                   className="cursor-pointer"
                 >
-                  <Badge tone={b.verified ? "good" : "neutral"}>{b.verified ? t("verified") : t("unverified")}</Badge>
+                  <Badge tone={b.verified ? "good" : "neutral"}>{b.verified ? t("confirmed") : t("not confirmed")}</Badge>
                 </button>
-                <RemoveButton label={t("Remove {owner} bullet {id}", { owner, id: b.id })} onClick={() => void env.save([{ op: "remove", path }])} />
+                <RemoveButton label={t("Remove {owner} point {id}", { owner, id: b.id })} onClick={() => void env.save([{ op: "remove", path }])} />
               </div>
             ) : null}
           </div>
@@ -88,13 +88,13 @@ function BulletList({ base, bullets, owner }: { base: string; bullets: Bullet[];
       {!env.onlyMissing ? (
         <Button
           size="sm"
-          aria-label={t("Add bullet to {owner}", { owner })}
+          aria-label={t("Add point to {owner}", { owner })}
           onClick={() => {
             const id = uniqueId("bullet", new Set(bullets.map((b) => b.id)));
             void env.save([{ op: "add", path: `${base}/bullets/-`, value: { id, text: { pl: "", en: "" } } }], `${base}/bullets/id=${id}/text/${lang}`);
           }}
         >
-          {t("Add bullet")}
+          {t("Add a point")}
         </Button>
       ) : null}
     </div>
@@ -139,7 +139,7 @@ function ContactSection({ profile }: { profile: Profile }) {
         </>
       ) : null}
       <Row label={t("Headline {l}", { l: L })}>
-        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={t("Headline ({l})", { l: L })} placeholder={t("One-line positioning")} />
+        <EditableField path={`/contact/headline/${lang}`} biPath="/contact/headline" value={c.headline[lang]} reference={c.headline[other]} label={t("Headline ({l})", { l: L })} placeholder={t("One line under your name, e.g. Accountant, 10 years of experience")} />
       </Row>
       <Row label={t("Location {l}", { l: L })}>
         <EditableField path={`/contact/location/${lang}`} biPath="/contact/location" value={c.location[lang]} reference={c.location[other]} label={t("Location ({l})", { l: L })} placeholder={t("City, country")} />
@@ -226,7 +226,7 @@ function ExperienceCard({ exp, lang, other, L }: { exp: Profile["experience"][nu
         <EditableField path={`${base}/role/${lang}`} biPath={`${base}/role`} value={exp.role[lang]} reference={exp.role[other]} label={t("{org} role ({l})", { org: exp.org, l: L })} placeholder={t("Role in {l}", { l: L })} />
         {!env.onlyMissing ? (
           <div className="grid grid-cols-2 gap-x-2">
-            <EditableField path={`${base}/start`} value={exp.start} label={t("{org} start (YYYY-MM)", { org: exp.org })} placeholder={t("Start YYYY-MM")} />
+            <EditableField path={`${base}/start`} value={exp.start} label={t("{org} start (YYYY-MM)", { org: exp.org })} placeholder={t("Start, e.g. 2021-03")} />
             <EditableField path={`${base}/end`} value={exp.end ?? ""} label={t("{org} end (YYYY-MM)", { org: exp.org })} placeholder={t("Present")} nullable />
           </div>
         ) : null}
@@ -278,7 +278,7 @@ function ProjectCard({ project: p, lang, other, L }: { project: Profile["project
       {!env.onlyMissing ? (
         <div className="grid min-w-0 gap-x-3 @md:grid-cols-2">
           <EditableField path={`${base}/url`} value={p.url} label={t("{name} link", { name: p.name })} placeholder={t("https://…")} />
-          <EditableField path={`${base}/tech`} value={p.tech.join(", ")} label={t("{name} tech (comma separated)", { name: p.name })} placeholder={t("Tech, comma separated")} list />
+          <EditableField path={`${base}/tech`} value={p.tech.join(", ")} label={t("{name} tech (comma separated)", { name: p.name })} placeholder={t("Technologies or tools, separated by commas")} list />
         </div>
       ) : null}
       <EditableField path={`${base}/summary/${lang}`} biPath={`${base}/summary`} value={p.summary[lang]} reference={p.summary[other]} label={t("{name} summary ({l})", { name: p.name, l: L })} placeholder={t("Summary in {l}", { l: L })} multiline />
@@ -286,7 +286,7 @@ function ProjectCard({ project: p, lang, other, L }: { project: Profile["project
       {!env.onlyMissing ? (
         <label className="mt-2 flex items-center gap-2 text-[13px] text-muted">
           <input type="checkbox" checked={p.page} onChange={(event) => void env.save([{ op: "set", path: `${base}/page`, value: event.target.checked }])} />
-          {t("Showcase page: an extra page about this project after the CV (or exported on its own)")}
+          {t("Project page: an extra page about this project after the CV (or downloaded on its own)")}
         </label>
       ) : null}
       {p.page ? (
@@ -362,8 +362,8 @@ function EducationSection({ profile }: { profile: Profile }) {
               <EditableField path={`${base}/detail/${lang}`} biPath={`${base}/detail`} value={ed.detail[lang]} reference={ed.detail[other]} label={t("{institution} detail ({l})", { institution: ed.institution, l: L })} placeholder={t("Degree / field in {l}", { l: L })} />
               {!env.onlyMissing ? (
                 <div className="grid grid-cols-2 gap-x-2">
-                  <EditableField path={`${base}/start`} value={ed.start} label={t("{institution} start (YYYY-MM)", { institution: ed.institution })} placeholder={t("Start YYYY-MM")} />
-                  <EditableField path={`${base}/end`} value={ed.end ?? ""} label={t("{institution} end (YYYY-MM)", { institution: ed.institution })} placeholder={t("End YYYY-MM")} nullable />
+                  <EditableField path={`${base}/start`} value={ed.start} label={t("{institution} start (YYYY-MM)", { institution: ed.institution })} placeholder={t("Start, e.g. 2021-03")} />
+                  <EditableField path={`${base}/end`} value={ed.end ?? ""} label={t("{institution} end (YYYY-MM)", { institution: ed.institution })} placeholder={t("End, e.g. 2024-06")} nullable />
                 </div>
               ) : null}
             </ItemCard>
@@ -431,11 +431,11 @@ function FreeTextSection({ profile }: { profile: Profile }) {
   const L = lang.toUpperCase();
   return (
     <>
-      <Section id="consent" title={t("Consent clause (RODO / GDPR)")}>
-        <EditableField path={`/consent/${lang}`} biPath="/consent" value={profile.consent[lang]} reference={profile.consent[other]} label={t("Consent clause ({l})", { l: L })} placeholder={t("Clause printed on {l} applications", { l: L })} multiline />
+      <Section id="consent" title={t("Data processing consent (RODO / GDPR)")}>
+        <EditableField path={`/consent/${lang}`} biPath="/consent" value={profile.consent[lang]} reference={profile.consent[other]} label={t("Consent clause ({l})", { l: L })} placeholder={t("Consent sentence printed at the end of your CV ({l})", { l: L })} multiline />
       </Section>
       <Section id="extras" title={t("How I work")}>
-        <EditableField path={`/extras/${lang}`} biPath="/extras" value={profile.extras[lang]} reference={profile.extras[other]} label={t("How I work ({l})", { l: L })} placeholder={t("Free-form paragraph in {l}", { l: L })} multiline />
+        <EditableField path={`/extras/${lang}`} biPath="/extras" value={profile.extras[lang]} reference={profile.extras[other]} label={t("How I work ({l})", { l: L })} placeholder={t("A short paragraph in your own words ({l})", { l: L })} multiline />
       </Section>
     </>
   );
@@ -452,6 +452,7 @@ export default function ProfileTab() {
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [autoEdit, setAutoEdit] = useState("");
   const [replacing, setReplacing] = useState(false);
+  const [creatingCv, setCreatingCv] = useState(false);
   const [undoError, setUndoError] = useState("");
   const data = live.data;
   const profile = data?.profile ?? null;
@@ -501,11 +502,17 @@ export default function ProfileTab() {
   return (
     <CvFrame live={live}>
       {(cv) =>
-        profileIsEmpty(cv) && !replacing ? (
-          <StartHere onDone={() => void live.reload()} />
+        (profileIsEmpty(cv) || creatingCv) && !replacing ? (
+          <StartHere
+            onCreating={setCreatingCv}
+            onDone={() => {
+              setCreatingCv(false);
+              void live.reload();
+            }}
+          />
         ) : (
           <div className="@container space-y-4">
-            <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Profile actions")}>
+            <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t("Actions for your details")}>
               <LangToggle tab={TAB} />
               {missing.size > 0 ? (
                 <Badge tone="warn" title={t("{missing} fields are written in {value} but empty in {value2}", { missing: missing.size, value: env.other.toUpperCase(), value2: lang.toUpperCase() })}>
@@ -525,15 +532,15 @@ export default function ProfileTab() {
               >
                 {t("Undo")}
               </Button>
-              <Button size="sm" onClick={() => setReplacing((v) => !v)}>{replacing ? t("Close import") : t("Replace profile…")}</Button>
+              <Button size="sm" onClick={() => setReplacing((v) => !v)}>{replacing ? t("Close import") : t("Replace all details…")}</Button>
             </div>
-            <StatGrid aria-label={t("Profile overview")}>
+            <StatGrid aria-label={t("Your details at a glance")}>
               <Stat label={t("Roles")} value={String(cv.profile.experience.length)} />
-              <Stat label={t("Bullets")} value={String(cv.profile.experience.reduce((n, e) => n + e.bullets.length, 0) + cv.profile.projects.reduce((n, p) => n + p.bullets.length, 0))} />
+              <Stat label={t("Points")} value={String(cv.profile.experience.reduce((n, e) => n + e.bullets.length, 0) + cv.profile.projects.reduce((n, p) => n + p.bullets.length, 0))} />
               <Stat label={t("Projects")} value={String(cv.profile.projects.length)} />
               <Stat label={t("Skill groups")} value={String(cv.profile.skills.length)} />
               <Stat label={t("To translate ({value})", { value: lang.toUpperCase() })} value={String(missing.size)} />
-              <Stat label={t("Audit findings")} value={audit.result ? String(Object.values(audit.result.findings).reduce((n, f) => n + f.length, 0)) : "–"} />
+              <Stat label={t("Tips to improve")} value={audit.result ? String(Object.values(audit.result.findings).reduce((n, f) => n + f.length, 0)) : "–"} />
             </StatGrid>
             {undoError ? <div role="alert"><Notice tone="warn">{undoError}</Notice></div> : null}
             {replacing ? <ProfileImport existing={cv.profile} onImported={() => { setReplacing(false); void live.reload(); }} onCancel={() => setReplacing(false)} /> : null}
@@ -553,7 +560,7 @@ export default function ProfileTab() {
                   <FreeTextSection profile={cv.profile} />
                   {onlyMissing && missing.size === 0 ? <Notice tone="good">{t("Nothing left to translate.")}</Notice> : null}
                 </div>
-                <aside className="min-w-0 space-y-4 @4xl:sticky @4xl:top-4 @4xl:self-start" aria-label={t("Profile checks")}>
+                <aside className="min-w-0 space-y-4 @4xl:sticky @4xl:top-4 @4xl:self-start" aria-label={t("Checks of your details")}>
                   <AuditPanel audit={audit} profile={cv.profile} lang={lang} onGo={go} />
                 </aside>
               </div>

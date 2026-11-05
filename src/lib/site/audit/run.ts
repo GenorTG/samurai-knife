@@ -137,7 +137,7 @@ export async function runAudit(accountId: string, options: AuditOptions = {}): P
   if (currentAudit(accountId)) throw new SiteError(msg("an audit is already running for this account; wait for it to finish"), 409);
   const site = loadSite(accountId);
   const base = (options.url ?? site.connection?.productionUrl ?? site.siteUrl?.url ?? "").trim();
-  if (!base) throw new SiteError(msg("no URL to check: add your website in the Website tab of the CV studio, or pass one"));
+  if (!base) throw new SiteError(msg("no URL to check: add your website in the Website tab of the CV builder, or pass one"));
   let origin: URL;
   try {
     origin = new URL(base);

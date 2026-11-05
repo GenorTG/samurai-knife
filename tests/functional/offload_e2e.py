@@ -386,7 +386,7 @@ def image_suite():
         go("image-resize")
         reset_watch()
         page.locator("input[type=file]").first.set_input_files(path)
-        has("Source")
+        has("Your image")
         field("Width").fill("1200")
         page.wait_for_selector('img[alt="Resized result"]', timeout=60000)
         has("1200×800")

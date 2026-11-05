@@ -160,7 +160,7 @@ Postgres (§2.6). Keeping them out of the database keeps WAL volume, backups and
   ([pg Pool](https://node-postgres.com/apis/pool)).
 
 Estimate for "thousands of users at once":
-- 5,000 concurrently active users × 1 request / 3–5 s (UI polls: CV studio 2 s, UI bridge 1.5 s, presence 20 s) ≈
+- 5,000 concurrently active users × 1 request / 3–5 s (UI polls: CV builder 2 s, UI bridge 1.5 s, presence 20 s) ≈
   1,000–2,500 HTTP req/s. Each request: session + account read (cacheable), 0–3 store queries → ~3,000–8,000 queries/s,
   of which ~10–20 % writes → 300–1,500 write transactions/s. Polls must become cheap conditional reads
   (`WHERE version > $1` / `updated_at` ETag) or LISTEN-driven, or they dominate.

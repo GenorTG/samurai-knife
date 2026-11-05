@@ -6,6 +6,7 @@ import { errorText, getAudit, isUnavailable, type AuditResult } from "@/lib/cv/c
 import { labelForPath } from "@/lib/cv/diff";
 import type { CvLang, Profile } from "@/lib/cv/schema";
 import { SeverityBadge } from "./shared";
+import { msg } from "@/lib/i18n/msg";
 import { useT } from "@/lib/i18n/react";
 
 export interface AuditState {
@@ -36,6 +37,9 @@ export function useAudit(lang: CvLang, revision: number | null): AuditState {
 
 const SHOWN = 10;
 
+/** The severity counters of a check, in words. */
+const COUNT_LABEL: Record<string, string> = { error: msg("To fix"), warn: msg("Worth a look"), info: msg("Tips") };
+
 export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; profile: Profile; lang: CvLang; onGo: (path: string) => void }) {
   const { t, m } = useT();
   const [all, setAll] = useState(false);
@@ -46,18 +50,18 @@ export function AuditPanel({ audit, profile, lang, onGo }: { audit: AuditState; 
 
   return (
     <Panel
-      title={t("Audit ({value})", { value: lang.toUpperCase() })}
-      right={<Button size="sm" onClick={audit.rerun} disabled={audit.phase === "loading"}>{t("Re-run audit")}</Button>}
+      title={t("Check my CV ({value})", { value: lang.toUpperCase() })}
+      right={<Button size="sm" onClick={audit.rerun} disabled={audit.phase === "loading"}>{t("Check again")}</Button>}
     >
       <div className="space-y-3" data-agent-region="cv-audit">
-        {audit.phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Checking the profile…")}</p> : null}
-        {audit.phase === "unavailable" ? <Notice>{t("The audit is not available yet on this server.")}</Notice> : null}
-        {audit.phase === "error" ? <Notice tone="error">{t("Audit failed:")}{" "} {audit.error}</Notice> : null}
+        {audit.phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Checking your details…")}</p> : null}
+        {audit.phase === "unavailable" ? <Notice>{t("This check is not available right now.")}</Notice> : null}
+        {audit.phase === "error" ? <Notice tone="error">{t("The check failed:")}{" "} {audit.error}</Notice> : null}
         {result ? (
           <>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(result.counts).map(([key, n]) => <Badge key={key} tone={/err|high/i.test(key) && n > 0 ? "danger" : n > 0 ? "warn" : "good"}>{key}: {n}</Badge>)}
-              {total === 0 ? <Badge tone="good">{t("No findings")}</Badge> : null}
+              {Object.entries(result.counts).map(([key, n]) => <Badge key={key} tone={/err|high/i.test(key) && n > 0 ? "danger" : n > 0 ? "warn" : "good"}>{COUNT_LABEL[key] ? t(COUNT_LABEL[key]) : key}: {n}</Badge>)}
+              {total === 0 ? <Badge tone="good">{t("Nothing to improve")}</Badge> : null}
             </div>
             {Object.keys(result.byRule).length > 0 ? (
               <p className="text-xs leading-relaxed text-muted">

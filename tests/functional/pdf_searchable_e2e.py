@@ -100,10 +100,10 @@ def run(base: str) -> None:
         upload = page.locator("input[type=file]").first
         upload.set_input_files(str(scan))
         expect(page.get_by_text("3 pages loaded in this browser.", exact=True)).to_be_visible(timeout=30000)
-        export = page.get_by_role("button", name="Searchable PDF (server)", exact=True)
+        export = page.get_by_role("button", name="Make searchable PDF", exact=True)
         expect(export).to_be_enabled()
-        expect(page.get_by_label("Deskew scanned pages")).to_be_checked()
-        expect(page.get_by_label("Auto-rotate pages")).to_be_checked()
+        expect(page.get_by_label("Straighten tilted pages")).to_be_checked()
+        expect(page.get_by_label("Turn pages the right way up")).to_be_checked()
         expect(page.get_by_label("Searchable PDF language")).to_have_value("eng")
 
         # Rotate the sideways scan upright. Reorder, remove and overlay via real UI.
@@ -127,7 +127,7 @@ def run(base: str) -> None:
         # Existing client-only export remains vector/text-preserving.
         edited = tmp / "edited.pdf"
         with page.expect_download(timeout=60000) as download:
-            page.get_by_role("button", name="Export edited PDF", exact=True).click()
+            page.get_by_role("button", name="Download edited PDF", exact=True).click()
         download.value.save_as(edited)
         raw = pdf_info(edited)
         assert len(raw) == 2 and "VISIBLE OVERLAY" in raw[0]["text"]
@@ -135,8 +135,8 @@ def run(base: str) -> None:
         print("ok edited export retains page order, removal, rotation and vector overlay", flush=True)
 
         # Preserve chosen orientation and exercise non-default params + shared language.
-        page.get_by_label("Deskew scanned pages").uncheck()
-        page.get_by_label("Auto-rotate pages").uncheck()
+        page.get_by_label("Straighten tilted pages").uncheck()
+        page.get_by_label("Turn pages the right way up").uncheck()
         page.get_by_label("Searchable PDF language").select_option("eng+pol")
         # Field wraps each control in a <label>, so get_by_label also sees the <option>
         # rows and an exact match never lands; the accessible name does.
@@ -154,7 +154,7 @@ def run(base: str) -> None:
             export.click()
         assert accepted.value.status == 202
         first_job = accepted.value.json()["jobId"]
-        expect(page.get_by_role("status").filter(has_text="Creating searchable PDF")).to_be_visible(timeout=30000)
+        expect(page.get_by_role("status").filter(has_text="Making the searchable PDF")).to_be_visible(timeout=30000)
         expect(upload).to_be_disabled()
         expect(page.get_by_label("Searchable PDF language")).to_be_disabled()
         assert page.locator("[inert][aria-busy=true]").count() == 1, "Editing must be inert during server OCR"
@@ -195,7 +195,7 @@ def run(base: str) -> None:
         assert "BRAVO" in page.locator("textarea[readonly]").first.input_value()
         assert not posts, posts
         with page.expect_download(timeout=10000) as text_download:
-            page.get_by_role("button", name="Download OCR text", exact=True).click()
+            page.get_by_role("button", name="Download the text", exact=True).click()
         text_path = tmp / "browser-ocr.txt"
         text_download.value.save_as(text_path)
         assert "BRAVO" in text_path.read_text()
@@ -216,7 +216,7 @@ def run(base: str) -> None:
         with page.expect_response(lambda r: r.request.method == "POST" and "/api/pdf?" in r.url) as accepted:
             export.click()
         job_id = accepted.value.json()["jobId"]
-        expect(page.get_by_role("status").filter(has_text="Creating searchable PDF")).to_be_visible(timeout=30000)
+        expect(page.get_by_role("status").filter(has_text="Making the searchable PDF")).to_be_visible(timeout=30000)
         with page.expect_response(lambda r: r.request.method == "DELETE" and job_id in r.url):
             page.get_by_role("tab", name="Tools", exact=True).click()
         expect(page.get_by_role("tab", name="Tools", exact=True)).to_have_attribute("aria-selected", "true")

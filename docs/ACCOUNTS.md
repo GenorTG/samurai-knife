@@ -235,7 +235,7 @@ separators, `.`/`..`, NUL and anything that resolves outside its base) and a sym
 removed:
 
 - `accounts.json` (the record), `sessions.json` (its sessions) and `mcp-keys.json` (its MCP keys)
-- `cv/<id>.json`, `cv/<id>.snapshots/`, `cv/<id>.photo.jpg`, any other `cv/<id>.*` (CV studio)
+- `cv/<id>.json`, `cv/<id>.snapshots/`, `cv/<id>.photo.jpg`, any other `cv/<id>.*` (CV builder)
 - `conversations/<id>/` (assistant transcripts)
 - `docs/<id>/` (office library: documents, `folders.json`, kept versions, trash)
 - `learn/<id>.json` (course progress)
@@ -248,7 +248,7 @@ removed:
 ### Tool drafts (`src/components/WorkspaceDraft.tsx`, `/api/workspace`)
 
 Every browser tool is wrapped (`src/tools/registry-client.tsx`) except the ones with their own server data or secrets
-(`NO_DRAFT`: CV studio tabs, office, course, sidecars, MCP keys, db-connect, password generator). Edits to its form
+(`NO_DRAFT`: CV builder tabs, office, course, sidecars, MCP keys, db-connect, password generator). Edits to its form
 controls (text, selects, toggles; never password/file/hidden inputs, read-only or disabled outputs, or controls labelled
 like a secret/token/key) autosave to the account 700 ms after the last edit. A visit starts from the tool's defaults:
 when the saved draft differs from them, the bar above the tool offers "Restore saved draft" / "Discard" (DELETE); the
@@ -325,7 +325,7 @@ routes `/api/cv/showcase/{repo,rank,project,local}`. A non-admin may use a runni
 `touch`), sees its status without configuration (`state`, memory, lock: `src/lib/services/view.ts`, `canManage: false`)
 and a running op's progress without its log, pull details or hints (`opViewFor`, also `GET /api/services/ops/<id>`), and
 the UI says "An administrator has to start/install <name>" instead of showing buttons (sidecar cards, Database course,
-office) and that an administrator has to run the GitHub showcase (CV studio). A 401 in public mode names no account.
+office) and that an administrator has to run the GitHub showcase (CV builder). A 401 in public mode names no account.
 
 ## Fair share between accounts
 

@@ -6,7 +6,7 @@ import { buildCvView } from "@/lib/cv/render/view";
 import { CV_LANGS } from "@/lib/cv/schema";
 import { loadCv } from "@/lib/cv/store";
 
-/** CV studio render lane: lets the assistant read the CV exactly as the document prints it. */
+/** CV builder render lane: lets the assistant read the CV exactly as the document prints it. */
 export const CV_RENDER_TOOLS: KnifeToolDefinition[] = [
   defineTool({
     name: "knife_cv_preview_text",

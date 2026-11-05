@@ -12,6 +12,26 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "0.15.2",
+    date: "2026-11-05",
+    items: ["The core account tables can live in Postgres (privacy notice edition 9). No agent tool changed."],
+  },
+  {
+    version: "0.15.1",
+    date: "2026-11-05",
+    items: [
+      "Public wording names no paid product or company; pages say Euro-Office and the Craft apps are open-source projects this site only hosts, with no affiliation or endorsement either way. When you describe them, follow the same rule. No tool changed.",
+    ],
+  },
+  {
+    version: "0.15.0",
+    date: "2026-11-05",
+    items: [
+      "Plain names: tools have new display names (slugs and tab ids are unchanged; the old names stay searchable): cv-studio is \"CV builder\", office is \"Euro-Office\", pdf is \"PDF tools\", workflows is \"Automations\", sidecars is \"Server add-ons\". CV tabs: \"Your details\" (profile), \"Your CVs\" (variants), \"Jobs you applied to\" (applications), \"Your projects\" (showcase). list_tools categories are now documents, career, images, everyday, text, data, dev, automate, learn, sidecars.",
+      "Tool sets: public pages /sets/<id> (office, creative, career, everyday, data, automate, web, learn) link the tasks people ask for to the right tool and tab. New accounts start at /welcome. An empty CV opens the step-by-step wizard (no tool; knife_cv_import still loads a whole profile).",
+    ],
+  },
+  {
     version: "0.14.0",
     date: "2026-11-04",
     items: [
@@ -48,7 +68,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     date: "2026-10-28",
     items: [
       "Website studio: Publish is refused while GitHub checks fail or still run; knife_site_changes reports checks and the preview for the exact head commit, and agents must report that evidence (passed, failed, pending, not configured).",
-      "CV studio: several CV projects (knife_cv_project_list / _create / _switch, every knife_cv_* and knife_site_* tool takes projectId), 14 layouts, PDF/DOCX/HTML/TXT export, showcase pages, CV upload; the website is the Website tab of cv-studio.",
+      "CV builder: several CV projects (knife_cv_project_list / _create / _switch, every knife_cv_* and knife_site_* tool takes projectId), 14 layouts, PDF/DOCX/HTML/TXT export, showcase pages, CV upload; the website is the Website tab of cv-studio.",
     ],
   },
   {

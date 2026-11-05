@@ -274,7 +274,7 @@ export function PinButton({ path, pinned, name }: { path: string; pinned: boolea
       type="button"
       aria-pressed={pinned}
       aria-label={`${pinned ? "Unpin" : "Pin"} ${name}`}
-      title={t("Pinned = priority: always included and listed first in tailored versions")}
+      title={t("Pinned: always included and listed first in every CV for a job")}
       onClick={() => void env.save([{ op: "set", path: `${path}/pinned`, value: !pinned }])}
       className="cursor-pointer"
     >

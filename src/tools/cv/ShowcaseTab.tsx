@@ -61,19 +61,19 @@ function RepoCard({ repo, rank }: { repo: ShowcaseRepo; rank: number }) {
         </div>
         <div className="w-40 shrink-0 space-y-1">
           <div className="flex items-baseline justify-between"><span className="sk-label">{t("Score")}</span><span className="font-mono text-lg font-semibold text-ink tabular-nums">{Math.round(repo.score)}</span></div>
-          <Meter value={repo.score} label={t("Showcase score of {fullName}", { fullName: repo.fullName })} />
+          <Meter value={repo.score} label={t("Score of {fullName}", { fullName: repo.fullName })} />
         </div>
       </div>
       {repo.breakdown.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">{repo.breakdown.map((b) => <Badge key={b.label}>{t(b.label)} {b.points}</Badge>)}</div>
       ) : null}
       <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
-        <section aria-label={t("Why {fullName} ranks", { fullName: repo.fullName })}>
-          <h4 className="sk-label mb-1">{t("Why it ranks")}</h4>
+        <section aria-label={t("Why {fullName} got this score", { fullName: repo.fullName })}>
+          <h4 className="sk-label mb-1">{t("Why this score")}</h4>
           <ul className="list-disc space-y-0.5 pl-4 text-[13px] text-muted">{repo.reasons.length === 0 ? <li className="list-none text-faint">{t("No reasons reported.")}</li> : repo.reasons.map((r, i) => <li key={i} className="wrap-anywhere">{r}</li>)}</ul>
         </section>
-        <section aria-label={t("Improve {fullName} first", { fullName: repo.fullName })}>
-          <h4 className="sk-label mb-1">{t("Improve first")}</h4>
+        <section aria-label={t("Fix first in {fullName}", { fullName: repo.fullName })}>
+          <h4 className="sk-label mb-1">{t("Fix this first")}</h4>
           <ul className="list-disc space-y-0.5 pl-4 text-[13px] text-muted">{repo.improve.length === 0 ? <li className="list-none text-faint">{t("Nothing urgent.")}</li> : repo.improve.map((r, i) => <li key={i} className="wrap-anywhere">{r}</li>)}</ul>
         </section>
       </div>
@@ -81,11 +81,11 @@ function RepoCard({ repo, rank }: { repo: ShowcaseRepo; rank: number }) {
         <Button size="sm" onClick={() => void load()} disabled={state === "loading" || detail !== null} aria-label={t("Load details of {fullName}", { fullName: repo.fullName })}>{state === "loading" ? t("Loading…") : detail ? t("Details loaded") : t("Load details and checklist")}</Button>
         <Button size="sm" variant={copied ? "primary" : "subtle"} onClick={() => void copy()} aria-label={t("Copy facts for the assistant: {fullName}", { fullName: repo.fullName })}>{copied ? t("Copied") : t("Copy facts for the assistant")}</Button>
       </div>
-      {state === "unavailable" ? <div className="mt-3"><Notice>{t("Repo details are not available yet on this server.")}</Notice></div> : null}
+      {state === "unavailable" ? <div className="mt-3"><Notice>{t("Project details are not available right now.")}</Notice></div> : null}
       {state === "error" ? <div className="mt-3" role="alert"><Notice tone="error">{error}</Notice></div> : null}
       {detail ? (
         <div className="mt-3 grid gap-3 @2xl:grid-cols-2" data-agent-region={`showcase-${repo.fullName}`}>
-          <section aria-label={t("Repository facts")}>
+          <section aria-label={t("Project facts")}>
             <h4 className="sk-label mb-1">{t("Facts")}</h4>
             <dl className="divide-y divide-line overflow-hidden rounded-lg border border-line text-[13px]">
               {detail.facts.map(([k, v]) => (
@@ -93,7 +93,7 @@ function RepoCard({ repo, rank }: { repo: ShowcaseRepo; rank: number }) {
               ))}
             </dl>
           </section>
-          <section aria-label={t("Showcase checklist")}>
+          <section aria-label={t("Project checklist")}>
             <h4 className="sk-label mb-1">{t("Checklist ({length}/{checklist})", { length: detail.checklist.filter((c) => c.passed).length, checklist: detail.checklist.length })}</h4>
             <ul className="space-y-1">
               {detail.checklist.map((c) => (
@@ -133,8 +133,8 @@ export default function ShowcaseTab() {
   if (admin === false) {
     return (
       <div className="@container space-y-4">
-        <Panel title={t("Project showcase")}>
-          <Notice>{t("An administrator has to run the project showcase on this server: it reads GitHub with the server owner's own login. Add your projects on the Profile tab by hand, or ask the assistant to write them from what you tell it.")}</Notice>
+        <Panel title={t("Your GitHub projects")}>
+          <Notice>{t("Only an administrator can use this page here, because it reads GitHub with the server owner's login. Add your projects by hand in Your details, or ask the AI assistant to write them from what you tell it (it needs an AI model set up).")}</Notice>
         </Panel>
       </div>
     );
@@ -142,28 +142,28 @@ export default function ShowcaseTab() {
 
   return (
     <div className="@container space-y-4">
-      <Panel title={t("Project showcase")}>
-        <form className="space-y-3" aria-label={t("Rank repositories")} onSubmit={(e) => { e.preventDefault(); void run(); }}>
+      <Panel title={t("Your GitHub projects")}>
+        <form className="space-y-3" aria-label={t("Score my projects")} onSubmit={(e) => { e.preventDefault(); void run(); }}>
           <p className="text-[13px] leading-relaxed text-muted">
-            {t("Ranks your public, non-fork GitHub repositories by how well they work as CV evidence (stars, recency, commits, README and presentation) and says what to fix first. The assistant can then write the project bullets from these facts.")}
+            {t("Looks at your public GitHub projects (not copies of other people's), scores how well each one would look on a CV (stars, recent work, how well it is described) and says what to fix first. If you have set up an AI model, the assistant can then write the project points from these facts.")}
           </p>
-          <Field label={t("GitHub owner")} hint={t("Leave empty to use the account the server is signed in with.")}>
-            <TextInput aria-label={t("GitHub owner")} value={owner} onChange={(e) => setOwner(e.target.value)} placeholder={t("your-github-username")} autoCapitalize="none" spellCheck={false} />
+          <Field label={t("GitHub username")} hint={t("Leave empty to use the account the server is signed in with.")}>
+            <TextInput aria-label={t("GitHub username")} value={owner} onChange={(e) => setOwner(e.target.value)} placeholder={t("your-github-username")} autoCapitalize="none" spellCheck={false} />
           </Field>
-          <Button variant="primary" type="submit" disabled={phase === "loading"}>{phase === "loading" ? t("Ranking…") : t("Rank my repositories")}</Button>
-          {phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Reading repository facts from GitHub. This can take up to a minute.")}</p> : null}
-          {phase === "unavailable" ? <Notice>{t("The showcase is not available yet on this server.")}</Notice> : null}
+          <Button variant="primary" type="submit" disabled={phase === "loading"}>{phase === "loading" ? t("Scoring…") : t("Score my projects")}</Button>
+          {phase === "loading" ? <p role="status" className="text-sm text-muted">{t("Reading your projects from GitHub. This can take up to a minute.")}</p> : null}
+          {phase === "unavailable" ? <Notice>{t("This page is not available right now.")}</Notice> : null}
           {phase === "error" ? <div role="alert"><Notice tone="error">{error}</Notice></div> : null}
         </form>
       </Panel>
 
       {ranking ? (
         ranking.repos.length === 0 ? (
-          <EmptyState title={t("No repositories to rank")}>{t("No public non-fork repositories were found for this owner.")}</EmptyState>
+          <EmptyState title={t("No projects to score")}>{t("We found no public projects of this GitHub user, other than copies of other people's.")}</EmptyState>
         ) : (
           <>
             {ranking.note ? <p className="text-xs text-faint">{ranking.note}</p> : null}
-            <ol className="space-y-3" aria-label={t("Ranked repositories")}>
+            <ol className="space-y-3" aria-label={t("Scored projects")}>
               {ranking.repos.map((repo, i) => <RepoCard key={repo.fullName} repo={repo} rank={i + 1} />)}
             </ol>
             {ranking.skipped.length > 0 ? (

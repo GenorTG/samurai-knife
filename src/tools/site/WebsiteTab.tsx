@@ -24,7 +24,7 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 
 /**
- * CV studio, Website tab (optional; docs/WEBSITE-STUDIO.md): for people with their own website or portfolio. Add the
+ * CV builder, Website tab (optional; docs/WEBSITE-STUDIO.md): for people with their own website or portfolio. Add the
  * site (its address is enough for the CV check; its GitHub repository also lets the assistant prepare changes), check
  * it, compare it with this CV project, and optionally improve it through reviewed pull requests. Per CV project.
  */

@@ -75,7 +75,7 @@ Craft apps; Tables and CSV (Convert, Columns, Merge, Pivot, Profile, Duplicates,
 Diagram, Schema, YAML, XML); SQL lab (Format, Convert, Validate, Schema, Run, Connection); Text kit (Transforms,
 Generate); Regex lab; Diff; Characters and encoding (Characters, File encoding); CSS studio (Playground and the builders);
 Web workbench (URL, cURL, CSP, robots.txt, Sitemap); IDs, tokens and passwords (IDs & hashes, JWT, Passwords); Dates
-(Epoch & zones, Date format, Durations, Meeting planner, Workdays, Cron, Recurrence); CV studio; Website studio;
+(Epoch & zones, Date format, Durations, Meeting planner, Workdays, Cron, Recurrence); CV builder; Website studio;
 Workflows; Database course; Services; MCP connect.
 
 ## Result

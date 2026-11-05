@@ -1,18 +1,33 @@
 # Smart Knife
 
-**A self-hosted, browser-first toolbox with an AI assistant that can actually use it.**
+**Stop paying for software that spies on you: office documents, photo and video editing, PDF tools and a CV builder in your browser, free.**
 
-One launcher, 41 hand-made tools (31 suites with 107 tabs, plus 10 standalone), a chat assistant that drives the live
-page, and an MCP endpoint so outside agents (Claude Code, Cursor, OpenClaw…) can use the same tools and steer the
-screen you have open. No telemetry, no registration, no cloud: it runs on your own machine, and most tools never send a
-byte off the page.
+The big proprietary suites are expensive, locked down and full of terms nobody reads; they push your files into their cloud
+and spy on what you do. Smart Knife puts free tools and open-source apps for the same work on one website you can use or
+run yourself. It has a step-by-step welcome guide and CV wizard for people who are not computer savvy, plus 41 tools (31
+suites with 107 tabs, plus 10 standalone), an optional AI assistant that drives the live page, and an MCP endpoint for
+outside agents (Claude Code, Cursor, OpenClaw…). No telemetry and no ads, and most tools never send a byte off the page.
+
+| Instead of paying for | Use, free | For |
+| --- | --- | --- |
+| Subscription office suites | Euro-Office | documents, spreadsheets and slides (DOCX, XLSX, PPTX) |
+| Subscription photo programs | PhotoCraft, LightCraft | photo editing and RAW development |
+| Subscription design programs | VectorCraft, DesignCraft | graphics and page layout |
+| Subscription video and audio programs | FilmCraft, EffectCraft, SoundCraft | video, effects and sound |
+| Expensive PDF editors | PDF tools, PdfCraft | editing, merging, compressing and OCR for PDFs |
+| Paid CV websites | CV builder | a CV in Polish and English, in PDF or DOCX, adjusted to each job offer |
+| Pay-per-task automation services | Automations | connecting apps and running tasks by themselves |
+
+Euro-Office and the Craft apps are other people's open-source projects. We only host them, and are not affiliated with their
+authors: they do not endorse us and we do not endorse them. They cover everyday and much advanced work, not every feature
+of the paid programs.
 
 ![Launcher](docs/screenshots/launcher.png)
 
 | | |
 | --- | --- |
 | ![JSON workbench](docs/screenshots/json-workbench.png) | ![SQL lab](docs/screenshots/sql-lab.png) |
-| ![CV studio](docs/screenshots/cv-studio.png) | ![CV version with live preview](docs/screenshots/cv-version.png) |
+| ![CV builder](docs/screenshots/cv-studio.png) | ![CV version with live preview](docs/screenshots/cv-version.png) |
 
 ## What's inside
 
@@ -25,7 +40,7 @@ byte off the page.
 - **Web and code**: a website check (a live URL: redirects, security headers, cookies, SEO, accessibility, robots.txt, sitemap), a CSS playground (HTML, CSS, JS/TS with presets and export) and CSS builders, CSP and cURL, URLs, robots.txt and sitemaps, JWT and passwords, IDs and hashes, dates and time zones, cron and RRULE
 - **Text**: regex lab, diff, text kit (transforms, line wrap, smart quotes, placeholder text), Unicode and encoding inspector
 
-**CV studio**: one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
+**CV builder**: a step-by-step wizard (no AI needed) and one bilingual (PL/EN) CV profile, saved job offers fetched from job boards, a tailored CV version per offer
 with an ATS check, an application tracker, and a showcase builder that drafts project entries from GitHub repos.
 Prints to PDF or exports DOCX.
 
@@ -33,7 +48,7 @@ Prints to PDF or exports DOCX.
 window functions, `EXPLAIN` and catchment analysis, each checked against a real PostgreSQL + PostGIS database the app
 runs for you, with progressive hints and interview drills. See [docs/LEARN.md](docs/LEARN.md).
 
-**Office documents** (optional sidecar): create and edit Word, Excel and PowerPoint files in a self-hosted editor that
+**Euro-Office** (optional sidecar): create and edit DOCX, XLSX and PPTX files in a self-hosted editor that
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
 
@@ -54,7 +69,7 @@ affiliated with or endorsed by the ArtCraft team; "ArtCraft" and its logos are t
 - **Guardrails, not vibes.** Trust modes (All / Most / Risky / None) gate acting calls, destructive actions on your input
   are confirmed one by one, and the agent never fabricates your files: it opens the tool and waits for you. Tool outputs
   chain between tools by reference (`f1`, `f2`…), never as base64 pasted through the model.
-- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 65 deterministic tools: CV studio, SQL/NoSQL,
+- **MCP endpoint.** `POST /api/mcp` (stateless Streamable HTTP) exposes 65 deterministic tools: CV builder, SQL/NoSQL,
   office documents, a course tutor and text utilities. Two MCP-only tools let an outside agent see which pages you have open and bring your
   visible tab to its result, with a short note on screen. Open pages refresh by themselves when an agent changes data,
   with Undo. See [docs/MCP.md](docs/MCP.md).
@@ -165,7 +180,7 @@ it in `src/tools/registry-client.tsx`. Nothing else is wired by hand.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): layout, rules and hard-won gotchas
 - [docs/MCP.md](docs/MCP.md): using the app from outside agents
-- [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV studio contract
+- [docs/CV-STUDIO.md](docs/CV-STUDIO.md): the CV builder contract
 - [docs/SIDECARS.md](docs/SIDECARS.md): Docker sidecars, the live office plugin and the Craft apps
 - [docs/LEARN.md](docs/LEARN.md): the Database course (lessons, seed, learner sandbox)
 - [docs/SUITES.md](docs/SUITES.md): how 100 small tools became 30 suites

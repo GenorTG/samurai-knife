@@ -172,6 +172,7 @@ export async function register(input: { username: string; email: string; passwor
     if (RESERVED.has(username) || store.accounts.some((account) => account.id === username)) return "username_taken";
     if (pendingRoom(store, email, ipTag) !== "ok") return "pending_full";
     store.accounts.push(newAccountRecord({
+      needsWelcome: true,
       id: username,
       displayName: username,
       passwordHash,

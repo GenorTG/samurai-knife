@@ -140,17 +140,17 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
     <div className="flex min-h-dvh flex-col">
       <div className="sticky top-0 z-40 shrink-0">
         <header className="group/header sk-glass flex h-14 items-center gap-3 border-b border-line px-3 sm:px-4">
-          <IconButton label={tr("Toggle sidebar (b)")} onClick={() => emitShell(SHELL_EVENTS.sidebar)}>
+          <IconButton label={tr("Show or hide the side menu (b)")} onClick={() => emitShell(SHELL_EVENTS.sidebar)}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </IconButton>
           <Brand />
-          <span title={tr("Build version (MAJOR.MINOR.PATCH.BUILD)")} className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint tabular-nums sm:inline">
+          <span title={tr("Version of Smart Knife")} className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint tabular-nums sm:inline">
             v{version}
           </span>
           {tool ? (
-            <nav aria-label={tr("Breadcrumb")} className="hidden min-w-0 items-center gap-2 text-sm md:flex">
+            <nav aria-label={tr("Where you are")} className="hidden min-w-0 items-center gap-2 text-sm md:flex">
               <span aria-hidden className="text-line-strong">/</span>
               {/* The section, unless it is the tool itself (Craft apps). */}
               {(navSectionOf(tool.slug)?.label ?? categoryLabel(tool.category)) !== tool.name ? (
@@ -175,7 +175,7 @@ export function AppShell({ children, version }: { children: React.ReactNode; ver
                 <circle cx="11" cy="11" r="6.5" />
                 <path d="M16 16l4.5 4.5" />
               </svg>
-              <span className="hidden flex-1 text-left sm:block">{tr("Jump to a tool…")}</span>
+              <span className="hidden flex-1 text-left sm:block">{tr("Find a tool…")}</span>
               <kbd className="sk-kbd hidden sm:block">Ctrl K</kbd>
             </button>
             <IconButton label={tr("Keyboard shortcuts (?)")} onClick={() => emitShell(SHELL_EVENTS.help)} className="max-sm:hidden">

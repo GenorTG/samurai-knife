@@ -7,7 +7,7 @@ import { GLOSSARY, searchGlossary } from "@/lib/cv/text/glossary";
 import { ScopeError } from "@/lib/cv/text/walk";
 
 /**
- * CV studio wording / translation quality tools. They only *report*: deterministic rules find candidates, the
+ * CV builder wording / translation quality tools. They only *report*: deterministic rules find candidates, the
  * model decides what to change with the user. No LLM is called here.
  */
 

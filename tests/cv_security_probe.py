@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attacks on the CV studio's newer endpoints over HTTP, against a production build in public mode (docs/TESTING.md):
+"""Attacks on the CV builder's newer endpoints over HTTP, against a production build in public mode (docs/TESTING.md):
 CV projects (`?project=` isolation and path tricks), the CV file upload (`/api/cv/import/extract`: size, fake and
 bomb files), the PDF/HTML export from a browser-sent sheet (`/api/cv/export`: local files, network fetches, script and
 links in the sheet), the export file name, and the website address (`/api/site` set-url/verify: loopback, metadata).

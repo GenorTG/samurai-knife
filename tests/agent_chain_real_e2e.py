@@ -34,7 +34,7 @@ def check(name: str, ok: bool, detail: object = "") -> None:
 
 
 def key(page: Page) -> str:
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
 
 def history(page: Page, k: str) -> list[dict]:

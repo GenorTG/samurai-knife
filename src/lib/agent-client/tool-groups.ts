@@ -22,7 +22,7 @@ export interface ToolGroup {
 export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: "goals", prefixes: ["knife_goal_"], pagePattern: /(?!)/, summary: "saved tasks for multi-step work" },
   { id: "sql", prefixes: ["knife_sql_"], pagePattern: /^\/tools\/sql-lab(\/|$)/, summary: "SQL: compile a JSON query spec for 14 dialects, transpile between dialects, validate, format, DDL to schema, check SQL against a schema" },
-  { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV studio: the bilingual (PL/EN) master CV (read, edit, undo, audit), job offers matched against it, per-job CV versions with an ATS check, applications, projects from GitHub" },
+  { id: "cv", prefixes: ["knife_cv_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "CV builder: the bilingual (PL/EN) master CV (read, edit, undo, audit), job offers matched against it, per-job CV versions with an ATS check, applications, projects from GitHub" },
   { id: "site", prefixes: ["knife_site_", "knife_vision_"], pagePattern: /^\/tools\/cv-studio(\/|$)/, summary: "the user's website: audit scores, screenshots, repo files, changes as a pull request" },
   { id: "workflows", prefixes: ["knife_workflow_"], pagePattern: /^\/tools\/workflows(\/|$)/, summary: "Workflows (automations): node catalog, build, edit, run, run results" },
   { id: "docs", prefixes: ["knife_doc_"], pagePattern: /^\/tools\/office(\/|$)/, summary: "Office documents: list, read as text (or a version), create, folders, move, versions" },

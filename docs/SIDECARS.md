@@ -2,7 +2,7 @@
 
 Some tools need a real server program that cannot run in the browser or the Python lane (an office document editor, the
 Database course's PostgreSQL), or files too big for the app's own bundle (the ArtCraft apps). Those programs run as **sidecars**: docker compose services the app installs, starts, stops, updates and
-removes itself, from the web UI (launcher category **Sidecars** → *Sidecar services*) or the CLI. Nothing is installed until
+removes itself, from the web UI (launcher category **Sidecars** → *Server add-ons*) or the CLI. Nothing is installed until
 the owner presses Install.
 
 ## Pieces

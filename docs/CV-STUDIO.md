@@ -1,4 +1,4 @@
-# CV studio (suite `cv-studio`)
+# CV builder (suite `cv-studio`)
 
 Per-account career workspace: one or more CV projects (separate CVs, see "Projects"), each with a bilingual (PL/EN) master CV profile, saved job offers (link or pasted text),
 per-job CV versions ("variants"), tracked applications, project-showcase evidence. The widget agent drives it two ways: the live UI tools

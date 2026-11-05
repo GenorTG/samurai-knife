@@ -295,7 +295,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------------------------- 1. register
     ctx_a, page_a = new_context(browser, base, "198.51.100.11")
     go(page_a, "/")
-    expect(page_a.get_by_role("heading", level=1)).to_contain_text("in one sharp place", timeout=15_000)
+    expect(page_a.get_by_role("heading", level=1)).to_contain_text("Stop paying for", timeout=15_000)
     shot(page_a, "greeter")
     check("signed-out home is the welcome page: register + log in calls to action, no tool list, no app shell",
           page_a.locator("main a[href='/register']").count() >= 2 and page_a.locator("main a[href='/login']").count() >= 1
@@ -352,12 +352,11 @@ def run(server: ScratchServer, browser: Browser) -> None:
 
     # ------------------------------------------------------------------------------------------------- 4. login
     ui_login(page_a, "ALICE@example.com", "alice password 1")
-    page_a.wait_for_url(base + "/", timeout=15_000)
+    page_a.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     expect(page_a.get_by_role("link", name="alice")).to_be_visible(timeout=15_000)
     check("login by email (any case) lands on / with the account in the top bar", True)
-    check("signed-in home is the launcher, not the greeter",
-          page_a.get_by_role("heading", level=1).inner_text() == "Smart Knife brings your work tools and AI together."
-          and page_a.locator("main a[href='/register']").count() == 0)
+    expect(page_a.get_by_role("heading", level=1)).to_contain_text("Welcome to Smart Knife", timeout=15_000)
+    check("a first sign-in opens the welcome guide, not the guest page", page_a.locator("main a[href='/register']").count() == 0)
     go(page_a, "/login?next=%2Ftools%2Fjson")
     page_a.wait_for_url(base + "/tools/json", timeout=15_000)
     check("signed in, /login goes straight on to next", True)
@@ -381,7 +380,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     form.locator("input[autocomplete=new-password]").fill("alice password 2")
     shot(page_a, "account")
     form.get_by_role("button", name="Change password").click()
-    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other sessions? (was|were) signed out\."))).to_be_visible(timeout=15_000)
+    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other devices? (was|were) logged out\."))).to_be_visible(timeout=15_000)
     check("change password in the UI", True)
     check("the other session is revoked", api.call("GET", "/api/account", cookie=cookie2)[0] == 401)
     status = ctx_a.request.get(base + "/api/account").status
@@ -424,7 +423,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     key_status, key_body, _ = api.call("POST", "/api/account/mcp-keys", {"action": "create", "name": "logout test"}, cookie=alice_cookie)
     check("create MCP key before log out everywhere", key_status == 201 and bool(key_body.get("key")), (key_status, key_body))
     ui_login(page_a, "alice", "alice password 3")
-    page_a.wait_for_url(base + "/", timeout=15_000)
+    page_a.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     go(page_a, "/account")
     page_a.get_by_role("checkbox").check()
     check("log out everywhere offers MCP key revocation", page_a.get_by_role("checkbox").count() == 1)
@@ -585,7 +584,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
 
     ctx_c, page_c = new_context(browser, base, "198.51.100.91")
     ui_login(page_c, "alice", "alice password 3")
-    page_c.wait_for_url(base + "/", timeout=15_000)
+    page_c.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     go(page_c, "/tools/db-course")
     expect(page_c.get_by_text(re.compile(r"An administrator has to start Course database")).first).to_be_visible(timeout=60_000)
     check("non-admin sees 'An administrator has to start ...' on the course page", True)
@@ -601,7 +600,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     # ------------------------------------------------------------------------------------ 11. admin disables a user
     ctx_d, page_d = new_context(browser, base, "198.51.100.92")
     ui_login(page_d, "genor", ADMIN_PW)
-    page_d.wait_for_url(base + "/", timeout=15_000)
+    page_d.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     go(page_d, "/account/admin")
     row = page_d.locator("tr[data-user=alice]")
     expect(row).to_be_visible(timeout=15_000)
@@ -625,7 +624,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
 
     # -------------------------------------------------------------------------------------- 12. delete own account
     ui_login(page_c, "alice", "alice password 3")
-    page_c.wait_for_url(base + "/", timeout=15_000)
+    page_c.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     alice_cookie = "knife_session=" + {c["name"]: c for c in ctx_c.cookies()}["knife_session"]["value"]
     status, body, _ = api.call("POST", "/api/office/docs", {"action": "create", "format": "docx", "name": "Notes"}, cookie=alice_cookie)
     check("alice creates an office document (real data through the API)", status in (200, 201), (status, body))
@@ -702,7 +701,7 @@ def run_firefox_auth_smoke(server: ScratchServer, browser: Browser) -> None:
         expect(page.get_by_text("Your email is confirmed, foxuser")).to_be_visible(timeout=15_000)
         check("Firefox: verification form activates the account", accounts(data).get("foxuser", {}).get("status") == "active")
         ui_login(page, "foxuser", password)
-        page.wait_for_url(base + "/", timeout=15_000)
+        page.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
         account_status = ctx.request.get(base + "/api/account").status
         check("Firefox: login succeeds after verification", account_status == 200,
               {"status": account_status, "url": page.url, "header": page.locator("main").inner_text()[:300]})
