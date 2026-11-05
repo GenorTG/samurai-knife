@@ -23,7 +23,10 @@ test("on an ordinary page only the core tools are sent", () => {
 
 test("lab pages preload their own group (also with a tab query-less path and trailing slash)", () => {
   assert.deepEqual([...initialGroups("/tools/sql-lab", [])], ["sql"]);
-  assert.deepEqual([...initialGroups("/tools/cv-studio", [])], ["cv", "site"], "the CV builder has a Website tab");
+  assert.deepEqual([...initialGroups("/tools/cv-studio", [])], ["cv"]);
+  assert.deepEqual([...initialGroups("/tools/cv-studio?tab=jobs", [])], ["cv"]);
+  assert.deepEqual([...initialGroups("/tools/cv-studio?tab=website", [])], ["cv", "site"], "the website tools only on the Website tab");
+  assert.deepEqual([...initialGroups("/tools/cv-studio?x=1&tab=website", [])], ["cv", "site"]);
   assert.deepEqual([...initialGroups("/tools/site-studio", [])], [], "site-studio is retired (an alias to cv-studio?tab=website)");
   assert.equal(groupOf("knife_cv_patch")?.id, "cv");
   assert.deepEqual([...initialGroups("/tools/sql-labx", [])], []);
@@ -36,6 +39,14 @@ test("a group the conversation already used (directly or via load_tools) stays l
   assert.deepEqual([...initialGroups("/tools/json", [call("load_tools", { group: "sql" })])], ["sql"]);
   assert.deepEqual([...initialGroups("/tools/json", [call("load_tools", { group: "bogus" })])], []);
   assert.deepEqual([...initialGroups("/tools/json", [{ role: "assistant", content: null, tool_calls: [{ id: "x", type: "function", function: { name: "load_tools", arguments: "{oops" } }] }])], []);
+});
+
+test("a group goes away GROUP_TURNS turns after its last use", () => {
+  const user = { role: "user", content: "next" };
+  const used = [user, call("knife_cv_get"), user];
+  assert.deepEqual([...initialGroups("/tools/json", used)], ["cv"]);
+  assert.deepEqual([...initialGroups("/tools/json", [...used, user])], ["cv"]);
+  assert.deepEqual([...initialGroups("/tools/json", [...used, user, user])], []);
 });
 
 test("load_tools adds the group, lists its tools, rejects unknown groups, and is idempotent", () => {

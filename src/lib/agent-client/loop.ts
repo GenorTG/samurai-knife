@@ -34,11 +34,12 @@ import { UI_TOOL_DEFS, isUiTool, runUiTool, type UiToolContext } from "./ui-tool
 import { liveToolAvailable } from "./office-live-tools";
 import { craftToolAvailable } from "./craft-live-tools";
 import { assessCall } from "./approval-policy";
-import { LOAD_TOOLS_NAME, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
+import { LOAD_TOOLS_NAME, addPageGroups, initialGroups, loadToolsDef, runLoadTools, visibleTools } from "./tool-groups";
+import { createRepeatGuard } from "./repeat-guard";
 import { getTrustMode, isRunAllowed, requestApproval, requestForeground, resetRunTrust } from "./interaction";
 import { fetchServerVersion, loadedVersion } from "@/lib/build-version";
 import { DEFAULT_TURN_LIMITS, resolveTurnLimits, type TurnLimits } from "./turn-limits";
-import { buildContext, summarySection } from "./context";
+import { buildContext, turnNote, withTurnNote } from "./context";
 import { msg, msgf } from "@/lib/i18n/msg";
 import { clipJsonText } from "@/lib/json-clip";
 
@@ -235,8 +236,15 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
   const deliverSteering = (): boolean => {
     const texts = options.takeSteering?.() ?? [];
     for (const content of texts) append({ role: "user", content });
+    if (texts.length > 0) repeats.reset(); // what came before may now be an earlier turn, shortened
     return texts.length > 0;
   };
+  /** Page and journal as they were when the turn started: sent once in the turn's note (context.ts, turnNote). */
+  const startedOn = window.location.pathname;
+  const turnMessage = working[turnStart];
+  /** The same call with the same result: answered by a pointer, stopped when it goes on (repeat-guard.ts). */
+  let serverEffects: Record<string, KnifeToolEffectInfo> = {};
+  const repeats = createRepeatGuard((name) => name === "page_snapshot" || name === "read_text" || name === "list_tools" || serverEffects[name]?.effect === "read");
   /** The "older messages shortened" notice is shown once per turn. */
   let shortenedNoted = false;
   /** One model call with the whole (slimmed) history. `extra` (the wrap-up note) is sent but not kept in the transcript. */
@@ -251,7 +259,8 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
       shortenedNoted = true;
       notice("info", msg("Older messages were shortened to fit the model's context; the latest answers are kept in full."));
     }
-    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system + summarySection(context.summary) }, ...context.messages, ...extra] };
+    const note = turnNote({ pathname: startedOn, accountName: options.accountName, recentActions: options.recentActions, summary: context.summary });
+    const request: ChatRequest = { ...base, chatId: options.chatId, messages: [{ role: "system", content: system }, ...withTurnNote(context.messages, turnMessage, note), ...extra] };
     const result = await (handlers ? chatStream(request, handlers, signal) : chat(request, signal));
     if (result.ok && result.value.untrusted) stickyUntrusted = true;
     return result;
@@ -283,6 +292,7 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     onActivity("Preparing…");
     const [{ defs: serverDefs, effects }, serverVersion] = await Promise.all([fetchServerToolCatalog(), fetchServerVersion(signal)]);
     const versions = { version: loadedVersion(), serverVersion };
+    serverEffects = effects;
     const serverGate = { effects, turn: () => turnContext(working, turnStart, effects, stickyUntrusted) };
     const uiNames = new Set(UI_TOOL_DEFS.map((d) => d.function.name));
     const serverTools = serverDefs.filter((d) => !uiNames.has(d.function.name));
@@ -290,21 +300,25 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Database tool groups load on demand (see tool-groups.ts); execution still knows every tool.
     const allTools: FunctionToolDef[] = [...UI_TOOL_DEFS, loadToolsDef(), ...serverTools];
     const toolNames = allTools.map((d) => d.function.name);
-    const activeGroups = initialGroups(window.location.pathname, working);
+    const activeGroups = initialGroups(window.location.pathname + window.location.search, working);
 
     let toolCalls = 0;
     let limitHit = false;
     /** The account's input-token budget (Settings > Turn limit; off unless set): checked after every round. */
     let tokensHit = false;
+    /** The model kept repeating a call that keeps giving the same result. */
+    let repeatHit = false;
 
     for (let round = 0; round < maxRounds; round += 1) {
       if (signal.aborted) return "aborted";
       deliverSteering();
       onActivity("Thinking…");
       roundStarted(chatId);
+      addPageGroups(activeGroups, window.location.pathname + window.location.search);
+      const tools = visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name));
       const result = await callModel(
-        { tools: visibleTools(allTools, activeGroups, (name) => liveToolAvailable(name) && craftToolAvailable(name)), temperature: 0.2, maxTokens: serverTools.some((tool) => tool.function.name === "knife_site_write") ? WRITE_ROUND_MAX_TOKENS : ROUND_MAX_TOKENS },
-        buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, recentActions: options.recentActions, locale: clientLocale(), ...versions }),
+        { tools, temperature: 0.2, maxTokens: tools.some((tool) => tool.function.name === "knife_site_write") ? WRITE_ROUND_MAX_TOKENS : ROUND_MAX_TOKENS },
+        buildSystemPrompt({ groups: activeGroups, locale: clientLocale(), ...versions }),
         {
           onText: (delta) => appendDraft(delta, chatId),
           onReasoning: (delta) => addReasoning(delta, chatId),
@@ -385,18 +399,22 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
           ? loading.ok ? runLoadTools(loading.args, activeGroups, allTools) : { ok: false, content: JSON.stringify({ ok: false, error: loading.error }) }
           : await executeCall(call, toolNames, serverToolNames, options, serverGate);
         stepFinished(call.id, run.ok, chatId);
-        const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: clipToolResult(run.content) };
+        const checked = repeats.check(call.id, call.function.name, call.function.arguments, clipToolResult(run.content));
+        if (checked.stop) repeatHit = true;
+        const toolResult: ToolMessage = { role: "tool", tool_call_id: call.id, content: checked.content };
         append(toolResult);
         if (run.ok && call.function.name !== LOAD_TOOLS_NAME) {
           options.onAction?.(`${window.location.pathname}: ${journalAction(call.function.name, label)}`.slice(0, 240));
         }
       }
       if (signal.aborted) return "aborted";
-      if (limitHit || tokensHit) break;
+      if (limitHit || tokensHit || repeatHit) break;
     }
 
     // Round, tool or token budget exhausted: one last call without tools so the user gets a summary.
-    notice("info", tokensHit && maxInputTokens
+    notice("info", repeatHit
+      ? msg("Stopped: the assistant kept repeating a step that gave the same result. Asking the model to summarise.")
+      : tokensHit && maxInputTokens
       ? msgf("Reached the per-turn input-token budget ({used} of {budget} prompt tokens; change it in Settings > Turn limit). Asking the model to summarise.", { used: formatTokens(used.promptTokens), budget: formatTokens(maxInputTokens) })
       : msgf("Reached the per-turn limit ({rounds} model rounds / {calls} tool calls; change it in Settings > Turn limit). Asking the model to summarise.", { rounds: maxRounds, calls: maxToolCalls }));
     onActivity("Summarising…");
@@ -404,9 +422,9 @@ export async function runAgentTurn(options: LoopOptions): Promise<LoopOutcome> {
     // Responses mode chains this too, so the summary lands in the same gateway session instead of a reseeded copy.
     const wrapUp = await callModel(
       { temperature: 0.2 },
-      buildSystemPrompt({ pathname: window.location.pathname, accountName: options.accountName, locale: clientLocale(), ...versions }),
+      buildSystemPrompt({ groups: activeGroups, locale: clientLocale(), ...versions }),
       null,
-      [{ role: "user", content: "[Toolbox note, not from the user] The tool budget for this turn is exhausted. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
+      [{ role: "user", content: "[Toolbox note, not from the user] No more tools in this turn. Do not call tools. Briefly state what was done, what is left, and what the user can ask next." }],
     );
     if (signal.aborted) return "aborted";
     if (wrapUp.ok) countRound(wrapUp.value.usage, wrapUp.value.roundModel);

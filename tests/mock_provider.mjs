@@ -23,7 +23,7 @@
 //   user text containing CALL:<tool>:<json args> -> assistant message with that single tool_call
 //   user text containing SLOW:<ms>               -> replies "SLOWDONE: <text>" after <ms> (max 60000); cancelled on disconnect
 //   user text containing STREAM:<n>             -> (stream:true) streams ~n words, one every GAP ms (default 120)
-//   user text containing LOOP:<tool>:<json args> -> calls that tool again after every tool result of this turn (turn limit tests)
+//   user text containing LOOP:<tool>:<json args> -> calls that tool again after every tool result of this turn (turn limit tests; __N__ in the args = the request number, so the results differ)
 //   user text containing GAP:<ms>                -> delay between streamed chunks / between tool name and arguments
 //   several CALL: lines in one user message      -> that many tool_calls in one round
 //   stream_options.include_usage -> a final usage chunk (deterministic); text containing NOUSAGE omits it, REJECT_STREAM_OPTIONS answers 400 to stream_options
@@ -209,12 +209,20 @@ const server = createServer((req, res) => {
       if (anthropic && typeof body.temperature === "number" && body.temperature < 1) {
         return send(res, 400, { type: "error", error: { type: "invalid_request_error", message: "temperature: values below 1 are not supported for this model" } });
       }
-      const messages = Array.isArray(body.messages) ? body.messages : [];
+      // The note the assistant adds to a turn's first message (context.ts, turnNote): scenarios match on what the user typed.
+      let noted = false;
+      const messages = (Array.isArray(body.messages) ? body.messages : []).map((m) => {
+        const at = m.role === "user" && typeof m.content === "string" ? m.content.indexOf("\n\n[Context from the toolbox") : -1;
+        if (at < 0) return m;
+        noted = true;
+        return { ...m, content: m.content.slice(0, at) };
+      });
       requestCount += 1;
       inflight += 1;
       maxConcurrent = Math.max(maxConcurrent, inflight);
       res.on("close", () => { inflight -= 1; });
       requestLog.push({
+        noted,
         n: requestCount,
         stream: body.stream === true,
         messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, text: textOf(m.content), tool_call_id: m.tool_call_id ?? null, images: imagesOf(m.content) })),
@@ -255,7 +263,7 @@ const server = createServer((req, res) => {
         return reply(res, body, {
           role: "assistant",
           content: null,
-          tool_calls: [{ id: `loop_${requestCount}`, type: "function", function: { name: loop[1], arguments: loop[2] } }],
+          tool_calls: [{ id: `loop_${requestCount}`, type: "function", function: { name: loop[1], arguments: loop[2].replaceAll("__N__", String(requestCount)) } }],
         }, "tool_calls", "");
       }
       if (tail.role === "tool") {

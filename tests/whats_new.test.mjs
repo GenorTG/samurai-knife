@@ -40,8 +40,22 @@ test("knife_whats_new answers with the server's version and the notes", async ()
   assert.equal(out.releases[0].version, pkg.version);
 });
 
+test("system prompt: instructions only for active groups, nothing that changes between rounds", () => {
+  const base = { version: "9.9.9.1", serverVersion: "9.9.9.1" };
+  const core = buildSystemPrompt(base);
+  assert.doesNotMatch(core, /Truthfulness is non-negotiable/);
+  assert.doesNotMatch(core, /knife_site_verify/);
+  assert.match(buildSystemPrompt({ ...base, groups: new Set(["cv"]) }), /Truthfulness is non-negotiable/);
+  assert.match(buildSystemPrompt({ ...base, groups: new Set(["site"]) }), /knife_site_verify/);
+  const both = buildSystemPrompt({ ...base, groups: new Set(["sql", "nosql"]) });
+  assert.equal(both.split("never hand-write dialect syntax").length, 2, "shared instructions go once");
+  for (const id of TOOL_GROUPS.map((g) => g.id).filter((id) => id !== "learn")) assert.notEqual(buildSystemPrompt({ ...base, groups: new Set([id]) }), core, `${id} has instructions`);
+  assert.ok(core.length < 11_000, `the core prompt goes out on every round: ${core.length} chars`);
+  assert.doesNotMatch(core, /account:|the user is on/, "page and account travel in the turn note");
+});
+
 test("system prompt: version, notes, every loadable group; the reload hint only for an older tab", () => {
-  const base = { pathname: "/", accountName: "genor" };
+  const base = {};
   const current = buildSystemPrompt({ ...base, version: "9.9.9.1", serverVersion: "9.9.9.1" });
   assert.match(current, /this tab runs Smart Knife v9\.9\.9\.1/);
   assert.ok(current.includes(`v${WHATS_NEW[0].version}`));

@@ -128,13 +128,15 @@ with sync_playwright() as pw:
     tools = last_tools()
     check("json page: no knife_cv_ tools sent (prefix diet)", not any(t.startswith("knife_cv_") for t in tools), [t for t in tools if t.startswith("knife_cv")])
     prompt = system_prompt()
-    check("system prompt teaches the cv group and the truthfulness rule", 'load_tools {group:"cv"}' in prompt and "never invent employers" in prompt, prompt[-400:])
-    check("system prompt covers applied-on tracking and open applications", "appliedOn" in prompt and "open:true" in prompt, "")
+    check("system prompt says when to load the cv group, and leaves its instructions out until then", '{group:"cv"}' in prompt and "any question about the user's CV" in prompt and "never invent employers" not in prompt, prompt[-400:])
 
     # 2) load the group from here and work with the real data
     loaded = call(page, k, "load_tools", {"group": "cv"})
     check("load_tools {cv} succeeds and lists the cv tools", loaded.get("ok") is True and "knife_cv_patch" in loaded.get("tools", []) and "knife_cv_app_list" in loaded.get("tools", []), loaded)
     check("next round sends the cv tools", "knife_cv_get" in last_tools() and "knife_cv_app_save" in last_tools(), last_tools())
+    prompt = system_prompt()
+    check("next round's system prompt has the truthfulness rule", "never invent employers" in prompt, prompt[-400:])
+    check("next round's system prompt covers applied-on tracking and open applications", "appliedOn" in prompt and "open:true" in prompt, "")
     got = call(page, k, "knife_cv_get", {"path": "/experience/id=acme/org"})
     check("knife_cv_get reads the real profile from a non-CV page", got == "Acme", got)
 

@@ -5,9 +5,11 @@ import type { NoticeMessage, SummaryNotice, ToolMessage, TranscriptMessage, Wire
  * and how the stored transcript is bounded. Pure functions, shared by the loop and the widget's storage.
  *
  * Rules:
- *  - the running turn (the last user message and everything after it) is always sent whole;
- *  - earlier turns are sent whole while they fit, then compacted to their user message + final answer (tool calls and
- *    tool output dropped), then summarised (excerpts) into the system prompt;
+ *  - the running turn (the last user message and everything after it) is sent whole until its tool output grows past
+ *    RUN_TOOL_CHARS; then its older results are shortened, a few at a time so the request prefix stays stable in between;
+ *  - earlier turns are sent whole while they fit WHOLE_CHARS, then compacted to their user message + final answer (tool
+ *    calls and tool output dropped), then summarised (excerpts) into the turn's note. Their budget does not depend on the
+ *    running turn: they stay byte-identical for the whole run, which is what prompt caching needs;
  *  - the previous turn's final answer is never dropped, whatever its size (a short follow-up like "yes" refers to it);
  *  - the stored transcript keeps at most MAX_STORED_MESSAGES / MAX_STORED_CHARS; what falls off becomes one stored
  *    summary notice at the top (level "summary"), shown as "Older messages summarised" and fed to the model.
@@ -17,9 +19,22 @@ export const MAX_STORED_MESSAGES = 200;
 /** Bounds the server PUT body (4 MiB) with room for JSON escaping and multi-byte text. */
 export const MAX_STORED_CHARS = 1_200_000;
 export const CONTEXT_MESSAGES = 80;
-export const CONTEXT_CHARS = 120_000;
-/** Longest stored / sent summary; the newest lines win. */
+/** What earlier turns may take in one request; of that, at most WHOLE_CHARS with their tool calls and output. */
+export const CONTEXT_CHARS = 40_000;
+export const WHOLE_CHARS = 16_000;
+/** Longest stored summary; the newest lines win. */
 export const SUMMARY_CHARS = 8_000;
+/** Longest summary sent to the model. */
+export const SUMMARY_SENT_CHARS = 3_000;
+/** The running turn's tool output (characters) above which its older results are shortened. */
+export const RUN_TOOL_CHARS = 40_000;
+/** So many of the newest results always stay whole. */
+export const RUN_KEEP_RESULTS = 6;
+/** The shortened part grows by this many results at a time: every move changes the request prefix. */
+export const RUN_BUCKET = 4;
+const SHORT_RESULT = 600;
+const LONG_ARGUMENTS = 2_000;
+const RESULT_EXCERPT = 300;
 const USER_EXCERPT = 240;
 const ANSWER_EXCERPT = 400;
 
@@ -111,12 +126,12 @@ function summaryLines(turns: TranscriptMessage[][]): string[] {
 }
 
 /** Join summary parts and keep the newest lines within SUMMARY_CHARS. */
-function boundSummary(parts: string[]): string {
+function boundSummary(parts: string[], limit = SUMMARY_CHARS): string {
   const lines = parts.flatMap((part) => part.split("\n")).filter((line) => line.trim());
   const kept: string[] = [];
   let size = 0;
   for (let i = lines.length - 1; i >= 0; i -= 1) {
-    if (size + lines[i].length + 1 > SUMMARY_CHARS) break;
+    if (size + lines[i].length + 1 > limit) break;
     kept.unshift(lines[i]);
     size += lines[i].length + 1;
   }
@@ -170,8 +185,55 @@ export interface ModelContext {
   messages: WireMessage[];
   /** Older conversation the model gets as text (stored summary + turns that did not fit), or null. */
   summary: string | null;
-  /** Earlier turns were shortened (compacted or summarised) for this call. */
+  /** Earlier turns dropped out of the messages into the summary. Compacting a turn to its answer is routine, not worth saying. */
   shortened: boolean;
+}
+
+/** The tool result that says "same as an earlier result": the earlier one stays in the context (see compactRunningTurn). */
+export function unchangedResult(sameAs: string): string {
+  return JSON.stringify({ ok: true, unchanged: true, same_as: sameAs, note: "Same result as your earlier identical call in this turn, which is still above: nothing changed and its ids stay valid. Do not call this again unless something changes." });
+}
+
+function unchangedTarget(content: string): string | null {
+  return /^\{"ok":true,"unchanged":true,"same_as":"([^"]*)"/.exec(content)?.[1] ?? null;
+}
+
+function shortenResult(content: string): string {
+  let ok: unknown = true;
+  let files: unknown;
+  try {
+    const body = JSON.parse(content) as { ok?: unknown; new_files?: unknown };
+    ok = body.ok ?? true;
+    files = body.new_files;
+  } catch {
+    /* not JSON: the excerpt is all there is */
+  }
+  return JSON.stringify({ ok, shortened: "Older result shortened to save context. Call the tool again if you need the rest.", ...(files ? { new_files: files } : {}), excerpt: content.slice(0, RESULT_EXCERPT) });
+}
+
+/**
+ * The running turn resends all its tool output on every round, so a long turn costs quadratically. Past RUN_TOOL_CHARS
+ * the older results (and the long arguments of their calls, such as a whole file being written) are shortened; a result
+ * a later "unchanged" points at stays whole. The boundary moves in steps of RUN_BUCKET so most rounds keep the prefix.
+ */
+function compactRunningTurn(turn: WireMessage[]): WireMessage[] {
+  const results = turn.filter((m): m is Extract<WireMessage, { role: "tool" }> => m.role === "tool");
+  const total = turn.reduce((sum, m) => sum + (m.role === "tool" || m.role === "assistant" ? sizeOf(m) : 0), 0);
+  if (total <= RUN_TOOL_CHARS) return turn;
+  const boundary = Math.floor(Math.max(0, results.length - RUN_KEEP_RESULTS) / RUN_BUCKET) * RUN_BUCKET;
+  if (boundary === 0) return turn;
+  const pinned = new Set(results.map((m) => unchangedTarget(m.content)));
+  const older = new Set(results.slice(0, boundary).map((m) => m.tool_call_id));
+  return turn.map((m): WireMessage => {
+    if (m.role === "tool" && older.has(m.tool_call_id) && !pinned.has(m.tool_call_id) && m.content.length > SHORT_RESULT) return { ...m, content: shortenResult(m.content) };
+    if (m.role === "assistant" && m.tool_calls?.some((c) => older.has(c.id) && c.function.arguments.length > LONG_ARGUMENTS)) {
+      return {
+        ...m,
+        tool_calls: m.tool_calls.map((c) => (older.has(c.id) && c.function.arguments.length > LONG_ARGUMENTS ? { ...c, function: { ...c.function, arguments: JSON.stringify({ omitted: "Long arguments dropped to save context; the call already ran." }) } } : c)),
+      };
+    }
+    return m;
+  });
 }
 
 function slimSnapshots(wire: WireMessage[]): WireMessage[] {
@@ -179,6 +241,7 @@ function slimSnapshots(wire: WireMessage[]): WireMessage[] {
   for (const m of wire) if (m.role === "assistant") for (const c of m.tool_calls ?? []) names.set(c.id, c.function.name);
   const carriesSnapshot = (m: WireMessage): boolean =>
     m.role === "tool" &&
+    !unchangedTarget(m.content) &&
     (names.get(m.tool_call_id) === "page_snapshot" || (names.get(m.tool_call_id) === "open_tool" && m.content.includes('"snapshot":')));
   let lastSnapshot = -1;
   wire.forEach((m, i) => {
@@ -222,10 +285,10 @@ export function buildContext(transcript: TranscriptMessage[]): ModelContext {
   }
   const slimmed = slimSnapshots(wire);
   const { turns } = splitTurns(slimmed);
-  if (turns.length === 0) return { messages: slimmed, summary: stored.length ? boundSummary(stored) : null, shortened: false };
-  const current = turns[turns.length - 1];
-  let chars = current.reduce((sum, m) => sum + sizeOf(m), 0);
-  let count = current.length;
+  if (turns.length === 0) return { messages: slimmed, summary: stored.length ? boundSummary(stored, SUMMARY_SENT_CHARS) : null, shortened: false };
+  const current = compactRunningTurn(turns[turns.length - 1]);
+  let chars = 0;
+  let count = 0;
   const kept: WireMessage[][] = [];
   let compact = false;
   let index = turns.length - 2;
@@ -234,7 +297,7 @@ export function buildContext(transcript: TranscriptMessage[]): ModelContext {
     const forced = index === turns.length - 2; // the previous answer is always sent
     if (!compact) {
       const size = turn.reduce((sum, m) => sum + sizeOf(m), 0);
-      if (count + turn.length <= CONTEXT_MESSAGES && chars + size <= CONTEXT_CHARS) {
+      if (count + turn.length <= CONTEXT_MESSAGES && chars + size <= WHOLE_CHARS) {
         kept.unshift(turn);
         chars += size;
         count += turn.length;
@@ -256,20 +319,38 @@ export function buildContext(transcript: TranscriptMessage[]): ModelContext {
   const parts = [...stored, ...(summarisedTurns.length ? summaryLines(summarisedTurns) : [])];
   return {
     messages: [...kept.flat(), ...current],
-    summary: parts.length ? boundSummary(parts) : null,
-    shortened: compact || summarisedTurns.length > 0,
+    summary: parts.length ? boundSummary(parts, SUMMARY_SENT_CHARS) : null,
+    shortened: summarisedTurns.length > 0,
   };
 }
 
-/** Wire messages for the model (see buildContext; the summary goes into the system prompt). */
+/** Wire messages for the model (see buildContext; the summary goes into the turn's note). */
 export function toWire(transcript: TranscriptMessage[]): WireMessage[] {
   return buildContext(transcript).messages;
 }
 
-/** The system-prompt section that carries the summary of older messages. */
+/** The section of the turn's note that carries the summary of older messages. */
 export function summarySection(summary: string | null): string {
   if (!summary) return "";
   return `\n\n## Earlier in this conversation\nOlder messages of this chat are not shown in full; the toolbox kept this summary (user requests and how your answers began, oldest first). Use it for context; ask the user if you need a detail that is missing.\n${summary}`;
+}
+
+/**
+ * What the system prompt leaves out because it changes (it would throw away the cached prefix): the page when the turn
+ * started, the journal and the summary of older messages. It goes at the end of the message that started the turn, on
+ * the wire only, so every round of the turn sends the same bytes.
+ */
+export function turnNote(context: { pathname: string; accountName: string; recentActions?: readonly string[]; summary: string | null }): string {
+  const actions = context.recentActions?.length ? context.recentActions.slice(-8).map((action) => `- ${action}`).join("\n") : "- None.";
+  return `[Context from the toolbox, not written by the user]\nWhen this message was sent the user was on ${context.pathname}; account: ${context.accountName}.\nRecent activity in this conversation (to resume work without repeating setup; verify the live page before acting, the user may have changed it):\n${actions}${summarySection(context.summary)}`;
+}
+
+/** The messages with `note` added to `target` (the turn's first user message), or to the last user message if it fell out. */
+export function withTurnNote(messages: WireMessage[], target: TranscriptMessage | undefined, note: string): WireMessage[] {
+  let at = messages.findIndex((m) => m === target);
+  if (at < 0) at = messages.map((m) => m.role).lastIndexOf("user");
+  if (at < 0) return messages;
+  return messages.map((m, i) => (i === at && m.role === "user" ? { ...m, content: `${m.content}\n\n${note}` } : m));
 }
 
 export type { NoticeMessage };

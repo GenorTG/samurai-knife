@@ -1,6 +1,6 @@
 /**
  * What changed for the assistant and outside agents, newest first (docs/MCP.md "What's new"). Pure data, imported by
- * the browser (the assistant's system prompt) and the server (`knife_whats_new`). One entry per release that changes
+ * the browser (the newest version in the assistant's system prompt) and the server (`knife_whats_new`). One entry per release that changes
  * what an agent can do or how; each item names the tools so a model can answer "do you have new tools?" truthfully.
  * Add the entry in the same commit as the change; `version` is MAJOR.MINOR.PATCH (the BUILD part is not known yet).
  */
@@ -11,6 +11,16 @@ export interface WhatsNewEntry {
 }
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
+  {
+    version: "0.15.3",
+    date: "2026-11-05",
+    items: [
+      "Fewer tokens: the instructions of a tool group come only with the group (load_tools), and a group goes away three turns after its last use. knife_site_* are preloaded on the Website tab of cv-studio, not on the whole page.",
+      "Asked what is new, call knife_whats_new: these notes are no longer in the system prompt.",
+      "The same read-only call with the same result in one turn returns {unchanged:true, same_as}: the earlier result still stands. Repeating any call with the same result is refused from the third time, and the fifth ends the turn.",
+      "A long turn shortens its older tool results ({shortened, excerpt}): call the tool again if you need the rest.",
+    ],
+  },
   {
     version: "0.15.2",
     date: "2026-11-05",
@@ -84,10 +94,3 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     items: ["The whole interface in Polish and English (global language switch); the assistant answers in the user's language."],
   },
 ];
-
-/** The newest `count` entries as short lines for a system prompt. */
-export function whatsNewLines(count = 3): string {
-  return WHATS_NEW.slice(0, count)
-    .map((e) => `v${e.version} (${e.date}):\n${e.items.map((i) => `  - ${i}`).join("\n")}`)
-    .join("\n");
-}

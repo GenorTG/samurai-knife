@@ -250,7 +250,7 @@ with sync_playwright() as pw:
     open_settings(page)
     back_to_chat(page)
     urllib.request.urlopen(urllib.request.Request(MOCK + "/__log", method="DELETE")).close()
-    turn = this_turn(send(page, "rounds LOOP:list_tools:{}"), "rounds LOOP")
+    turn = this_turn(send(page, 'rounds LOOP:wait:{"ms":1}'), "rounds LOOP")
     notices = [m["content"] for m in turn if m["role"] == "notice"]
     log = http_json("GET", "/__log", base=MOCK)[1]
     check("rounds limit: the notice names the configured numbers", any("Reached the per-turn limit (4 model rounds / 40 tool calls" in n for n in notices), notices)
@@ -258,14 +258,14 @@ with sync_playwright() as pw:
     check("rounds limit: 4 tool results", sum(1 for m in turn if m["role"] == "tool") == 4)
     check("rounds limit: the unfinished request is saved as a paused task", any("Saved as a paused task" in n for n in notices), notices)
     _, saved = http_json("GET", "/api/agent/goals")
-    captured = [g for g in saved.get("goals", []) if g["objective"] == "rounds LOOP:list_tools:{}"]
+    captured = [g for g in saved.get("goals", []) if g["objective"] == 'rounds LOOP:wait:{"ms":1}']
     check("rounds limit: exactly one paused goal with the request", len(captured) == 1 and captured[0]["status"] == "paused", captured)
 
     status, _ = http_json("PUT", "/api/account/assistant", {"maxRounds": 10, "maxToolCalls": 4})
     page.reload(wait_until="networkidle")
     back_to_chat(page)
     urllib.request.urlopen(urllib.request.Request(MOCK + "/__log", method="DELETE")).close()
-    turn = this_turn(send(page, "calls LOOP:list_tools:{}"), "calls LOOP")
+    turn = this_turn(send(page, 'calls LOOP:wait:{"ms":1}'), "calls LOOP")
     notices = [m["content"] for m in turn if m["role"] == "notice"]
     results = [m for m in turn if m["role"] == "tool"]
     check("tool-call limit: the notice names 10 rounds / 4 tool calls", any("(10 model rounds / 4 tool calls" in n for n in notices), notices)

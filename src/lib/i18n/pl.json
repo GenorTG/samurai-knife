@@ -37,6 +37,8 @@
   ". The page stays usable.": ". Strona dalej działa.",
   ". The website check can use the GitHub projects this user has access to.": ". Sprawdzanie strony może korzystać z projektów GitHub, do których ten użytkownik ma dostęp.",
   ". Your host then deploys it to production.": ". Twój hosting wdroży to potem na produkcję.",
+  "Stopped: the assistant kept repeating a step that gave the same result. Asking the model to summarise.": "Zatrzymano: asystent powtarzał krok, który dawał ten sam wynik. Model przygotuje podsumowanie.",
+  "The assistant uses far fewer tokens: it reads the instructions for a specialist tool only when it needs them, forgets old tool output sooner, and stops when it keeps repeating a step that gives the same answer.": "Asystent zużywa znacznie mniej tokenów: instrukcje narzędzi specjalistycznych czyta dopiero wtedy, gdy są potrzebne, szybciej odkłada stare wyniki narzędzi i przerywa, gdy powtarza krok, który daje tę samą odpowiedź.",
   "…or paste one": "…albo wklej istniejący",
   "./data/app.db": "./data/app.db",
   "· Fix:": "· Poprawka:",

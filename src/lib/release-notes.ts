@@ -15,6 +15,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.15.3",
+    date: "2026-11-05",
+    features: [
+      msg("The assistant uses far fewer tokens: it reads the instructions for a specialist tool only when it needs them, forgets old tool output sooner, and stops when it keeps repeating a step that gives the same answer."),
+    ],
+    fixes: [],
+  },
+  {
     version: "0.15.2",
     date: "2026-11-05",
     features: [],

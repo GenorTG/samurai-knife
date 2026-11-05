@@ -22,7 +22,7 @@ errors: list[str] = []
 
 # One knife_format_json call per round; its result is clipped to 12,000 characters, so ten rounds are ~120k characters,
 # the size of the model context the old trim allowed.
-BIG = json.dumps({"text": json.dumps(["x" * 13_000])})
+BIG = json.dumps({"text": json.dumps(["__N__" + "x" * 13_000])})
 LOOP_PROMPT = f"Sprawdź stronę i zaproponuj zmiany LOOP:knife_format_json:{BIG}"
 
 
@@ -115,9 +115,10 @@ with sync_playwright() as pw:
           [m["role"] for m in request["messages"]])
     check("the request starts with a user message and ends with the new one", request["messages"][0]["role"] == "user" and request["messages"][-1]["text"] == "tak tak.",
           [(m["role"], m["text"][:20]) for m in request["messages"]][:3])
+    check("the big previous turn went as question + answer: its tool output is not resent", not any(m["role"] == "tool" for m in request["messages"]), [m["role"] for m in request["messages"]])
+    check("the page and journal travel on the turn's message, not the system prompt", request.get("noted") is True, request.get("noted"))
     shortened = [m for m in transcript(page) if m["role"] == "notice" and "shortened" in m["content"]]
-    check("the user is told older messages were shortened", len(shortened) >= 1)
-    check("the notice is visible in the widget", page.get_by_text("Older messages were shortened").count() >= 1)
+    check("routine compaction is not announced", not shortened, shortened)
 
     print("# after a reload (a deploy between turns)")
     page.reload(wait_until="networkidle")
@@ -160,6 +161,17 @@ with sync_playwright() as pw:
     send_and_settle(page, "wracam")
     users = [m["text"] for m in last_request()["messages"] if m["role"] == "user"]
     check("the first browser continues after the other one's turn (server copy ahead)", "z drugiej przeglądarki" in users, users[-3:])
+
+    print("# the same call with the same result, again and again")
+    mock("/__log", "DELETE")
+    send_and_settle(page, "powtarzaj LOOP:list_tools:{}")
+    t = transcript(page)
+    start = max(i for i, m in enumerate(t) if m["role"] == "user")
+    results = [m["content"] for m in t[start:] if m["role"] == "tool"]
+    check("the second identical read is a pointer to the first", len(results) >= 2 and '"unchanged":true' in results[1], [r[:80] for r in results])
+    check("the third and on are refused", all("Stop repeating" in r for r in results[2:]), [r[:80] for r in results])
+    check("five calls end the run", len(results) == 5, len(results))
+    check("the user is told why it stopped", any(m["role"] == "notice" and "kept repeating" in m["content"] for m in t[start:]), [m["content"][:80] for m in t[start:] if m["role"] == "notice"])
 
     bad = [e for e in errors if "Hydration" in e or "hydrat" in e]
     check("no hydration errors in the console", not bad, bad)
