@@ -161,7 +161,8 @@ for u in / /login; do
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base$u")"; [[ "$code" == 200 ]] || restore "$u -> $code"
 done
 for u in /tools/json /tools/cv-studio; do
-  read -r code where < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 20 "$base$u")
+  # \n: read fails at end of input without a newline, and set -e would then end the script here, updater timer still off.
+  read -r code where < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' --max-time 20 "$base$u")
   [[ "$code" == 200 || ( "$code" == 307 && "$where" == *"/login?next="* ) ]] || restore "$u -> $code"
 done
 code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/api/account")"
