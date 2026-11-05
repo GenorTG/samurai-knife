@@ -87,6 +87,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
           textarea(page_a).input_value() != text and offer.get_by_role("button", name="Restore saved draft").count() == 1, textarea(page_a).input_value()[:80])
     offer.get_by_role("button", name="Restore saved draft").click()
     check(f"[{engine}] Restore saved draft brings alice's text back after a reload", textarea(page_a).input_value() == text, textarea(page_a).input_value()[:120])
+    page_a.wait_for_function("t => (document.querySelector('main div.min-h-64')?.innerText ?? '').includes(t)", arg=f"{engine} draft words", timeout=5_000)
     rendered = page_a.locator("main div.min-h-64").first.inner_text()
     check(f"[{engine}] the restored draft drives the tool (its preview renders it)", f"{engine} draft words" in rendered, rendered[:200])
     ctx_a.close()

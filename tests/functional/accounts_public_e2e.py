@@ -355,9 +355,8 @@ def run(server: ScratchServer, browser: Browser) -> None:
     page_a.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     expect(page_a.get_by_role("link", name="alice")).to_be_visible(timeout=15_000)
     check("login by email (any case) lands on / with the account in the top bar", True)
-    check("signed-in home is the launcher, not the greeter",
-          page_a.get_by_role("heading", level=1).inner_text() == "Smart Knife brings your work tools and AI together."
-          and page_a.locator("main a[href='/register']").count() == 0)
+    expect(page_a.get_by_role("heading", level=1)).to_contain_text("Welcome to Smart Knife", timeout=15_000)
+    check("a first sign-in opens the welcome guide, not the guest page", page_a.locator("main a[href='/register']").count() == 0)
     go(page_a, "/login?next=%2Ftools%2Fjson")
     page_a.wait_for_url(base + "/tools/json", timeout=15_000)
     check("signed in, /login goes straight on to next", True)
@@ -381,7 +380,7 @@ def run(server: ScratchServer, browser: Browser) -> None:
     form.locator("input[autocomplete=new-password]").fill("alice password 2")
     shot(page_a, "account")
     form.get_by_role("button", name="Change password").click()
-    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other sessions? (was|were) signed out\."))).to_be_visible(timeout=15_000)
+    expect(page_a.get_by_text(re.compile(r"Password changed\. \d+ other devices? (was|were) logged out\."))).to_be_visible(timeout=15_000)
     check("change password in the UI", True)
     check("the other session is revoked", api.call("GET", "/api/account", cookie=cookie2)[0] == 401)
     status = ctx_a.request.get(base + "/api/account").status
