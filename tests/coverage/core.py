@@ -144,7 +144,7 @@ def group_of(case: Case) -> str:
 # ------------------------------------------------------------------ runner
 
 def _storage_key(page) -> str:
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
 
 def _stored(page, key: str) -> list[dict]:

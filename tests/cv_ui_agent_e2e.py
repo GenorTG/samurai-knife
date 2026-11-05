@@ -56,7 +56,7 @@ def cv() -> dict:
 
 
 def storage_key(page: Page) -> str:
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
 
 def stored_messages(page: Page, key: str) -> list[dict]:

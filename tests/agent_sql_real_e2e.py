@@ -240,7 +240,7 @@ with sync_playwright() as pw:
     page.goto(BASE + "/tools/sql-lab?tab=format", wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-    k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
+    k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
     for name in selected:
         prompt, oracle = CASES[name]
         page.locator("button[aria-label='Clear conversation']").click() if page.locator("button[aria-label='Clear conversation']").is_enabled() else None

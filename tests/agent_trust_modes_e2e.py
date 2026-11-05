@@ -32,7 +32,7 @@ def put_provider() -> None:
 
 
 def key(page: Page) -> str:
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:chat:default`)")
 
 
 def set_mode(page: Page, label: str) -> None:
