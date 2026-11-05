@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CategoryIcon, categoryTint } from "@/components/category-icons";
 import { Button, ButtonLink } from "@/components/ui";
 import { cx } from "@/lib/format";
@@ -50,10 +50,15 @@ export function WelcomeWizard() {
   const heading = useRef<HTMLHeadingElement>(null);
   const STEPS = 4;
 
+  // A screen reader and a keyboard user land on the new question, not on a button that disappeared.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) heading.current?.focus();
+    opened.current = true;
+  }, [step]);
+
   const go = (next: number) => {
     setStep(next);
-    // A screen reader and a keyboard user land on the new question, not on a button that disappeared.
-    requestAnimationFrame(() => heading.current?.focus());
   };
   const chooseLanguage = async (next: Locale) => {
     if (next !== locale) {

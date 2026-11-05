@@ -96,11 +96,16 @@ export function CvWizard({ initial, sourceText, onCreating, onDone, onCancel }: 
   const go = (next: number) => {
     setStep(next);
     setError("");
-    requestAnimationFrame(() => {
+  };
+  // Each step starts at its question, for a keyboard or screen-reader user too (the buttons they pressed may be gone).
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) {
       heading.current?.focus();
       heading.current?.scrollIntoView({ block: "nearest" });
-    });
-  };
+    }
+    opened.current = true;
+  }, [step]);
   const set = <K extends keyof WizardAnswers>(key: K, value: WizardAnswers[K]) => setA((now) => ({ ...now, [key]: value }));
   const input = (key: "name" | "email" | "phone" | "city" | "link" | "headline") => ({ value: a[key], onChange: (e: { target: { value: string } }) => set(key, e.target.value) });
   const setJob = (i: number, patch: Partial<WizardJob>) => set("jobs", a.jobs.map((job, n) => (n === i ? { ...job, ...patch } : job)));

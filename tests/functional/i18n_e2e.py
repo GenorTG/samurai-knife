@@ -95,7 +95,7 @@ def main() -> int:
         settle(page)
         check("html lang becomes pl", page.evaluate("document.documentElement.lang") == "pl")
         body = page.locator("body").inner_text()
-        check("launcher is Polish", "JSON i konfiguracja" in body and "Laboratorium SQL" in body, body[:300])
+        check("launcher is Polish", "Pliki JSON i konfiguracyjne" in body and "Narzędzia SQL" in body, body[:300])
         cookies = {c["name"]: c["value"] for c in ctx.cookies()}
         check("cookie knife_lang=pl", cookies.get("knife_lang") == "pl", cookies)
         shot(page, "home-pl")

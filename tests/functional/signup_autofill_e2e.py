@@ -101,7 +101,7 @@ def main() -> None:
                 page.locator('input[autocomplete="username"]').fill(values[0])
                 page.locator('input[autocomplete="current-password"]').fill(PASSWORD)
                 page.get_by_role("button", name="Log in", exact=True).click()
-                page.wait_for_url(server.url + "/", timeout=20000)
+                page.wait_for_url(server.url + "/welcome", timeout=20000)
                 assert page.request.get(server.url + "/api/account").status == 200
                 page.context.clear_cookies()
                 print(f"PASS {args.browser}: {mode} signup + consent/validation + stored account", flush=True)
