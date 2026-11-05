@@ -6,28 +6,28 @@ import { SetCards } from "@/components/sets/SetCards";
 import { ButtonLink } from "@/components/ui";
 import { useT } from "@/lib/i18n/react";
 import { msg } from "@/lib/i18n/msg";
-import { TRADEMARK_NOTE } from "@/lib/toolsets";
+import { HOSTED_NOTES } from "@/lib/toolsets";
 
 /**
- * First screen for a signed-out visitor on the public server (`/`): says straight out what this replaces and that it is
- * free, then the tool sets (public pages), how to get in, and how it treats your data. Plain words: the reader is not
+ * First screen for a signed-out visitor on the public server (`/`): says straight out what is wrong with the big paid suites
+ * (never by name, docs/TOOLSETS.md) and that this is free, then the tool sets (public pages), how to get in, and how it treats your data. Plain words: the reader is not
  * assumed to know what a browser tool or a provider is.
  */
 
 /** The hero's comparison: the paid products people know, and what they use here instead. */
 const INSTEAD: { paid: string; ours: string; what: string }[] = [
-  { paid: "Microsoft Word, Excel, PowerPoint", ours: "Euro-Office", what: msg("documents, spreadsheets, slides") },
-  { paid: "Adobe Photoshop", ours: "PhotoCraft", what: msg("photo editing") },
-  { paid: "Adobe Premiere Pro", ours: "FilmCraft", what: msg("video editing") },
-  { paid: "Adobe Illustrator", ours: "VectorCraft", what: msg("logos and graphics") },
-  { paid: "Adobe Acrobat", ours: msg("PDF tools"), what: msg("editing and merging PDFs") },
-  { paid: msg("Paid CV websites"), ours: msg("CV builder"), what: msg("a ready CV in PDF or Word") },
+  { paid: msg("Subscription office suites"), ours: "Euro-Office", what: msg("documents, spreadsheets, slides") },
+  { paid: msg("Subscription photo editors"), ours: "PhotoCraft", what: msg("photo editing") },
+  { paid: msg("Subscription video editors"), ours: "FilmCraft", what: msg("video editing") },
+  { paid: msg("Subscription vector programs"), ours: "VectorCraft", what: msg("logos and graphics") },
+  { paid: msg("Expensive PDF editors"), ours: msg("PDF tools"), what: msg("editing and merging PDFs") },
+  { paid: msg("Paid CV websites"), ours: msg("CV builder"), what: msg("a ready CV in PDF or DOCX") },
 ];
 
 const PROMISES: { title: string; text: string }[] = [
   { title: msg("Free, with no catch"), text: msg("No card, no trial that runs out, no ads, no tracking. You get 1 GB of space for your files.") },
   { title: msg("Nothing to install"), text: msg("Everything opens in your browser, on any computer. Sign in and your work is there.") },
-  { title: msg("Your files stay yours"), text: msg("Only you can see what you save, it is encrypted on the server, and you can delete it at any time. Many tools do not send your files anywhere at all.") },
+  { title: msg("Your files stay yours"), text: msg("Other users cannot see what you save. It is encrypted on the server, we do not read it or sell it, and you can download or delete it at any time. Many tools do not send your files anywhere at all.") },
 ];
 
 const STEPS: { title: string; text: string }[] = [
@@ -79,10 +79,10 @@ export function Greeter({ github }: { github: boolean }) {
           </p>
           <h1 id="greeter-title" className="mt-5 text-4xl font-semibold leading-[1.08] tracking-tight text-ink sm:text-5xl">
             {t("Stop paying for")}{" "}
-            <span className="bg-linear-to-r from-accent via-accent-soft to-ai bg-clip-text text-transparent">{t("Microsoft 365 and Adobe.")}</span>
+            <span className="bg-linear-to-r from-accent via-accent-soft to-ai bg-clip-text text-transparent">{t("software that spies on you.")}</span>
           </h1>
           <p className="mt-5 max-w-xl text-[17px] leading-relaxed text-muted">
-            {t("Write documents and spreadsheets, edit photos and video, work with PDFs and make your CV, all in your browser. Free, on any computer, with nothing to install.")}
+            {t("The big proprietary suites are expensive, locked down and full of terms nobody reads. They push your files into their cloud and spy on what you do. Here you write documents, edit photos and video, work with PDFs and make your CV in your browser, with free tools and open-source apps. On any computer, with nothing to install.")}
           </p>
           <div className="mt-8">
             <CallToAction github={github} />
@@ -150,7 +150,10 @@ export function Greeter({ github }: { github: boolean }) {
         </div>
       </section>
 
-      <p className="mt-8 text-xs leading-relaxed text-faint">{t(TRADEMARK_NOTE)}</p>
+      <div className="mt-8 space-y-2 text-xs leading-relaxed text-faint" data-hosted-note="guest">
+        <p>{t(HOSTED_NOTES.office.text)}</p>
+        <p>{t(HOSTED_NOTES.craft.text)}</p>
+      </div>
     </div>
   );
 }

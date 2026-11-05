@@ -1,5 +1,6 @@
 "use client";
 
+import { HOSTED_NOTES } from "@/lib/toolsets";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Badge, Button, Dropzone, EmptyState, Field, Notice, Panel, SegmentedControl, Select, StorageMeter, TextInput } from "@/components/ui";
 import { formatBytes } from "@/lib/format";
@@ -599,6 +600,8 @@ export default function OfficeTool() {
       {service?.installed ? (
         <p className="text-xs text-faint">
           {t("Document editor:")}{" "} {service.ready ? t("ready") : service.canManage === false ? t("not ready yet (an administrator has to start it)") : t("asleep (it wakes up when you open a document)")}
+          {" "}{t(HOSTED_NOTES.office.text)}{" "}
+          <a href={HOSTED_NOTES.office.source} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{t("Source code")}</a>
           {service.canManage === false ? "" : t(" · manage it on the Server add-ons page.")}
         </p>
       ) : null}

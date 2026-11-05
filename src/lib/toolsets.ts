@@ -6,12 +6,12 @@ import type { IconName } from "@/components/category-icons";
  * `/sets/<id>`: what it replaces, in plain words and by name, and the tasks you can start from it. Pure data, browser
  * and server. Every link is checked against the registry by tests/toolsets.test.mjs.
  *
- * Naming a paid product is a comparison, so it has to stay true: `replaces` says what the free tool stands in for, the
- * set's `limits` says where it falls short, and the page always carries the trademark line.
+ * Paid products are never named: `replaces` describes the kind of product (docs/TOOLSETS.md, tests/toolsets.test.mjs). A set
+ * built on someone else's open-source software says so (`hosted`, HOSTED_NOTES), and `limits` says where it falls short.
  */
 
 export interface Replacement {
-  /** The paid product, by its own name. */
+  /** The kind of paid product, never its name. */
   paid: string;
   /** Our free tool. */
   ours: string;
@@ -19,6 +19,25 @@ export interface Replacement {
   what: string;
   href: string;
 }
+
+export type HostedId = "office" | "craft";
+
+export interface HostedNote {
+  text: string;
+  source: string;
+}
+
+/** Plainly: whose software it is, and that nobody endorses anybody. Shown wherever we offer it. */
+export const HOSTED_NOTES: Readonly<Record<HostedId, HostedNote>> = {
+  office: {
+    text: msg("Euro-Office is an open-source project of its own authors (AGPL-3.0), a fork of the ONLYOFFICE Document Server. We only host a copy of it, with a small add-on that lets the assistant work in your document. We are not affiliated with its authors: they do not endorse us and we do not endorse them. Open-source software may simply be used this way."),
+    source: "https://github.com/Euro-Office/DocumentServer",
+  },
+  craft: {
+    text: msg("PhotoCraft, VectorCraft, FilmCraft and the other Craft apps are open-source apps by the ArtCraft team and contributors (MIT or Apache-2.0). We only host unmodified copies of them. We are not affiliated with the ArtCraft team: they do not endorse us and we do not endorse them. Open-source software may simply be used this way."),
+    source: "https://github.com/storytold",
+  },
+};
 
 export interface SetTask {
   /** What the person wants to do, as they would say it. */
@@ -41,6 +60,8 @@ export interface ToolSet {
   tasks: SetTask[];
   /** An honest limit of the comparison, when there is one. */
   limits?: string;
+  /** Built on open-source software we only host: which note to show. */
+  hosted?: readonly HostedId[];
 }
 
 const craft = (id: string) => `/tools/artcraft?tab=${id}`;
@@ -50,41 +71,42 @@ export const TOOL_SETS: readonly ToolSet[] = [
     id: "office",
     icon: "documents",
     name: msg("Office and PDF"),
-    headline: msg("Stop paying for Microsoft 365"),
-    pitch: msg("Write documents, spreadsheets and presentations in your browser with Euro-Office. It opens and saves the same Word, Excel and PowerPoint files you already have. It is free, and there is nothing to install."),
+    headline: msg("Stop paying for an office suite that spies on you"),
+    pitch: msg("The big office suites charge you every month, push your files into their cloud, tie you up in long terms of service and spy on how you work. Use Euro-Office in your browser instead: documents, spreadsheets and presentations, in the same DOCX, XLSX and PPTX files you already have. It is free, and there is nothing to install."),
     start: { label: msg("Open Euro-Office"), href: "/tools/office" },
     replaces: [
-      { paid: "Microsoft Word", ours: "Euro-Office", what: msg("documents and letters (DOCX)"), href: "/tools/office" },
-      { paid: "Microsoft Excel", ours: "Euro-Office", what: msg("spreadsheets and formulas (XLSX)"), href: "/tools/office" },
-      { paid: "Microsoft PowerPoint", ours: "Euro-Office", what: msg("presentations (PPTX)"), href: "/tools/office" },
-      { paid: "Adobe Acrobat", ours: msg("PDF tools"), what: msg("editing, merging and compressing PDFs"), href: "/tools/pdf" },
+      { paid: msg("Subscription word processors"), ours: "Euro-Office", what: msg("documents and letters (DOCX)"), href: "/tools/office" },
+      { paid: msg("Subscription spreadsheets"), ours: "Euro-Office", what: msg("spreadsheets and formulas (XLSX)"), href: "/tools/office" },
+      { paid: msg("Subscription presentation programs"), ours: "Euro-Office", what: msg("presentations (PPTX)"), href: "/tools/office" },
+      { paid: msg("Expensive PDF editors"), ours: msg("PDF tools"), what: msg("editing, merging and compressing PDFs"), href: "/tools/pdf" },
     ],
     tasks: [
-      { label: msg("Write a document or a letter"), hint: msg("Start a new file or upload a Word document you already have."), href: "/tools/office" },
+      { label: msg("Write a document or a letter"), hint: msg("Start a new file or upload a document you already have."), href: "/tools/office" },
       { label: msg("Merge, split or shrink a PDF"), hint: msg("Pick the files, choose what to do, download the result."), href: "/tools/pdf?tab=tools" },
       { label: msg("Edit a PDF or add a signature"), hint: msg("Add text, pictures and a drawn signature to any page."), href: "/tools/pdf?tab=editor" },
       { label: msg("Turn a scan into text"), hint: msg("Read the text from a scanned page or a photo of a document."), href: "/tools/pdf?tab=editor" },
     ],
-    limits: msg("Euro-Office is an independent open-source editor that this website runs for you. Very complex files can look slightly different than in Microsoft Office: macros are switched off, and it is worth checking the layout of an important document before you send it."),
+    limits: msg("Very complex files can look slightly different than in the program they were made in: macros are switched off, and it is worth checking the layout of an important document before you send it."),
+    hosted: ["office"],
   },
   {
     id: "creative",
     icon: "craft",
     name: msg("Photos, video and design"),
-    headline: msg("Stop paying for Adobe"),
-    pitch: msg("Thirteen free apps for photos, graphics, video, sound and page layouts that run in your browser. No Creative Cloud subscription, no installing, no account with anyone else."),
+    headline: msg("Stop paying for creative software that spies on you"),
+    pitch: msg("The big creative suites are expensive, locked down and pushed through their cloud, and they spy on what you do. Here are thirteen free, open-source apps for photos, graphics, video, sound and page layouts, right in your browser. No subscription, no installing, no account with anyone else."),
     start: { label: msg("Open the photo editor"), href: craft("photocraft") },
     replaces: [
-      { paid: "Adobe Photoshop", ours: "PhotoCraft", what: msg("photo editing and retouching"), href: craft("photocraft") },
-      { paid: "Adobe Lightroom", ours: "LightCraft", what: msg("photo library and RAW development"), href: craft("lightcraft") },
-      { paid: "Adobe Illustrator", ours: "VectorCraft", what: msg("logos and vector graphics"), href: craft("vectorcraft") },
-      { paid: "Adobe Premiere Pro", ours: "FilmCraft", what: msg("video editing"), href: craft("filmcraft") },
-      { paid: "Adobe After Effects", ours: "EffectCraft", what: msg("animation and visual effects"), href: craft("effectcraft") },
-      { paid: "Adobe InDesign", ours: "DesignCraft", what: msg("leaflets, magazines and page layout"), href: craft("designcraft") },
-      { paid: "Adobe Acrobat", ours: "PdfCraft", what: msg("working on PDF files"), href: craft("pdfcraft") },
-      { paid: "Adobe Audition", ours: "SoundCraft", what: msg("recording and editing sound"), href: craft("soundcraft") },
-      { paid: "Figma, Adobe XD", ours: "FigCraft", what: msg("designing apps and websites"), href: craft("figcraft") },
-      { paid: "AutoCAD", ours: "CADCraft", what: msg("technical drawings"), href: craft("cadcraft") },
+      { paid: msg("Subscription photo editors"), ours: "PhotoCraft", what: msg("photo editing and retouching"), href: craft("photocraft") },
+      { paid: msg("Subscription photo libraries"), ours: "LightCraft", what: msg("photo library and RAW development"), href: craft("lightcraft") },
+      { paid: msg("Subscription vector programs"), ours: "VectorCraft", what: msg("logos and vector graphics"), href: craft("vectorcraft") },
+      { paid: msg("Subscription video editors"), ours: "FilmCraft", what: msg("video editing"), href: craft("filmcraft") },
+      { paid: msg("Subscription effects programs"), ours: "EffectCraft", what: msg("animation and visual effects"), href: craft("effectcraft") },
+      { paid: msg("Subscription page-layout programs"), ours: "DesignCraft", what: msg("leaflets, magazines and page layout"), href: craft("designcraft") },
+      { paid: msg("Expensive PDF programs"), ours: "PdfCraft", what: msg("working on PDF files"), href: craft("pdfcraft") },
+      { paid: msg("Subscription audio editors"), ours: "SoundCraft", what: msg("recording and editing sound"), href: craft("soundcraft") },
+      { paid: msg("Cloud-only design tools"), ours: "FigCraft", what: msg("designing apps and websites"), href: craft("figcraft") },
+      { paid: msg("Expensive CAD programs"), ours: "CADCraft", what: msg("technical drawings"), href: craft("cadcraft") },
     ],
     tasks: [
       { label: msg("Make a photo smaller"), hint: msg("For an email or a form: choose the size, download the result."), href: "/tools/image-resize?tab=resize" },
@@ -94,21 +116,22 @@ export const TOOL_SETS: readonly ToolSet[] = [
       { label: msg("Cut a video"), hint: msg("Trim clips, add sound and export a film."), href: craft("filmcraft") },
     ],
     limits: msg("These apps cover everyday and much advanced work, but not every feature of the paid programs. They are young, independent open-source projects, so save your work often. Your work stays in this browser until you save it to your account."),
+    hosted: ["craft"],
   },
   {
     id: "career",
     icon: "career",
     name: msg("CV and job search"),
     headline: msg("A professional CV, free, without paying a CV website"),
-    pitch: msg("Answer a few simple questions and get a ready CV to download as PDF or Word, in Polish and English. No watermarks and no fee at the moment you want to download it."),
+    pitch: msg("Answer a few simple questions and get a ready CV to download as PDF or DOCX, in Polish and English. No watermarks and no fee at the moment you want to download it."),
     start: { label: msg("Create my CV"), href: "/tools/cv-studio" },
     replaces: [
-      { paid: msg("Paid CV websites"), ours: msg("CV builder"), what: msg("ready-made layouts, PDF and Word download"), href: "/tools/cv-studio" },
+      { paid: msg("Paid CV websites"), ours: msg("CV builder"), what: msg("ready-made layouts, PDF and DOCX download"), href: "/tools/cv-studio" },
     ],
     tasks: [
       { label: msg("Create my CV step by step"), hint: msg("One question at a time. You can stop and come back."), href: "/tools/cv-studio" },
       { label: msg("Adjust my CV to a job offer"), hint: msg("Paste the offer, and see what is missing and what to bring forward."), href: "/tools/cv-studio?tab=jobs" },
-      { label: msg("Choose a layout and download"), hint: msg("Pick how it looks and save it as PDF or Word."), href: "/tools/cv-studio?tab=variants" },
+      { label: msg("Choose a layout and download"), hint: msg("Pick how it looks and save it as PDF or DOCX."), href: "/tools/cv-studio?tab=variants" },
       { label: msg("Keep track of my applications"), hint: msg("Where you applied, when, and when to follow up."), href: "/tools/cv-studio?tab=applications" },
     ],
   },
@@ -154,7 +177,7 @@ export const TOOL_SETS: readonly ToolSet[] = [
     pitch: msg("Connect apps on a canvas and let a task run on a schedule or when something happens, without paying per task. It runs free on this server."),
     start: { label: msg("Open Automations"), href: "/tools/workflows" },
     replaces: [
-      { paid: "Zapier, Make", ours: msg("Automations"), what: msg("connecting apps and running tasks by themselves"), href: "/tools/workflows" },
+      { paid: msg("Pay-per-task automation services"), ours: msg("Automations"), what: msg("connecting apps and running tasks by themselves"), href: "/tools/workflows" },
     ],
     tasks: [
       { label: msg("Create an automation"), hint: msg("Join blocks together and try it right away."), href: "/tools/workflows?tab=editor" },
@@ -192,19 +215,16 @@ export const TOOL_SETS: readonly ToolSet[] = [
   },
 ];
 
-/** On every page that names a paid product. */
-export const TRADEMARK_NOTE = msg("Microsoft, Word, Excel, PowerPoint, Adobe, Photoshop, Lightroom, Illustrator, Premiere, After Effects, InDesign, Audition, Acrobat, XD, Figma, AutoCAD, Zapier and Make are trademarks of their owners. Smart Knife is not connected with them or endorsed by them; the names only say what these free tools can be used instead of.");
-
 export function findToolSet(id: string): ToolSet | undefined {
   return TOOL_SETS.find((set) => set.id === id);
 }
 
 /** The first-screen shortcuts: the jobs most people come for. */
 export const TOP_TASKS: readonly SetTask[] = [
-  { label: msg("Write a document"), hint: msg("Word, Excel and PowerPoint files, free."), href: "/tools/office" },
+  { label: msg("Write a document"), hint: msg("Documents, spreadsheets and presentations, free."), href: "/tools/office" },
   { label: msg("Create my CV"), hint: msg("One question at a time, then download it."), href: "/tools/cv-studio" },
   { label: msg("Edit a PDF"), hint: msg("Add text and a signature to any page."), href: "/tools/pdf?tab=editor" },
-  { label: msg("Edit a photo"), hint: msg("Instead of Photoshop."), href: craft("photocraft") },
+  { label: msg("Edit a photo"), hint: msg("A full photo editor, no subscription."), href: craft("photocraft") },
   { label: msg("Make a photo smaller"), hint: msg("Ready for an email or a form in a minute."), href: "/tools/image-resize?tab=resize" },
-  { label: msg("Cut a video"), hint: msg("Instead of Premiere Pro."), href: craft("filmcraft") },
+  { label: msg("Cut a video"), hint: msg("A full video editor, no subscription."), href: craft("filmcraft") },
 ];

@@ -15,6 +15,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
+    version: "0.15.1",
+    date: "2026-11-05",
+    features: [],
+    fixes: [
+      msg("Pages now say clearly whose software Euro-Office and the Craft apps are: open-source projects we only host, with no ties either way."),
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-11-05",
     features: [

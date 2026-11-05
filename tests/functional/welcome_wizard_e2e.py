@@ -74,14 +74,14 @@ def main() -> int:
         go(page, "/")
         expect(page.get_by_role("heading", level=1)).to_contain_text("Stop paying for", timeout=30_000)
         body = page.locator("main").inner_text()
-        check("guest page names Microsoft and Adobe and what replaces them", all(x in body for x in ["Microsoft Word", "Euro-Office", "Adobe Photoshop", "PhotoCraft", "CV builder"]))
-        check("guest page carries the trademark line", "trademarks of their owners" in body)
+        check("guest page says what replaces what, without naming anyone", all(x in body for x in ["spy on what you do", "Euro-Office", "PhotoCraft", "CV builder"]) and not re.search(r"Microsoft|Adobe|Photoshop", body))
+        check("guest page says we only host Euro-Office and the Craft apps", "they do not endorse us and we do not endorse them" in body and page.locator("[data-hosted-note=guest] p").count() == 2)
         check("guest page has no developer jargon", not re.search(r"self-hosted|sidecar|endpoint|deterministic", body, re.I))
         shot(page, "guest")
-        for set_id, expected in [("office", "Stop paying for Microsoft 365"), ("creative", "Stop paying for Adobe"), ("career", "A professional CV")]:
+        for set_id, expected in [("office", "an office suite that spies on you"), ("creative", "creative software that spies on you"), ("career", "A professional CV")]:
             go(page, f"/sets/{set_id}")
             expect(page.get_by_role("heading", level=1)).to_contain_text(expected)
-            check(f"/sets/{set_id} is public, with the trademark line where it names products", set_id == "career" or "trademarks of their owners" in page.locator("main").inner_text())
+            check(f"/sets/{set_id} is public, names no paid product, and says whose software it is", not re.search(r"Microsoft|Adobe|Photoshop", page.locator("main").inner_text()) and (set_id == "career" or page.locator("[data-hosted-note]").is_visible()))
             shot(page, f"set-{set_id}")
         check("an unknown set is a 404", ctx.request.get(base + "/sets/nope").status == 404)
         r = ctx.request.get(base + "/tools/office", max_redirects=0)

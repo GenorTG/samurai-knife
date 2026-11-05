@@ -124,8 +124,9 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
     must not contain "artcraft" (e.g. `smart-knife-craft.`), Smart Knife shows none of their logos, and every tab says
     in plain text "<App> <version> by the ArtCraft team and contributors · MIT OR Apache-2.0 · source · licences &
     notices · Not affiliated with or endorsed by the ArtCraft team". App names (PhotoCraft, …) are used only to say
-    which app a tab runs and, on the tool sets and the welcome page, which app does a job (in plain text, no logos, never
-    the ArtCraft name: `tests/toolsets.test.mjs`). Their brand terms cover the ArtCraft Marks, not the app names, but
+    which app a tab runs and, on the tool sets and the welcome page, which app does a job (in plain text, no logos). The
+    ArtCraft name appears only in the plain-text attribution and non-affiliation note (`HOSTED_NOTES`), never as a selling
+    point (`tests/toolsets.test.mjs`). Their brand terms cover the ArtCraft Marks, not the app names, but
     "must never suggest that the ArtCraft Team made, sponsors or endorses any other product" still applies. Nothing of theirs is in this repository. nginx (the container) is BSD-2-Clause.
   - Updates: the server asks `api.github.com` once a day for each app's releases and downloads new release zips from
     `github.com` (no user data is sent; requests carry only a fixed User-Agent). The licences & notices view always
@@ -144,8 +145,8 @@ Polish-language act and tax rules then apply, and the defaults are no longer eno
   relationship; Terms § 7.9–7.10 (no spam, attacks, phishing pages, credentials without right) and § 8.5–8.6 (AI nodes;
   the user discloses AI to people a workflow lets talk to a model, AI Act art. 50(1)).
 
-## Naming paid products
+## Talking about paid products
 
-The public pages say what the free tools can be used instead of ("Stop paying for Microsoft 365", docs/TOOLSETS.md). Keep it
-a true, factual comparison: state the limits, no logos, no claim of equal features, never imply a connection, and show
-`TRADEMARK_NOTE` wherever a product is named. This is the owner's decision and has not had a lawyer's review.
+Paid products and companies are not named on any public page (owner's decision, docs/TOOLSETS.md), which removes the
+trademark and comparative-advertising questions of naming them. The criticism (expensive, locked down, spying) is about a
+kind of product, not a company. It has not had a lawyer's review.

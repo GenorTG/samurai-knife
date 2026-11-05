@@ -18,7 +18,7 @@ const LANGUAGE_NAME: Record<Locale, string> = { pl: "Polski", en: "English" };
 const FACTS: { title: string; text: string }[] = [
   { title: msg("Nothing to install"), text: msg("Everything opens here, in this browser tab. It works on any computer: sign in and your work is there.") },
   { title: msg("It is free"), text: msg("No subscription, no card, no trial that runs out. You get 1 GB of space for your files.") },
-  { title: msg("Your files are yours"), text: msg("Only you can see what you save in your account, and you can download or delete it at any time.") },
+  { title: msg("Your files are yours"), text: msg("Other users cannot see what you save in your account. We do not read it or sell it, and you can download or delete it at any time.") },
   { title: msg("Stuck? Help is close"), text: msg("Every tool has an \"About this tool\" page. If you add an AI model in your account settings, the assistant in the corner can also do the work with you. It is optional: everything works without it.") },
 ];
 

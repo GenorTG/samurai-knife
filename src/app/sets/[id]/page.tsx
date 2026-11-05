@@ -6,7 +6,7 @@ import { SetCards } from "@/components/sets/SetCards";
 import { ButtonLink } from "@/components/ui";
 import { isGuest } from "@/lib/accounts/viewer";
 import { getT } from "@/lib/i18n/server";
-import { findToolSet, TOOL_SETS, TRADEMARK_NOTE } from "@/lib/toolsets";
+import { findToolSet, HOSTED_NOTES, TOOL_SETS } from "@/lib/toolsets";
 
 /**
  * A tool set's page (docs/TOOLSETS.md). Public in both modes, like the tools' about pages: it reads only src/lib/toolsets.ts,
@@ -96,6 +96,16 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
         </section>
       ) : null}
 
+      {(set.hosted ?? []).map((id) => (
+        <section key={id} aria-label={t("Whose software this is")} data-hosted-note={id} className="mt-4 rounded-tool border border-line bg-surface/60 p-4">
+          <h2 className="font-semibold text-ink">{t("Whose software this is")}</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
+            {t(HOSTED_NOTES[id].text)}{" "}
+            <a href={HOSTED_NOTES[id].source} target="_blank" rel="noopener noreferrer" className="text-accent-soft underline underline-offset-2">{t("Source code")}</a>
+          </p>
+        </section>
+      ))}
+
       <section aria-labelledby="set-more" className="mt-12">
         <h2 id="set-more" className="text-xl font-semibold text-ink">{t("More sets")}</h2>
         <div className="mt-3">
@@ -103,7 +113,6 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
         </div>
       </section>
 
-      {set.replaces.length > 0 ? <p className="mt-8 text-xs leading-relaxed text-faint">{t(TRADEMARK_NOTE)}</p> : null}
     </main>
   );
 }

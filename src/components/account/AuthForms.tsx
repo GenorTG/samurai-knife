@@ -53,7 +53,7 @@ export function AuthFrame({ title, intro, aside, children }: { title: string; in
 
 const PERKS: [string, string][] = [
   [msg("CV builder"), msg("a CV in Polish and English, a copy fitted to each job offer, a check for recruitment software and a list of your applications")],
-  [msg("Office library"), msg("Word, Excel and PowerPoint files in folders, edited in the browser, with earlier versions kept")],
+  [msg("Office library"), msg("Documents, spreadsheets and presentations in folders, edited in the browser, with earlier versions kept")],
   [msg("Website check and a database course"), msg("compare your website with your CV; learn SQL and PostGIS on a real database")],
   [msg("AI assistant"), msg("an optional helper that uses the tools with you, once you connect an AI model of your choice")],
   [msg("Private storage"), msg("1 GB for your files, stored encrypted, visible to you only")],

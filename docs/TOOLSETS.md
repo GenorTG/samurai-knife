@@ -5,10 +5,17 @@ How the app introduces itself to people who are not computer savvy.
 ## Writing rules
 
 - Say what a thing does in the words of someone who wants it done: "Make a photo smaller", not "Image export".
-- Say it straight. A tool that stands in for a paid product names that product ("Stop paying for Microsoft 365").
-- A named comparison must stay true: state the limits (`limits` in the set), never claim full feature parity, never
-  imply a connection with the other company. Every page naming a paid product carries `TRADEMARK_NOTE`. A new paid name
-  goes in that note too (`tests/toolsets.test.mjs`).
+- Never name a paid product or its company in anything people read. Describe the kind of product and what is wrong with it:
+  proprietary, locked down, heavy terms of service, spying, forcing the cloud, breaking privacy, expensive
+  ("Stop paying for an office suite that spies on you"). File-type labels inside a tool ("Word document (.docx)") may stay,
+  because that is how people recognise their files; search keywords may keep the names, since they are never shown.
+  `tests/toolsets.test.mjs` scans the public texts.
+- Be honest about whose software it is: Euro-Office and the Craft apps are other people's open-source projects that we only
+  host, with no affiliation or endorsement either way (`HOSTED_NOTES`, shown on their set pages, their about pages, the guest
+  page and the office page; each Craft tab has its own line).
+- Do not call Smart Knife itself open source (its licence is PolyForm Noncommercial), do not claim "no cloud" (documents saved
+  to an account live on this server), and hold our own promises to the same standard we accuse others of failing.
+- State the limits (`limits` in the set): never claim full feature parity.
 - No jargon outside the tools for developers: no "sidecar", "self-hosted", "endpoint", "deterministic". The technical
   name stays in `keywords`, so search and the assistant still find it.
 - Slugs and tab ids never change (they are bookmarks); only names and labels do.

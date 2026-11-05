@@ -1,26 +1,26 @@
 # Smart Knife
 
-**Stop paying for Microsoft 365 and Adobe: office documents, photo and video editing, PDF tools and a CV builder in your browser, free.**
+**Stop paying for software that spies on you: office documents, photo and video editing, PDF tools and a CV builder in your browser, free.**
 
-Smart Knife puts the programs most people pay a subscription for, and the small jobs they search the web for, on one
-website you can use or run yourself. It has a step-by-step welcome guide and CV wizard for people who are not computer
-savvy, plus 41 tools (31 suites with 107 tabs, plus 10 standalone), an optional AI assistant that drives the live page,
-and an MCP endpoint for outside agents (Claude Code, Cursor, OpenClaw…). No telemetry and no ads, and most tools never
-send a byte off the page.
+The big proprietary suites are expensive, locked down and full of terms nobody reads; they push your files into their cloud
+and spy on what you do. Smart Knife puts free tools and open-source apps for the same work on one website you can use or
+run yourself. It has a step-by-step welcome guide and CV wizard for people who are not computer savvy, plus 41 tools (31
+suites with 107 tabs, plus 10 standalone), an optional AI assistant that drives the live page, and an MCP endpoint for
+outside agents (Claude Code, Cursor, OpenClaw…). No telemetry and no ads, and most tools never send a byte off the page.
 
 | Instead of paying for | Use, free | For |
 | --- | --- | --- |
-| Microsoft Word, Excel, PowerPoint | Euro-Office | documents, spreadsheets and slides, in the same file formats |
-| Adobe Photoshop, Lightroom | PhotoCraft, LightCraft | photo editing and RAW development |
-| Adobe Illustrator, InDesign | VectorCraft, DesignCraft | graphics and page layout |
-| Adobe Premiere Pro, After Effects, Audition | FilmCraft, EffectCraft, SoundCraft | video, effects and sound |
-| Adobe Acrobat | PDF tools, PdfCraft | editing, merging, compressing and OCR for PDFs |
-| Paid CV websites | CV builder | a CV in Polish and English, in PDF or Word, adjusted to each job offer |
-| Zapier, Make | Automations | connecting apps and running tasks by themselves |
+| Subscription office suites | Euro-Office | documents, spreadsheets and slides (DOCX, XLSX, PPTX) |
+| Subscription photo programs | PhotoCraft, LightCraft | photo editing and RAW development |
+| Subscription design programs | VectorCraft, DesignCraft | graphics and page layout |
+| Subscription video and audio programs | FilmCraft, EffectCraft, SoundCraft | video, effects and sound |
+| Expensive PDF editors | PDF tools, PdfCraft | editing, merging, compressing and OCR for PDFs |
+| Paid CV websites | CV builder | a CV in Polish and English, in PDF or DOCX, adjusted to each job offer |
+| Pay-per-task automation services | Automations | connecting apps and running tasks by themselves |
 
-These are independent open-source tools: they cover everyday and much advanced work, not every feature of the paid
-programs. The product names are trademarks of their owners and only say what the tools can be used instead of; Smart
-Knife is not connected with or endorsed by those companies.
+Euro-Office and the Craft apps are other people's open-source projects. We only host them, and are not affiliated with their
+authors: they do not endorse us and we do not endorse them. They cover everyday and much advanced work, not every feature
+of the paid programs.
 
 ![Launcher](docs/screenshots/launcher.png)
 
@@ -48,7 +48,7 @@ Prints to PDF or exports DOCX.
 window functions, `EXPLAIN` and catchment analysis, each checked against a real PostgreSQL + PostGIS database the app
 runs for you, with progressive hints and interview drills. See [docs/LEARN.md](docs/LEARN.md).
 
-**Euro-Office** (optional sidecar): create and edit Word, Excel and PowerPoint files in a self-hosted editor that
+**Euro-Office** (optional sidecar): create and edit DOCX, XLSX and PPTX files in a self-hosted editor that
 the app installs, starts and idles down by itself through Docker Compose. A small editor plugin lets the assistant edit
 the document you have open, live.
 

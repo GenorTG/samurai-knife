@@ -35,23 +35,9 @@ export interface NavSection {
 /** Craft apps grouped by medium: photos, graphics and design, video and audio, office documents, CAD. */
 const CRAFT_ORDER = ["photocraft", "lightcraft", "vectorcraft", "figcraft", "designcraft", "filmcraft", "effectcraft", "soundcraft", "wordcraft", "gridcraft", "deckcraft", "pdfcraft", "cadcraft"];
 
-/** The second line of a Craft app in the menu: what people know it as. */
-const CRAFT_INSTEAD_OF: Record<string, string> = {
-  photocraft: msg("instead of Photoshop"),
-  lightcraft: msg("instead of Lightroom"),
-  vectorcraft: msg("instead of Illustrator"),
-  figcraft: msg("instead of Figma"),
-  designcraft: msg("instead of InDesign"),
-  filmcraft: msg("instead of Premiere"),
-  effectcraft: msg("instead of After Effects"),
-  soundcraft: msg("instead of Audition"),
-  pdfcraft: msg("instead of Acrobat"),
-  cadcraft: msg("instead of AutoCAD"),
-};
-
 const craftItems: NavItem[] = CRAFT_ORDER.flatMap((id) => {
   const app = ARTCRAFT_APPS.find((candidate) => candidate.id === id);
-  return app ? [{ slug: "artcraft", tab: app.id, label: app.name, hint: CRAFT_INSTEAD_OF[app.id] ?? app.kind }] : [];
+  return app ? [{ slug: "artcraft", tab: app.id, label: app.name, hint: app.kind }] : [];
 });
 
 export const NAV: readonly NavSection[] = [

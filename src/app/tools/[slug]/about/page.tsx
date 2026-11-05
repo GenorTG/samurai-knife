@@ -8,6 +8,7 @@ import { findTool, resolveAlias } from "@/lib/registry";
 import { showcaseFor, showcaseHref, type ShowcaseRuns } from "@/lib/showcase";
 import { getT } from "@/lib/i18n/server";
 import { msg } from "@/lib/i18n/msg";
+import { HOSTED_NOTES, type HostedId } from "@/lib/toolsets";
 
 /**
  * A tool's showcase (docs/SHOWCASE.md): what it is for, what you can do, who it is for, where it runs and what the
@@ -33,6 +34,9 @@ export async function generateMetadata({ params }: PageProps<"/tools/[slug]/abou
 // The frame (signed in or the public welcome frame) is decided per request.
 export const dynamic = "force-dynamic";
 
+/** Tools that are someone else's open-source software, hosted here. */
+const HOSTED: Readonly<Record<string, HostedId>> = { office: "office", artcraft: "craft" };
+
 const RUNS_LABEL: Record<ShowcaseRuns, string> = {
   browser: msg("In your browser"),
   server: msg("On this server"),
@@ -50,6 +54,7 @@ export default async function ShowcasePage({ params, searchParams }: PageProps<"
   const guest = await isGuest();
   const requested = (await searchParams).tab;
   const tab = typeof requested === "string" && tool.tabs?.some((x) => x.id === requested) ? requested : null;
+  const hosted = HOSTED[slug] ? HOSTED_NOTES[HOSTED[slug]] : null;
   const openHref = `/tools/${slug}${tab ? `?tab=${encodeURIComponent(tab)}` : ""}`;
 
   return (
@@ -115,6 +120,16 @@ export default async function ShowcasePage({ params, searchParams }: PageProps<"
           </section>
         </div>
       </div>
+
+      {hosted ? (
+        <section aria-label={t("Whose software this is")} data-hosted-note={slug} className="mt-6 rounded-2xl border border-line bg-surface p-4">
+          <h2 className="font-semibold text-ink">{t("Whose software this is")}</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
+            {t(hosted.text)}{" "}
+            <a href={hosted.source} target="_blank" rel="noopener noreferrer" className="text-accent-soft underline underline-offset-2">{t("Source code")}</a>
+          </p>
+        </section>
+      ) : null}
 
       <ShowcaseChoices slug={slug} />
     </main>
