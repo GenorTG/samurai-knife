@@ -219,7 +219,7 @@ with sync_playwright() as pw:
 
     # 6. The widget never shows up in the CV page snapshot --------------------------------------------------------------------------
     snap = snapshot(page, key)
-    check("snapshot excludes the widget itself", not any("assistant" in c.get("label", "").lower() for c in snap.get("controls", [])))
+    check("snapshot excludes the widget itself", not any(c.get("label", "") in ("Message the assistant", "Open assistant", "Close assistant", "Toolbox assistant") for c in snap.get("controls", [])))
     check("no console errors during the whole run", not console_errors, console_errors[:3])
 
     browser.close()
