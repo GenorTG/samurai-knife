@@ -17,6 +17,7 @@ Usage: python3 tests/functional/storage_privacy_e2e.py [--headed]
 """
 from __future__ import annotations
 
+import re
 import base64
 import secrets
 import shutil
@@ -72,7 +73,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
     text = f"{MARKER} {engine} draft words words"
     ctx_a, page_a = new_context(browser, base, ip_a)
     ui_login(page_a, "alice", "alice password 1")
-    page_a.wait_for_url(base + "/", timeout=15_000)
+    page_a.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_a)
     textarea(page_a).fill(text)
     expect(page_a.get_by_text("Draft saved to your account")).to_be_visible(timeout=10_000)
@@ -92,7 +93,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
 
     ctx_a2, page_a2 = new_context(browser, base, ip_a)
     ui_login(page_a2, "alice", "alice password 1")
-    page_a2.wait_for_url(base + "/", timeout=15_000)
+    page_a2.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_a2)
     page_a2.get_by_role("group", name="Saved draft").get_by_role("button", name="Restore saved draft").click(timeout=10_000)
     expect(textarea(page_a2)).to_have_value(text, timeout=10_000)
@@ -115,7 +116,7 @@ def drafts(browser: Browser, engine: str, base: str, data: Path) -> None:
 
     ctx_b, page_b = new_context(browser, base, ip_b)
     ui_login(page_b, "bob", "bob password 1")
-    page_b.wait_for_url(base + "/", timeout=15_000)
+    page_b.wait_for_url(re.compile(re.escape(base) + r"/(welcome)?$"), timeout=15_000)
     open_tool(page_b)
     page_b.wait_for_timeout(1_500)
     check(f"[{engine}] bob opening the same tool sees none of alice's draft and gets no offer",

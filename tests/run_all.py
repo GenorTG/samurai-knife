@@ -193,6 +193,7 @@ def select(args: argparse.Namespace) -> list[Suite]:
 def run_suite(suite: Suite, server: ScratchServer | None, mock: Mock, out_dir: Path, args: argparse.Namespace) -> dict[str, object]:
     env = os.environ.copy()
     env.setdefault("KNIFE_PYTHON", VENV_PY)  # suites and the server must agree on the engine venv whatever checkout they run from
+    env["PYTHONPATH"] = os.pathsep.join(x for x in [str(ROOT / "tests" / "english_default"), env.get("PYTHONPATH")] if x)  # Polish-first: English labels in every suite
     url, data, tmp = "", "", None
     if suite.real:
         env.setdefault("KNIFE_REAL_ACCOUNT", "openclaw")
