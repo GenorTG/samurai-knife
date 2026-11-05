@@ -75,7 +75,7 @@ def send_and_settle(page: Page, text: str, timeout: float = 120) -> None:
         if stable >= 3:
             return
         time.sleep(0.3)
-    raise AssertionError(f"turn did not settle: {text[:40]!r} last={transcript(page)[-2:]}")
+    raise AssertionError(f"turn did not settle: {text[:40]!r} last={[(m["role"], str(m.get("content"))[:160]) for m in transcript(page)[-3:]]} active={page.locator("html[data-agent-active]").count()}")
 
 
 def last_request() -> dict:

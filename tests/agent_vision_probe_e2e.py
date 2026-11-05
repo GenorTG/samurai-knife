@@ -117,7 +117,11 @@ def send(page: Page, text: str) -> list[dict]:
         if sum(1 for m in messages if m["role"] == "user") <= users_before:
             return False
         return messages[-1]["role"] == "assistant" and not messages[-1].get("tool_calls")
-    wait_until(finished, "the turn to end", timeout=SLOW * 2 / 1000)
+    try:
+        wait_until(finished, "the turn to end", timeout=SLOW * 2 / 1000)
+    except TimeoutError:
+        print("last messages:", [(m["role"], str(m.get("content"))[:160]) for m in conversation(page)[-4:]])
+        raise
     page.locator("button[aria-label='Send']").wait_for(timeout=SLOW)
     return conversation(page)
 

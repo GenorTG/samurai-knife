@@ -124,7 +124,8 @@ with sync_playwright() as pw:
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
     k = key(page)
-    run(page, k, "CALL:page_snapshot:{}")
+    # A round is well below the minimum budget now, so it takes several to reach it.
+    run(page, k, 'CALL:wait:{"ms":1}\nLOOP:wait:{"ms":1}')
     notes = [m.get("content", "") for m in history(page, k) if m["role"] == "notice" and m.get("level") == "info"]
     check("the budget stops the turn with the summary notice", any("input-token budget" in n for n in notes), notes[-3:])
     check("budget reset", put_limits({"reset": True}) == 200)
