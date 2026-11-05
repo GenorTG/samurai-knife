@@ -117,6 +117,7 @@ SUITES: list[Suite] = [
     Suite("agent_usage", py("tests/agent_usage_e2e.py", "{url}", "{mock}"), mock=True),
     Suite("agent_vision_probe", py("tests/agent_vision_probe_e2e.py", "{url}", "{mock}"), mock=True, data_env=True),
     Suite("agent_wait_for", py("tests/agent_wait_for_e2e.py", "{url}", "{mock}"), mock=True),
+    Suite("agent_context", py("tests/agent_context_e2e.py", "{url}", "{mock}"), mock=True),
     Suite("agent_toolgroups", py("tests/agent_toolgroups_e2e.py", "{url}", "{mock}"), mock=True),
     Suite("shell_agent", py("tests/shell_agent_e2e.py", "{url}", "{mock}"), mock=True),
     Suite("cv_ui_agent", py("tests/cv_ui_agent_e2e.py", "{url}", "{mock}"), mock=True),
