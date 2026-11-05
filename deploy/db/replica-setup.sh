@@ -38,7 +38,9 @@ PGPASS=/var/lib/postgresql/.pgpass
 install -o postgres -g postgres -m 0600 /dev/null "$PGPASS"
 printf '%s:%s:replication:knife_replicator:%s\n' "$PRIMARY_HOST" "$PRIMARY_PORT" "$(cat "$REPL_PASSWORD_FILE")" > "$PGPASS"
 
-CONNINFO="host=$PRIMARY_HOST port=$PRIMARY_PORT user=knife_replicator sslmode=verify-full sslrootcert=$CA_FILE application_name=genorbox1_delayed"
+# channel_binding=disable: the primary's certificate is Ed25519, which has no separate digest, so libpq's SCRAM channel
+# binding stops with "could not find digest for NID UNDEF". verify-full still proves the server, inside the WireGuard tunnel.
+CONNINFO="host=$PRIMARY_HOST port=$PRIMARY_PORT user=knife_replicator sslmode=verify-full channel_binding=disable sslrootcert=$CA_FILE application_name=genorbox1_delayed"
 sudo -u postgres pg_basebackup --pgdata="$PGDATA" --dbname="$CONNINFO" --slot="$SLOT" \
   --wal-method=stream --checkpoint=spread --max-rate="$MAX_RATE" --progress --verbose
 
