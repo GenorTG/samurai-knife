@@ -271,7 +271,7 @@ def t_resize(page, fx):
     page.locator("button[title*='shape']").click()
     # JPEG flattening
     page.get_by_role("button", name="800 × 600").click()
-    page.get_by_label("File type", exact=True).select_option("image/jpeg")
+    page.locator("label", has_text="File type").locator("select").first.select_option("image/jpeg")
     page.get_by_label("Background colour").wait_for()
     wait_render(page)
     name, data = download(page, lambda: page.get_by_role("button", name="Download", exact=True).click())
@@ -286,11 +286,11 @@ def t_resize(page, fx):
     check(near(im.getpixel((40, 300)), (255, 0, 0), 30) and near(im.getpixel((760, 300)), (0, 0, 255), 30), "cover keeps left red / right blue")
     # PNG contain keeps transparency
     page.get_by_label("How it fits").select_option("contain")
-    page.get_by_label("File type", exact=True).select_option("image/png")
+    page.locator("label", has_text="File type").locator("select").first.select_option("image/png")
     wait_render(page)
     _, data = download(page, lambda: page.get_by_role("button", name="Download", exact=True).click())
     check(img_of(data).convert("RGBA").getpixel((400, 5))[3] == 0, "PNG contain margin stays transparent")
-    page.get_by_label("File type", exact=True).select_option("image/webp")
+    page.locator("label", has_text="File type").locator("select").first.select_option("image/webp")
     wait_render(page)
     name, data = download(page, lambda: page.get_by_role("button", name="Download", exact=True).click())
     check(img_of(data).format == "WEBP" and name.endswith(".webp"), "webp export")

@@ -370,8 +370,7 @@ with sync_playwright() as pw:
     def _():
         page.get_by_label("New project name").fill("Side Project")
         btn("Add project").click()
-        has("Side Project")
-        assert any(p["name"] == "Side Project" for p in cv()["profile"]["projects"])
+        page.wait_for_function("async () => (await (await fetch('/api/cv')).json()).profile.projects.some(p => p.name === 'Side Project')")  # the name is in a field, not in text
         page.get_by_label("New skill group name").fill("Cloud")
         btn("Add skill group").click()
         sk = [s for s in cv()["profile"]["skills"] if s["name"]["en"] == "Cloud"]

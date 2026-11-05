@@ -206,7 +206,7 @@ with sync_playwright() as pw:
     composer.fill("")
 
     # 5. Survives client-side navigation -----------------------------------------------------------------
-    page.get_by_text("QR codes", exact=True).first.click()  # launcher card -> router.push
+    page.get_by_text("QR code maker", exact=True).first.click()  # launcher card -> router.push
     page.wait_for_url("**/tools/qr")
     check("client navigation kept the document alive", page.evaluate("window.__sk_marker") == "alive")
     check("panel still open after navigation", dialog.is_visible())

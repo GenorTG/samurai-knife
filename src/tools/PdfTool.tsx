@@ -40,11 +40,11 @@ interface DocInfo {
   page_sizes: { page: number; w: number; h: number }[];
 }
 
-function phaseText(phase: PdfJobPhase | null): string | null {
+function phaseText(phase: PdfJobPhase | null, t: (text: string, values?: Record<string, string | number>) => string): string | null {
   if (!phase) return null;
-  if (phase.kind === "uploading") return "Uploading…";
-  if (phase.kind === "running") return "Processing…";
-  return phase.ahead > 0 ? `Queued (${phase.ahead} ahead)…` : msg("Waiting for its turn…");
+  if (phase.kind === "uploading") return t("Uploading…");
+  if (phase.kind === "running") return t("Processing…");
+  return phase.ahead > 0 ? t("Waiting for its turn ({n} ahead)…", { n: phase.ahead }) : t("Waiting for its turn…");
 }
 
 export default function PdfTool() {
@@ -287,7 +287,7 @@ export default function PdfTool() {
 
             <div className="flex min-h-7 items-center justify-between gap-2">
               <p role="status" aria-live="polite" className="min-w-0 text-xs text-faint">
-                {phaseText(phase) ?? (cancelled ? t("Cancelled.") : "")}
+                {phaseText(phase, t) ?? (cancelled ? t("Cancelled.") : "")}
               </p>
               {busy ? (
                 <Button size="sm" variant="ghost" onClick={cancelRun} disabled={phase === null}>{t("Cancel")}</Button>

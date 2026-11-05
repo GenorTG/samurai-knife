@@ -100,7 +100,7 @@ def run_once(idx: int, pdf: Path, truth: str) -> dict:
         reset_conversation(page)
         page.keyboard.press("Control+j")
         page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-        k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+        k = page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
 
         started = time.time()
         box = page.locator("textarea[aria-label='Message the assistant']")

@@ -154,7 +154,7 @@ def run(base: str) -> None:
             export.click()
         assert accepted.value.status == 202
         first_job = accepted.value.json()["jobId"]
-        expect(page.get_by_role("status").filter(has_text="Creating searchable PDF")).to_be_visible(timeout=30000)
+        expect(page.get_by_role("status").filter(has_text="Making the searchable PDF")).to_be_visible(timeout=30000)
         expect(upload).to_be_disabled()
         expect(page.get_by_label("Searchable PDF language")).to_be_disabled()
         assert page.locator("[inert][aria-busy=true]").count() == 1, "Editing must be inert during server OCR"
@@ -216,7 +216,7 @@ def run(base: str) -> None:
         with page.expect_response(lambda r: r.request.method == "POST" and "/api/pdf?" in r.url) as accepted:
             export.click()
         job_id = accepted.value.json()["jobId"]
-        expect(page.get_by_role("status").filter(has_text="Creating searchable PDF")).to_be_visible(timeout=30000)
+        expect(page.get_by_role("status").filter(has_text="Making the searchable PDF")).to_be_visible(timeout=30000)
         with page.expect_response(lambda r: r.request.method == "DELETE" and job_id in r.url):
             page.get_by_role("tab", name="Tools", exact=True).click()
         expect(page.get_by_role("tab", name="Tools", exact=True)).to_have_attribute("aria-selected", "true")

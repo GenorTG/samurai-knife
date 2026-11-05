@@ -179,7 +179,7 @@ class Assistant:
         self.page.locator("main h2").first.click()
         self.page.keyboard.press("Control+j")
         self.page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-        self.key = self.page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+        self.key = self.page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
         self.page.locator("[aria-label='Ask before acting'] [role=radio]").first.wait_for()
 
     def mode(self, label: str) -> None:

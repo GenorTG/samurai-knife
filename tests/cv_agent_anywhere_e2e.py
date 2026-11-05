@@ -73,7 +73,7 @@ def open_panel(page: Page, url: str) -> str:
     page.goto(BASE + url, wait_until="networkidle")
     page.keyboard.press("Control+j")
     page.wait_for_selector("[role=dialog][aria-label='Toolbox assistant']")
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
 
 
 

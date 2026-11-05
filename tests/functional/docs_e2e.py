@@ -555,7 +555,7 @@ print(t.count("h"), len(xo), t.count("l"))
     pg.locator("input[type=file]").first.set_input_files([str(fx / "scan.png"), str(sideways)])
     try:
         pg.get_by_text("2 pages loaded").wait_for(timeout=60000)
-        check("images: PNG + JPEG open as a 2-page document", pg.get_by_text("Built from 2 images").count() == 1)
+        check("images: PNG + JPEG open as a 2-page document", pg.get_by_text("Made from 2 images").count() == 1)
         pg.get_by_role("button", name="Current page").click()
         pg.wait_for_function("document.body.innerText.includes('OCR finished for 1 page')", timeout=150000)
         page1 = ta.first.input_value()

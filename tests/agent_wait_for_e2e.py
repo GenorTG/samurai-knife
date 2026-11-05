@@ -58,7 +58,7 @@ def put_provider() -> None:
 
 
 def key(page: Page) -> str:
-    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}:${encodeURIComponent(a.provider?.baseUrl ?? '')}:${encodeURIComponent(a.provider?.model ?? '')}`)")
+    return page.evaluate("fetch('/api/account').then(r => r.json()).then(a => `sk.agent.chat.v1.${a.id}`)")
 
 
 def results(page: Page, k: str, name: str) -> list[dict]:
