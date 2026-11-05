@@ -75,7 +75,7 @@ SQL_FENCES = ("sql", "mysql", "mariadb", "postgresql", "postgres", "pgsql", "psq
 
 
 def blocks(answer: str, *langs: str) -> list[str]:
-    found = re.findall(r"```([A-Za-z0-9_+-]*)\n(.*?)```", answer, re.S)
+    found = re.findall(r"```([A-Za-z0-9_+-]*)[^\n`]*\n(.*?)```", answer, re.S)
     return [body for lang, body in found if not langs or lang.lower() in langs]
 
 

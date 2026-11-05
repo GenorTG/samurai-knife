@@ -36,7 +36,7 @@ def honest_no(ctx: Ctx) -> str | None:
     if used(ctx, "open_tool"):
         return "opened a tool for a request nothing in the toolbox can do"
     if not any(w in ans for w in ("no ", "not ", "don't", "doesn't", "can't", "cannot", "isn't", "n't")):
-        return f"did not say plainly that video editing is unsupported: {ctx.answer[:200]!r}"
+        return f"did not say plainly that this is unsupported: {ctx.answer[:200]!r}"
     return None
 
 
@@ -48,7 +48,7 @@ CASES = [
          mentions(("table inspector", "csv-profile", "duplicate"), ("csv workbench", "csv")), note="data routing"),
     Case("-", None, "I have a huge JPG photo. I need it smaller, as webp, plus a favicon from it. Which tool?",
          mentions(("image export", "image-resize")), note="image routing"),
-    Case("-", None, "Can you edit and trim videos here?", honest_no, note="honest about gaps"),
+    Case("-", None, "Can you file my tax return and send it to the tax office from here?", honest_no, note="honest about gaps"),
 ]
 
 
